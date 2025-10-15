@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # StructuraRibbon3D
 
 Aplicativo C++ com Qt e VTK para renderizaÃ§Ã£o 3D. O projeto usa Widgets (Qt) e mÃ³dulos VTK incluindo suporte a Qt e OpenGL.
@@ -69,20 +68,17 @@ Notas:
 - A inserÃ§Ã£o na tela calcula a interseÃ§Ã£o do raio de visÃ£o com o plano Z=0; se a cÃ¢mera estiver paralela a esse plano, gire levemente a vista para permitir a interseÃ§Ã£o.
 ## Uso (Materiais, Secoes e Barras)
 
-- Criar material: Início -> Propriedades -> ""Novo material"". Informe nome, módulo de elasticidade (Pa) e densidade (kg/m3).
-- Criar secao: Início -> Propriedades -> ""Nova secao"". Informe nome, area (m2) e inercias Iy/Iz (m4).
-- Inserir barra: Início -> Modelagem -> ""Inserir barra"". O comando ativo aparece na barra de status.
+- Criar material: Inï¿½cio -> Propriedades -> ""Novo material"". Informe nome, mï¿½dulo de elasticidade (Pa) e densidade (kg/m3).
+- Criar secao: Inï¿½cio -> Propriedades -> ""Nova secao"". Informe nome, area (m2) e inercias Iy/Iz (m4).
+- Inserir barra: Inï¿½cio -> Modelagem -> ""Inserir barra"". O comando ativo aparece na barra de status.
   - Passe o mouse sobre os nos para ver highlight.
   - Clique esquerdo no primeiro no, depois no segundo no. Escolha material/secao na janela exibida.
   - Clique direito rotaciona a camera sem sair do comando; ESC cancela.
-- Atribuir propriedades em lote: Início -> Propriedades -> ""Atribuir a barras"". Selecione barras na lista, escolha material/secao e confirme.
+- Atribuir propriedades em lote: Inï¿½cio -> Propriedades -> ""Atribuir a barras"". Selecione barras na lista, escolha material/secao e confirme.
 
 Notas adicionais:
 - Materiais e secoes podem ser deixados em branco (""Sem material""/""Sem secao"").
 - O destaque de nos usa cor azul e segue o cursor enquanto o comando estiver ativo.
 ## Arquivos .dat
-- Use ""Abrir .dat"" na guia Início para carregar arquivos no template indicado (materiais com E/G, seções com A/Iz/Iy/J, nós, barras e cargas).
-- ""Salvar .dat"" gera um arquivo com o mesmo template usando os dados atuais (resistências e cargas continuam armazenadas para uso futuro).
-=======
-# newStructura
->>>>>>> d8f125f3101c09cdb483c5c2bc623972e84b98e2
+- Use ""Abrir .dat"" na guia Inï¿½cio para carregar arquivos no template indicado (materiais com E/G, seï¿½ï¿½es com A/Iz/Iy/J, nï¿½s, barras e cargas).
+- ""Salvar .dat"" gera um arquivo com o mesmo template usando os dados atuais (resistï¿½ncias e cargas continuam armazenadas para uso futuro).
