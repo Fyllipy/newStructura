@@ -53,6 +53,7 @@ if (QT_VERSION_MAJOR EQUAL 6)
         src/ModelEntities.h
         src/PropertiesPanel.h
         src/PropertiesPanel.cpp
+        resources.qrc
     )
 else()
     add_executable(StructuraRibbon3D
@@ -80,6 +81,7 @@ else()
         src/ModelEntities.h
         src/PropertiesPanel.h
         src/PropertiesPanel.cpp
+        resources.qrc
     )
 endif()
 

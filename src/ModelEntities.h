@@ -214,11 +214,18 @@ public:
     {
     }
 
-    GridLine(const QUuid &id, Axis axis, double offset, int index)
+    GridLine(const QUuid &id,
+             Axis axis,
+             double offset,
+             int index,
+             double coordinate1 = 0.0,
+             double coordinate2 = 0.0)
         : m_id(id)
         , m_axis(axis)
         , m_offset(offset)
         , m_index(index)
+        , m_coord1(coordinate1)
+        , m_coord2(coordinate2)
     {
     }
 
@@ -238,6 +245,24 @@ public:
     bool isGhost() const noexcept { return m_ghost; }
     void setGhost(bool ghost) noexcept { m_ghost = ghost; }
 
+    double coordinate1() const noexcept { return m_coord1; }
+    void setCoordinate1(double value) noexcept { m_coord1 = value; }
+
+    double coordinate2() const noexcept { return m_coord2; }
+    void setCoordinate2(double value) noexcept { m_coord2 = value; }
+
+    const std::array<double, 3> &startPoint() const noexcept { return m_startPoint; }
+    void setStartPoint(double x, double y, double z) noexcept { m_startPoint = { {x, y, z} }; }
+
+    const std::array<double, 3> &endPoint() const noexcept { return m_endPoint; }
+    void setEndPoint(double x, double y, double z) noexcept { m_endPoint = { {x, y, z} }; }
+
+    void setEndpoints(double x0, double y0, double z0, double x1, double y1, double z1) noexcept
+    {
+        m_startPoint = { {x0, y0, z0} };
+        m_endPoint = { {x1, y1, z1} };
+    }
+
 private:
     QUuid m_id;
     Axis m_axis {Axis::X};
@@ -245,6 +270,10 @@ private:
     int m_index {0};
     bool m_highlighted {false};
     bool m_ghost {false};
+    double m_coord1 {0.0};
+    double m_coord2 {0.0};
+    std::array<double, 3> m_startPoint { {0.0, 0.0, 0.0} };
+    std::array<double, 3> m_endPoint { {0.0, 0.0, 0.0} };
 };
 
 } // namespace Structura::Model

@@ -23,7 +23,13 @@
 #include <QVector3D>
 #include <QtGlobal>
 #include <optional>
+#include <limits>
+#include <algorithm>
 #include "CustomInteractorStyle.h"
+
+namespace {
+constexpr double kCoordEpsilon = 1e-6;
+}
 
 SceneController::SceneController(QObject *parent)
     : QObject(parent)
@@ -42,6 +48,14 @@ SceneController::SceneController(QObject *parent)
     , m_gridData(vtkSmartPointer<vtkPolyData>::New())
     , m_gridMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
     , m_gridActor(vtkSmartPointer<vtkActor>::New())
+    , m_gridPoints(vtkSmartPointer<vtkPoints>::New())
+    , m_gridCells(vtkSmartPointer<vtkCellArray>::New())
+    , m_gridColors(vtkSmartPointer<vtkUnsignedCharArray>::New())
+    , m_gridGhostData(vtkSmartPointer<vtkPolyData>::New())
+    , m_gridGhostPoints(vtkSmartPointer<vtkPoints>::New())
+    , m_gridGhostCells(vtkSmartPointer<vtkCellArray>::New())
+    , m_gridGhostMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
+    , m_gridGhostActor(vtkSmartPointer<vtkActor>::New())
     , m_picker(vtkSmartPointer<vtkCellPicker>::New())
     , m_nodePicker(vtkSmartPointer<vtkPointPicker>::New())
     , m_barPicker(vtkSmartPointer<vtkCellPicker>::New())
@@ -75,12 +89,32 @@ SceneController::SceneController(QObject *parent)
     m_barActor->PickableOn();
 
     // Grid default visuals
+    m_gridData->SetPoints(m_gridPoints);
+    m_gridData->SetLines(m_gridCells);
+    m_gridColors->SetNumberOfComponents(3);
+    m_gridColors->SetName("GridColors");
+    m_gridData->GetCellData()->SetScalars(m_gridColors);
     m_gridMapper->SetInputData(m_gridData);
+    m_gridMapper->ScalarVisibilityOn();
+    m_gridMapper->SetColorModeToDirectScalars();
+    m_gridMapper->SetScalarModeToUseCellData();
     m_gridActor->SetMapper(m_gridMapper);
     m_gridActor->GetProperty()->SetColor(0.55, 0.60, 0.68);
     m_gridActor->GetProperty()->SetOpacity(0.55);
     m_gridActor->GetProperty()->SetLineWidth(1.0);
     m_gridActor->PickableOn();
+    m_gridActor->SetVisibility(false);
+
+    // Ghost grid line visuals
+    m_gridGhostData->SetPoints(m_gridGhostPoints);
+    m_gridGhostData->SetLines(m_gridGhostCells);
+    m_gridGhostMapper->SetInputData(m_gridGhostData);
+    m_gridGhostActor->SetMapper(m_gridGhostMapper);
+    m_gridGhostActor->GetProperty()->SetColor(0.98, 0.45, 0.15);
+    m_gridGhostActor->GetProperty()->SetOpacity(0.35);
+    m_gridGhostActor->GetProperty()->SetLineWidth(2.0);
+    m_gridGhostActor->PickableOff();
+    m_gridGhostActor->SetVisibility(false);
 
     // Picker tolerance suitable for thin lines
     m_picker->SetTolerance(0.005);
@@ -111,6 +145,7 @@ void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget)
     m_renderer->AddActor(m_barActor);
     m_renderer->AddActor(m_pointActor);
     m_renderer->AddActor(m_gridActor);
+    m_renderer->AddActor(m_gridGhostActor);
     m_renderer->ResetCamera();
 
     auto axes = vtkSmartPointer<vtkAxesActor>::New();
@@ -214,87 +249,536 @@ void SceneController::createGrid(double dx, double dy, double dz, int nx, int ny
     m_dx = dx; m_dy = dy; m_dz = dz;
     m_nx = nx; m_ny = ny; m_nz = nz;
 
-    auto gridPoints = vtkSmartPointer<vtkPoints>::New();
-    auto gridLines = vtkSmartPointer<vtkCellArray>::New();
+    m_gridLines.clear();
+    m_gridLineIndexById.clear();
+    m_gridCellToLineIndex.clear();
+    m_highlightGridLineId = QUuid();
 
-    // Build a 3D lattice of axis-aligned lines from origin
-    const double xmax = (nx > 0 ? (nx - 1) * dx : 0.0);
-    const double ymax = (ny > 0 ? (ny - 1) * dy : 0.0);
-    const double zmax = (nz > 0 ? (nz - 1) * dz : 0.0);
+    hideGridGhostLine();
 
-    auto addLine = [&](double x0, double y0, double z0, double x1, double y1, double z1) {
-        vtkIdType id0 = gridPoints->InsertNextPoint(x0, y0, z0);
-        vtkIdType id1 = gridPoints->InsertNextPoint(x1, y1, z1);
-        vtkIdType lineIds[2] = { id0, id1 };
-        gridLines->InsertNextCell(2, lineIds);
-    };
+    m_xCoords.clear();
+    m_yCoords.clear();
+    m_zCoords.clear();
 
-    // Lines parallel to X (vary y,z)
-    for (int j = 0; j < ny; ++j) {
-        for (int k = 0; k < nz; ++k) {
-            const double y = j * dy;
-            const double z = k * dz;
-            addLine(0.0, y, z, xmax, y, z);
+    if (nx > 0 && dx > 0.0) {
+        m_xCoords.reserve(nx);
+        for (int i = 0; i < nx; ++i) {
+            m_xCoords.append(static_cast<double>(i) * dx);
         }
     }
-    // Lines parallel to Y (vary x,z)
-    for (int i = 0; i < nx; ++i) {
-        for (int k = 0; k < nz; ++k) {
-            const double x = i * dx;
-            const double z = k * dz;
-            addLine(x, 0.0, z, x, ymax, z);
-        }
-    }
-    // Lines parallel to Z (vary x,y)
-    for (int i = 0; i < nx; ++i) {
+    if (ny > 0 && dy > 0.0) {
+        m_yCoords.reserve(ny);
         for (int j = 0; j < ny; ++j) {
-            const double x = i * dx;
-            const double y = j * dy;
-            addLine(x, y, 0.0, x, y, zmax);
+            m_yCoords.append(static_cast<double>(j) * dy);
+        }
+    }
+    if (nz > 0 && dz > 0.0) {
+        m_zCoords.reserve(nz);
+        for (int k = 0; k < nz; ++k) {
+            m_zCoords.append(static_cast<double>(k) * dz);
         }
     }
 
-    m_gridData->SetPoints(gridPoints);
-    m_gridData->SetLines(gridLines);
-    m_gridData->Modified();
+    rebuildGridFromCoordinates();
+    m_gridActor->SetVisibility(!m_gridLines.isEmpty());
     m_renderWindow->Render();
 }
 
 bool SceneController::hasGrid() const
 {
-    return (m_nx > 0 && m_ny > 0 && m_nz > 0 && m_dx > 0 && m_dy > 0 && m_dz > 0);
-}
-
-static inline double roundToStepClamp(double v, double step, int n)
-{
-    if (step <= 0 || n <= 0) return 0.0;
-    double maxv = (n - 1) * step;
-    double t = std::round(v / step) * step;
-    if (t < 0.0) t = 0.0;
-    if (t > maxv) t = maxv;
-    return t;
+    return !m_xCoords.isEmpty() && !m_yCoords.isEmpty() && !m_zCoords.isEmpty();
 }
 
 void SceneController::snapToGrid(double &x, double &y, double &z) const
 {
     if (!hasGrid()) return;
-    x = roundToStepClamp(x, m_dx, m_nx);
-    y = roundToStepClamp(y, m_dy, m_ny);
-    z = roundToStepClamp(z, m_dz, m_nz);
+    x = nearestCoordinate(m_xCoords, x);
+    y = nearestCoordinate(m_yCoords, y);
+    z = nearestCoordinate(m_zCoords, z);
 }
 
 void SceneController::gridSpacing(double &dx, double &dy, double &dz) const
 {
-    dx = m_dx;
-    dy = m_dy;
-    dz = m_dz;
+    dx = computeMinSpacing(m_xCoords);
+    dy = computeMinSpacing(m_yCoords);
+    dz = computeMinSpacing(m_zCoords);
 }
 
 void SceneController::gridCounts(int &nx, int &ny, int &nz) const
 {
-    nx = m_nx;
-    ny = m_ny;
-    nz = m_nz;
+    nx = m_xCoords.size();
+    ny = m_yCoords.size();
+    nz = m_zCoords.size();
+}
+
+bool SceneController::insertCoordinate(QVector<double> &coords, double value) const
+{
+    if (!std::isfinite(value)) {
+        return false;
+    }
+    for (double current : coords) {
+        if (std::abs(current - value) <= kCoordEpsilon) {
+            return false;
+        }
+    }
+    auto it = std::lower_bound(coords.begin(), coords.end(), value);
+    coords.insert(it, value);
+    return true;
+}
+
+bool SceneController::removeCoordinate(QVector<double> &coords, double value)
+{
+    for (int i = 0; i < coords.size(); ++i) {
+        if (std::abs(coords[i] - value) <= kCoordEpsilon) {
+            coords.removeAt(i);
+            return true;
+        }
+    }
+    return false;
+}
+
+double SceneController::nearestCoordinate(const QVector<double> &coords, double value)
+{
+    if (coords.isEmpty()) {
+        return value;
+    }
+    auto it = std::lower_bound(coords.begin(), coords.end(), value);
+    if (it == coords.begin()) {
+        return *it;
+    }
+    if (it == coords.end()) {
+        return coords.back();
+    }
+    double upper = *it;
+    double lower = *(it - 1);
+    return (std::abs(upper - value) < std::abs(value - lower)) ? upper : lower;
+}
+
+double SceneController::computeMinSpacing(const QVector<double> &coords)
+{
+    if (coords.size() < 2) {
+        return 0.0;
+    }
+    double minSpacing = std::numeric_limits<double>::max();
+    for (int i = 1; i < coords.size(); ++i) {
+        const double diff = std::abs(coords[i] - coords[i - 1]);
+        if (diff < minSpacing) {
+            minSpacing = diff;
+        }
+    }
+    return (minSpacing == std::numeric_limits<double>::max()) ? 0.0 : minSpacing;
+}
+
+std::pair<double, double> SceneController::minMaxAlongAxis(GridLine::Axis axis) const
+{
+    const QVector<double> *source = nullptr;
+    switch (axis) {
+    case GridLine::Axis::X:
+        source = &m_xCoords;
+        break;
+    case GridLine::Axis::Y:
+        source = &m_yCoords;
+        break;
+    case GridLine::Axis::Z:
+        source = &m_zCoords;
+        break;
+    }
+    if (!source || source->isEmpty()) {
+        return {0.0, 0.0};
+    }
+    return {source->front(), source->back()};
+}
+
+QString SceneController::gridLineKey(GridLine::Axis axis, double coord1, double coord2) const
+{
+    return QStringLiteral("%1|%2|%3")
+        .arg(static_cast<int>(axis))
+        .arg(QString::number(coord1, 'f', 6))
+        .arg(QString::number(coord2, 'f', 6));
+}
+
+SceneController::GridLine *SceneController::findGridLine(const QUuid &id)
+{
+    const int idx = gridLineIndex(id);
+    if (idx < 0 || idx >= m_gridLines.size()) {
+        return nullptr;
+    }
+    return &m_gridLines[idx];
+}
+
+const SceneController::GridLine *SceneController::findGridLine(const QUuid &id) const
+{
+    return const_cast<SceneController *>(this)->findGridLine(id);
+}
+
+SceneController::LineEndpoints SceneController::makeLineEndpoints(GridLine::Axis axis,
+                                                                  double coordinate1,
+                                                                  double coordinate2) const
+{
+    LineEndpoints endpoints;
+    const auto [minX, maxX] = minMaxAlongAxis(GridLine::Axis::X);
+    const auto [minY, maxY] = minMaxAlongAxis(GridLine::Axis::Y);
+    const auto [minZ, maxZ] = minMaxAlongAxis(GridLine::Axis::Z);
+
+    switch (axis) {
+    case GridLine::Axis::X:
+        endpoints.start = { {minX, coordinate1, coordinate2} };
+        endpoints.end = { {maxX, coordinate1, coordinate2} };
+        break;
+    case GridLine::Axis::Y:
+        endpoints.start = { {coordinate1, minY, coordinate2} };
+        endpoints.end = { {coordinate1, maxY, coordinate2} };
+        break;
+    case GridLine::Axis::Z:
+        endpoints.start = { {coordinate1, coordinate2, minZ} };
+        endpoints.end = { {coordinate1, coordinate2, maxZ} };
+        break;
+    }
+    return endpoints;
+}
+
+void SceneController::rebuildGridFromCoordinates()
+{
+    if (!m_gridPoints || !m_gridCells || !m_gridColors) {
+        return;
+    }
+
+    m_gridPoints->Reset();
+    m_gridCells->Reset();
+    m_gridColors->Reset();
+    m_gridColors->SetNumberOfComponents(3);
+    m_gridColors->SetName("GridColors");
+    QHash<QString, GridLine> previous;
+    previous.reserve(m_gridLines.size());
+    for (const auto &line : m_gridLines) {
+        previous.insert(gridLineKey(line.axis(), line.coordinate1(), line.coordinate2()), line);
+    }
+
+    m_gridLines.clear();
+    m_gridLineIndexById.clear();
+    m_gridCellToLineIndex.clear();
+
+    auto appendLine = [&](GridLine::Axis axis, double coord1, double coord2) {
+        const QString key = gridLineKey(axis, coord1, coord2);
+        GridLine line;
+        if (previous.contains(key)) {
+            line = previous.value(key);
+        } else {
+            line = GridLine(QUuid::createUuid(), axis, coord1, static_cast<int>(m_gridLines.size()), coord1, coord2);
+        }
+        line.setAxis(axis);
+        line.setOffset(coord1);
+        line.setCoordinate1(coord1);
+        line.setCoordinate2(coord2);
+
+        const auto endpoints = makeLineEndpoints(axis, coord1, coord2);
+        line.setEndpoints(endpoints.start[0], endpoints.start[1], endpoints.start[2],
+                          endpoints.end[0], endpoints.end[1], endpoints.end[2]);
+        line.setIndex(static_cast<int>(m_gridLines.size()));
+
+        const auto &start = line.startPoint();
+        const auto &end = line.endPoint();
+        vtkIdType id0 = m_gridPoints->InsertNextPoint(start.data());
+        vtkIdType id1 = m_gridPoints->InsertNextPoint(end.data());
+        vtkIdType lineIds[2] = { id0, id1 };
+        vtkIdType cellId = m_gridCells->InsertNextCell(2, lineIds);
+
+        m_gridCellToLineIndex.insert(cellId, m_gridLines.size());
+        m_gridLineIndexById.insert(line.id(), m_gridLines.size());
+        const unsigned char *color = line.isHighlighted() ? m_highlightGridColor : m_defaultGridColor;
+        m_gridColors->InsertNextTypedTuple(color);
+        m_gridLines.append(line);
+    };
+
+    for (double y : m_yCoords) {
+        for (double z : m_zCoords) {
+            appendLine(GridLine::Axis::X, y, z);
+        }
+    }
+    for (double x : m_xCoords) {
+        for (double z : m_zCoords) {
+            appendLine(GridLine::Axis::Y, x, z);
+        }
+    }
+    for (double x : m_xCoords) {
+        for (double y : m_yCoords) {
+            appendLine(GridLine::Axis::Z, x, y);
+        }
+    }
+
+    if (!m_highlightGridLineId.isNull()) {
+        if (gridLineIndex(m_highlightGridLineId) < 0) {
+            m_highlightGridLineId = QUuid();
+        }
+    }
+
+    m_nx = m_xCoords.size();
+    m_ny = m_yCoords.size();
+    m_nz = m_zCoords.size();
+
+    m_gridPoints->Modified();
+    m_gridCells->Modified();
+    m_gridColors->Modified();
+    m_gridData->GetCellData()->SetScalars(m_gridColors);
+    m_gridData->Modified();
+}
+
+void SceneController::updateGridColors()
+{
+    if (!m_gridColors) {
+        return;
+    }
+    const vtkIdType tupleCount = m_gridColors->GetNumberOfTuples();
+    if (tupleCount != static_cast<vtkIdType>(m_gridLines.size())) {
+        rebuildGridFromCoordinates();
+        return;
+    }
+    for (int i = 0; i < m_gridLines.size(); ++i) {
+        const GridLine &line = m_gridLines[i];
+        const unsigned char *color = line.isHighlighted() ? m_highlightGridColor : m_defaultGridColor;
+        m_gridColors->SetTypedTuple(i, color);
+    }
+    m_gridColors->Modified();
+    m_gridData->Modified();
+}
+
+QUuid SceneController::addGridLine(GridLine::Axis axis, double coordinate1, double coordinate2)
+{
+    if (!hasGrid()) {
+        return QUuid();
+    }
+
+    switch (axis) {
+    case GridLine::Axis::X:
+        insertCoordinate(m_yCoords, coordinate1);
+        insertCoordinate(m_zCoords, coordinate2);
+        break;
+    case GridLine::Axis::Y:
+        insertCoordinate(m_xCoords, coordinate1);
+        insertCoordinate(m_zCoords, coordinate2);
+        break;
+    case GridLine::Axis::Z:
+        insertCoordinate(m_xCoords, coordinate1);
+        insertCoordinate(m_yCoords, coordinate2);
+        break;
+    }
+
+    rebuildGridFromCoordinates();
+    m_gridActor->SetVisibility(!m_gridLines.isEmpty());
+    m_renderWindow->Render();
+
+    double canonicalCoord1 = coordinate1;
+    double canonicalCoord2 = coordinate2;
+    switch (axis) {
+    case GridLine::Axis::X:
+        canonicalCoord1 = nearestCoordinate(m_yCoords, coordinate1);
+        canonicalCoord2 = nearestCoordinate(m_zCoords, coordinate2);
+        break;
+    case GridLine::Axis::Y:
+        canonicalCoord1 = nearestCoordinate(m_xCoords, coordinate1);
+        canonicalCoord2 = nearestCoordinate(m_zCoords, coordinate2);
+        break;
+    case GridLine::Axis::Z:
+        canonicalCoord1 = nearestCoordinate(m_xCoords, coordinate1);
+        canonicalCoord2 = nearestCoordinate(m_yCoords, coordinate2);
+        break;
+    }
+
+    for (const auto &line : m_gridLines) {
+        if (line.axis() != axis) {
+            continue;
+        }
+        if (std::abs(line.coordinate1() - canonicalCoord1) > kCoordEpsilon) {
+            continue;
+        }
+        if (std::abs(line.coordinate2() - canonicalCoord2) > kCoordEpsilon) {
+            continue;
+        }
+        return line.id();
+    }
+    return QUuid();
+}
+
+bool SceneController::removeGridLine(const QUuid &lineId)
+{
+    const int idx = gridLineIndex(lineId);
+    if (idx < 0 || idx >= m_gridLines.size()) {
+        return false;
+    }
+    const GridLine line = m_gridLines[idx];
+
+    bool removed = false;
+    switch (line.axis()) {
+    case GridLine::Axis::X:
+        removed = removeCoordinate(m_yCoords, line.coordinate1());
+        if (!removed) {
+            removed = removeCoordinate(m_zCoords, line.coordinate2());
+        }
+        break;
+    case GridLine::Axis::Y:
+        removed = removeCoordinate(m_xCoords, line.coordinate1());
+        if (!removed) {
+            removed = removeCoordinate(m_zCoords, line.coordinate2());
+        }
+        break;
+    case GridLine::Axis::Z:
+        removed = removeCoordinate(m_xCoords, line.coordinate1());
+        if (!removed) {
+            removed = removeCoordinate(m_yCoords, line.coordinate2());
+        }
+        break;
+    }
+
+    if (!removed) {
+        return false;
+    }
+
+    m_gridLineIndexById.remove(lineId);
+    if (m_highlightGridLineId == lineId) {
+        m_highlightGridLineId = QUuid();
+    }
+
+    rebuildGridFromCoordinates();
+    m_gridActor->SetVisibility(!m_gridLines.isEmpty());
+    m_renderWindow->Render();
+    return true;
+}
+
+QUuid SceneController::pickGridLine(int displayX, int displayY) const
+{
+    if (!m_renderer || !m_picker || m_gridLines.isEmpty()) {
+        return QUuid();
+    }
+
+    if (!m_picker->Pick(displayX, displayY, 0, m_renderer)) {
+        return QUuid();
+    }
+
+    vtkIdType cellId = m_picker->GetCellId();
+    if (cellId < 0) {
+        return QUuid();
+    }
+
+    if (m_picker->GetActor() != m_gridActor) {
+        return QUuid();
+    }
+
+    const auto it = m_gridCellToLineIndex.constFind(cellId);
+    if (it == m_gridCellToLineIndex.constEnd()) {
+        return QUuid();
+    }
+    const int idx = it.value();
+    if (idx < 0 || idx >= m_gridLines.size()) {
+        return QUuid();
+    }
+    return m_gridLines[idx].id();
+}
+
+void SceneController::setHighlightedGridLine(const QUuid &lineId)
+{
+    if (lineId == m_highlightGridLineId) {
+        return;
+    }
+
+    if (!m_highlightGridLineId.isNull()) {
+        if (auto *line = findGridLine(m_highlightGridLineId)) {
+            line->setHighlighted(false);
+        }
+    }
+
+    m_highlightGridLineId = lineId;
+    if (!lineId.isNull()) {
+        if (auto *line = findGridLine(lineId)) {
+            line->setHighlighted(true);
+        }
+    }
+
+    updateGridColors();
+    m_renderWindow->Render();
+}
+
+void SceneController::clearHighlightedGridLine()
+{
+    setHighlightedGridLine(QUuid());
+}
+
+void SceneController::showGridGhostLine(GridLine::Axis axis, double coordinate1, double coordinate2)
+{
+    if (!m_gridGhostPoints || !m_gridGhostCells) {
+        return;
+    }
+
+    m_ghostAxis = axis;
+    LineEndpoints endpoints = makeLineEndpoints(axis, coordinate1, coordinate2);
+
+    m_gridGhostPoints->Reset();
+    m_gridGhostCells->Reset();
+
+    vtkIdType id0 = m_gridGhostPoints->InsertNextPoint(endpoints.start.data());
+    vtkIdType id1 = m_gridGhostPoints->InsertNextPoint(endpoints.end.data());
+    vtkIdType lineIds[2] = { id0, id1 };
+    m_gridGhostCells->InsertNextCell(2, lineIds);
+
+    m_gridGhostPoints->Modified();
+    m_gridGhostCells->Modified();
+    m_gridGhostData->Modified();
+
+    if (!m_gridGhostActor->GetVisibility()) {
+        m_gridGhostActor->SetVisibility(true);
+    }
+    m_renderWindow->Render();
+}
+
+void SceneController::hideGridGhostLine()
+{
+    if (!m_gridGhostActor) {
+        return;
+    }
+    if (m_gridGhostPoints) {
+        m_gridGhostPoints->Reset();
+        m_gridGhostPoints->Modified();
+    }
+    if (m_gridGhostCells) {
+        m_gridGhostCells->Reset();
+        m_gridGhostCells->Modified();
+    }
+    if (m_gridGhostData) {
+        m_gridGhostData->Modified();
+    }
+    if (m_gridGhostActor->GetVisibility()) {
+        m_gridGhostActor->SetVisibility(false);
+        m_renderWindow->Render();
+    }
+}
+
+std::optional<QUuid> SceneController::nearestGridLineId(GridLine::Axis axis,
+                                                        double coordinate1,
+                                                        double coordinate2) const
+{
+    if (m_gridLines.isEmpty()) {
+        return std::nullopt;
+    }
+
+    double bestDistance = std::numeric_limits<double>::max();
+    QUuid bestId;
+
+    for (const auto &line : m_gridLines) {
+        if (line.axis() != axis) {
+            continue;
+        }
+        const double d1 = line.coordinate1() - coordinate1;
+        const double d2 = line.coordinate2() - coordinate2;
+        const double distance = std::hypot(d1, d2);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestId = line.id();
+        }
+    }
+
+    if (bestId.isNull()) {
+        return std::nullopt;
+    }
+    return bestId;
 }
 
 bool SceneController::pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z) const
@@ -755,6 +1239,33 @@ void SceneController::clearAll()
     }
     m_nextNodeExternalId = 1;
 
+    m_gridLines.clear();
+    m_gridLineIndexById.clear();
+    m_gridCellToLineIndex.clear();
+    m_highlightGridLineId = QUuid();
+    m_dx = 0.0; m_dy = 0.0; m_dz = 0.0;
+    m_nx = 0; m_ny = 0; m_nz = 0;
+    m_xCoords.clear();
+    m_yCoords.clear();
+    m_zCoords.clear();
+    if (m_gridPoints) {
+        m_gridPoints->Reset();
+        m_gridPoints->Modified();
+    }
+    if (m_gridCells) {
+        m_gridCells->Reset();
+        m_gridCells->Modified();
+    }
+    if (m_gridColors) {
+        m_gridColors->Reset();
+        m_gridColors->SetNumberOfComponents(3);
+        m_gridColors->SetName("GridColors");
+        m_gridColors->Modified();
+    }
+    m_gridData->Modified();
+    m_gridActor->SetVisibility(false);
+    hideGridGhostLine();
+
     m_points->Modified();
     m_vertices->Modified();
     m_pointColors->Modified();
@@ -827,6 +1338,18 @@ int SceneController::barIndex(const QUuid &id) const
     }
     const auto it = m_barIndexById.constFind(id);
     if (it == m_barIndexById.constEnd()) {
+        return -1;
+    }
+    return it.value();
+}
+
+int SceneController::gridLineIndex(const QUuid &id) const
+{
+    if (id.isNull()) {
+        return -1;
+    }
+    const auto it = m_gridLineIndexById.constFind(id);
+    if (it == m_gridLineIndexById.constEnd()) {
         return -1;
     }
     return it.value();

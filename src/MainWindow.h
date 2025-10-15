@@ -5,10 +5,12 @@
 #include <QUuid>
 #include <QString>
 #include <QPoint>
+#include <QVector3D>
 #include <optional>
 
 #include "SelectionModel.h"
 #include "PropertiesPanel.h"
+#include "ModelEntities.h"
 
 class QAction;
 class QTabWidget;
@@ -35,11 +37,15 @@ public:
     ~MainWindow() override;
 
 private slots:
-    void onAddPoint();
+    void onInsertNodeByCoordinates();
     void onResetCamera();
     void onZoomExtents();
     void onGenerateGrid();
     void onStartScreenInsert();
+    void onAddGridLineX();
+    void onAddGridLineY();
+    void onAddGridLineZ();
+    void onDeleteGridLine();
     void onSnapToggled(bool checked);
     void onInsertBar();
     void onCreateMaterial();
@@ -57,7 +63,11 @@ private:
         None,
         InsertNode,
         InsertBarFirst,
-        InsertBarSecond
+        InsertBarSecond,
+        AddGridLineX,
+        AddGridLineY,
+        AddGridLineZ,
+        DeleteGridLine
     };
 
     struct MaterialInfo {
@@ -76,6 +86,26 @@ private:
         double iz {0.0};
         double iy {0.0};
         double j {0.0};
+    };
+
+    struct GridInsertState {
+        Structura::Model::GridLine::Axis axis {Structura::Model::GridLine::Axis::X};
+        bool active {false};
+        bool pointerValid {false};
+        double pointerCoord1 {0.0};
+        double pointerCoord2 {0.0};
+        double pointerAxisCoord {0.0};
+        QUuid highlightedLineId;
+        QUuid referenceLineId;
+        double referenceCoord1 {0.0};
+        double referenceCoord2 {0.0};
+        bool referenceLocked {false};
+        QString inputBuffer;
+        double typedValue {0.0};
+        bool hasTypedValue {false};
+        double ghostCoord1 {0.0};
+        double ghostCoord2 {0.0};
+        bool ghostVisible {false};
     };
 
     void createRibbon();
@@ -101,6 +131,19 @@ private:
     QVector<PropertiesPanel::NodeEntry> buildNodeEntries(const QSet<QUuid> &nodeIds) const;
     QVector<PropertiesPanel::BarEntry> buildBarEntries(const QSet<QUuid> &barIds) const;
     void updateGridInfoOnPanel();
+    bool computeWorldPointForInsert(const QPoint &widgetPos, double &x, double &y, double &z, bool applySnap) const;
+    void setHoverInsertPoint(const std::optional<QVector3D> &point);
+    void beginGridInsert(Structura::Model::GridLine::Axis axis);
+    void updateGridInsertFromPoint(const QVector3D &worldPoint);
+    void refreshGridInsertVisuals();
+    void resetGridInsertState();
+    void cancelGridInsert();
+    bool isGridInsertCommand(Command command) const;
+    QString gridAxisLabel(Structura::Model::GridLine::Axis axis) const;
+    void updateGridDeleteTooltip(const QPoint &widgetPos, const QUuid &lineId);
+    void hideGridDeleteTooltip();
+    void updateGridActionsEnabled();
+    Structura::Model::GridLine::Axis commandToAxis(Command command) const;
 
     SceneController *m_sceneController;
     Structura::SelectionModel *m_selectionModel;
@@ -113,8 +156,13 @@ private:
     QToolButton *m_closeButton;
     QToolButton *m_homeTabButton;
 
-    QAction *m_addPointAction;
+    QAction *m_insertNodeCoordinatesAction;
+    QAction *m_insertNodeScreenAction;
     QAction *m_generateGridAction;
+    QAction *m_addGridLineXAction;
+    QAction *m_addGridLineYAction;
+    QAction *m_addGridLineZAction;
+    QAction *m_deleteGridLineAction;
     QAction *m_resetCameraAction;
     QAction *m_zoomExtentsAction;
     QAction *m_insertBarAction;
@@ -135,6 +183,9 @@ private:
     QWidget *m_propertiesContainer {nullptr};
     PropertiesPanel *m_propertiesPanel {nullptr};
     QHBoxLayout *m_contentLayout {nullptr};
+    QLabel *m_gridDeleteTooltip {nullptr};
+    QUuid m_pendingDeleteLineId;
+    GridInsertState m_gridInsertState;
 
     QVector<MaterialInfo> m_materials;
     QVector<SectionInfo> m_sections;
@@ -175,4 +226,5 @@ private:
     QString m_lastDatDirectory;
     bool m_draggingWindow { false };
     QPoint m_dragOffset;
+    std::optional<QVector3D> m_hoverInsertPoint;
 };

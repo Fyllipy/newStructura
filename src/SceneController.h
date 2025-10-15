@@ -36,6 +36,7 @@ class SceneController : public QObject
 public:
     using Node = Structura::Model::Node;
     using Bar = Structura::Model::Bar;
+    using GridLine = Structura::Model::GridLine;
 
     struct NodeInfo {
         QUuid id;
@@ -79,6 +80,19 @@ public:
     bool worldPointOnPlaneZ0(int displayX, int displayY, double &x, double &y, double &z) const;
     bool worldPointOnViewPlane(int displayX, int displayY, double &x, double &y, double &z) const;
 
+    // Grid lines manipulation
+    const QVector<GridLine> &gridLines() const { return m_gridLines; }
+    GridLine *findGridLine(const QUuid &id);
+    const GridLine *findGridLine(const QUuid &id) const;
+    QUuid addGridLine(GridLine::Axis axis, double coordinate1, double coordinate2);
+    bool removeGridLine(const QUuid &lineId);
+    QUuid pickGridLine(int displayX, int displayY) const;
+    void setHighlightedGridLine(const QUuid &lineId);
+    void clearHighlightedGridLine();
+    void showGridGhostLine(GridLine::Axis axis, double coordinate1, double coordinate2);
+    void hideGridGhostLine();
+    std::optional<QUuid> nearestGridLineId(GridLine::Axis axis, double coordinate1, double coordinate2) const;
+
     // Nodes
     int nodeCount() const;
     std::vector<NodeInfo> nodeInfos() const;
@@ -110,8 +124,23 @@ private:
     void updateBounds();
     int nodeIndex(const QUuid &id) const;
     int barIndex(const QUuid &id) const;
+    int gridLineIndex(const QUuid &id) const;
     void applyNodeColor(const QUuid &id, const unsigned char color[3]);
     void applyBarColor(int barIndex, const unsigned char color[3]);
+    void updateGridColors();
+
+    struct LineEndpoints {
+        std::array<double, 3> start;
+        std::array<double, 3> end;
+    };
+    LineEndpoints makeLineEndpoints(GridLine::Axis axis, double coordinate1, double coordinate2) const;
+    void rebuildGridFromCoordinates();
+    bool insertCoordinate(QVector<double> &coords, double value) const;
+    bool removeCoordinate(QVector<double> &coords, double value);
+    static double nearestCoordinate(const QVector<double> &coords, double value);
+    static double computeMinSpacing(const QVector<double> &coords);
+    std::pair<double, double> minMaxAlongAxis(GridLine::Axis axis) const;
+    QString gridLineKey(GridLine::Axis axis, double coord1, double coord2) const;
 
     vtkNew<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkNew<vtkRenderer> m_renderer;
@@ -134,8 +163,26 @@ private:
     vtkSmartPointer<vtkPolyData> m_gridData;
     vtkSmartPointer<vtkPolyDataMapper> m_gridMapper;
     vtkSmartPointer<vtkActor> m_gridActor;
+    vtkSmartPointer<vtkPoints> m_gridPoints;
+    vtkSmartPointer<vtkCellArray> m_gridCells;
+    vtkSmartPointer<vtkUnsignedCharArray> m_gridColors;
+    QVector<GridLine> m_gridLines;
+    QHash<QUuid, int> m_gridLineIndexById;
+    QHash<vtkIdType, int> m_gridCellToLineIndex;
+    QUuid m_highlightGridLineId;
+
+    vtkSmartPointer<vtkPolyData> m_gridGhostData;
+    vtkSmartPointer<vtkPoints> m_gridGhostPoints;
+    vtkSmartPointer<vtkCellArray> m_gridGhostCells;
+    vtkSmartPointer<vtkPolyDataMapper> m_gridGhostMapper;
+    vtkSmartPointer<vtkActor> m_gridGhostActor;
+    GridLine::Axis m_ghostAxis {GridLine::Axis::X};
+
     double m_dx {0.0}, m_dy {0.0}, m_dz {0.0};
     int m_nx {0}, m_ny {0}, m_nz {0};
+    QVector<double> m_xCoords;
+    QVector<double> m_yCoords;
+    QVector<double> m_zCoords;
 
     // Picker
     vtkSmartPointer<vtkCellPicker> m_picker;
@@ -158,6 +205,8 @@ private:
     unsigned char m_hoverNodeColor[3] {255, 198, 30};
     unsigned char m_defaultBarColor[3] {71, 82, 102};
     unsigned char m_selectedBarColor[3] {255, 198, 30};
+    unsigned char m_defaultGridColor[3] {140, 153, 173};
+    unsigned char m_highlightGridColor[3] {255, 198, 30};
 
     int m_nextNodeExternalId {1};
 };

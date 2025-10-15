@@ -169,9 +169,13 @@ MainWindow::MainWindow(QWidget *parent)
     m_redoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
     addAction(m_redoAction);
 
-    m_addPointAction = new QAction(tr("Inserir ponto"), this);
-    m_addPointAction->setIcon(style()->standardIcon(QStyle::SP_DialogYesButton));
-    connect(m_addPointAction, &QAction::triggered, this, &MainWindow::onAddPoint);
+    m_insertNodeCoordinatesAction = new QAction(tr("Inserir no (Coordenadas)"), this);
+    m_insertNodeCoordinatesAction->setIcon(style()->standardIcon(QStyle::SP_DialogYesButton));
+    connect(m_insertNodeCoordinatesAction, &QAction::triggered, this, &MainWindow::onInsertNodeByCoordinates);
+
+    m_insertNodeScreenAction = new QAction(tr("Inserir no (Tela)"), this);
+    m_insertNodeScreenAction->setIcon(QIcon(QStringLiteral(":/icons/addNode.png")));
+    connect(m_insertNodeScreenAction, &QAction::triggered, this, &MainWindow::onStartScreenInsert);
 
     m_insertBarAction = new QAction(tr("Inserir barra"), this);
     m_insertBarAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
@@ -190,6 +194,22 @@ MainWindow::MainWindow(QWidget *parent)
     m_generateGridAction = new QAction(tr("Gerar grid"), this);
     m_generateGridAction->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
     connect(m_generateGridAction, &QAction::triggered, this, &MainWindow::onGenerateGrid);
+
+    m_addGridLineXAction = new QAction(tr("Adicionar linha X"), this);
+    m_addGridLineXAction->setIcon(style()->standardIcon(QStyle::SP_ArrowRight));
+    connect(m_addGridLineXAction, &QAction::triggered, this, &MainWindow::onAddGridLineX);
+
+    m_addGridLineYAction = new QAction(tr("Adicionar linha Y"), this);
+    m_addGridLineYAction->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
+    connect(m_addGridLineYAction, &QAction::triggered, this, &MainWindow::onAddGridLineY);
+
+    m_addGridLineZAction = new QAction(tr("Adicionar linha Z"), this);
+    m_addGridLineZAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
+    connect(m_addGridLineZAction, &QAction::triggered, this, &MainWindow::onAddGridLineZ);
+
+    m_deleteGridLineAction = new QAction(tr("Deletar linha de grid"), this);
+    m_deleteGridLineAction->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    connect(m_deleteGridLineAction, &QAction::triggered, this, &MainWindow::onDeleteGridLine);
 
     m_createMaterialAction = new QAction(tr("Novo material"), this);
     m_createMaterialAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogNewFolder));
@@ -253,6 +273,18 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->setStyleSheet(QStringLiteral(
         "QStatusBar { background: #e9edf4; color: #1f242c; border-top: 1px solid #cbd4e2; }"
     ));
+
+    auto *snapContainer = new QWidget(this);
+    auto *snapLayout = new QHBoxLayout(snapContainer);
+    snapLayout->setContentsMargins(8, 0, 8, 0);
+    snapLayout->setSpacing(6);
+    m_snapCheck = new QCheckBox(tr("Snap ao grid"), snapContainer);
+    m_snapCheck->setChecked(true);
+    snapLayout->addWidget(m_snapCheck);
+    snapLayout->addStretch(1);
+    statusBar()->addPermanentWidget(snapContainer);
+    connect(m_snapCheck, &QCheckBox::toggled, this, &MainWindow::onSnapToggled);
+
     setCommand(Command::None);
 
     m_lastDatDirectory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
@@ -630,6 +662,7 @@ void MainWindow::updateGridInfoOnPanel()
         m_sceneController->gridCounts(nx, ny, nz);
     }
     m_propertiesPanel->setGridInfo(hasGrid, dx, dy, dz, nx, ny, nz);
+    updateGridActionsEnabled();
 }
 
 void MainWindow::createRibbon()
@@ -681,15 +714,11 @@ void MainWindow::createRibbon()
     modelGrid->setHorizontalSpacing(4);
     modelGrid->setVerticalSpacing(4);
     modelGrid->setAlignment(Qt::AlignTop);
-    const QList<QAction *> modelActions = { m_addPointAction, m_insertBarAction, m_generateGridAction };
-    populateActionGrid(modelGrid, modelActions, 3);
-    m_snapCheck = new QCheckBox(tr("Snap ao grid"), modelGroup);
-    m_snapCheck->setChecked(true);
-    m_snapCheck->setStyleSheet(QStringLiteral("QCheckBox { margin-top: 2px; }"));
-    const int modelRows = (modelActions.count() + 3 - 1) / 3;
-    modelGrid->addWidget(m_snapCheck, modelRows, 0, 1, 3, Qt::AlignLeft | Qt::AlignVCenter);
-    modelGrid->setRowStretch(modelRows + 1, 1);
-    connect(m_snapCheck, &QCheckBox::toggled, this, &MainWindow::onSnapToggled);
+    const QList<QAction *> modelActions = { m_insertNodeCoordinatesAction, m_insertNodeScreenAction, m_insertBarAction };
+    const int modelColumns = 2;
+    populateActionGrid(modelGrid, modelActions, modelColumns);
+    const int modelRows = (modelActions.count() + modelColumns - 1) / modelColumns;
+    modelGrid->setRowStretch(modelRows, 1);
     homeLayout->addWidget(modelGroup, 0, Qt::AlignTop);
 
     auto *propGroup = new QGroupBox(tr("Propriedades"), this);
@@ -714,7 +743,36 @@ void MainWindow::createRibbon()
 
     homeLayout->addStretch(1);
 
+    auto *toolsTab = new QWidget(this);
+    toolsTab->setObjectName(QStringLiteral("RibbonPage"));
+    toolsTab->setStyleSheet(QStringLiteral("#RibbonPage { background: #f2f5fa; }"));
+
+    auto *toolsLayout = new QHBoxLayout(toolsTab);
+    toolsLayout->setContentsMargins(4, 20, 4, 3);
+    toolsLayout->setSpacing(4);
+
+    auto *gridGroup = new QGroupBox(tr("Grid"), this);
+    auto *gridLayout = new QGridLayout(gridGroup);
+    gridLayout->setContentsMargins(4, 5, 4, 4);
+    gridLayout->setHorizontalSpacing(4);
+    gridLayout->setVerticalSpacing(4);
+    gridLayout->setAlignment(Qt::AlignTop);
+    const QList<QAction *> gridActions = {
+        m_generateGridAction,
+        m_addGridLineXAction,
+        m_addGridLineYAction,
+        m_addGridLineZAction,
+        m_deleteGridLineAction
+    };
+    const int gridColumns = 2;
+    populateActionGrid(gridLayout, gridActions, gridColumns);
+    const int gridRows = (gridActions.count() + gridColumns - 1) / gridColumns;
+    gridLayout->setRowStretch(gridRows, 1);
+    toolsLayout->addWidget(gridGroup, 0, Qt::AlignTop);
+    toolsLayout->addStretch(1);
+
     m_ribbon->addTab(homeTab, tr("Inicio"));
+    m_ribbon->addTab(toolsTab, tr("Ferramentas"));
     // if (auto *tabBar = m_ribbon->tabBar()) {
     //     tabBar->hide();
     // }
@@ -767,6 +825,291 @@ void MainWindow::populateActionGrid(QGridLayout *layout, const QList<QAction *> 
     layout->setRowStretch(stretchRow, 1);
 }
 
+bool MainWindow::computeWorldPointForInsert(const QPoint &widgetPos,
+                                            double &x,
+                                            double &y,
+                                            double &z,
+                                            bool applySnap) const
+{
+    if (!m_sceneController) {
+        return false;
+    }
+    const int viewportHeight = m_sceneController->viewportHeight();
+    if (viewportHeight <= 0) {
+        return false;
+    }
+    const int displayX = widgetPos.x();
+    const int displayY = viewportHeight - 1 - widgetPos.y();
+    bool ok = m_sceneController->worldPointOnViewPlane(displayX, displayY, x, y, z);
+    if (!ok) {
+        ok = m_sceneController->pickWorldPoint(displayX, displayY, x, y, z);
+    }
+    if (!ok) {
+        ok = m_sceneController->worldPointOnPlaneZ0(displayX, displayY, x, y, z);
+    }
+    if (!ok) {
+        return false;
+    }
+    if (applySnap && m_snapCheck && m_snapCheck->isChecked() && m_sceneController->hasGrid()) {
+        m_sceneController->snapToGrid(x, y, z);
+    }
+    return true;
+}
+
+void MainWindow::setHoverInsertPoint(const std::optional<QVector3D> &point)
+{
+    auto fuzzyEqual = [](const QVector3D &a, const QVector3D &b) {
+        const float eps = 1e-3f;
+        return qAbs(a.x() - b.x()) < eps
+            && qAbs(a.y() - b.y()) < eps
+            && qAbs(a.z() - b.z()) < eps;
+    };
+
+    bool changed = false;
+    if (m_hoverInsertPoint.has_value() != point.has_value()) {
+        changed = true;
+    } else if (m_hoverInsertPoint && point && !fuzzyEqual(*m_hoverInsertPoint, *point)) {
+        changed = true;
+    }
+
+    if (!changed) {
+        return;
+    }
+
+    m_hoverInsertPoint = point;
+    updateStatus();
+}
+
+bool MainWindow::isGridInsertCommand(Command command) const
+{
+    return command == Command::AddGridLineX
+        || command == Command::AddGridLineY
+        || command == Command::AddGridLineZ;
+}
+
+void MainWindow::resetGridInsertState()
+{
+    Structura::Model::GridLine::Axis axis = m_gridInsertState.axis;
+    m_gridInsertState = GridInsertState{};
+    m_gridInsertState.axis = axis;
+}
+
+void MainWindow::beginGridInsert(Structura::Model::GridLine::Axis axis)
+{
+    resetGridInsertState();
+    m_gridInsertState.axis = axis;
+    m_gridInsertState.active = true;
+    m_gridInsertState.pointerValid = false;
+    m_gridInsertState.ghostVisible = false;
+    if (m_sceneController) {
+        m_sceneController->hideGridGhostLine();
+        m_sceneController->clearHighlightedGridLine();
+    }
+    hideGridDeleteTooltip();
+    updateStatus();
+}
+
+void MainWindow::cancelGridInsert()
+{
+    if (m_sceneController) {
+        m_sceneController->hideGridGhostLine();
+        m_sceneController->clearHighlightedGridLine();
+    }
+    resetGridInsertState();
+    m_gridInsertState.active = false;
+    updateStatus();
+}
+
+QString MainWindow::gridAxisLabel(Structura::Model::GridLine::Axis axis) const
+{
+    switch (axis) {
+    case Structura::Model::GridLine::Axis::Y:
+        return QStringLiteral("Y");
+    case Structura::Model::GridLine::Axis::Z:
+        return QStringLiteral("Z");
+    case Structura::Model::GridLine::Axis::X:
+    default:
+        return QStringLiteral("X");
+    }
+}
+
+Structura::Model::GridLine::Axis MainWindow::commandToAxis(Command command) const
+{
+    using Axis = Structura::Model::GridLine::Axis;
+    switch (command) {
+    case Command::AddGridLineY:
+        return Axis::Y;
+    case Command::AddGridLineZ:
+        return Axis::Z;
+    case Command::AddGridLineX:
+    default:
+        return Axis::X;
+    }
+}
+
+void MainWindow::updateGridInsertFromPoint(const QVector3D &worldPoint)
+{
+    if (!m_gridInsertState.active) {
+        return;
+    }
+    auto &state = m_gridInsertState;
+    state.pointerValid = true;
+
+    switch (state.axis) {
+    case Structura::Model::GridLine::Axis::X:
+        state.pointerCoord1 = worldPoint.y();
+        state.pointerCoord2 = worldPoint.z();
+        state.pointerAxisCoord = worldPoint.x();
+        break;
+    case Structura::Model::GridLine::Axis::Y:
+        state.pointerCoord1 = worldPoint.x();
+        state.pointerCoord2 = worldPoint.z();
+        state.pointerAxisCoord = worldPoint.y();
+        break;
+    case Structura::Model::GridLine::Axis::Z:
+        state.pointerCoord1 = worldPoint.x();
+        state.pointerCoord2 = worldPoint.y();
+        state.pointerAxisCoord = worldPoint.z();
+        break;
+    }
+
+    if (!state.referenceLocked) {
+        state.highlightedLineId = QUuid();
+        if (m_sceneController) {
+            const auto nearest = m_sceneController->nearestGridLineId(state.axis, state.pointerCoord1, state.pointerCoord2);
+            if (nearest.has_value()) {
+                state.highlightedLineId = *nearest;
+                state.referenceLineId = *nearest;
+                if (const auto *line = m_sceneController->findGridLine(*nearest)) {
+                    state.referenceCoord1 = line->coordinate1();
+                    state.referenceCoord2 = line->coordinate2();
+                }
+            } else {
+                state.referenceLineId = QUuid();
+                state.referenceCoord1 = state.pointerCoord1;
+                state.referenceCoord2 = state.pointerCoord2;
+            }
+        }
+    }
+
+    refreshGridInsertVisuals();
+}
+
+void MainWindow::refreshGridInsertVisuals()
+{
+    auto &state = m_gridInsertState;
+    if (!state.active) {
+        return;
+    }
+
+    if (!state.pointerValid) {
+        if (m_sceneController) {
+            m_sceneController->hideGridGhostLine();
+            m_sceneController->clearHighlightedGridLine();
+        }
+        state.ghostVisible = false;
+        updateStatus();
+        return;
+    }
+
+    const bool useReferenceHighlight = state.referenceLocked && !state.referenceLineId.isNull();
+    const QUuid highlightId = useReferenceHighlight ? state.referenceLineId : state.highlightedLineId;
+    if (m_sceneController) {
+        if (highlightId.isNull()) {
+            m_sceneController->clearHighlightedGridLine();
+        } else {
+            m_sceneController->setHighlightedGridLine(highlightId);
+        }
+    }
+
+    double coord1 = state.pointerCoord1;
+    double coord2 = state.pointerCoord2;
+
+    if (state.referenceLocked) {
+        coord1 = state.referenceCoord1;
+    }
+    if (state.hasTypedValue) {
+        coord1 = state.referenceCoord1 + state.typedValue;
+    }
+
+    state.ghostCoord1 = coord1;
+    state.ghostCoord2 = coord2;
+
+    if (m_sceneController) {
+        m_sceneController->showGridGhostLine(state.axis, coord1, coord2);
+    }
+    state.ghostVisible = true;
+    updateStatus();
+}
+
+void MainWindow::updateGridDeleteTooltip(const QPoint &widgetPos, const QUuid &lineId)
+{
+    if (!m_vtkWidget) {
+        return;
+    }
+
+    if (lineId.isNull()) {
+        hideGridDeleteTooltip();
+        return;
+    }
+
+    if (!m_gridDeleteTooltip) {
+        m_gridDeleteTooltip = new QLabel(m_vtkWidget);
+        m_gridDeleteTooltip->setStyleSheet(QStringLiteral(
+            "QLabel { background: rgba(28,36,45,220); color: #f2f5fa; border-radius: 4px; padding: 6px 10px; }"));
+        m_gridDeleteTooltip->setAttribute(Qt::WA_TransparentForMouseEvents);
+        m_gridDeleteTooltip->hide();
+    }
+
+    QString message;
+    if (!m_pendingDeleteLineId.isNull() && m_pendingDeleteLineId == lineId) {
+        message = tr("Clique novamente para confirmar exclusao");
+    } else {
+        QString details;
+        if (m_sceneController) {
+            if (const auto *line = m_sceneController->findGridLine(lineId)) {
+                details = tr("%1 @ %2 / %3")
+                    .arg(gridAxisLabel(line->axis()),
+                         QString::number(line->coordinate1(), 'f', 3),
+                         QString::number(line->coordinate2(), 'f', 3));
+            }
+        }
+        if (details.isEmpty()) {
+            details = tr("linha");
+        }
+        message = tr("Clique para selecionar %1").arg(details);
+    }
+
+    m_gridDeleteTooltip->setText(message);
+    m_gridDeleteTooltip->adjustSize();
+
+    QPoint pos = widgetPos + QPoint(16, -16);
+    const int tooltipWidth = m_gridDeleteTooltip->width();
+    const int tooltipHeight = m_gridDeleteTooltip->height();
+    pos.setX(std::clamp(pos.x(), 0, std::max(0, m_vtkWidget->width() - tooltipWidth)));
+    pos.setY(std::clamp(pos.y(), 0, std::max(0, m_vtkWidget->height() - tooltipHeight)));
+    m_gridDeleteTooltip->move(pos);
+    if (!m_gridDeleteTooltip->isVisible()) {
+        m_gridDeleteTooltip->show();
+    }
+}
+
+void MainWindow::hideGridDeleteTooltip()
+{
+    if (m_gridDeleteTooltip) {
+        m_gridDeleteTooltip->hide();
+    }
+}
+
+void MainWindow::updateGridActionsEnabled()
+{
+    const bool hasGrid = m_sceneController && m_sceneController->hasGrid();
+    if (m_addGridLineXAction) m_addGridLineXAction->setEnabled(hasGrid);
+    if (m_addGridLineYAction) m_addGridLineYAction->setEnabled(hasGrid);
+    if (m_addGridLineZAction) m_addGridLineZAction->setEnabled(hasGrid);
+    if (m_deleteGridLineAction) m_deleteGridLineAction->setEnabled(hasGrid);
+}
+
 int MainWindow::nextMaterialExternalId() const
 {
     int maxId = 0;
@@ -812,10 +1155,26 @@ void MainWindow::setCommand(Command command)
 
     const bool wasBarMode = (m_command == Command::InsertBarFirst || m_command == Command::InsertBarSecond);
     const bool willBeBarMode = (command == Command::InsertBarFirst || command == Command::InsertBarSecond);
+    const bool wasGridInsert = isGridInsertCommand(m_command);
+    const bool willBeGridInsert = isGridInsertCommand(command);
+    const bool wasGridDelete = (m_command == Command::DeleteGridLine);
+    const bool willBeGridDelete = (command == Command::DeleteGridLine);
 
     if (wasBarMode && !willBeBarMode) {
         m_sceneController->clearHighlightedNode();
         m_firstBarNodeId = QUuid();
+    }
+
+    if (wasGridInsert && !willBeGridInsert) {
+        cancelGridInsert();
+    }
+
+    if (wasGridDelete && !willBeGridDelete) {
+        hideGridDeleteTooltip();
+        if (m_sceneController) {
+            m_sceneController->clearHighlightedGridLine();
+        }
+        m_pendingDeleteLineId = QUuid();
     }
 
     m_command = command;
@@ -823,6 +1182,25 @@ void MainWindow::setCommand(Command command)
     if (!willBeBarMode) {
         m_sceneController->clearHighlightedNode();
         m_firstBarNodeId = QUuid();
+    }
+
+    if (willBeGridInsert) {
+        beginGridInsert(commandToAxis(command));
+    } else if (!willBeGridInsert) {
+        m_gridInsertState.active = false;
+    }
+
+    if (willBeGridDelete) {
+        hideGridDeleteTooltip();
+        if (m_sceneController) {
+            m_sceneController->hideGridGhostLine();
+            m_sceneController->clearHighlightedGridLine();
+        }
+        m_pendingDeleteLineId = QUuid();
+    }
+
+    if (command != Command::InsertNode) {
+        m_hoverInsertPoint.reset();
     }
 
     updateStatus();
@@ -864,7 +1242,7 @@ const MainWindow::SectionInfo *MainWindow::findSection(const QUuid &id) const
     return const_cast<MainWindow *>(this)->findSection(id);
 }
 
-void MainWindow::onAddPoint()
+void MainWindow::onInsertNodeByCoordinates()
 {
     CoordinateDialog dialog(this);
     // Allow starting on-screen insertion from this dialog
@@ -893,6 +1271,38 @@ void MainWindow::onGenerateGrid()
     if (gd.exec() == QDialog::Accepted) {
         m_sceneController->createGrid(gd.dx(), gd.dy(), gd.dz(), gd.nx(), gd.ny(), gd.nz());
         refreshPropertiesPanel();
+    }
+}
+
+void MainWindow::onAddGridLineX()
+{
+    setCommand(Command::AddGridLineX);
+    if (m_vtkWidget) {
+        m_vtkWidget->setFocus();
+    }
+}
+
+void MainWindow::onAddGridLineY()
+{
+    setCommand(Command::AddGridLineY);
+    if (m_vtkWidget) {
+        m_vtkWidget->setFocus();
+    }
+}
+
+void MainWindow::onAddGridLineZ()
+{
+    setCommand(Command::AddGridLineZ);
+    if (m_vtkWidget) {
+        m_vtkWidget->setFocus();
+    }
+}
+
+void MainWindow::onDeleteGridLine()
+{
+    setCommand(Command::DeleteGridLine);
+    if (m_vtkWidget) {
+        m_vtkWidget->setFocus();
     }
 }
 
@@ -968,14 +1378,10 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
             case QEvent::MouseButtonPress: {
                 auto *me = static_cast<QMouseEvent *>(event);
                 if (me->button() == Qt::LeftButton) {
-                    const QPoint p = me->pos();
-                    const QPoint disp = toDisplay(p);
-                    double wx = 0, wy = 0, wz = 0;
-                    if (m_sceneController->worldPointOnViewPlane(disp.x(), disp.y(), wx, wy, wz)) {
-                        if (m_snapCheck && m_snapCheck->isChecked() && m_sceneController->hasGrid()) {
-                            m_sceneController->snapToGrid(wx, wy, wz);
-                        }
+                    double wx = 0.0, wy = 0.0, wz = 0.0;
+                    if (computeWorldPointForInsert(me->pos(), wx, wy, wz, true)) {
                         m_sceneController->addPoint(wx, wy, wz);
+                        setHoverInsertPoint(std::nullopt);
                     }
                     return true;
                 } else if (me->button() == Qt::RightButton) {
@@ -985,6 +1391,12 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
             }
             case QEvent::MouseMove: {
                 auto *mm = static_cast<QMouseEvent *>(event);
+                double wx = 0.0, wy = 0.0, wz = 0.0;
+                if (computeWorldPointForInsert(mm->pos(), wx, wy, wz, true)) {
+                    setHoverInsertPoint(QVector3D(wx, wy, wz));
+                } else {
+                    setHoverInsertPoint(std::nullopt);
+                }
                 const QUuid nodeId = pickNodeAt(mm->pos());
                 if (!nodeId.isNull()) {
                     m_sceneController->setHighlightedNode(nodeId);
@@ -1075,6 +1487,190 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                 auto *ke = static_cast<QKeyEvent *>(event);
                 if (ke->key() == Qt::Key_Escape) {
                     setCommand(Command::None);
+                    return true;
+                }
+                break;
+            }
+            default:
+                break;
+            }
+        } else if (isGridInsertCommand(m_command)) {
+            switch (event->type()) {
+            case QEvent::MouseMove: {
+                auto *mm = static_cast<QMouseEvent *>(event);
+                double wx = 0.0, wy = 0.0, wz = 0.0;
+                if (computeWorldPointForInsert(mm->pos(), wx, wy, wz, true)) {
+                    updateGridInsertFromPoint(QVector3D(wx, wy, wz));
+                } else {
+                    m_gridInsertState.pointerValid = false;
+                    if (m_sceneController) {
+                        m_sceneController->hideGridGhostLine();
+                        m_sceneController->clearHighlightedGridLine();
+                    }
+                    updateStatus();
+                }
+                return false;
+            }
+            case QEvent::MouseButtonPress: {
+                auto *me = static_cast<QMouseEvent *>(event);
+                if (me->button() == Qt::LeftButton) {
+                    if (m_gridInsertState.active && m_gridInsertState.pointerValid && m_sceneController) {
+                        const auto axis = commandToAxis(m_command);
+                        const QUuid created = m_sceneController->addGridLine(axis,
+                                                                             m_gridInsertState.ghostCoord1,
+                                                                             m_gridInsertState.ghostCoord2);
+                        if (!created.isNull()) {
+                            refreshPropertiesPanel();
+                            refreshGridInsertVisuals();
+                        }
+                    }
+                    return true;
+                }
+                if (me->button() == Qt::RightButton) {
+                    setCommand(Command::None);
+                    return true;
+                }
+                break;
+            }
+            case QEvent::KeyPress: {
+                auto *ke = static_cast<QKeyEvent *>(event);
+                if (ke->key() == Qt::Key_Escape) {
+                    setCommand(Command::None);
+                    return true;
+                }
+                if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
+                    if (m_gridInsertState.active && m_gridInsertState.pointerValid && m_sceneController) {
+                        const auto axis = commandToAxis(m_command);
+                        const QUuid created = m_sceneController->addGridLine(axis,
+                                                                             m_gridInsertState.ghostCoord1,
+                                                                             m_gridInsertState.ghostCoord2);
+                        if (!created.isNull()) {
+                            refreshPropertiesPanel();
+                            refreshGridInsertVisuals();
+                        }
+                    }
+                    return true;
+                }
+                const QString previousBuffer = m_gridInsertState.inputBuffer;
+                bool handled = false;
+                if (ke->key() == Qt::Key_Backspace) {
+                    if (!m_gridInsertState.inputBuffer.isEmpty()) {
+                        m_gridInsertState.inputBuffer.chop(1);
+                        handled = true;
+                    }
+                } else if (!(ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
+                    QString text = ke->text();
+                    if (!text.isEmpty()) {
+                        QChar ch = text.at(0);
+                        if (ch == QLatin1Char(',')) {
+                            ch = QLatin1Char('.');
+                        }
+                        const bool canInsert =
+                            ch.isDigit()
+                            || (ch == QLatin1Char('-') && m_gridInsertState.inputBuffer.isEmpty())
+                            || (ch == QLatin1Char('.') && !m_gridInsertState.inputBuffer.contains('.'));
+                        if (canInsert) {
+                            m_gridInsertState.inputBuffer.append(ch);
+                            handled = true;
+                        }
+                    }
+                }
+                if (handled) {
+                    const QString buffer = m_gridInsertState.inputBuffer;
+                    if (buffer.isEmpty()) {
+                        m_gridInsertState.hasTypedValue = false;
+                        m_gridInsertState.referenceLocked = false;
+                        m_gridInsertState.typedValue = 0.0;
+                    } else if (buffer == QStringLiteral("-") || buffer == QStringLiteral(".") || buffer == QStringLiteral("-.")) {
+                        m_gridInsertState.hasTypedValue = false;
+                        if (!m_gridInsertState.referenceLocked) {
+                            m_gridInsertState.referenceLocked = true;
+                            if (m_gridInsertState.referenceLineId.isNull()) {
+                                m_gridInsertState.referenceCoord1 = m_gridInsertState.pointerCoord1;
+                                m_gridInsertState.referenceCoord2 = m_gridInsertState.pointerCoord2;
+                            }
+                        }
+                    } else {
+                        bool ok = false;
+                        const double value = QLocale::c().toDouble(buffer, &ok);
+                        if (ok) {
+                            m_gridInsertState.typedValue = value;
+                            m_gridInsertState.hasTypedValue = true;
+                            if (!m_gridInsertState.referenceLocked) {
+                                m_gridInsertState.referenceLocked = true;
+                                if (m_gridInsertState.referenceLineId.isNull()) {
+                                    m_gridInsertState.referenceCoord1 = m_gridInsertState.pointerCoord1;
+                                    m_gridInsertState.referenceCoord2 = m_gridInsertState.pointerCoord2;
+                                }
+                            }
+                        } else {
+                            m_gridInsertState.inputBuffer = previousBuffer;
+                            handled = false;
+                        }
+                    }
+                }
+                if (handled) {
+                    refreshGridInsertVisuals();
+                    return true;
+                }
+                break;
+            }
+            default:
+                break;
+            }
+        } else if (m_command == Command::DeleteGridLine) {
+            switch (event->type()) {
+            case QEvent::MouseMove: {
+                auto *mm = static_cast<QMouseEvent *>(event);
+                const QPoint disp = toDisplay(mm->pos());
+                const QUuid lineId = m_sceneController->pickGridLine(disp.x(), disp.y());
+                if (!lineId.isNull()) {
+                    m_sceneController->setHighlightedGridLine(lineId);
+                    updateGridDeleteTooltip(mm->pos(), lineId);
+                } else {
+                    m_sceneController->clearHighlightedGridLine();
+                    hideGridDeleteTooltip();
+                    m_pendingDeleteLineId = QUuid();
+                }
+                return false;
+            }
+            case QEvent::MouseButtonPress: {
+                auto *me = static_cast<QMouseEvent *>(event);
+                if (me->button() == Qt::LeftButton) {
+                    const QPoint disp = toDisplay(me->pos());
+                    const QUuid lineId = m_sceneController->pickGridLine(disp.x(), disp.y());
+                    if (!lineId.isNull()) {
+                        if (m_pendingDeleteLineId == lineId) {
+                            if (m_sceneController->removeGridLine(lineId)) {
+                                m_pendingDeleteLineId = QUuid();
+                                hideGridDeleteTooltip();
+                                refreshPropertiesPanel();
+                            }
+                        } else {
+                            m_pendingDeleteLineId = lineId;
+                            updateGridDeleteTooltip(me->pos(), lineId);
+                        }
+                    }
+                    return true;
+                }
+                if (me->button() == Qt::RightButton) {
+                    setCommand(Command::None);
+                    return true;
+                }
+                break;
+            }
+            case QEvent::KeyPress: {
+                auto *ke = static_cast<QKeyEvent *>(event);
+                if (ke->key() == Qt::Key_Escape) {
+                    setCommand(Command::None);
+                    return true;
+                }
+                if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) && !m_pendingDeleteLineId.isNull()) {
+                    if (m_sceneController->removeGridLine(m_pendingDeleteLineId)) {
+                        m_pendingDeleteLineId = QUuid();
+                        hideGridDeleteTooltip();
+                        refreshPropertiesPanel();
+                    }
                     return true;
                 }
                 break;
@@ -1828,6 +2424,7 @@ bool MainWindow::saveToDat(const QString &filePath)
 void MainWindow::onSnapToggled(bool)
 {
     if (m_command == Command::InsertNode) {
+        setHoverInsertPoint(std::nullopt);
         updateStatus();
     }
 }
@@ -1836,9 +2433,19 @@ void MainWindow::updateStatus()
 {
     switch (m_command) {
     case Command::InsertNode:
-        statusBar()->showMessage(tr("Insercao de nos: clique esquerdo para inserir (%1) | Esc para sair")
-            .arg(m_snapCheck && m_snapCheck->isChecked() ? tr("snap ligado") : tr("snap desligado")));
+    {
+        QString message = tr("Insercao de nos: clique esquerdo para inserir (%1) | Esc para sair")
+            .arg(m_snapCheck && m_snapCheck->isChecked() ? tr("snap ligado") : tr("snap desligado"));
+        if (m_hoverInsertPoint) {
+            const QVector3D &p = *m_hoverInsertPoint;
+            message += tr(" | X=%1 Y=%2 Z=%3")
+                .arg(QString::number(p.x(), 'f', 3),
+                     QString::number(p.y(), 'f', 3),
+                     QString::number(p.z(), 'f', 3));
+        }
+        statusBar()->showMessage(message);
         break;
+    }
     case Command::InsertBarFirst:
         statusBar()->showMessage(tr("Criar barra: selecione o primeiro no (Esc para cancelar)"));
         break;
@@ -1854,6 +2461,31 @@ void MainWindow::updateStatus()
             .arg(nodeLabel));
         break;
     }
+    case Command::AddGridLineX:
+    case Command::AddGridLineY:
+    case Command::AddGridLineZ:
+    {
+        const auto axis = commandToAxis(m_command);
+        QString message = tr("Adicionar linha %1: clique para posicionar")
+            .arg(gridAxisLabel(axis));
+        if (m_gridInsertState.hasTypedValue) {
+            message += tr(" | deslocamento=%1 m").arg(QString::number(m_gridInsertState.typedValue, 'f', 3));
+        } else if (m_gridInsertState.pointerValid) {
+            message += tr(" | alvo=%1 / %2 m")
+                .arg(QString::number(m_gridInsertState.ghostCoord1, 'f', 3),
+                     QString::number(m_gridInsertState.ghostCoord2, 'f', 3));
+        }
+        message += tr(" | Enter confirma | Esc cancelar");
+        statusBar()->showMessage(message);
+        break;
+    }
+    case Command::DeleteGridLine:
+        if (!m_pendingDeleteLineId.isNull()) {
+            statusBar()->showMessage(tr("Excluir linha de grid: clique novamente para confirmar | Esc para cancelar"));
+        } else {
+            statusBar()->showMessage(tr("Excluir linha de grid: selecione uma linha e clique para marcar | Esc para cancelar"));
+        }
+        break;
     default:
     {
         const int nodeCount = m_selectionModel ? m_selectionModel->selectedNodes().size() : 0;

@@ -13,9 +13,9 @@ CoordinateDialog::CoordinateDialog(QWidget *parent)
     , m_xInput(new QDoubleSpinBox(this))
     , m_yInput(new QDoubleSpinBox(this))
     , m_zInput(new QDoubleSpinBox(this))
-    , m_screenButton(new QPushButton(tr("Inserir na tela"), this))
+    , m_screenButton(new QPushButton(tr("Inserir no (Tela)"), this))
 {
-    setWindowTitle(tr("Inserir ponto"));
+    setWindowTitle(tr("Inserir no (Coordenadas)"));
     setModal(true);
     setMinimumWidth(280);
 
