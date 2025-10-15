@@ -266,22 +266,19 @@ QWidget *MainWindow::createQuickAccessBar()
     auto *bar = new QWidget(this);
     bar->setObjectName(QStringLiteral("QuickAccessBar"));
     bar->setFixedHeight(30);
-    bar->setStyleSheet(QStringLiteral(
-        "#QuickAccessBar { "
-        "background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0b5f8e, stop:1 #0d7fb9);"
-        "border-bottom: 1px solid #08527a; }"
-        "#QuickAccessBar QToolButton { background: transparent; border: none; color: #eef5fb;"
-        "padding: 2px 4px; margin: 0px; }"
-        "#QuickAccessBar QToolButton:hover { background: rgba(255, 255, 255, 0.18); border-radius: 3px; }"
-        "#QuickAccessBar QToolButton[startButton='true'] { font-weight: 600; padding: 2px 8px; margin-left: 6px; border-radius: 3px; }"
-        "#QuickAccessBar QToolButton[startButton='true']:hover { background: rgba(255, 255, 255, 0.24); }"
-        "#QuickAccessBar QToolButton[startButton='true'][checked='true'] { background: rgba(255, 255, 255, 0.34); }"
-        "#QuickAccessBar QToolButton[systemButton='true'] { padding: 2px; margin-left: 2px; margin-right: 0px; border-radius: 3px; }"
-        "#QuickAccessBar QToolButton[systemButton='true']:hover { background: rgba(255, 255, 255, 0.25); }"
-        "#QuickAccessBar QToolButton[systemButton='true']:pressed { background: rgba(0, 0, 0, 0.30); }"
-        "#QuickAccessBar QToolButton[systemButton='true']:last-child:hover { background: #d64545; }"
-        "#QuickAccessBar QLabel { color: #eef5fb; font-weight: 600; }"
-    ));
+    bar->setStyleSheet(R"(
+        #QuickAccessBar { background: #0d7fb9; border-bottom: none; }
+        #QuickAccessBar QToolButton {background: transparent; border: none; color: #eef5fb; padding: 2px 4px; margin: 0px;}
+        #QuickAccessBar QToolButton:hover { background: rgba(255,255,255,0.18); border-radius: 3px; }
+        #QuickAccessBar QToolButton[startButton="true"] { font-weight: 600; padding: 2px 8px; margin-left: 6px; border-radius: 3px; }
+        #QuickAccessBar QToolButton[startButton="true"]:hover { background: rgba(255,255,255,0.24); }
+        #QuickAccessBar QToolButton[startButton="true"]:checked { background: rgba(255,255,255,0.34); }  /* use :checked em vez de [checked='true'] */
+        #QuickAccessBar QToolButton[systemButton="true"] { padding: 2px; margin-left: 2px; margin-right: 0px; border-radius: 3px; }
+        #QuickAccessBar QToolButton[systemButton="true"]:hover { background: rgba(255,255,255,0.25); }
+        #QuickAccessBar QToolButton[systemButton="true"]:pressed { background: rgba(0,0,0,0.30); }
+        #QuickAccessBar QToolButton[systemButton="true"]:last-child:hover { background: #d64545; }
+        #QuickAccessBar QLabel { color: #eef5fb; font-weight: 600; }
+        )");
 
     auto *layout = new QHBoxLayout(bar);
     layout->setContentsMargins(8, 2, 8, 2);
@@ -331,6 +328,7 @@ QWidget *MainWindow::createQuickAccessBar()
 
     layout->addStretch(1);
     m_titleLabel = new QLabel(tr("Structura 3D"), bar);
+    connect(this, &QWidget::windowTitleChanged, m_titleLabel, &QLabel::setText);
     m_titleLabel->setAlignment(Qt::AlignCenter);
     m_titleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     layout->addWidget(m_titleLabel, 0, Qt::AlignCenter);
@@ -636,27 +634,43 @@ void MainWindow::updateGridInfoOnPanel()
 
 void MainWindow::createRibbon()
 {
+    m_ribbon->setObjectName("mainRibbon");
     m_ribbon->setDocumentMode(true);
     m_ribbon->setTabPosition(QTabWidget::North);
     m_ribbon->setMovable(false);
     m_ribbon->tabBar()->setExpanding(false);
     // Ribbon styling inspired by Solid Edge palette
-    m_ribbon->setStyleSheet(QStringLiteral(
-        "QTabWidget::pane { border: 0; background: #edf1f5; }"
-        "QTabBar::tab { background: #0b6da1; color: #f3f8fb; padding: 2px 14px; margin: 0 1px; border-top-left-radius: 4px; border-top-right-radius: 4px; font-weight: 600; min-height: 22px; }"
-        "QTabBar::tab:selected { background: #0f82bf; }"
-        "QTabBar::tab:hover { background: #1393d6; }"
-        "QGroupBox { background: linear-gradient(180deg, #f8fafc 0%, #e2e7ef 100%); border: 1px solid #bec7d4; border-radius: 3px; margin-top: 4px; color: #1e232b; padding-top: 6px; }"
-        "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 4px; font-weight: 600; color: #0b6da1; }"
-        "QToolButton { background: linear-gradient(180deg, #fbfdff 0%, #e7ecf3 100%); color: #1e232b; border: 1px solid #c0c7d2; border-radius: 3px; padding: 2px 4px; min-height: 34px; min-width: 60px; icon-size: 28px; }"
-        "QToolButton:hover { background: linear-gradient(180deg, #f0f5fa 0%, #dbe3ef 100%); }"
-        "QToolButton:pressed { background: linear-gradient(180deg, #d6dde8 0%, #c5ccd8 100%); }"
-        "QCheckBox { color: #1e232b; padding-left: 2px; }"
-    ));
+    m_ribbon->setStyleSheet(R"(
+        QTabWidget::pane { border: 0; background: #f2f5fa; top: 0px; }
+        QGroupBox {background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8fafc, stop:1 #f2f5fa);
+        border: 1px solid #bec7d4; border-radius: 3px; margin-top: 4px; color: #1e232b; padding-top: 6px;}
+        QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 4px; font-weight: 600; color: #0b6da1; }
+        QToolButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #fbfdff, stop:1 #e7ecf3);color: #1e232b; border: 1px solid #c0c7d2; border-radius: 3px; padding: 2px 4px;
+        min-height: 34px; min-width: 60px; icon-size: 28px;}
+        QToolButton:hover {background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f0f5fa, stop:1 #dbe3ef);}
+        QToolButton:pressed {background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d6dde8, stop:1 #c5ccd8);}
+        QCheckBox { color: #1e232b; padding-left: 2px; }
+    )");
+
+    if (auto *tabBar = m_ribbon->tabBar()) {
+    tabBar->setDrawBase(false);
+    tabBar->setAutoFillBackground(true);
+    tabBar->setStyleSheet(R"(
+        QTabBar { background: #0d7fb9; border: none; padding: 2px 6px; margin: 0; min-height: 26px; }
+        QTabBar::tab { background: transparent; color: #eaf3f9; border: none; padding: 0 12px; margin: 0 8px; font-weight: 600; }
+        QTabBar::tab:selected { color: #f2992e; border-bottom: 2px solid #f2992e; margin-bottom: -2px; }
+        QTabBar::tab:hover { border-bottom: 2px solid rgba(242,153,46,0.55); margin-bottom: -2px; }
+    )");
+    }
 
     auto *homeTab = new QWidget(this);
+    homeTab->setObjectName(QStringLiteral("RibbonPage"));
+    homeTab->setStyleSheet(QStringLiteral("#RibbonPage { background: #f2f5fa; }"));
+
+
     auto *homeLayout = new QHBoxLayout(homeTab);
-    homeLayout->setContentsMargins(4, 1, 4, 3);
+    homeLayout->setContentsMargins(4, 20, 4, 3);  // 6–10 px funciona bem
+    //homeLayout->setContentsMargins(4, 1, 4, 3);
     homeLayout->setSpacing(4);
 
     const QList<QAction *> viewActions = { m_resetCameraAction, m_zoomExtentsAction };
@@ -701,9 +715,9 @@ void MainWindow::createRibbon()
     homeLayout->addStretch(1);
 
     m_ribbon->addTab(homeTab, tr("Inicio"));
-    if (auto *tabBar = m_ribbon->tabBar()) {
-        tabBar->hide();
-    }
+    // if (auto *tabBar = m_ribbon->tabBar()) {
+    //     tabBar->hide();
+    // }
     connect(m_ribbon, &QTabWidget::currentChanged, this, &MainWindow::onRibbonTabChanged);
     updateRibbonTabButtons(m_ribbon->currentIndex());
 }
