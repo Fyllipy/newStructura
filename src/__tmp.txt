@@ -1,0 +1,259 @@
+﻿#include "SceneController.h"
+
+#include <QVTKOpenGLNativeWidget.h>
+
+#include <vtkActor.h>
+#include <vtkAxesActor.h>
+#include <vtkCamera.h>
+#include <vtkCellArray.h>
+#include <vtkGenericOpenGLRenderWindow.h>
+#include <vtkOrientationMarkerWidget.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
+#include <vtkPolyDataMapper.h>
+#include <vtkProperty.h>
+#include <vtkRenderWindowInteractor.h>
+#include <vtkRenderer.h>
+#include <cmath>
+#include <vtkCellPicker.h>
+#include <vtkLine.h>
+#include "CustomInteractorStyle.h"
+
+SceneController::SceneController(QObject *parent\)
+    : QObject(parent\)
+    , m_orientationMarker(vtkSmartPointer<vtkOrientationMarkerWidget>::New(\)\)
+    , m_points(vtkSmartPointer<vtkPoints>::New(\)\)
+    , m_pointCloud(vtkSmartPointer<vtkPolyData>::New(\)\)
+    , m_vertices(vtkSmartPointer<vtkCellArray>::New(\)\)
+    , m_pointMapper(vtkSmartPointer<vtkPolyDataMapper>::New(\)\)
+    , m_pointActor(vtkSmartPointer<vtkActor>::New(\)\)
+    , m_gridData(vtkSmartPointer<vtkPolyData>::New(\)\)
+    , m_gridMapper(vtkSmartPointer<vtkPolyDataMapper>::New(\)\)
+    , m_gridActor(vtkSmartPointer<vtkActor>::New(\)\)
+    , m_picker(vtkSmartPointer<vtkCellPicker>::New(\)\)
+{
+    m_pointCloud->SetPoints(m_points\);
+    m_pointCloud->SetVerts(m_vertices\);
+
+    m_pointMapper->SetInputData(m_pointCloud\);
+    m_pointActor->SetMapper(m_pointMapper\);
+    m_pointActor->GetProperty(\)->SetColor(0.95, 0.32, 0.18\);
+    m_pointActor->GetProperty(\)->SetPointSize(10.0\);
+    m_pointActor->GetProperty(\)->SetRenderPointsAsSpheres(true\);
+
+    // Grid default visuals
+    m_gridMapper->SetInputData(m_gridData\);
+    m_gridActor->SetMapper(m_gridMapper\);
+    m_gridActor->GetProperty(\)->SetColor(0.60, 0.65, 0.72\);
+    m_gridActor->GetProperty(\)->SetOpacity(0.35\);
+    m_gridActor->GetProperty(\)->SetLineWidth(1.0\);
+    m_gridActor->PickableOn(\);
+
+    // Picker tolerance suitable for thin lines
+    m_picker->SetTolerance(0.005\);
+}
+
+SceneController::~SceneController(\) = default;
+
+void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget\)
+{
+    if (!vtkWidget\) {
+        return;
+    }
+
+    vtkWidget->setRenderWindow(m_renderWindow\);
+    m_renderWindow->AddRenderer(m_renderer\);
+    m_renderer->GradientBackgroundOn(\);
+    m_renderer->SetBackground(0.07, 0.09, 0.12\);
+    m_renderer->SetBackground2(0.24, 0.28, 0.34\);
+    m_renderer->AddActor(m_pointActor\);
+    m_renderer->AddActor(m_gridActor\);
+    m_renderer->ResetCamera(\);
+
+    auto axes = vtkSmartPointer<vtkAxesActor>::New(\);
+    axes->AxisLabelsOn(\);
+    axes->SetConeRadius(0.55\);
+    axes->SetShaftTypeToCylinder(\);
+    axes->SetCylinderRadius(0.03\);
+    axes->SetTotalLength(1.0, 1.0, 1.0\);
+
+    m_orientationMarker->SetOrientationMarker(axes\);
+    if (auto *interactor = vtkWidget->interactor(\)\) {
+        m_orientationMarker->SetInteractor(interactor\);
+        m_orientationMarker->SetViewport(0.80, 0.80, 0.98, 0.98\);
+        m_orientationMarker->SetOutlineColor(0.9, 0.9, 0.9\);
+        m_orientationMarker->EnabledOn(\);
+        m_orientationMarker->InteractiveOff(\);
+
+        // Custom interactor: rotate with right button
+        vtkSmartPointer<CustomInteractorStyle> style = vtkSmartPointer<CustomInteractorStyle>::New(\);
+        interactor->SetInteractorStyle(style\);
+    }
+
+    m_renderWindow->Render(\);
+}
+
+void SceneController::addPoint(double x, double y, double z\)
+{
+    const vtkIdType pointId = m_points->InsertNextPoint(x, y, z\);
+    m_vertices->InsertNextCell(1\);
+    m_vertices->InsertCellPoint(pointId\);
+
+    m_points->Modified(\);
+    m_vertices->Modified(\);
+    m_pointCloud->Modified(\);
+
+    updateBounds(\);
+    m_renderWindow->Render(\);
+}
+
+void SceneController::resetCamera(\)
+{
+    m_renderer->ResetCamera(\);
+    m_renderWindow->Render(\);
+}
+
+void SceneController::zoomExtents(\)
+{
+    if (m_points->GetNumberOfPoints(\) == 0\) {
+        resetCamera(\);
+        return;
+    }
+
+    m_renderer->ResetCamera(m_pointActor->GetBounds(\)\);
+    m_renderWindow->Render(\);
+}
+
+void SceneController::updateBounds(\)
+{
+    if (m_points->GetNumberOfPoints(\) == 0\) {
+        return;
+    }
+
+    m_pointCloud->GetBounds(\); // ensures bounds computation
+}
+
+void SceneController::createGrid(double dx, double dy, double dz, int nx, int ny, int nz\)
+{
+    m_dx = dx; m_dy = dy; m_dz = dz;
+    m_nx = nx; m_ny = ny; m_nz = nz;
+
+    auto gridPoints = vtkSmartPointer<vtkPoints>::New(\);
+    auto gridLines = vtkSmartPointer<vtkCellArray>::New(\);
+
+    // Build a 3D lattice of axis-aligned lines from origin
+    const double xmax = (nx > 0 ? (nx - 1\) * dx : 0.0\);
+    const double ymax = (ny > 0 ? (ny - 1\) * dy : 0.0\);
+    const double zmax = (nz > 0 ? (nz - 1\) * dz : 0.0\);
+
+    auto addLine = [&](double x0, double y0, double z0, double x1, double y1, double z1\) {
+        vtkIdType id0 = gridPoints->InsertNextPoint(x0, y0, z0\);
+        vtkIdType id1 = gridPoints->InsertNextPoint(x1, y1, z1\);
+        vtkIdType lineIds[2] = { id0, id1 };
+        gridLines->InsertNextCell(2, lineIds\);
+    };
+
+    // Lines parallel to X (vary y,z\)
+    for (int j = 0; j < ny; ++j\) {
+        for (int k = 0; k < nz; ++k\) {
+            const double y = j * dy;
+            const double z = k * dz;
+            addLine(0.0, y, z, xmax, y, z\);
+        }
+    }
+    // Lines parallel to Y (vary x,z\)
+    for (int i = 0; i < nx; ++i\) {
+        for (int k = 0; k < nz; ++k\) {
+            const double x = i * dx;
+            const double z = k * dz;
+            addLine(x, 0.0, z, x, ymax, z\);
+        }
+    }
+    // Lines parallel to Z (vary x,y\)
+    for (int i = 0; i < nx; ++i\) {
+        for (int j = 0; j < ny; ++j\) {
+            const double x = i * dx;
+            const double y = j * dy;
+            addLine(x, y, 0.0, x, y, zmax\);
+        }
+    }
+
+    m_gridData->SetPoints(gridPoints\);
+    m_gridData->SetLines(gridLines\);
+    m_gridData->Modified(\);
+    m_renderWindow->Render(\);
+}
+
+bool SceneController::hasGrid(\) const
+{
+    return (m_nx > 0 && m_ny > 0 && m_nz > 0 && m_dx > 0 && m_dy > 0 && m_dz > 0\);
+}
+
+static inline double roundToStepClamp(double v, double step, int n\)
+{
+    if (step <= 0 || n <= 0\) return 0.0;
+    double maxv = (n - 1\) * step;
+    double t = std::round(v / step\) * step;
+    if (t < 0.0\) t = 0.0;
+    if (t > maxv\) t = maxv;
+    return t;
+}
+
+void SceneController::snapToGrid(double &x, double &y, double &z\) const
+{
+    if (!hasGrid(\)\) return;
+    x = roundToStepClamp(x, m_dx, m_nx\);
+    y = roundToStepClamp(y, m_dy, m_ny\);
+    z = roundToStepClamp(z, m_dz, m_nz\);
+}
+
+bool SceneController::pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z\) const
+{
+    if (!m_renderer || !m_renderWindow\) return false;
+    if (!m_picker\) return false;
+    // Perform pick against scene (grid and points are both pickable\)
+    if (m_picker->Pick(displayX, displayY, 0, m_renderer\)\) {
+        double p[3];
+        m_picker->GetPickPosition(p\);
+        x = p[0]; y = p[1]; z = p[2];
+        return true;
+    }
+    return false;
+}
+
+int SceneController::viewportHeight(\) const
+{
+    if (!m_renderWindow\) return 0;
+    int* size = m_renderWindow->GetSize(\);
+    return size ? size[1] : 0;
+}
+
+bool SceneController::worldPointOnPlaneZ0(int displayX, int displayY, double &x, double &y, double &z\) const
+{
+    if (!m_renderer\) return false;
+
+    // Get two world points along the view ray at near/far clip
+    double p0w[4], p1w[4];
+    m_renderer->SetDisplayPoint(displayX, displayY, 0.0\);
+    m_renderer->DisplayToWorld(\);
+    m_renderer->GetWorldPoint(p0w\);
+    if (std::abs(p0w[3]\) > 1e-12\) { p0w[0] /= p0w[3]; p0w[1] /= p0w[3]; p0w[2] /= p0w[3]; }
+
+    m_renderer->SetDisplayPoint(displayX, displayY, 1.0\);
+    m_renderer->DisplayToWorld(\);
+    m_renderer->GetWorldPoint(p1w\);
+    if (std::abs(p1w[3]\) > 1e-12\) { p1w[0] /= p1w[3]; p1w[1] /= p1w[3]; p1w[2] /= p1w[3]; }
+
+    const double dx = p1w[0] - p0w[0];
+    const double dy = p1w[1] - p0w[1];
+    const double dz = p1w[2] - p0w[2];
+    const double eps = 1e-12;
+    if (std::abs(dz\) < eps\) {
+        return false; // Ray parallel to Z=0 plane
+    }
+    const double t = -p0w[2] / dz; // z=0 => p0.z + t*dz = 0
+    x = p0w[0] + t * dx;
+    y = p0w[1] + t * dy;
+    z = 0.0;
+    return std::isfinite(x\) && std::isfinite(y\);
+}
