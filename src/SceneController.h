@@ -2,9 +2,17 @@
 
 #include <QObject>
 #include <QUuid>
+#include <QHash>
+#include <QSet>
+#include <QVector>
+#include <QVector3D>
+
 #include <vtkNew.h>
 #include <vtkSmartPointer.h>
 #include <vector>
+#include <optional>
+
+#include "ModelEntities.h"
 
 class QVTKOpenGLNativeWidget;
 class vtkGenericOpenGLRenderWindow;
@@ -26,9 +34,21 @@ class SceneController : public QObject
     Q_OBJECT
 
 public:
+    using Node = Structura::Model::Node;
+    using Bar = Structura::Model::Bar;
+
+    struct NodeInfo {
+        QUuid id;
+        int externalId;
+        double x;
+        double y;
+        double z;
+    };
+
     struct BarInfo {
-        int startNode;
-        int endNode;
+        QUuid id;
+        QUuid startNodeId;
+        QUuid endNodeId;
         QUuid materialId;
         QUuid sectionId;
         int externalId {0};
@@ -40,8 +60,8 @@ public:
     void initialize(QVTKOpenGLNativeWidget *vtkWidget);
 
 public slots:
-    void addPoint(double x, double y, double z);
-    int addPointWithId(double x, double y, double z, int externalId);
+    QUuid addPoint(double x, double y, double z);
+    QUuid addPointWithId(double x, double y, double z, int externalId);
     void clearAll();
     void resetCamera();
     void zoomExtents();
@@ -51,6 +71,8 @@ public:
     void createGrid(double dx, double dy, double dz, int nx, int ny, int nz);
     bool hasGrid() const;
     void snapToGrid(double &x, double &y, double &z) const;
+    void gridSpacing(double &dx, double &dy, double &dz) const;
+    void gridCounts(int &nx, int &ny, int &nz) const;
     // Picking API (screen to world)
     bool pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z) const;
     int viewportHeight() const;
@@ -59,27 +81,37 @@ public:
 
     // Nodes
     int nodeCount() const;
-    void nodePosition(int index, double &x, double &y, double &z) const;
-    int nodeIndexByExternalId(int externalId) const;
-    struct NodeInfo {
-        int externalId;
-        double x;
-        double y;
-        double z;
-    };
     std::vector<NodeInfo> nodeInfos() const;
-    int pickNode(int displayX, int displayY) const;
-    void setHighlightedNode(int nodeIndex);
+    const Node *findNode(const QUuid &id) const;
+    Node *findNode(const QUuid &id);
+    QUuid pickNode(int displayX, int displayY) const;
+    QUuid pickBar(int displayX, int displayY) const;
+    void setHighlightedNode(const QUuid &nodeId);
     void clearHighlightedNode();
+    void setSelectedNodes(const QSet<QUuid> &nodeIds);
+    bool updateNodePosition(const QUuid &nodeId, double x, double y, double z);
+    bool updateNodePositions(const QVector<QUuid> &nodeIds, const QVector<QVector3D> &positions);
 
     // Bars
-    int addBar(int startNodeIndex, int endNodeIndex, const QUuid &materialId, const QUuid &sectionId);
-    void assignBarProperties(const std::vector<int> &barIndices, const QUuid &materialId, const QUuid &sectionId);
-    void setBarExternalId(int barIndex, int externalId);
-    const std::vector<BarInfo> &bars() const;
+    QUuid addBar(const QUuid &startNodeId,
+                 const QUuid &endNodeId,
+                 const QUuid &materialId,
+                 const QUuid &sectionId);
+    void assignBarProperties(const std::vector<QUuid> &barIds,
+                             const std::optional<QUuid> &materialId,
+                             const std::optional<QUuid> &sectionId);
+    void setBarExternalId(const QUuid &barId, int externalId);
+    std::vector<BarInfo> bars() const;
+    const Bar *findBar(const QUuid &id) const;
+    Bar *findBar(const QUuid &id);
+    void setSelectedBars(const QSet<QUuid> &barIds);
 
 private:
     void updateBounds();
+    int nodeIndex(const QUuid &id) const;
+    int barIndex(const QUuid &id) const;
+    void applyNodeColor(const QUuid &id, const unsigned char color[3]);
+    void applyBarColor(int barIndex, const unsigned char color[3]);
 
     vtkNew<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkNew<vtkRenderer> m_renderer;
@@ -96,6 +128,7 @@ private:
     vtkSmartPointer<vtkCellArray> m_barLines;
     vtkSmartPointer<vtkPolyDataMapper> m_barMapper;
     vtkSmartPointer<vtkActor> m_barActor;
+    vtkSmartPointer<vtkUnsignedCharArray> m_barColors;
 
     // Grid state
     vtkSmartPointer<vtkPolyData> m_gridData;
@@ -107,17 +140,24 @@ private:
     // Picker
     vtkSmartPointer<vtkCellPicker> m_picker;
     vtkSmartPointer<vtkPointPicker> m_nodePicker;
+    vtkSmartPointer<vtkCellPicker> m_barPicker;
 
-    struct NodeRecord {
-        vtkIdType pointId;
-        double position[3];
-        int externalId;
-    };
-    std::vector<NodeRecord> m_nodes;
-    std::vector<BarInfo> m_bars;
-    int m_highlightNode {-1};
+    std::vector<Node> m_nodes;
+    std::vector<vtkIdType> m_nodePointIds;
+    std::vector<QUuid> m_pointIdToNodeId;
+    QHash<QUuid, int> m_nodeIndexById;
+
+    std::vector<Bar> m_bars;
+    QHash<QUuid, int> m_barIndexById;
+
+    QUuid m_highlightNodeId;
+    QSet<QUuid> m_selectedNodeIds;
+    QSet<QUuid> m_selectedBarIds;
     unsigned char m_defaultNodeColor[3] {228, 74, 25};
-    unsigned char m_highlightNodeColor[3] {30, 126, 255};
+    unsigned char m_selectedNodeColor[3] {30, 126, 255};
+    unsigned char m_hoverNodeColor[3] {255, 198, 30};
+    unsigned char m_defaultBarColor[3] {71, 82, 102};
+    unsigned char m_selectedBarColor[3] {255, 198, 30};
 
     int m_nextNodeExternalId {1};
 };

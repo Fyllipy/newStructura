@@ -19,7 +19,10 @@
 #include <vtkPointPicker.h>
 #include <cmath>
 #include <vtkCellPicker.h>
-#include <vtkLine.h>
+#include <vtkCellData.h>
+#include <QVector3D>
+#include <QtGlobal>
+#include <optional>
 #include "CustomInteractorStyle.h"
 
 SceneController::SceneController(QObject *parent)
@@ -35,11 +38,13 @@ SceneController::SceneController(QObject *parent)
     , m_barLines(vtkSmartPointer<vtkCellArray>::New())
     , m_barMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
     , m_barActor(vtkSmartPointer<vtkActor>::New())
+    , m_barColors(vtkSmartPointer<vtkUnsignedCharArray>::New())
     , m_gridData(vtkSmartPointer<vtkPolyData>::New())
     , m_gridMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
     , m_gridActor(vtkSmartPointer<vtkActor>::New())
     , m_picker(vtkSmartPointer<vtkCellPicker>::New())
     , m_nodePicker(vtkSmartPointer<vtkPointPicker>::New())
+    , m_barPicker(vtkSmartPointer<vtkCellPicker>::New())
 {
     m_pointCloud->SetPoints(m_points);
     m_pointCloud->SetVerts(m_vertices);
@@ -57,11 +62,16 @@ SceneController::SceneController(QObject *parent)
     // Bars share the same point set
     m_barData->SetPoints(m_points);
     m_barData->SetLines(m_barLines);
+    m_barColors->SetNumberOfComponents(3);
+    m_barColors->SetName("BarColors");
+    m_barData->GetCellData()->SetScalars(m_barColors);
     m_barMapper->SetInputData(m_barData);
-    m_barMapper->ScalarVisibilityOff();
+    m_barMapper->ScalarVisibilityOn();
+    m_barMapper->SetColorModeToDirectScalars();
+    m_barMapper->SetScalarModeToUseCellData();
     m_barActor->SetMapper(m_barMapper);
-    m_barActor->GetProperty()->SetColor(0.28, 0.32, 0.40);
     m_barActor->GetProperty()->SetLineWidth(2.0);
+    m_barActor->GetProperty()->LightingOff();
     m_barActor->PickableOn();
 
     // Grid default visuals
@@ -78,6 +88,10 @@ SceneController::SceneController(QObject *parent)
     m_nodePicker->SetTolerance(0.01);
     m_nodePicker->SetPickFromList(true);
     m_nodePicker->AddPickList(m_pointActor);
+
+    m_barPicker->SetTolerance(0.005);
+    m_barPicker->SetPickFromList(true);
+    m_barPicker->AddPickList(m_barActor);
 }
 
 SceneController::~SceneController() = default;
@@ -122,12 +136,12 @@ void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget)
     m_renderWindow->Render();
 }
 
-void SceneController::addPoint(double x, double y, double z)
+QUuid SceneController::addPoint(double x, double y, double z)
 {
-    addPointWithId(x, y, z, m_nextNodeExternalId++);
+    return addPointWithId(x, y, z, m_nextNodeExternalId++);
 }
 
-int SceneController::addPointWithId(double x, double y, double z, int externalId)
+QUuid SceneController::addPointWithId(double x, double y, double z, int externalId)
 {
     if (externalId <= 0) {
         externalId = m_nextNodeExternalId++;
@@ -141,13 +155,16 @@ int SceneController::addPointWithId(double x, double y, double z, int externalId
     m_vertices->InsertNextCell(1);
     m_vertices->InsertCellPoint(pointId);
 
-    NodeRecord node;
-    node.pointId = pointId;
-    node.position[0] = x;
-    node.position[1] = y;
-    node.position[2] = z;
-    node.externalId = externalId;
+    QUuid nodeId = QUuid::createUuid();
+    Node node(nodeId, externalId, x, y, z);
     m_nodes.push_back(node);
+    m_nodePointIds.push_back(pointId);
+
+    if (static_cast<std::size_t>(pointId + 1) > m_pointIdToNodeId.size()) {
+        m_pointIdToNodeId.resize(static_cast<std::size_t>(pointId) + 1);
+    }
+    m_pointIdToNodeId[static_cast<std::size_t>(pointId)] = nodeId;
+    m_nodeIndexById.insert(nodeId, static_cast<int>(m_nodes.size()) - 1);
 
     if (m_pointColors) {
         m_pointColors->InsertNextTypedTuple(m_defaultNodeColor);
@@ -163,7 +180,7 @@ int SceneController::addPointWithId(double x, double y, double z, int externalId
     updateBounds();
     m_renderWindow->Render();
 
-    return static_cast<int>(m_nodes.size()) - 1;
+    return nodeId;
 }
 
 void SceneController::resetCamera()
@@ -264,6 +281,20 @@ void SceneController::snapToGrid(double &x, double &y, double &z) const
     x = roundToStepClamp(x, m_dx, m_nx);
     y = roundToStepClamp(y, m_dy, m_ny);
     z = roundToStepClamp(z, m_dz, m_nz);
+}
+
+void SceneController::gridSpacing(double &dx, double &dy, double &dz) const
+{
+    dx = m_dx;
+    dy = m_dy;
+    dz = m_dz;
+}
+
+void SceneController::gridCounts(int &nx, int &ny, int &nz) const
+{
+    nx = m_nx;
+    ny = m_ny;
+    nz = m_nz;
 }
 
 bool SceneController::pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z) const
@@ -374,78 +405,83 @@ int SceneController::nodeCount() const
     return static_cast<int>(m_nodes.size());
 }
 
-void SceneController::nodePosition(int index, double &x, double &y, double &z) const
-{
-    if (index < 0 || index >= nodeCount()) {
-        x = y = z = 0.0;
-        return;
-    }
-    const auto &node = m_nodes[static_cast<std::size_t>(index)];
-    x = node.position[0];
-    y = node.position[1];
-    z = node.position[2];
-}
-
-int SceneController::nodeIndexByExternalId(int externalId) const
-{
-    for (std::size_t i = 0; i < m_nodes.size(); ++i) {
-        if (m_nodes[i].externalId == externalId) {
-            return static_cast<int>(i);
-        }
-    }
-    return -1;
-}
-
 std::vector<SceneController::NodeInfo> SceneController::nodeInfos() const
 {
     std::vector<NodeInfo> result;
     result.reserve(m_nodes.size());
     for (const auto &node : m_nodes) {
-        result.push_back(NodeInfo{ node.externalId, node.position[0], node.position[1], node.position[2] });
+        const auto pos = node.position();
+        result.push_back(NodeInfo{ node.id(), node.externalId(), pos[0], pos[1], pos[2] });
     }
     return result;
 }
 
-int SceneController::pickNode(int displayX, int displayY) const
+const SceneController::Node *SceneController::findNode(const QUuid &id) const
+{
+    const int index = nodeIndex(id);
+    if (index < 0) {
+        return nullptr;
+    }
+    return &m_nodes[static_cast<std::size_t>(index)];
+}
+
+SceneController::Node *SceneController::findNode(const QUuid &id)
+{
+    const int index = nodeIndex(id);
+    if (index < 0) {
+        return nullptr;
+    }
+    return &m_nodes[static_cast<std::size_t>(index)];
+}
+
+QUuid SceneController::pickNode(int displayX, int displayY) const
 {
     if (!m_nodePicker || !m_renderer) {
-        return -1;
+        return {};
     }
     if (m_nodePicker->Pick(displayX, displayY, 0.0, m_renderer)) {
         vtkIdType pid = m_nodePicker->GetPointId();
-        if (pid >= 0 && pid < static_cast<vtkIdType>(m_nodes.size())) {
-            return static_cast<int>(pid);
+        if (pid >= 0 && pid < static_cast<vtkIdType>(m_pointIdToNodeId.size())) {
+            return m_pointIdToNodeId[static_cast<std::size_t>(pid)];
         }
     }
-    return -1;
+    return {};
 }
 
-void SceneController::setHighlightedNode(int nodeIndex)
+QUuid SceneController::pickBar(int displayX, int displayY) const
+{
+    if (!m_barPicker || !m_renderer) {
+        return {};
+    }
+    if (m_barPicker->Pick(displayX, displayY, 0.0, m_renderer)) {
+        vtkIdType cid = m_barPicker->GetCellId();
+        if (cid >= 0 && cid < static_cast<vtkIdType>(m_bars.size())) {
+            return m_bars[static_cast<std::size_t>(cid)].id();
+        }
+    }
+    return {};
+}
+
+void SceneController::setHighlightedNode(const QUuid &nodeId)
 {
     if (!m_pointColors) {
         return;
     }
 
-    if (nodeIndex == m_highlightNode) {
+    if (nodeId == m_highlightNodeId) {
         return;
     }
 
-    const vtkIdType tupleCount = m_pointColors->GetNumberOfTuples();
-    auto restoreColor = [&](int idx) {
-        if (idx >= 0 && idx < static_cast<int>(tupleCount)) {
-            m_pointColors->SetTypedTuple(idx, m_defaultNodeColor);
+    if (!m_highlightNodeId.isNull()) {
+        if (m_selectedNodeIds.contains(m_highlightNodeId)) {
+            applyNodeColor(m_highlightNodeId, m_selectedNodeColor);
+        } else {
+            applyNodeColor(m_highlightNodeId, m_defaultNodeColor);
         }
-    };
-    auto applyHighlight = [&](int idx) {
-        if (idx >= 0 && idx < static_cast<int>(tupleCount)) {
-            m_pointColors->SetTypedTuple(idx, m_highlightNodeColor);
-        }
-    };
-
-    restoreColor(m_highlightNode);
-    m_highlightNode = nodeIndex;
-    if (m_highlightNode >= 0) {
-        applyHighlight(m_highlightNode);
+    }
+    m_highlightNodeId = nodeId;
+    if (!m_highlightNodeId.isNull()) {
+        applyNodeColor(m_highlightNodeId, m_hoverNodeColor);
     }
 
     m_pointColors->Modified();
@@ -455,57 +491,243 @@ void SceneController::setHighlightedNode(int nodeIndex)
 
 void SceneController::clearHighlightedNode()
 {
-    setHighlightedNode(-1);
+    setHighlightedNode(QUuid());
 }
 
-int SceneController::addBar(int startNodeIndex, int endNodeIndex, const QUuid &materialId, const QUuid &sectionId)
+void SceneController::setSelectedNodes(const QSet<QUuid> &nodeIds)
 {
-    if (startNodeIndex < 0 || endNodeIndex < 0) {
-        return -1;
-    }
-    if (startNodeIndex >= nodeCount() || endNodeIndex >= nodeCount()) {
-        return -1;
-    }
-    if (startNodeIndex == endNodeIndex) {
-        return -1;
+    if (!m_pointColors) {
+        m_selectedNodeIds = nodeIds;
+        return;
     }
 
-    vtkNew<vtkLine> line;
-    line->GetPointIds()->SetId(0, m_nodes[static_cast<std::size_t>(startNodeIndex)].pointId);
-    line->GetPointIds()->SetId(1, m_nodes[static_cast<std::size_t>(endNodeIndex)].pointId);
-    m_barLines->InsertNextCell(line);
+    if (m_selectedNodeIds == nodeIds) {
+        return;
+    }
+
+    for (const QUuid &id : m_selectedNodeIds) {
+        if (nodeIds.contains(id)) {
+            continue;
+        }
+        if (id == m_highlightNodeId) {
+            continue;
+        }
+        applyNodeColor(id, m_defaultNodeColor);
+    }
+
+    for (const QUuid &id : nodeIds) {
+        if (id == m_highlightNodeId) {
+            continue;
+        }
+        if (!m_selectedNodeIds.contains(id)) {
+            applyNodeColor(id, m_selectedNodeColor);
+        }
+    }
+
+    m_selectedNodeIds = nodeIds;
+    m_pointColors->Modified();
+    m_pointCloud->Modified();
+    m_renderWindow->Render();
+}
+
+bool SceneController::updateNodePosition(const QUuid &nodeId, double x, double y, double z)
+{
+    QVector<QUuid> ids;
+    ids.append(nodeId);
+    QVector<QVector3D> positions;
+    positions.append(QVector3D(x, y, z));
+    return updateNodePositions(ids, positions);
+}
+
+bool SceneController::updateNodePositions(const QVector<QUuid> &nodeIds, const QVector<QVector3D> &positions)
+{
+    if (nodeIds.size() != positions.size()) {
+        return false;
+    }
+    bool changed = false;
+    for (int i = 0; i < nodeIds.size(); ++i) {
+        const QUuid &id = nodeIds.at(i);
+        const int idx = nodeIndex(id);
+        if (idx < 0 || static_cast<std::size_t>(idx) >= m_nodePointIds.size()) {
+            continue;
+        }
+        Node &node = m_nodes[static_cast<std::size_t>(idx)];
+        const QVector3D pos = positions.at(i);
+        const auto current = node.position();
+        if (qFuzzyCompare(current[0] + 1.0, pos.x() + 1.0) &&
+            qFuzzyCompare(current[1] + 1.0, pos.y() + 1.0) &&
+            qFuzzyCompare(current[2] + 1.0, pos.z() + 1.0)) {
+            continue;
+        }
+
+        const vtkIdType pointId = m_nodePointIds[static_cast<std::size_t>(idx)];
+        m_points->SetPoint(pointId, pos.x(), pos.y(), pos.z());
+        node.setPosition(pos.x(), pos.y(), pos.z());
+        changed = true;
+    }
+
+    if (changed) {
+        m_points->Modified();
+        m_pointCloud->Modified();
+        m_barData->Modified();
+        updateBounds();
+        m_renderWindow->Render();
+    }
+    return changed;
+}
+
+QUuid SceneController::addBar(const QUuid &startNodeId,
+                              const QUuid &endNodeId,
+                              const QUuid &materialId,
+                              const QUuid &sectionId)
+{
+    const int startIndex = nodeIndex(startNodeId);
+    const int endIndex = nodeIndex(endNodeId);
+    if (startIndex < 0 || endIndex < 0 || startIndex == endIndex) {
+        return {};
+    }
+    if (static_cast<std::size_t>(startIndex) >= m_nodePointIds.size()
+        || static_cast<std::size_t>(endIndex) >= m_nodePointIds.size()) {
+        return {};
+    }
+
+    vtkIdType ids[2] = {
+        m_nodePointIds[static_cast<std::size_t>(startIndex)],
+        m_nodePointIds[static_cast<std::size_t>(endIndex)]
+    };
+    m_barLines->InsertNextCell(2, ids);
+    m_barLines->Modified();
     m_barData->SetLines(m_barLines);
     m_barData->Modified();
 
-    BarInfo info { startNodeIndex, endNodeIndex, materialId, sectionId, 0 };
-    m_bars.push_back(info);
+    const QUuid barId = QUuid::createUuid();
+    Bar bar(barId, startNodeId, endNodeId, materialId, sectionId);
+    m_bars.push_back(bar);
+    m_barIndexById.insert(barId, static_cast<int>(m_bars.size()) - 1);
+    if (m_barColors) {
+        m_barColors->InsertNextTypedTuple(m_defaultBarColor);
+        m_barColors->Modified();
+        m_barData->GetCellData()->SetScalars(m_barColors);
+    }
 
     m_renderWindow->Render();
-    return static_cast<int>(m_bars.size()) - 1;
+    return barId;
 }
 
-void SceneController::assignBarProperties(const std::vector<int> &barIndices, const QUuid &materialId, const QUuid &sectionId)
+void SceneController::assignBarProperties(const std::vector<QUuid> &barIds,
+                                          const std::optional<QUuid> &materialId,
+                                          const std::optional<QUuid> &sectionId)
 {
-    for (int idx : barIndices) {
-        if (idx >= 0 && idx < static_cast<int>(m_bars.size())) {
-            m_bars[static_cast<std::size_t>(idx)].materialId = materialId;
-            m_bars[static_cast<std::size_t>(idx)].sectionId = sectionId;
+    bool changed = false;
+    for (const QUuid &id : barIds) {
+        const int idx = barIndex(id);
+        if (idx < 0) {
+            continue;
+        }
+        Bar &bar = m_bars[static_cast<std::size_t>(idx)];
+        if (materialId.has_value()) {
+            const QUuid newMat = materialId.value();
+            if (bar.materialId() != newMat) {
+                bar.setMaterialId(newMat);
+                changed = true;
+            }
+        }
+        if (sectionId.has_value()) {
+            const QUuid newSec = sectionId.value();
+            if (bar.sectionId() != newSec) {
+                bar.setSectionId(newSec);
+                changed = true;
+            }
         }
     }
+    if (changed) {
+        m_renderWindow->Render();
+    }
 }
 
-const std::vector<SceneController::BarInfo> &SceneController::bars() const
+std::vector<SceneController::BarInfo> SceneController::bars() const
 {
-    return m_bars;
+    std::vector<BarInfo> result;
+    result.reserve(m_bars.size());
+    for (const auto &bar : m_bars) {
+        result.push_back(BarInfo{
+            bar.id(),
+            bar.startNodeId(),
+            bar.endNodeId(),
+            bar.materialId(),
+            bar.sectionId(),
+            bar.externalId()
+        });
+    }
+    return result;
 }
 
-void SceneController::setBarExternalId(int barIndex, int externalId)
+const SceneController::Bar *SceneController::findBar(const QUuid &id) const
 {
-    if (barIndex < 0 || barIndex >= static_cast<int>(m_bars.size())) {
+    const int idx = barIndex(id);
+    if (idx < 0) {
+        return nullptr;
+    }
+    return &m_bars[static_cast<std::size_t>(idx)];
+}
+
+SceneController::Bar *SceneController::findBar(const QUuid &id)
+{
+    const int idx = barIndex(id);
+    if (idx < 0) {
+        return nullptr;
+    }
+    return &m_bars[static_cast<std::size_t>(idx)];
+}
+
+void SceneController::setSelectedBars(const QSet<QUuid> &barIds)
+{
+    if (!m_barColors) {
+        m_selectedBarIds = barIds;
         return;
     }
-    m_bars[static_cast<std::size_t>(barIndex)].externalId = externalId;
+
+    if (m_selectedBarIds == barIds) {
+        return;
+    }
+
+    for (const QUuid &id : m_selectedBarIds) {
+        if (barIds.contains(id)) {
+            continue;
+        }
+        const int idx = barIndex(id);
+        if (idx < 0) {
+            continue;
+        }
+        applyBarColor(idx, m_defaultBarColor);
+    }
+
+    for (const QUuid &id : barIds) {
+        if (m_selectedBarIds.contains(id)) {
+            continue;
+        }
+        const int idx = barIndex(id);
+        if (idx < 0) {
+            continue;
+        }
+        applyBarColor(idx, m_selectedBarColor);
+    }
+
+    m_selectedBarIds = barIds;
+    m_barColors->Modified();
+    m_barData->Modified();
+    m_renderWindow->Render();
 }
+
+void SceneController::setBarExternalId(const QUuid &barId, int externalId)
+{
+    Bar *bar = findBar(barId);
+    if (!bar) {
+        return;
+    }
+    bar->setExternalId(externalId);
+}
+
 void SceneController::clearAll()
 {
     m_points->Reset();
@@ -517,8 +739,20 @@ void SceneController::clearAll()
     m_barData->SetLines(m_barLines);
 
     m_nodes.clear();
+    m_nodePointIds.clear();
+    m_pointIdToNodeId.clear();
+    m_nodeIndexById.clear();
     m_bars.clear();
-    m_highlightNode = -1;
+    m_barIndexById.clear();
+    m_highlightNodeId = QUuid();
+    m_selectedNodeIds.clear();
+    m_selectedBarIds.clear();
+    if (m_barColors) {
+        m_barColors->Reset();
+        m_barColors->SetNumberOfComponents(3);
+        m_barColors->SetName("BarColors");
+        m_barData->GetCellData()->SetScalars(m_barColors);
+    }
     m_nextNodeExternalId = 1;
 
     m_points->Modified();
@@ -531,4 +765,69 @@ void SceneController::clearAll()
         m_renderer->ResetCamera();
     }
     m_renderWindow->Render();
+}
+
+void SceneController::applyNodeColor(const QUuid &id, const unsigned char color[3])
+{
+    if (!m_pointColors) {
+        return;
+    }
+    if (id.isNull()) {
+        return;
+    }
+    const int idx = nodeIndex(id);
+    if (idx < 0) {
+        return;
+    }
+    if (static_cast<std::size_t>(idx) >= m_nodePointIds.size()) {
+        return;
+    }
+    const vtkIdType pointId = m_nodePointIds[static_cast<std::size_t>(idx)];
+    if (pointId < 0) {
+        return;
+    }
+    const vtkIdType tupleCount = m_pointColors->GetNumberOfTuples();
+    if (pointId >= tupleCount) {
+        return;
+    }
+    m_pointColors->SetTypedTuple(pointId, color);
+}
+
+void SceneController::applyBarColor(int barIndex, const unsigned char color[3])
+{
+    if (!m_barColors) {
+        return;
+    }
+    if (barIndex < 0) {
+        return;
+    }
+    const vtkIdType tupleCount = m_barColors->GetNumberOfTuples();
+    if (barIndex >= tupleCount) {
+        return;
+    }
+    m_barColors->SetTypedTuple(barIndex, color);
+}
+
+int SceneController::nodeIndex(const QUuid &id) const
+{
+    if (id.isNull()) {
+        return -1;
+    }
+    const auto it = m_nodeIndexById.constFind(id);
+    if (it == m_nodeIndexById.constEnd()) {
+        return -1;
+    }
+    return it.value();
+}
+
+int SceneController::barIndex(const QUuid &id) const
+{
+    if (id.isNull()) {
+        return -1;
+    }
+    const auto it = m_barIndexById.constFind(id);
+    if (it == m_barIndexById.constEnd()) {
+        return -1;
+    }
+    return it.value();
 }

@@ -37,20 +37,137 @@
 #include <QLocale>
 #include <QDir>
 #include <QSizePolicy>
+
+#include <QUndoStack>
+#include <QUndoCommand>
+#include <QVector3D>
+#include <QtMath>
+
 #include <algorithm>
 
 #include <QVTKOpenGLNativeWidget.h>
 
+namespace {
+
+class MoveNodesCommand : public QUndoCommand
+{
+public:
+    MoveNodesCommand(SceneController *scene,
+                     const QVector<QUuid> &ids,
+                     const QVector<QVector3D> &oldPositions,
+                     const QVector<QVector3D> &newPositions,
+                     QUndoCommand *parent = nullptr)
+        : QUndoCommand(parent)
+        , m_scene(scene)
+        , m_ids(ids)
+        , m_oldPositions(oldPositions)
+        , m_newPositions(newPositions)
+    {
+        setText(QObject::tr("Mover nÃ³(s)"));
+    }
+
+    void undo() override { apply(m_oldPositions); }
+    void redo() override { apply(m_newPositions); }
+
+private:
+    void apply(const QVector<QVector3D> &positions)
+    {
+        if (!m_scene) {
+            return;
+        }
+        m_scene->updateNodePositions(m_ids, positions);
+    }
+
+    SceneController *m_scene;
+    QVector<QUuid> m_ids;
+    QVector<QVector3D> m_oldPositions;
+    QVector<QVector3D> m_newPositions;
+};
+
+class SetBarPropertiesCommand : public QUndoCommand
+{
+public:
+    SetBarPropertiesCommand(SceneController *scene,
+                            const QVector<QUuid> &ids,
+                            const QVector<QUuid> &oldMaterials,
+                            const QVector<QUuid> &oldSections,
+                            const std::optional<QUuid> &newMaterial,
+                            const std::optional<QUuid> &newSection,
+                            QUndoCommand *parent = nullptr)
+        : QUndoCommand(parent)
+        , m_scene(scene)
+        , m_ids(ids)
+        , m_oldMaterials(oldMaterials)
+        , m_oldSections(oldSections)
+        , m_newMaterial(newMaterial)
+        , m_newSection(newSection)
+    {
+        setText(QObject::tr("Atualizar propriedades de barra"));
+    }
+
+    void undo() override
+    {
+        if (!m_scene) {
+            return;
+        }
+        for (int i = 0; i < m_ids.size(); ++i) {
+            std::vector<QUuid> single { m_ids.at(i) };
+            std::optional<QUuid> mat(m_oldMaterials.at(i));
+            std::optional<QUuid> sec(m_oldSections.at(i));
+            m_scene->assignBarProperties(single, mat, sec);
+        }
+    }
+
+    void redo() override
+    {
+        if (!m_scene) {
+            return;
+        }
+        if (!m_newMaterial.has_value() && !m_newSection.has_value()) {
+            return;
+        }
+        std::vector<QUuid> barIds;
+        barIds.reserve(m_ids.size());
+        for (const QUuid &id : m_ids) {
+            barIds.push_back(id);
+        }
+        m_scene->assignBarProperties(barIds, m_newMaterial, m_newSection);
+    }
+
+private:
+    SceneController *m_scene;
+    QVector<QUuid> m_ids;
+    QVector<QUuid> m_oldMaterials;
+    QVector<QUuid> m_oldSections;
+    std::optional<QUuid> m_newMaterial;
+    std::optional<QUuid> m_newSection;
+};
+
+} // namespace
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_sceneController(new SceneController(this))
+    , m_selectionModel(new Structura::SelectionModel(this))
     , m_vtkWidget(new QVTKOpenGLNativeWidget(this))
     , m_ribbon(new QTabWidget(this))
     , m_homeTabButton(nullptr)
+    , m_undoStack(new QUndoStack(this))
 {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::CustomizeWindowHint);
     setMouseTracking(true);
     setWindowTitle(tr("Structura 3D"));
+
+    m_undoStack->setUndoLimit(128);
+    m_undoAction = m_undoStack->createUndoAction(this, tr("Desfazer"));
+    m_undoAction->setShortcut(QKeySequence::Undo);
+    m_undoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowBack));
+    addAction(m_undoAction);
+
+    m_redoAction = m_undoStack->createRedoAction(this, tr("Refazer"));
+    m_redoAction->setShortcut(QKeySequence::Redo);
+    m_redoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
+    addAction(m_redoAction);
 
     m_addPointAction = new QAction(tr("Inserir ponto"), this);
     m_addPointAction->setIcon(style()->standardIcon(QStyle::SP_DialogYesButton));
@@ -109,16 +226,24 @@ MainWindow::MainWindow(QWidget *parent)
     }
     createRibbon();
 
-    auto *centralWidget = new QWidget(this);
-    auto *layout = new QVBoxLayout(centralWidget);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
-    layout->addWidget(m_quickBar);
-    layout->addWidget(m_ribbon);
-    layout->addWidget(m_vtkWidget, 1);
-    setCentralWidget(centralWidget);
+    setupCentralLayouts();
+    ensurePropertiesPanel();;
+    refreshPropertiesPanel();
 
     m_sceneController->initialize(m_vtkWidget);
+    connect(m_selectionModel, &Structura::SelectionModel::selectionChanged, this,
+            [this](const QSet<QUuid> &nodes, const QSet<QUuid> &bars) {
+                if (!m_sceneController) {
+                    return;
+                }
+                m_sceneController->setSelectedNodes(nodes);
+                m_sceneController->setSelectedBars(bars);
+                refreshPropertiesPanel();
+                updateStatus();
+            });
+    connect(m_undoStack, &QUndoStack::indexChanged, this, [this](int) {
+        refreshPropertiesPanel();
+    });
 
     // Handle screen-click events during insertion
     m_vtkWidget->installEventFilter(this);
@@ -182,6 +307,13 @@ QWidget *MainWindow::createQuickAccessBar()
         return button;
     };
 
+    if (m_undoAction) {
+        leftLayout->addWidget(createQuickButton(m_undoAction));
+    }
+    if (m_redoAction) {
+        leftLayout->addWidget(createQuickButton(m_redoAction));
+    }
+
     leftLayout->addWidget(createQuickButton(m_openModelAction));
     leftLayout->addWidget(createQuickButton(m_saveModelAction));
 
@@ -235,6 +367,271 @@ QWidget *MainWindow::createQuickAccessBar()
     });
 
     return bar;
+}
+
+void MainWindow::setupCentralLayouts()
+{
+    auto *centralWidget = new QWidget(this);
+    auto *outerLayout = new QVBoxLayout(centralWidget);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+    outerLayout->setSpacing(0);
+
+    outerLayout->addWidget(m_quickBar);
+    outerLayout->addWidget(m_ribbon);
+
+    auto *contentWidget = new QWidget(centralWidget);
+    m_contentLayout = new QHBoxLayout(contentWidget);
+    m_contentLayout->setContentsMargins(0, 0, 0, 0);
+    m_contentLayout->setSpacing(0);
+
+    m_vtkWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_contentLayout->addWidget(m_vtkWidget, 1);
+
+    ensurePropertiesPanel();;
+    if (m_propertiesContainer) {
+        m_contentLayout->addWidget(m_propertiesContainer, 0);
+    }
+
+    setupRightToolColumn();
+    m_contentLayout->addWidget(m_toolColumn, 0);
+
+    outerLayout->addWidget(contentWidget, 1);
+    setCentralWidget(centralWidget);
+}
+
+void MainWindow::setupRightToolColumn()
+{
+    if (m_toolColumn) {
+        return;
+    }
+
+    m_toolColumn = new QWidget(this);
+    m_toolColumn->setObjectName(QStringLiteral("ToolColumn"));
+    m_toolColumn->setFixedWidth(48);
+    m_toolColumn->setStyleSheet(QStringLiteral(
+        "#ToolColumn { background: #f2f5fa; border-left: 1px solid #d6dde8; }"
+        "#ToolColumn QToolButton { border: none; background: transparent; }"
+        "#ToolColumn QToolButton:checked { background: rgba(19, 147, 214, 0.18); border-radius: 6px; }"
+        "#ToolColumn QToolButton:hover { background: rgba(19, 147, 214, 0.24); border-radius: 6px; }"
+    ));
+
+    auto *layout = new QVBoxLayout(m_toolColumn);
+    layout->setContentsMargins(12, 20, 12, 20);
+    layout->setSpacing(16);
+
+    m_propertiesToolButton = new QToolButton(m_toolColumn);
+    m_propertiesToolButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_propertiesToolButton->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
+    m_propertiesToolButton->setIconSize(QSize(24, 24));
+    m_propertiesToolButton->setCheckable(true);
+    m_propertiesToolButton->setAutoRaise(false);
+    m_propertiesToolButton->setFixedSize(36, 36);
+    m_propertiesToolButton->setCursor(Qt::PointingHandCursor);
+    m_propertiesToolButton->setToolTip(tr("Propriedades"));
+    layout->addWidget(m_propertiesToolButton, 0, Qt::AlignHCenter | Qt::AlignTop);
+    layout->addStretch(1);
+
+    connect(m_propertiesToolButton, &QToolButton::toggled, this, [this](bool checked) {
+        ensurePropertiesPanel();;
+        if (!m_propertiesContainer) {
+            return;
+        }
+        m_propertiesContainer->setVisible(checked);
+        if (checked) {
+            refreshPropertiesPanel();
+        }
+    });
+}
+
+void MainWindow::ensurePropertiesPanel()
+{
+    if (m_propertiesPanel) {
+        return;
+    }
+    if (!m_contentLayout) {
+        return;
+    }
+
+    QWidget *parentWidget = m_contentLayout->parentWidget();
+    m_propertiesContainer = new QWidget(parentWidget);
+    m_propertiesContainer->setObjectName(QStringLiteral("PropertiesContainer"));
+    m_propertiesContainer->setFixedWidth(320);
+    m_propertiesContainer->setStyleSheet(QStringLiteral(
+        "#PropertiesContainer { background: #f5f7fb; border-left: 1px solid #d6dde8; }"));
+
+    auto *panelLayout = new QVBoxLayout(m_propertiesContainer);
+    panelLayout->setContentsMargins(12, 12, 12, 12);
+    panelLayout->setSpacing(8);
+
+    m_propertiesPanel = new PropertiesPanel(m_propertiesContainer);
+    panelLayout->addWidget(m_propertiesPanel);
+    panelLayout->addStretch(1);
+
+    m_propertiesContainer->hide();
+    m_contentLayout->addWidget(m_propertiesContainer, 0);
+
+    connect(m_propertiesPanel, &PropertiesPanel::nodeCoordinateEdited,
+            this, &MainWindow::onNodeCoordinateEdited);
+    connect(m_propertiesPanel, &PropertiesPanel::barMaterialEdited,
+            this, &MainWindow::onBarMaterialEdited);
+    connect(m_propertiesPanel, &PropertiesPanel::barSectionEdited,
+            this, &MainWindow::onBarSectionEdited);
+
+    QVector<QPair<QUuid, QString>> materialOptions;
+    materialOptions.reserve(m_materials.size());
+    for (const auto &mat : m_materials) {
+        materialOptions.append({ mat.uuid, mat.name });
+    }
+    m_propertiesPanel->setMaterialOptions(materialOptions);
+
+    QVector<QPair<QUuid, QString>> sectionOptions;
+    sectionOptions.reserve(m_sections.size());
+    for (const auto &sec : m_sections) {
+        sectionOptions.append({ sec.uuid, sec.name });
+    }
+    m_propertiesPanel->setSectionOptions(sectionOptions);
+}
+
+void MainWindow::refreshPropertiesPanel()
+{
+    ensurePropertiesPanel();;
+    if (!m_propertiesPanel) {
+        return;
+    }
+
+    QVector<QPair<QUuid, QString>> materialOptions;
+    materialOptions.reserve(m_materials.size());
+    for (const auto &mat : m_materials) {
+        materialOptions.append({ mat.uuid, mat.name });
+    }
+    m_propertiesPanel->setMaterialOptions(materialOptions);
+
+    QVector<QPair<QUuid, QString>> sectionOptions;
+    sectionOptions.reserve(m_sections.size());
+    for (const auto &sec : m_sections) {
+        sectionOptions.append({ sec.uuid, sec.name });
+    }
+    m_propertiesPanel->setSectionOptions(sectionOptions);
+
+    const QSet<QUuid> nodeIds = m_selectionModel ? m_selectionModel->selectedNodes() : QSet<QUuid>();
+    const QSet<QUuid> barIds = m_selectionModel ? m_selectionModel->selectedBars() : QSet<QUuid>();
+
+    m_propertiesPanel->setNodeEntries(buildNodeEntries(nodeIds));
+    m_propertiesPanel->setBarEntries(buildBarEntries(barIds));
+    updateGridInfoOnPanel();
+}
+
+QVector<PropertiesPanel::NodeEntry> MainWindow::buildNodeEntries(const QSet<QUuid> &nodeIds) const
+{
+    QVector<PropertiesPanel::NodeEntry> entries;
+    if (!m_sceneController) {
+        return entries;
+    }
+    for (const QUuid &id : nodeIds) {
+        const SceneController::Node *node = m_sceneController->findNode(id);
+        if (!node) {
+            continue;
+        }
+        PropertiesPanel::NodeEntry entry;
+        entry.id = id;
+        entry.externalId = node->externalId();
+        const auto pos = node->position();
+        entry.x = pos[0];
+        entry.y = pos[1];
+        entry.z = pos[2];
+        entry.restraints.fill(false);
+        for (const auto &support : m_supports) {
+            if (support.nodeId == entry.externalId) {
+                for (int i = 0; i < 6; ++i) {
+                    entry.restraints[static_cast<std::size_t>(i)] = support.restraints[i];
+                }
+                break;
+            }
+        }
+        int loadCount = 0;
+        for (const auto &load : m_nodalLoads) {
+            if (load.nodeId == entry.externalId) {
+                ++loadCount;
+            }
+        }
+        entry.loadCount = loadCount;
+        entries.append(entry);
+    }
+    return entries;
+}
+
+QVector<PropertiesPanel::BarEntry> MainWindow::buildBarEntries(const QSet<QUuid> &barIds) const
+{
+    QVector<PropertiesPanel::BarEntry> entries;
+    if (!m_sceneController) {
+        return entries;
+    }
+
+    const auto nodeInfos = m_sceneController->nodeInfos();
+    QHash<QUuid, SceneController::NodeInfo> nodeMap;
+    for (const auto &info : nodeInfos) {
+        nodeMap.insert(info.id, info);
+    }
+
+    for (const QUuid &id : barIds) {
+        const SceneController::Bar *bar = m_sceneController->findBar(id);
+        if (!bar) {
+            continue;
+        }
+        PropertiesPanel::BarEntry entry;
+        entry.id = id;
+        entry.externalId = bar->externalId();
+        entry.materialId = bar->materialId();
+        entry.sectionId = bar->sectionId();
+
+        const auto materialInfo = findMaterial(entry.materialId);
+        entry.materialName = materialInfo ? materialInfo->name : tr("Sem material");
+        const auto sectionInfo = findSection(entry.sectionId);
+        entry.sectionName = sectionInfo ? sectionInfo->name : tr("Sem secao");
+
+        QVector3D startPos;
+        QVector3D endPos;
+        bool hasStart = false;
+        bool hasEnd = false;
+        auto startIt = nodeMap.constFind(bar->startNodeId());
+        if (startIt != nodeMap.constEnd()) {
+            entry.nodeI = startIt.value().externalId;
+            startPos = QVector3D(startIt.value().x, startIt.value().y, startIt.value().z);
+            hasStart = true;
+        }
+        auto endIt = nodeMap.constFind(bar->endNodeId());
+        if (endIt != nodeMap.constEnd()) {
+            entry.nodeJ = endIt.value().externalId;
+            endPos = QVector3D(endIt.value().x, endIt.value().y, endIt.value().z);
+            hasEnd = true;
+        }
+        entry.length = (hasStart && hasEnd) ? (startPos - endPos).length() : 0.0;
+        int distributedLoads = 0;
+        for (const auto &load : m_memberLoads) {
+            if (load.memberId == entry.externalId) {
+                ++distributedLoads;
+            }
+        }
+        entry.distributedLoadCount = distributedLoads;
+
+        entries.append(entry);
+    }
+    return entries;
+}
+
+void MainWindow::updateGridInfoOnPanel()
+{
+    if (!m_propertiesPanel || !m_sceneController) {
+        return;
+    }
+    const bool hasGrid = m_sceneController->hasGrid();
+    double dx = 0.0, dy = 0.0, dz = 0.0;
+    int nx = 0, ny = 0, nz = 0;
+    if (hasGrid) {
+        m_sceneController->gridSpacing(dx, dy, dz);
+        m_sceneController->gridCounts(nx, ny, nz);
+    }
+    m_propertiesPanel->setGridInfo(hasGrid, dx, dy, dz, nx, ny, nz);
 }
 
 void MainWindow::createRibbon()
@@ -381,10 +778,12 @@ int MainWindow::nextSectionExternalId() const
 int MainWindow::nextBarExternalId() const
 {
     int maxId = 0;
-    const auto &bars = m_sceneController->bars();
-    for (const auto &bar : bars) {
-        if (bar.externalId > maxId) {
-            maxId = bar.externalId;
+    if (m_sceneController) {
+        const auto bars = m_sceneController->bars();
+        for (const auto &bar : bars) {
+            if (bar.externalId > maxId) {
+                maxId = bar.externalId;
+            }
         }
     }
     return maxId + 1;
@@ -402,14 +801,14 @@ void MainWindow::setCommand(Command command)
 
     if (wasBarMode && !willBeBarMode) {
         m_sceneController->clearHighlightedNode();
-        m_firstBarNode = -1;
+        m_firstBarNodeId = QUuid();
     }
 
     m_command = command;
 
     if (!willBeBarMode) {
         m_sceneController->clearHighlightedNode();
-        m_firstBarNode = -1;
+        m_firstBarNodeId = QUuid();
     }
 
     updateStatus();
@@ -479,6 +878,7 @@ void MainWindow::onGenerateGrid()
     GridDialog gd(this);
     if (gd.exec() == QDialog::Accepted) {
         m_sceneController->createGrid(gd.dx(), gd.dy(), gd.dz(), gd.nx(), gd.ny(), gd.nz());
+        refreshPropertiesPanel();
     }
 }
 
@@ -536,17 +936,28 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         }
     }
 
-    if (obj == m_vtkWidget) {
+    if (obj == m_vtkWidget && m_sceneController) {
+        const auto toDisplay = [&](const QPoint &p) -> QPoint {
+            return QPoint(p.x(), m_sceneController->viewportHeight() - 1 - p.y());
+        };
+        const auto pickNodeAt = [&](const QPoint &p) -> QUuid {
+            const QPoint disp = toDisplay(p);
+            return m_sceneController->pickNode(disp.x(), disp.y());
+        };
+        const auto pickBarAt = [&](const QPoint &p) -> QUuid {
+            const QPoint disp = toDisplay(p);
+            return m_sceneController->pickBar(disp.x(), disp.y());
+        };
+
         if (m_command == Command::InsertNode) {
             switch (event->type()) {
             case QEvent::MouseButtonPress: {
                 auto *me = static_cast<QMouseEvent *>(event);
                 if (me->button() == Qt::LeftButton) {
                     const QPoint p = me->pos();
-                    const int displayX = p.x();
-                    const int displayY = m_sceneController->viewportHeight() - 1 - p.y();
+                    const QPoint disp = toDisplay(p);
                     double wx = 0, wy = 0, wz = 0;
-                    if (m_sceneController->worldPointOnViewPlane(displayX, displayY, wx, wy, wz)) {
+                    if (m_sceneController->worldPointOnViewPlane(disp.x(), disp.y(), wx, wy, wz)) {
                         if (m_snapCheck && m_snapCheck->isChecked() && m_sceneController->hasGrid()) {
                             m_sceneController->snapToGrid(wx, wy, wz);
                         }
@@ -554,9 +965,19 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                     }
                     return true;
                 } else if (me->button() == Qt::RightButton) {
-                    return false; // allow camera rotation
+                    return false;
                 }
                 break;
+            }
+            case QEvent::MouseMove: {
+                auto *mm = static_cast<QMouseEvent *>(event);
+                const QUuid nodeId = pickNodeAt(mm->pos());
+                if (!nodeId.isNull()) {
+                    m_sceneController->setHighlightedNode(nodeId);
+                } else {
+                    m_sceneController->clearHighlightedNode();
+                }
+                return false;
             }
             case QEvent::KeyPress: {
                 auto *ke = static_cast<QKeyEvent *>(event);
@@ -573,12 +994,9 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
             switch (event->type()) {
             case QEvent::MouseMove: {
                 auto *mm = static_cast<QMouseEvent *>(event);
-                const QPoint p = mm->pos();
-                const int displayX = p.x();
-                const int displayY = m_sceneController->viewportHeight() - 1 - p.y();
-                const int nodeIndex = m_sceneController->pickNode(displayX, displayY);
-                if (nodeIndex >= 0) {
-                    m_sceneController->setHighlightedNode(nodeIndex);
+                const QUuid nodeId = pickNodeAt(mm->pos());
+                if (!nodeId.isNull()) {
+                    m_sceneController->setHighlightedNode(nodeId);
                 } else {
                     m_sceneController->clearHighlightedNode();
                 }
@@ -587,17 +1005,14 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
             case QEvent::MouseButtonPress: {
                 auto *me = static_cast<QMouseEvent *>(event);
                 if (me->button() == Qt::LeftButton) {
-                    const QPoint p = me->pos();
-                    const int displayX = p.x();
-                    const int displayY = m_sceneController->viewportHeight() - 1 - p.y();
-                    const int picked = m_sceneController->pickNode(displayX, displayY);
-                    if (picked >= 0) {
+                    const QUuid pickedNode = pickNodeAt(me->pos());
+                    if (!pickedNode.isNull()) {
                         if (m_command == Command::InsertBarFirst) {
-                            m_firstBarNode = picked;
-                            m_sceneController->setHighlightedNode(picked);
+                            m_firstBarNodeId = pickedNode;
+                            m_sceneController->setHighlightedNode(pickedNode);
                             setCommand(Command::InsertBarSecond);
                         } else {
-                            if (picked == m_firstBarNode) {
+                            if (pickedNode == m_firstBarNodeId) {
                                 QMessageBox::warning(this, tr("Inserir barra"), tr("Selecione dois nos distintos."));
                                 return true;
                             }
@@ -619,10 +1034,10 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                             if (barDialog.exec() == QDialog::Accepted) {
                                 const QUuid materialId = barDialog.selectedMaterial();
                                 const QUuid sectionId = barDialog.selectedSection();
-                                const int barIndex = m_sceneController->addBar(m_firstBarNode, picked, materialId, sectionId);
-                                if (barIndex >= 0) {
+                                const QUuid barId = m_sceneController->addBar(m_firstBarNodeId, pickedNode, materialId, sectionId);
+                                if (!barId.isNull()) {
                                     const int externalBarId = nextBarExternalId();
-                                    m_sceneController->setBarExternalId(barIndex, externalBarId);
+                                    m_sceneController->setBarExternalId(barId, externalBarId);
                                     if (!materialId.isNull()) {
                                         m_lastMaterialId = materialId;
                                     }
@@ -631,7 +1046,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                                     }
                                 }
                             }
-                            m_firstBarNode = -1;
+                            m_firstBarNodeId = QUuid();
                             m_sceneController->clearHighlightedNode();
                             setCommand(Command::InsertBarFirst);
                         }
@@ -653,6 +1068,56 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
             default:
                 break;
             }
+        } else {
+            switch (event->type()) {
+            case QEvent::MouseMove: {
+                auto *mm = static_cast<QMouseEvent *>(event);
+                const QUuid nodeId = pickNodeAt(mm->pos());
+                if (!nodeId.isNull()) {
+                    m_sceneController->setHighlightedNode(nodeId);
+                } else {
+                    m_sceneController->clearHighlightedNode();
+                }
+                return false;
+            }
+            case QEvent::MouseButtonPress: {
+                auto *me = static_cast<QMouseEvent *>(event);
+                if (me->button() != Qt::LeftButton) {
+                    return false;
+                }
+
+                const QUuid nodeId = pickNodeAt(me->pos());
+                const QUuid barId = nodeId.isNull() ? pickBarAt(me->pos()) : QUuid();
+
+                Structura::SelectionModel::Mode mode = Structura::SelectionModel::Mode::Replace;
+                if (me->modifiers().testFlag(Qt::ControlModifier)) {
+                    mode = Structura::SelectionModel::Mode::Toggle;
+                } else if (me->modifiers().testFlag(Qt::ShiftModifier)) {
+                    mode = Structura::SelectionModel::Mode::Add;
+                }
+
+                if (!nodeId.isNull()) {
+                    m_selectionModel->selectNode(nodeId, mode);
+                    return true;
+                }
+                if (!barId.isNull()) {
+                    m_selectionModel->selectBar(barId, mode);
+                    return true;
+                }
+
+                if (mode == Structura::SelectionModel::Mode::Replace) {
+                    m_selectionModel->clear();
+                    return true;
+                }
+                break;
+            }
+            case QEvent::Leave: {
+                m_sceneController->clearHighlightedNode();
+                break;
+            }
+            default:
+                break;
+            }
         }
     }
     return QMainWindow::eventFilter(obj, event);
@@ -665,7 +1130,7 @@ void MainWindow::onInsertBar()
         return;
     }
 
-    m_firstBarNode = -1;
+    m_firstBarNodeId = QUuid();
     setCommand(Command::InsertBarFirst);
     if (m_vtkWidget) {
         m_vtkWidget->setFocus();
@@ -690,6 +1155,7 @@ void MainWindow::onCreateMaterial()
     }
     m_materials.append(info);
     m_lastMaterialId = info.uuid;
+    refreshPropertiesPanel();
 }
 
 void MainWindow::updateMaximizeButtonIcon()
@@ -756,15 +1222,18 @@ void MainWindow::onCreateSection()
     }
     m_sections.append(info);
     m_lastSectionId = info.uuid;
+    refreshPropertiesPanel();
 }
 
 void MainWindow::onAssignProperties()
 {
-    const auto &bars = m_sceneController->bars();
+    auto bars = m_sceneController->bars();
     if (bars.empty()) {
         QMessageBox::information(this, tr("Atribuir a barras"), tr("Nao existem barras cadastradas."));
         return;
     }
+
+    const auto nodes = m_sceneController->nodeInfos();
 
     QVector<QPair<QUuid, QString>> materialOptions;
     materialOptions.reserve(m_materials.size());
@@ -777,7 +1246,7 @@ void MainWindow::onAssignProperties()
         sectionOptions.append({ sec.uuid, sec.name });
     }
 
-    AssignBarPropertiesDialog dialog(materialOptions, sectionOptions, bars, this);
+    AssignBarPropertiesDialog dialog(materialOptions, sectionOptions, bars, nodes, this);
     dialog.setCurrentMaterial(m_lastMaterialId);
     dialog.setCurrentSection(m_lastSectionId);
     if (dialog.exec() != QDialog::Accepted) {
@@ -792,13 +1261,19 @@ void MainWindow::onAssignProperties()
     const QUuid materialId = dialog.selectedMaterial();
     const QUuid sectionId = dialog.selectedSection();
 
-    std::vector<int> indices;
-    indices.reserve(selection.size());
+    std::vector<QUuid> barIds;
+    barIds.reserve(selection.size());
     for (int idx : selection) {
-        indices.push_back(idx);
+        if (idx >= 0 && idx < static_cast<int>(bars.size())) {
+            barIds.push_back(bars[static_cast<std::size_t>(idx)].id);
+        }
     }
 
-    m_sceneController->assignBarProperties(indices, materialId, sectionId);
+    if (!barIds.empty()) {
+        m_sceneController->assignBarProperties(barIds,
+                                               std::optional<QUuid>(materialId),
+                                               std::optional<QUuid>(sectionId));
+    }
 
     if (!materialId.isNull()) {
         m_lastMaterialId = materialId;
@@ -806,6 +1281,8 @@ void MainWindow::onAssignProperties()
     if (!sectionId.isNull()) {
         m_lastSectionId = sectionId;
     }
+
+    refreshPropertiesPanel();
 }
 
 void MainWindow::onOpenModel()
@@ -846,6 +1323,10 @@ void MainWindow::resetModel()
 {
     setCommand(Command::None);
     m_sceneController->clearAll();
+    m_firstBarNodeId = QUuid();
+    if (m_selectionModel) {
+        m_selectionModel->clear();
+    }
     m_materials.clear();
     m_sections.clear();
     m_supports.clear();
@@ -853,6 +1334,7 @@ void MainWindow::resetModel()
     m_memberLoads.clear();
     m_lastMaterialId = QUuid();
     m_lastSectionId = QUuid();
+    refreshPropertiesPanel();
 }
 
 bool MainWindow::loadFromDat(const QString &filePath)
@@ -1119,24 +1601,24 @@ bool MainWindow::loadFromDat(const QString &filePath)
         }
     }
 
-    QHash<int, int> nodeIndexMap;
+    QHash<int, QUuid> nodeUuidMap;
     for (const auto &node : nodesTmp) {
-        const int index = m_sceneController->addPointWithId(node.x, node.y, node.z, node.id);
-        nodeIndexMap.insert(node.id, index);
+        const QUuid uuid = m_sceneController->addPointWithId(node.x, node.y, node.z, node.id);
+        nodeUuidMap.insert(node.id, uuid);
     }
 
     for (const auto &member : membersTmp) {
-        const int startIdx = nodeIndexMap.value(member.nodeI, -1);
-        const int endIdx = nodeIndexMap.value(member.nodeJ, -1);
-        if (startIdx < 0 || endIdx < 0) {
+        const QUuid startId = nodeUuidMap.value(member.nodeI);
+        const QUuid endId = nodeUuidMap.value(member.nodeJ);
+        if (startId.isNull() || endId.isNull()) {
             QMessageBox::warning(this, tr("Erro"), tr("Barra %1 referencia nos inexistentes").arg(member.id));
             continue;
         }
         const QUuid materialUuid = materialMap.value(member.materialId);
         const QUuid sectionUuid = sectionMap.value(member.sectionId);
-        const int barIndex = m_sceneController->addBar(startIdx, endIdx, materialUuid, sectionUuid);
-        if (barIndex >= 0) {
-            m_sceneController->setBarExternalId(barIndex, member.id);
+        const QUuid barId = m_sceneController->addBar(startId, endId, materialUuid, sectionUuid);
+        if (!barId.isNull()) {
+            m_sceneController->setBarExternalId(barId, member.id);
         }
     }
 
@@ -1156,13 +1638,14 @@ bool MainWindow::saveToDat(const QString &filePath)
     stream.setLocale(QLocale::c());
 
     // Ensure bar external ids exist
-    const auto &bars = m_sceneController->bars();
+    auto bars = m_sceneController->bars();
     int nextBarId = nextBarExternalId();
-    for (int i = 0; i < bars.size(); ++i) {
-        if (bars[i].externalId <= 0) {
-            m_sceneController->setBarExternalId(i, nextBarId++);
+    for (const auto &bar : bars) {
+        if (bar.externalId <= 0) {
+            m_sceneController->setBarExternalId(bar.id, nextBarId++);
         }
     }
+    bars = m_sceneController->bars();
 
     // Prepare sorted lists
     auto materials = m_materials;
@@ -1218,6 +1701,10 @@ bool MainWindow::saveToDat(const QString &filePath)
     }
 
     const auto nodes = m_sceneController->nodeInfos();
+    QHash<QUuid, SceneController::NodeInfo> nodeInfoMap;
+    for (const auto &node : nodes) {
+        nodeInfoMap.insert(node.id, node);
+    }
     auto sortedNodes = nodes;
     std::sort(sortedNodes.begin(), sortedNodes.end(), [](const SceneController::NodeInfo &a, const SceneController::NodeInfo &b) {
         return a.externalId < b.externalId;
@@ -1284,18 +1771,18 @@ bool MainWindow::saveToDat(const QString &filePath)
     stream << "[MEMBERS]\n";
     stream << "# ID    Node_i   Node_j   Material_ID   Section_ID\n";
     for (const auto &bar : members) {
-        const SceneController::NodeInfo startInfo = nodes.at(bar.startNode);
-        const SceneController::NodeInfo endInfo = nodes.at(bar.endNode);
-        QUuid materialUuid = bar.materialId;
-        QUuid sectionUuid = bar.sectionId;
-        const MaterialInfo *material = findMaterial(materialUuid);
-        const SectionInfo *section = findSection(sectionUuid);
+        const auto startIt = nodeInfoMap.constFind(bar.startNodeId);
+        const auto endIt = nodeInfoMap.constFind(bar.endNodeId);
+        const int startExternalId = (startIt != nodeInfoMap.constEnd()) ? startIt.value().externalId : 0;
+        const int endExternalId = (endIt != nodeInfoMap.constEnd()) ? endIt.value().externalId : 0;
+        const MaterialInfo *material = findMaterial(bar.materialId);
+        const SectionInfo *section = findSection(bar.sectionId);
         const int materialId = material ? material->externalId : 0;
         const int sectionId = section ? section->externalId : 0;
         stream << QString::asprintf("%-8d %8d %8d %10d %12d\n",
                                      bar.externalId,
-                                     startInfo.externalId,
-                                     endInfo.externalId,
+                                     startExternalId,
+                                     endExternalId,
                                      materialId,
                                      sectionId);
     }
@@ -1342,11 +1829,164 @@ void MainWindow::updateStatus()
         statusBar()->showMessage(tr("Criar barra: selecione o primeiro no (Esc para cancelar)"));
         break;
     case Command::InsertBarSecond:
+    {
+        QString nodeLabel = QStringLiteral("?");
+        if (!m_firstBarNodeId.isNull()) {
+            if (const auto *node = m_sceneController->findNode(m_firstBarNodeId)) {
+                nodeLabel = QString::number(node->externalId());
+            }
+        }
         statusBar()->showMessage(tr("Criar barra: selecione o segundo no (primeiro = N%1) | Esc para cancelar")
-            .arg(m_firstBarNode >= 0 ? QString::number(m_firstBarNode + 1) : QStringLiteral("?")));
-        break;
-    default:
-        statusBar()->showMessage(tr("Pronto"));
+            .arg(nodeLabel));
         break;
     }
+    default:
+    {
+        const int nodeCount = m_selectionModel ? m_selectionModel->selectedNodes().size() : 0;
+        const int barCount = m_selectionModel ? m_selectionModel->selectedBars().size() : 0;
+        if (nodeCount > 0 || barCount > 0) {
+            statusBar()->showMessage(tr("Selecionados: %1 no(s), %2 barra(s)").arg(nodeCount).arg(barCount));
+        } else {
+            statusBar()->showMessage(tr("Pronto"));
+        }
+        break;
+    }
+    }
 }
+void MainWindow::onNodeCoordinateEdited(const QVector<QUuid> &ids, char axis, double value)
+{
+    if (!m_sceneController || !m_undoStack || ids.isEmpty()) {
+        return;
+    }
+
+    QVector<QUuid> validIds;
+    QVector<QVector3D> oldPositions;
+    QVector<QVector3D> newPositions;
+
+    for (const QUuid &id : ids) {
+        const SceneController::Node *node = m_sceneController->findNode(id);
+        if (!node) {
+            continue;
+        }
+        const auto pos = node->position();
+        QVector3D oldPos(pos[0], pos[1], pos[2]);
+        QVector3D newPos = oldPos;
+        switch (axis) {
+        case 'x':
+            newPos.setX(value);
+            break;
+        case 'y':
+            newPos.setY(value);
+            break;
+        case 'z':
+            newPos.setZ(value);
+            break;
+        default:
+            return;
+        }
+        if (qFuzzyCompare(oldPos.x() + 1.0, newPos.x() + 1.0) &&
+            qFuzzyCompare(oldPos.y() + 1.0, newPos.y() + 1.0) &&
+            qFuzzyCompare(oldPos.z() + 1.0, newPos.z() + 1.0)) {
+            continue;
+        }
+        validIds.append(id);
+        oldPositions.append(oldPos);
+        newPositions.append(newPos);
+    }
+
+    if (validIds.isEmpty()) {
+        return;
+    }
+
+    auto *command = new MoveNodesCommand(m_sceneController, validIds, oldPositions, newPositions);
+    m_undoStack->push(command);
+    refreshPropertiesPanel();
+}
+
+void MainWindow::onBarMaterialEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &materialId)
+{
+    if (!m_sceneController || !m_undoStack || ids.isEmpty() || !materialId.has_value()) {
+        return;
+    }
+
+    QVector<QUuid> validIds;
+    QVector<QUuid> oldMaterials;
+    QVector<QUuid> oldSections;
+    bool changed = false;
+    const QUuid newMaterial = materialId.value();
+
+    for (const QUuid &id : ids) {
+        const SceneController::Bar *bar = m_sceneController->findBar(id);
+        if (!bar) {
+            continue;
+        }
+        validIds.append(id);
+        const QUuid oldMat = bar->materialId();
+        oldMaterials.append(oldMat);
+        oldSections.append(bar->sectionId());
+        if (oldMat != newMaterial) {
+            changed = true;
+        }
+    }
+
+    if (validIds.isEmpty() || !changed) {
+        return;
+    }
+
+    auto *command = new SetBarPropertiesCommand(m_sceneController,
+                                                validIds,
+                                                oldMaterials,
+                                                oldSections,
+                                                materialId,
+                                                std::nullopt);
+    m_undoStack->push(command);
+    m_lastMaterialId = newMaterial;
+    refreshPropertiesPanel();
+}
+
+void MainWindow::onBarSectionEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &sectionId)
+{
+    if (!m_sceneController || !m_undoStack || ids.isEmpty() || !sectionId.has_value()) {
+        return;
+    }
+
+    QVector<QUuid> validIds;
+    QVector<QUuid> oldMaterials;
+    QVector<QUuid> oldSections;
+    bool changed = false;
+    const QUuid newSection = sectionId.value();
+
+    for (const QUuid &id : ids) {
+        const SceneController::Bar *bar = m_sceneController->findBar(id);
+        if (!bar) {
+            continue;
+        }
+        validIds.append(id);
+        oldMaterials.append(bar->materialId());
+        const QUuid oldSec = bar->sectionId();
+        oldSections.append(oldSec);
+        if (oldSec != newSection) {
+            changed = true;
+        }
+    }
+
+    if (validIds.isEmpty() || !changed) {
+        return;
+    }
+
+    auto *command = new SetBarPropertiesCommand(m_sceneController,
+                                                validIds,
+                                                oldMaterials,
+                                                oldSections,
+                                                std::nullopt,
+                                                sectionId);
+    m_undoStack->push(command);
+    m_lastSectionId = newSection;
+    refreshPropertiesPanel();
+}
+
+
+
+
+
+

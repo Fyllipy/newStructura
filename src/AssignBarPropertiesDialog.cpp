@@ -9,10 +9,12 @@
 #include <QVBoxLayout>
 #include <QAbstractItemView>
 #include <QVariant>
+#include <QHash>
 
 AssignBarPropertiesDialog::AssignBarPropertiesDialog(const QVector<QPair<QUuid, QString>> &materials,
                                                      const QVector<QPair<QUuid, QString>> &sections,
                                                      const std::vector<SceneController::BarInfo> &bars,
+                                                     const std::vector<SceneController::NodeInfo> &nodes,
                                                      QWidget *parent)
     : QDialog(parent)
     , m_materialOptions(materials)
@@ -29,12 +31,20 @@ AssignBarPropertiesDialog::AssignBarPropertiesDialog(const QVector<QPair<QUuid, 
     populateCombo(m_sectionCombo, m_sectionOptions, tr("Sem secao"));
 
     m_barList->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    QHash<QUuid, int> nodeLabels;
+    nodeLabels.reserve(static_cast<int>(nodes.size()));
+    for (const auto &node : nodes) {
+        nodeLabels.insert(node.id, node.externalId);
+    }
+
     int index = 0;
     for (const auto &bar : bars) {
+        const int nodeI = nodeLabels.value(bar.startNodeId, 0);
+        const int nodeJ = nodeLabels.value(bar.endNodeId, 0);
         const QString label = tr("Barra %1 (N%2 - N%3)")
             .arg(index + 1)
-            .arg(bar.startNode + 1)
-            .arg(bar.endNode + 1);
+            .arg(nodeI > 0 ? QString::number(nodeI) : QStringLiteral("?"))
+            .arg(nodeJ > 0 ? QString::number(nodeJ) : QStringLiteral("?"));
         auto *item = new QListWidgetItem(label, m_barList);
         item->setData(Qt::UserRole, index);
         ++index;

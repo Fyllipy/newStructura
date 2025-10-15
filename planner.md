@@ -72,6 +72,7 @@ Este documento descreve, em alto nível, as etapas para evoluir o aplicativo par
 - “Deletar linha de grid”: destacar a linha sob cursor/seleção, exibir confirmação não modal ancorada ao lado da linha (tooltip persistente), manter o restante.
 - Critérios
   - Ghost segue snapping; highlight correto; confirmação não bloqueia a UI.
+- Mova todos os botões referentes a geração do gride para uma nova aba na ribbon chamada `Ferramentas`
 
 ### Etapa 5 — Aba “Carregamentos” e aplicação de forças
 - Ribbon `Carregamentos`: botões “Força concentrada (nós)” e “Distribuída (barras)”.

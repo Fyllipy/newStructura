@@ -5,6 +5,10 @@
 #include <QUuid>
 #include <QString>
 #include <QPoint>
+#include <optional>
+
+#include "SelectionModel.h"
+#include "PropertiesPanel.h"
 
 class QAction;
 class QTabWidget;
@@ -19,6 +23,8 @@ class MaterialDialog;
 class SectionDialog;
 class BarPropertiesDialog;
 class AssignBarPropertiesDialog;
+class QHBoxLayout;
+class QUndoStack;
 
 class MainWindow : public QMainWindow
 {
@@ -42,6 +48,9 @@ private slots:
     void onOpenModel();
     void onSaveModel();
     void onRibbonTabChanged(int index);
+    void onNodeCoordinateEdited(const QVector<QUuid> &ids, char axis, double value);
+    void onBarMaterialEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &materialId);
+    void onBarSectionEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &sectionId);
 
 private:
     enum class Command {
@@ -85,8 +94,16 @@ private:
     int nextSectionExternalId() const;
     int nextBarExternalId() const;
     void updateRibbonTabButtons(int currentIndex);
+    void setupCentralLayouts();
+    void setupRightToolColumn();
+    void ensurePropertiesPanel();
+    void refreshPropertiesPanel();
+    QVector<PropertiesPanel::NodeEntry> buildNodeEntries(const QSet<QUuid> &nodeIds) const;
+    QVector<PropertiesPanel::BarEntry> buildBarEntries(const QSet<QUuid> &barIds) const;
+    void updateGridInfoOnPanel();
 
     SceneController *m_sceneController;
+    Structura::SelectionModel *m_selectionModel;
     QVTKOpenGLNativeWidget *m_vtkWidget;
     QTabWidget *m_ribbon;
     QWidget *m_quickBar;
@@ -106,10 +123,18 @@ private:
     QAction *m_assignPropertiesAction;
     QAction *m_openModelAction;
     QAction *m_saveModelAction;
+    QAction *m_undoAction;
+    QAction *m_redoAction;
+    QUndoStack *m_undoStack;
 
     Command m_command { Command::None };
-    int m_firstBarNode {-1};
+    QUuid m_firstBarNodeId;
     QCheckBox *m_snapCheck {nullptr};
+    QWidget *m_toolColumn {nullptr};
+    QToolButton *m_propertiesToolButton {nullptr};
+    QWidget *m_propertiesContainer {nullptr};
+    PropertiesPanel *m_propertiesPanel {nullptr};
+    QHBoxLayout *m_contentLayout {nullptr};
 
     QVector<MaterialInfo> m_materials;
     QVector<SectionInfo> m_sections;

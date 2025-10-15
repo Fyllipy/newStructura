@@ -19,6 +19,7 @@ public:
     AssignBarPropertiesDialog(const QVector<QPair<QUuid, QString>> &materials,
                               const QVector<QPair<QUuid, QString>> &sections,
                               const std::vector<SceneController::BarInfo> &bars,
+                              const std::vector<SceneController::NodeInfo> &nodes,
                               QWidget *parent = nullptr);
 
     void setCurrentMaterial(const QUuid &id);
@@ -37,4 +38,3 @@ private:
     void populateCombo(QComboBox *combo, const QVector<QPair<QUuid, QString>> &options, const QString &emptyLabel);
     int indexForId(const QVector<QPair<QUuid, QString>> &options, const QUuid &id) const;
 };
-

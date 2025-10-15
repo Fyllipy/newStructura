@@ -48,6 +48,11 @@ if (QT_VERSION_MAJOR EQUAL 6)
         src/GridDialog.cpp
         src/SceneController.h
         src/SceneController.cpp
+        src/SelectionModel.h
+        src/SelectionModel.cpp
+        src/ModelEntities.h
+        src/PropertiesPanel.h
+        src/PropertiesPanel.cpp
     )
 else()
     add_executable(StructuraRibbon3D
@@ -70,6 +75,11 @@ else()
         src/GridDialog.cpp
         src/SceneController.h
         src/SceneController.cpp
+        src/SelectionModel.h
+        src/SelectionModel.cpp
+        src/ModelEntities.h
+        src/PropertiesPanel.h
+        src/PropertiesPanel.cpp
     )
 endif()
 
