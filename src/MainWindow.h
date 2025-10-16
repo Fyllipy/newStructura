@@ -25,6 +25,8 @@ class MaterialDialog;
 class SectionDialog;
 class BarPropertiesDialog;
 class AssignBarPropertiesDialog;
+class NodalLoadDialog;
+class DistributedLoadDialog;
 class QHBoxLayout;
 class QUndoStack;
 
@@ -46,6 +48,8 @@ private slots:
     void onAddGridLineY();
     void onAddGridLineZ();
     void onDeleteGridLine();
+    void onApplyNodalLoad();
+    void onApplyDistributedLoad();
     void onSnapToggled(bool checked);
     void onInsertBar();
     void onCreateMaterial();
@@ -144,6 +148,10 @@ private:
     void hideGridDeleteTooltip();
     void updateGridActionsEnabled();
     Structura::Model::GridLine::Axis commandToAxis(Command command) const;
+    void updateLoadActionsEnabled();
+    void syncLoadVisuals();
+    static bool isZeroNodalLoad(double fx, double fy, double fz, double mx, double my, double mz);
+    static bool isZeroDistributedLoad(double qx, double qy, double qz);
 
     SceneController *m_sceneController;
     Structura::SelectionModel *m_selectionModel;
@@ -163,6 +171,8 @@ private:
     QAction *m_addGridLineYAction;
     QAction *m_addGridLineZAction;
     QAction *m_deleteGridLineAction;
+    QAction *m_applyNodalLoadAction;
+    QAction *m_applyDistributedLoadAction;
     QAction *m_resetCameraAction;
     QAction *m_zoomExtentsAction;
     QAction *m_insertBarAction;
@@ -212,10 +222,26 @@ private:
         double qy;
         double qz;
     };
+    struct NodalLoadPreset {
+        double fx {0.0};
+        double fy {0.0};
+        double fz {0.0};
+        double mx {0.0};
+        double my {0.0};
+        double mz {0.0};
+    };
+    struct DistributedLoadPreset {
+        QString system {QStringLiteral("GLOBAL")};
+        double qx {0.0};
+        double qy {0.0};
+        double qz {0.0};
+    };
 
     QVector<NodeSupport> m_supports;
     QVector<NodalLoad> m_nodalLoads;
     QVector<MemberLoad> m_memberLoads;
+    NodalLoadPreset m_lastNodalPreset;
+    DistributedLoadPreset m_lastDistributedPreset;
 
     void updateMaximizeButtonIcon();
     void toggleMaximized();

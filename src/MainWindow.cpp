@@ -6,6 +6,8 @@
 #include "SectionDialog.h"
 #include "BarPropertiesDialog.h"
 #include "AssignBarPropertiesDialog.h"
+#include "NodalLoadDialog.h"
+#include "DistributedLoadDialog.h"
 #include "SceneController.h"
 
 #include <QAction>
@@ -44,6 +46,7 @@
 #include <QtMath>
 
 #include <algorithm>
+#include <cmath>
 
 #include <QVTKOpenGLNativeWidget.h>
 
@@ -211,6 +214,14 @@ MainWindow::MainWindow(QWidget *parent)
     m_deleteGridLineAction->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
     connect(m_deleteGridLineAction, &QAction::triggered, this, &MainWindow::onDeleteGridLine);
 
+    m_applyNodalLoadAction = new QAction(tr("Forca concentrada (nos)"), this);
+    m_applyNodalLoadAction->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
+    connect(m_applyNodalLoadAction, &QAction::triggered, this, &MainWindow::onApplyNodalLoad);
+
+    m_applyDistributedLoadAction = new QAction(tr("Distribuida (barras)"), this);
+    m_applyDistributedLoadAction->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
+    connect(m_applyDistributedLoadAction, &QAction::triggered, this, &MainWindow::onApplyDistributedLoad);
+
     m_createMaterialAction = new QAction(tr("Novo material"), this);
     m_createMaterialAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogNewFolder));
     connect(m_createMaterialAction, &QAction::triggered, this, &MainWindow::onCreateMaterial);
@@ -260,6 +271,7 @@ MainWindow::MainWindow(QWidget *parent)
                 m_sceneController->setSelectedBars(bars);
                 refreshPropertiesPanel();
                 updateStatus();
+                updateLoadActionsEnabled();
             });
     connect(m_undoStack, &QUndoStack::indexChanged, this, [this](int) {
         refreshPropertiesPanel();
@@ -289,6 +301,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_lastDatDirectory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
     updateMaximizeButtonIcon();
+    updateLoadActionsEnabled();
+    syncLoadVisuals();
 }
 
 MainWindow::~MainWindow() = default;
@@ -549,6 +563,7 @@ void MainWindow::refreshPropertiesPanel()
     m_propertiesPanel->setNodeEntries(buildNodeEntries(nodeIds));
     m_propertiesPanel->setBarEntries(buildBarEntries(barIds));
     updateGridInfoOnPanel();
+    updateLoadActionsEnabled();
 }
 
 QVector<PropertiesPanel::NodeEntry> MainWindow::buildNodeEntries(const QSet<QUuid> &nodeIds) const
@@ -771,8 +786,31 @@ void MainWindow::createRibbon()
     toolsLayout->addWidget(gridGroup, 0, Qt::AlignTop);
     toolsLayout->addStretch(1);
 
+    auto *loadsTab = new QWidget(this);
+    loadsTab->setObjectName(QStringLiteral("RibbonPage"));
+    loadsTab->setStyleSheet(QStringLiteral("#RibbonPage { background: #f2f5fa; }"));
+
+    auto *loadsLayout = new QHBoxLayout(loadsTab);
+    loadsLayout->setContentsMargins(4, 20, 4, 3);
+    loadsLayout->setSpacing(4);
+
+    auto *loadsGroup = new QGroupBox(tr("Carregamentos"), this);
+    auto *loadsGrid = new QGridLayout(loadsGroup);
+    loadsGrid->setContentsMargins(4, 5, 4, 4);
+    loadsGrid->setHorizontalSpacing(4);
+    loadsGrid->setVerticalSpacing(4);
+    loadsGrid->setAlignment(Qt::AlignTop);
+    const QList<QAction *> loadActions = { m_applyNodalLoadAction, m_applyDistributedLoadAction };
+    const int loadColumns = 2;
+    populateActionGrid(loadsGrid, loadActions, loadColumns);
+    const int loadRows = (loadActions.count() + loadColumns - 1) / loadColumns;
+    loadsGrid->setRowStretch(loadRows, 1);
+    loadsLayout->addWidget(loadsGroup, 0, Qt::AlignTop);
+    loadsLayout->addStretch(1);
+
     m_ribbon->addTab(homeTab, tr("Inicio"));
     m_ribbon->addTab(toolsTab, tr("Ferramentas"));
+    m_ribbon->addTab(loadsTab, tr("Carregamentos"));
     // if (auto *tabBar = m_ribbon->tabBar()) {
     //     tabBar->hide();
     // }
@@ -947,6 +985,126 @@ Structura::Model::GridLine::Axis MainWindow::commandToAxis(Command command) cons
     }
 }
 
+void MainWindow::syncLoadVisuals()
+{
+    if (!m_sceneController) {
+        return;
+    }
+
+    const auto nodeInfos = m_sceneController->nodeInfos();
+    QHash<int, SceneController::NodeInfo> nodesByExternal;
+    nodesByExternal.reserve(nodeInfos.size());
+    QHash<QUuid, SceneController::NodeInfo> nodesById;
+    nodesById.reserve(nodeInfos.size());
+    for (const auto &info : nodeInfos) {
+        nodesByExternal.insert(info.externalId, info);
+        nodesById.insert(info.id, info);
+    }
+
+    QVector<SceneController::NodalLoadVisual> nodalVisuals;
+    nodalVisuals.reserve(m_nodalLoads.size());
+    for (const auto &load : m_nodalLoads) {
+        const auto it = nodesByExternal.constFind(load.nodeId);
+        if (it == nodesByExternal.constEnd()) {
+            continue;
+        }
+        SceneController::NodalLoadVisual visual;
+        visual.position = QVector3D(static_cast<float>(it->x), static_cast<float>(it->y), static_cast<float>(it->z));
+        visual.force = QVector3D(static_cast<float>(load.fx), static_cast<float>(load.fy), static_cast<float>(load.fz));
+        visual.moment = QVector3D(static_cast<float>(load.mx), static_cast<float>(load.my), static_cast<float>(load.mz));
+        nodalVisuals.append(visual);
+    }
+    m_sceneController->setNodalLoadVisuals(nodalVisuals);
+
+    const auto barInfos = m_sceneController->bars();
+    QHash<int, SceneController::BarInfo> barsByExternal;
+    barsByExternal.reserve(barInfos.size());
+    for (const auto &info : barInfos) {
+        if (info.externalId > 0) {
+            barsByExternal.insert(info.externalId, info);
+        }
+    }
+
+    QVector<SceneController::MemberLoadVisual> memberVisuals;
+    memberVisuals.reserve(m_memberLoads.size());
+    for (const auto &load : m_memberLoads) {
+        const auto barIt = barsByExternal.constFind(load.memberId);
+        if (barIt == barsByExternal.constEnd()) {
+            continue;
+        }
+
+        const auto startNodeIt = nodesById.constFind(barIt->startNodeId);
+        const auto endNodeIt = nodesById.constFind(barIt->endNodeId);
+        if (startNodeIt == nodesById.constEnd() || endNodeIt == nodesById.constEnd()) {
+            continue;
+        }
+
+        const QVector3D start(static_cast<float>(startNodeIt->x), static_cast<float>(startNodeIt->y), static_cast<float>(startNodeIt->z));
+        const QVector3D end(static_cast<float>(endNodeIt->x), static_cast<float>(endNodeIt->y), static_cast<float>(endNodeIt->z));
+        const QVector3D barVector = end - start;
+        if (barVector.lengthSquared() < 1e-6f) {
+            continue;
+        }
+
+        QVector3D loadVector(static_cast<float>(load.qx), static_cast<float>(load.qy), static_cast<float>(load.qz));
+        const bool isLocal = load.system.compare(QStringLiteral("LOCAL"), Qt::CaseInsensitive) == 0
+            || load.system.compare(QStringLiteral("L"), Qt::CaseInsensitive) == 0;
+        if (isLocal) {
+            QVector3D xDir = barVector.normalized();
+            QVector3D reference(0.0f, 0.0f, 1.0f);
+            if (std::abs(QVector3D::dotProduct(xDir, reference)) > 0.95f) {
+                reference = QVector3D(0.0f, 1.0f, 0.0f);
+            }
+            QVector3D yDir = QVector3D::crossProduct(reference, xDir);
+            if (yDir.lengthSquared() < 1e-6f) {
+                reference = QVector3D(1.0f, 0.0f, 0.0f);
+                yDir = QVector3D::crossProduct(reference, xDir);
+            }
+            if (yDir.lengthSquared() < 1e-6f) {
+                yDir = QVector3D(0.0f, 1.0f, 0.0f);
+            }
+            yDir.normalize();
+            QVector3D zDir = QVector3D::crossProduct(xDir, yDir);
+            if (zDir.lengthSquared() < 1e-6f) {
+                zDir = QVector3D(0.0f, 0.0f, 1.0f);
+            }
+            zDir.normalize();
+            loadVector = static_cast<float>(load.qx) * xDir
+                       + static_cast<float>(load.qy) * yDir
+                       + static_cast<float>(load.qz) * zDir;
+        }
+
+        if (loadVector.lengthSquared() < 1e-6f) {
+            continue;
+        }
+
+        SceneController::MemberLoadVisual visual;
+        visual.position = (start + end) * 0.5f;
+        visual.force = loadVector;
+        visual.barVector = barVector;
+        visual.localSystem = isLocal;
+        memberVisuals.append(visual);
+    }
+
+    m_sceneController->setMemberLoadVisuals(memberVisuals);
+}
+
+bool MainWindow::isZeroNodalLoad(double fx, double fy, double fz, double mx, double my, double mz)
+{
+    const double eps = 1e-6;
+    auto nearZero = [eps](double value) { return std::abs(value) <= eps; };
+    return nearZero(fx) && nearZero(fy) && nearZero(fz)
+        && nearZero(mx) && nearZero(my) && nearZero(mz);
+}
+
+bool MainWindow::isZeroDistributedLoad(double qx, double qy, double qz)
+{
+    const double eps = 1e-6;
+    auto nearZero = [eps](double value) { return std::abs(value) <= eps; };
+    return nearZero(qx) && nearZero(qy) && nearZero(qz);
+}
+
+
 void MainWindow::updateGridInsertFromPoint(const QVector3D &worldPoint)
 {
     if (!m_gridInsertState.active) {
@@ -1108,6 +1266,19 @@ void MainWindow::updateGridActionsEnabled()
     if (m_addGridLineYAction) m_addGridLineYAction->setEnabled(hasGrid);
     if (m_addGridLineZAction) m_addGridLineZAction->setEnabled(hasGrid);
     if (m_deleteGridLineAction) m_deleteGridLineAction->setEnabled(hasGrid);
+}
+
+void MainWindow::updateLoadActionsEnabled()
+{
+    const bool hasSelection = (m_selectionModel != nullptr);
+    const bool hasNodeSelection = hasSelection && !m_selectionModel->selectedNodes().isEmpty();
+    const bool hasBarSelection = hasSelection && !m_selectionModel->selectedBars().isEmpty();
+    if (m_applyNodalLoadAction) {
+        m_applyNodalLoadAction->setEnabled(hasNodeSelection);
+    }
+    if (m_applyDistributedLoadAction) {
+        m_applyDistributedLoadAction->setEnabled(hasBarSelection);
+    }
 }
 
 int MainWindow::nextMaterialExternalId() const
@@ -1304,6 +1475,196 @@ void MainWindow::onDeleteGridLine()
     if (m_vtkWidget) {
         m_vtkWidget->setFocus();
     }
+}
+
+void MainWindow::onApplyNodalLoad()
+{
+    if (!m_selectionModel || !m_sceneController) {
+        return;
+    }
+
+    const QSet<QUuid> selectedNodes = m_selectionModel->selectedNodes();
+    if (selectedNodes.isEmpty()) {
+        QMessageBox::information(this, tr("Forca concentrada (nos)"),
+                                 tr("Selecione ao menos um no para aplicar a carga."));
+        return;
+    }
+
+    NodalLoadDialog dialog(this);
+    dialog.setSelectedCount(selectedNodes.size());
+    dialog.setInitialValues(m_lastNodalPreset.fx,
+                            m_lastNodalPreset.fy,
+                            m_lastNodalPreset.fz,
+                            m_lastNodalPreset.mx,
+                            m_lastNodalPreset.my,
+                            m_lastNodalPreset.mz);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    const auto values = dialog.values();
+    const bool removeLoad = isZeroNodalLoad(values.fx, values.fy, values.fz,
+                                            values.mx, values.my, values.mz);
+
+    bool changed = false;
+    int affected = 0;
+
+    for (const QUuid &nodeId : selectedNodes) {
+        const SceneController::Node *node = m_sceneController->findNode(nodeId);
+        if (!node) {
+            continue;
+        }
+        const int externalId = node->externalId();
+        const int beforeCount = m_nodalLoads.size();
+        m_nodalLoads.erase(std::remove_if(m_nodalLoads.begin(), m_nodalLoads.end(),
+                                          [externalId](const NodalLoad &load) {
+                                              return load.nodeId == externalId;
+                                          }),
+                           m_nodalLoads.end());
+        const bool hadPrevious = beforeCount != m_nodalLoads.size();
+
+        if (removeLoad) {
+            if (hadPrevious) {
+                changed = true;
+                ++affected;
+            }
+            continue;
+        }
+
+        NodalLoad record;
+        record.nodeId = externalId;
+        record.fx = values.fx;
+        record.fy = values.fy;
+        record.fz = values.fz;
+        record.mx = values.mx;
+        record.my = values.my;
+        record.mz = values.mz;
+        m_nodalLoads.append(record);
+        changed = true;
+        ++affected;
+    }
+
+    m_lastNodalPreset.fx = values.fx;
+    m_lastNodalPreset.fy = values.fy;
+    m_lastNodalPreset.fz = values.fz;
+    m_lastNodalPreset.mx = values.mx;
+    m_lastNodalPreset.my = values.my;
+    m_lastNodalPreset.mz = values.mz;
+
+    if (changed) {
+        syncLoadVisuals();
+        refreshPropertiesPanel();
+        if (affected > 0) {
+            if (removeLoad) {
+                statusBar()->showMessage(tr("Carga removida de %1 no(s).").arg(affected), 4000);
+            } else {
+                statusBar()->showMessage(tr("Carga aplicada a %1 no(s).").arg(affected), 4000);
+            }
+        }
+    } else {
+        statusBar()->showMessage(tr("Nenhuma carga alterada."), 3000);
+    }
+
+    updateLoadActionsEnabled();
+}
+
+void MainWindow::onApplyDistributedLoad()
+{
+    if (!m_selectionModel || !m_sceneController) {
+        return;
+    }
+
+    const QSet<QUuid> selectedBars = m_selectionModel->selectedBars();
+    if (selectedBars.isEmpty()) {
+        QMessageBox::information(this, tr("Carga distribuida (barras)"),
+                                 tr("Selecione ao menos uma barra para aplicar a carga."));
+        return;
+    }
+
+    DistributedLoadDialog dialog(this);
+    dialog.setSelectedCount(selectedBars.size());
+    dialog.setInitialValues(m_lastDistributedPreset.qx,
+                            m_lastDistributedPreset.qy,
+                            m_lastDistributedPreset.qz,
+                            m_lastDistributedPreset.system);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    auto values = dialog.values();
+    QString system = values.system.trimmed();
+    if (system.isEmpty()) {
+        system = m_lastDistributedPreset.system;
+    }
+    if (system.compare(QStringLiteral("LOCAL"), Qt::CaseInsensitive) == 0
+        || system.compare(QStringLiteral("L"), Qt::CaseInsensitive) == 0) {
+        system = QStringLiteral("LOCAL");
+    } else {
+        system = QStringLiteral("GLOBAL");
+    }
+
+    const bool removeLoad = isZeroDistributedLoad(values.qx, values.qy, values.qz);
+
+    bool changed = false;
+    int affected = 0;
+
+    for (const QUuid &barId : selectedBars) {
+        SceneController::Bar *bar = m_sceneController->findBar(barId);
+        if (!bar) {
+            continue;
+        }
+        const int externalId = bar->externalId();
+        if (externalId <= 0) {
+            continue;
+        }
+
+        const int beforeCount = m_memberLoads.size();
+        m_memberLoads.erase(std::remove_if(m_memberLoads.begin(), m_memberLoads.end(),
+                                           [externalId](const MemberLoad &load) {
+                                               return load.memberId == externalId;
+                                           }),
+                            m_memberLoads.end());
+        const bool hadPrevious = beforeCount != m_memberLoads.size();
+
+        if (removeLoad) {
+            if (hadPrevious) {
+                changed = true;
+                ++affected;
+            }
+            continue;
+        }
+
+        MemberLoad record;
+        record.memberId = externalId;
+        record.system = system;
+        record.qx = values.qx;
+        record.qy = values.qy;
+        record.qz = values.qz;
+        m_memberLoads.append(record);
+        changed = true;
+        ++affected;
+    }
+
+    m_lastDistributedPreset.system = system;
+    m_lastDistributedPreset.qx = values.qx;
+    m_lastDistributedPreset.qy = values.qy;
+    m_lastDistributedPreset.qz = values.qz;
+
+    if (changed) {
+        syncLoadVisuals();
+        refreshPropertiesPanel();
+        if (affected > 0) {
+            if (removeLoad) {
+                statusBar()->showMessage(tr("Carga distribuida removida de %1 barra(s).").arg(affected), 4000);
+            } else {
+                statusBar()->showMessage(tr("Carga distribuida aplicada a %1 barra(s).").arg(affected), 4000);
+            }
+        }
+    } else {
+        statusBar()->showMessage(tr("Nenhuma carga distribuida alterada."), 3000);
+    }
+
+    updateLoadActionsEnabled();
 }
 
 void MainWindow::onStartScreenInsert()
@@ -1944,6 +2305,9 @@ void MainWindow::resetModel()
     m_memberLoads.clear();
     m_lastMaterialId = QUuid();
     m_lastSectionId = QUuid();
+    m_lastNodalPreset = {};
+    m_lastDistributedPreset = {};
+    syncLoadVisuals();
     refreshPropertiesPanel();
 }
 
@@ -2232,6 +2596,8 @@ bool MainWindow::loadFromDat(const QString &filePath)
         }
     }
 
+    syncLoadVisuals();
+    refreshPropertiesPanel();
     updateStatus();
     return true;
 }

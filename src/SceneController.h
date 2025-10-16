@@ -28,6 +28,10 @@ class vtkActor;
 class vtkCellPicker;
 class vtkUnsignedCharArray;
 class vtkPointPicker;
+class vtkGlyph3D;
+class vtkArrowSource;
+class vtkDoubleArray;
+class vtkBillboardTextActor3D;
 
 class SceneController : public QObject
 {
@@ -37,6 +41,19 @@ public:
     using Node = Structura::Model::Node;
     using Bar = Structura::Model::Bar;
     using GridLine = Structura::Model::GridLine;
+
+    struct NodalLoadVisual {
+        QVector3D position;
+        QVector3D force;
+        QVector3D moment;
+    };
+
+    struct MemberLoadVisual {
+        QVector3D position;
+        QVector3D force;
+        QVector3D barVector;
+        bool localSystem {false};
+    };
 
     struct NodeInfo {
         QUuid id;
@@ -93,6 +110,10 @@ public:
     void hideGridGhostLine();
     std::optional<QUuid> nearestGridLineId(GridLine::Axis axis, double coordinate1, double coordinate2) const;
 
+    // Loads
+    void setNodalLoadVisuals(const QVector<NodalLoadVisual> &visuals);
+    void setMemberLoadVisuals(const QVector<MemberLoadVisual> &visuals);
+
     // Nodes
     int nodeCount() const;
     std::vector<NodeInfo> nodeInfos() const;
@@ -141,6 +162,10 @@ private:
     static double computeMinSpacing(const QVector<double> &coords);
     std::pair<double, double> minMaxAlongAxis(GridLine::Axis axis) const;
     QString gridLineKey(GridLine::Axis axis, double coord1, double coord2) const;
+    void rebuildNodalLoadGlyphs();
+    void rebuildMemberLoadGlyphs();
+    void rebuildMomentGeometry();
+    float appendMomentRing(const QVector3D &position, const QVector3D &moment, double magnitude);
 
     vtkNew<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkNew<vtkRenderer> m_renderer;
@@ -183,6 +208,34 @@ private:
     QVector<double> m_xCoords;
     QVector<double> m_yCoords;
     QVector<double> m_zCoords;
+
+    QVector<NodalLoadVisual> m_nodalLoadVisuals;
+    vtkSmartPointer<vtkPoints> m_nodalLoadPoints;
+    vtkSmartPointer<vtkDoubleArray> m_nodalLoadVectors;
+    vtkSmartPointer<vtkDoubleArray> m_nodalLoadMagnitudes;
+    vtkSmartPointer<vtkPolyData> m_nodalLoadPolyData;
+    vtkSmartPointer<vtkArrowSource> m_arrowSource;
+    vtkSmartPointer<vtkGlyph3D> m_nodalGlyph;
+    vtkSmartPointer<vtkPolyDataMapper> m_nodalLoadMapper;
+    vtkSmartPointer<vtkActor> m_nodalLoadActor;
+    QVector<vtkSmartPointer<vtkBillboardTextActor3D>> m_nodalLoadLabels;
+
+    QVector<MemberLoadVisual> m_memberLoadVisuals;
+    vtkSmartPointer<vtkPoints> m_memberLoadPoints;
+    vtkSmartPointer<vtkDoubleArray> m_memberLoadVectors;
+    vtkSmartPointer<vtkDoubleArray> m_memberLoadMagnitudes;
+    vtkSmartPointer<vtkPolyData> m_memberLoadPolyData;
+    vtkSmartPointer<vtkGlyph3D> m_memberGlyph;
+    vtkSmartPointer<vtkPolyDataMapper> m_memberLoadMapper;
+    vtkSmartPointer<vtkActor> m_memberLoadActor;
+    QVector<vtkSmartPointer<vtkBillboardTextActor3D>> m_memberLoadLabels;
+
+    vtkSmartPointer<vtkPoints> m_momentPoints;
+    vtkSmartPointer<vtkCellArray> m_momentLines;
+    vtkSmartPointer<vtkPolyData> m_momentPolyData;
+    vtkSmartPointer<vtkPolyDataMapper> m_momentMapper;
+    vtkSmartPointer<vtkActor> m_momentActor;
+    QVector<vtkSmartPointer<vtkBillboardTextActor3D>> m_momentLabels;
 
     // Picker
     vtkSmartPointer<vtkCellPicker> m_picker;

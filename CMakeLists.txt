@@ -44,6 +44,10 @@ if (QT_VERSION_MAJOR EQUAL 6)
         src/BarPropertiesDialog.cpp
         src/AssignBarPropertiesDialog.h
         src/AssignBarPropertiesDialog.cpp
+        src/NodalLoadDialog.h
+        src/NodalLoadDialog.cpp
+        src/DistributedLoadDialog.h
+        src/DistributedLoadDialog.cpp
         src/GridDialog.h
         src/GridDialog.cpp
         src/SceneController.h
@@ -72,6 +76,10 @@ else()
         src/BarPropertiesDialog.cpp
         src/AssignBarPropertiesDialog.h
         src/AssignBarPropertiesDialog.cpp
+        src/NodalLoadDialog.h
+        src/NodalLoadDialog.cpp
+        src/DistributedLoadDialog.h
+        src/DistributedLoadDialog.cpp
         src/GridDialog.h
         src/GridDialog.cpp
         src/SceneController.h
