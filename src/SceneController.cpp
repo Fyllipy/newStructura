@@ -1397,6 +1397,163 @@ void SceneController::applyBarColor(int barIndex, const unsigned char color[3])
     m_barColors->SetTypedTuple(barIndex, color);
 }
 
+void SceneController::setSupportVisuals(const QVector<SupportVisual> &visuals)
+{
+    m_supportVisuals = visuals;
+    updateSupportVisuals();
+    if (m_renderWindow) {
+        m_renderWindow->Render();
+    }
+}
+
+void SceneController::updateSupportVisuals()
+{
+    if (!m_supportData) {
+        m_supportData = vtkSmartPointer<vtkPolyData>::New();
+        m_supportMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        m_supportActor = vtkSmartPointer<vtkActor>::New();
+        
+        m_supportMapper->SetInputData(m_supportData);
+        m_supportActor->SetMapper(m_supportMapper);
+        m_supportActor->GetProperty()->SetLineWidth(3.0);
+        
+        if (m_renderer) {
+            m_renderer->AddActor(m_supportActor);
+        }
+    }
+
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    auto lines = vtkSmartPointer<vtkCellArray>::New();
+    auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    colors->SetNumberOfComponents(3);
+    colors->SetName("Colors");
+
+    const unsigned char supportColor[3] = {0, 128, 0}; // Green for supports
+    const double supportSize = 0.5; // Size of support symbols
+
+    for (const auto &visual : m_supportVisuals) {
+        const double x = visual.position.x();
+        const double y = visual.position.y();
+        const double z = visual.position.z();
+
+        // Draw translation restraints (UX, UY, UZ) as triangles
+        if (visual.restraints[0]) { // UX - triangle in YZ plane
+            vtkIdType p1 = points->InsertNextPoint(x, y, z);
+            vtkIdType p2 = points->InsertNextPoint(x, y + supportSize * 0.5, z + supportSize * 0.866);
+            vtkIdType p3 = points->InsertNextPoint(x, y - supportSize * 0.5, z + supportSize * 0.866);
+            
+            lines->InsertNextCell(2);
+            lines->InsertCellPoint(p1);
+            lines->InsertCellPoint(p2);
+            colors->InsertNextTypedTuple(supportColor);
+            
+            lines->InsertNextCell(2);
+            lines->InsertCellPoint(p2);
+            lines->InsertCellPoint(p3);
+            colors->InsertNextTypedTuple(supportColor);
+            
+            lines->InsertNextCell(2);
+            lines->InsertCellPoint(p3);
+            lines->InsertCellPoint(p1);
+            colors->InsertNextTypedTuple(supportColor);
+        }
+
+        if (visual.restraints[1]) { // UY - triangle in XZ plane
+            vtkIdType p1 = points->InsertNextPoint(x, y, z);
+            vtkIdType p2 = points->InsertNextPoint(x + supportSize * 0.5, y, z + supportSize * 0.866);
+            vtkIdType p3 = points->InsertNextPoint(x - supportSize * 0.5, y, z + supportSize * 0.866);
+            
+            lines->InsertNextCell(2);
+            lines->InsertCellPoint(p1);
+            lines->InsertCellPoint(p2);
+            colors->InsertNextTypedTuple(supportColor);
+            
+            lines->InsertNextCell(2);
+            lines->InsertCellPoint(p2);
+            lines->InsertCellPoint(p3);
+            colors->InsertNextTypedTuple(supportColor);
+            
+            lines->InsertNextCell(2);
+            lines->InsertCellPoint(p3);
+            lines->InsertCellPoint(p1);
+            colors->InsertNextTypedTuple(supportColor);
+        }
+
+        if (visual.restraints[2]) { // UZ - triangle in XY plane
+            vtkIdType p1 = points->InsertNextPoint(x, y, z);
+            vtkIdType p2 = points->InsertNextPoint(x + supportSize * 0.5, y + supportSize * 0.866, z);
+            vtkIdType p3 = points->InsertNextPoint(x - supportSize * 0.5, y + supportSize * 0.866, z);
+            
+            lines->InsertNextCell(2);
+            lines->InsertCellPoint(p1);
+            lines->InsertCellPoint(p2);
+            colors->InsertNextTypedTuple(supportColor);
+            
+            lines->InsertNextCell(2);
+            lines->InsertCellPoint(p2);
+            lines->InsertCellPoint(p3);
+            colors->InsertNextTypedTuple(supportColor);
+            
+            lines->InsertNextCell(2);
+            lines->InsertCellPoint(p3);
+            lines->InsertCellPoint(p1);
+            colors->InsertNextTypedTuple(supportColor);
+        }
+
+        // Draw rotation restraints (RX, RY, RZ) as small circles/boxes
+        const double rotSize = supportSize * 0.3;
+        if (visual.restraints[3]) { // RX - box in YZ plane
+            vtkIdType p1 = points->InsertNextPoint(x, y - rotSize, z - rotSize);
+            vtkIdType p2 = points->InsertNextPoint(x, y + rotSize, z - rotSize);
+            vtkIdType p3 = points->InsertNextPoint(x, y + rotSize, z + rotSize);
+            vtkIdType p4 = points->InsertNextPoint(x, y - rotSize, z + rotSize);
+            
+            lines->InsertNextCell(5);
+            lines->InsertCellPoint(p1);
+            lines->InsertCellPoint(p2);
+            lines->InsertCellPoint(p3);
+            lines->InsertCellPoint(p4);
+            lines->InsertCellPoint(p1);
+            colors->InsertNextTypedTuple(supportColor);
+        }
+
+        if (visual.restraints[4]) { // RY - box in XZ plane
+            vtkIdType p1 = points->InsertNextPoint(x - rotSize, y, z - rotSize);
+            vtkIdType p2 = points->InsertNextPoint(x + rotSize, y, z - rotSize);
+            vtkIdType p3 = points->InsertNextPoint(x + rotSize, y, z + rotSize);
+            vtkIdType p4 = points->InsertNextPoint(x - rotSize, y, z + rotSize);
+            
+            lines->InsertNextCell(5);
+            lines->InsertCellPoint(p1);
+            lines->InsertCellPoint(p2);
+            lines->InsertCellPoint(p3);
+            lines->InsertCellPoint(p4);
+            lines->InsertCellPoint(p1);
+            colors->InsertNextTypedTuple(supportColor);
+        }
+
+        if (visual.restraints[5]) { // RZ - box in XY plane
+            vtkIdType p1 = points->InsertNextPoint(x - rotSize, y - rotSize, z);
+            vtkIdType p2 = points->InsertNextPoint(x + rotSize, y - rotSize, z);
+            vtkIdType p3 = points->InsertNextPoint(x + rotSize, y + rotSize, z);
+            vtkIdType p4 = points->InsertNextPoint(x - rotSize, y + rotSize, z);
+            
+            lines->InsertNextCell(5);
+            lines->InsertCellPoint(p1);
+            lines->InsertCellPoint(p2);
+            lines->InsertCellPoint(p3);
+            lines->InsertCellPoint(p4);
+            lines->InsertCellPoint(p1);
+            colors->InsertNextTypedTuple(supportColor);
+        }
+    }
+
+    m_supportData->SetPoints(points);
+    m_supportData->SetLines(lines);
+    m_supportData->GetCellData()->SetScalars(colors);
+    m_supportData->Modified();
+}
+
 int SceneController::nodeIndex(const QUuid &id) const
 {
     if (id.isNull()) {

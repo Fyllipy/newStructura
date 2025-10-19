@@ -4,6 +4,7 @@
 #include <QString>
 
 #include <array>
+#include <optional>
 #include <utility>
 
 namespace Structura::Model {
@@ -94,6 +95,15 @@ public:
     bool isSelected() const noexcept { return m_selected; }
     void setSelected(bool selected) noexcept { m_selected = selected; }
 
+    // Local Coordinate System (LCS) support
+    const std::optional<std::array<double, 3>> &kPoint() const noexcept { return m_kPoint; }
+    void setKPoint(const std::array<double, 3> &point) noexcept { m_kPoint = point; m_lcsDirty = true; }
+    void clearKPoint() noexcept { m_kPoint.reset(); m_lcsDirty = true; }
+    bool hasKPoint() const noexcept { return m_kPoint.has_value(); }
+    
+    bool isLCSDirty() const noexcept { return m_lcsDirty; }
+    void setLCSDirty(bool dirty) noexcept { m_lcsDirty = dirty; }
+
 private:
     QUuid m_id;
     int m_externalId {0};
@@ -102,6 +112,10 @@ private:
     QUuid m_materialId;
     QUuid m_sectionId;
     bool m_selected {false};
+    
+    // Local Coordinate System (LCS) attributes
+    std::optional<std::array<double, 3>> m_kPoint;
+    bool m_lcsDirty {true};
 };
 
 class Material

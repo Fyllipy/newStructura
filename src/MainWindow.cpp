@@ -8,6 +8,7 @@
 #include "AssignBarPropertiesDialog.h"
 #include "NodalLoadDialog.h"
 #include "DistributedLoadDialog.h"
+#include "RestraintDialog.h"
 #include "SceneController.h"
 
 #include <QAction>
@@ -38,8 +39,10 @@
 #include <QRegularExpression>
 #include <QLocale>
 #include <QDir>
+#include <QFrame>
 #include <QSizePolicy>
 
+#include <QSlider>
 #include <QUndoStack>
 #include <QUndoCommand>
 #include <QVector3D>
@@ -222,6 +225,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_applyDistributedLoadAction->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
     connect(m_applyDistributedLoadAction, &QAction::triggered, this, &MainWindow::onApplyDistributedLoad);
 
+    m_applyRestraintsAction = new QAction(tr("Restricoes\nnodais"), this);
+    m_applyRestraintsAction->setIcon(style()->standardIcon(QStyle::SP_DialogNoButton));
+    connect(m_applyRestraintsAction, &QAction::triggered, this, &MainWindow::onApplyRestraints);
+
     m_createMaterialAction = new QAction(tr("Novo\nmaterial"), this);
     m_createMaterialAction->setIcon(QIcon(QStringLiteral(":/icons/addMaterial.png")));
     connect(m_createMaterialAction, &QAction::triggered, this, &MainWindow::onCreateMaterial);
@@ -280,22 +287,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Handle screen-click events during insertion
     m_vtkWidget->installEventFilter(this);
 
-    // Status bar styling and initial message
-    statusBar()->setSizeGripEnabled(false);
-    statusBar()->setStyleSheet(QStringLiteral(
-        "QStatusBar { background: #e9edf4; color: #1f242c; border-top: 1px solid #cbd4e2; }"
-    ));
-
-    auto *snapContainer = new QWidget(this);
-    auto *snapLayout = new QHBoxLayout(snapContainer);
-    snapLayout->setContentsMargins(8, 0, 8, 0);
-    snapLayout->setSpacing(6);
-    m_snapCheck = new QCheckBox(tr("Snap ao grid"), snapContainer);
-    m_snapCheck->setChecked(true);
-    snapLayout->addWidget(m_snapCheck);
-    snapLayout->addStretch(1);
-    statusBar()->addPermanentWidget(snapContainer);
-    connect(m_snapCheck, &QCheckBox::toggled, this, &MainWindow::onSnapToggled);
+    setupFooterBar();
 
     setCommand(Command::None);
 
@@ -729,7 +721,7 @@ void MainWindow::createRibbon()
     modelGrid->setHorizontalSpacing(30);
     modelGrid->setVerticalSpacing(15);
     modelGrid->setAlignment(Qt::AlignTop);
-    const QList<QAction *> modelActions = { m_insertNodeCoordinatesAction, m_insertNodeScreenAction, m_insertBarAction };
+    const QList<QAction *> modelActions = { m_insertNodeCoordinatesAction, m_insertNodeScreenAction, m_insertBarAction, m_applyRestraintsAction };
     const int modelColumns = 2;
     populateActionGrid(modelGrid, modelActions, modelActions.size());
     const int modelRows = (modelActions.count() + modelColumns - 1) / modelColumns;
@@ -745,16 +737,6 @@ void MainWindow::createRibbon()
     populateActionGrid(propGrid, { m_createMaterialAction, m_createSectionAction, m_assignPropertiesAction }, 3);
     propGrid->setRowStretch(2, 1);
     homeLayout->addWidget(propGroup, 0, Qt::AlignTop);
-
-    auto *viewGroup = new QGroupBox(tr("Visualizacao"), this);
-    auto *viewGrid = new QGridLayout(viewGroup);
-    viewGrid->setContentsMargins(4, 5, 4, 4);
-    viewGrid->setHorizontalSpacing(30);
-    viewGrid->setVerticalSpacing(15);
-    viewGrid->setAlignment(Qt::AlignTop);
-    populateActionGrid(viewGrid, viewActions, viewActions.size());
-    viewGrid->setRowStretch(1, 1);
-    homeLayout->addWidget(viewGroup, 0, Qt::AlignTop);
 
     homeLayout->addStretch(1);
 
@@ -808,9 +790,30 @@ void MainWindow::createRibbon()
     loadsLayout->addWidget(loadsGroup, 0, Qt::AlignTop);
     loadsLayout->addStretch(1);
 
+    // Visualization tab
+    auto *visualizationTab = new QWidget(this);
+    visualizationTab->setObjectName(QStringLiteral("RibbonPage"));
+    visualizationTab->setStyleSheet(QStringLiteral("#RibbonPage { background: #f2f5fa; }"));
+
+    auto *visualizationLayout = new QHBoxLayout(visualizationTab);
+    visualizationLayout->setContentsMargins(4, 20, 4, 3);
+    visualizationLayout->setSpacing(4);
+
+    auto *viewGroup = new QGroupBox(tr("Visualizacao"), this);
+    auto *viewGrid = new QGridLayout(viewGroup);
+    viewGrid->setContentsMargins(4, 5, 4, 4);
+    viewGrid->setHorizontalSpacing(30);
+    viewGrid->setVerticalSpacing(15);
+    viewGrid->setAlignment(Qt::AlignTop);
+    populateActionGrid(viewGrid, viewActions, viewActions.size());
+    viewGrid->setRowStretch(1, 1);
+    visualizationLayout->addWidget(viewGroup, 0, Qt::AlignTop);
+    visualizationLayout->addStretch(1);
+
     m_ribbon->addTab(homeTab, tr("Inicio"));
     m_ribbon->addTab(toolsTab, tr("Ferramentas"));
     m_ribbon->addTab(loadsTab, tr("Carregamentos"));
+    m_ribbon->addTab(visualizationTab, tr("Visualizacao"));
     // if (auto *tabBar = m_ribbon->tabBar()) {
     //     tabBar->hide();
     // }
@@ -1111,6 +1114,130 @@ bool MainWindow::isZeroDistributedLoad(double qx, double qy, double qz)
     return nearZero(qx) && nearZero(qy) && nearZero(qz);
 }
 
+void MainWindow::syncSupportVisuals()
+{
+    if (!m_sceneController) {
+        return;
+    }
+
+    const auto nodeInfos = m_sceneController->nodeInfos();
+    QHash<int, SceneController::NodeInfo> nodesByExternal;
+    nodesByExternal.reserve(nodeInfos.size());
+    for (const auto &info : nodeInfos) {
+        nodesByExternal.insert(info.externalId, info);
+    }
+
+    QVector<SceneController::SupportVisual> supportVisuals;
+    supportVisuals.reserve(m_supports.size());
+    
+    for (const auto &support : m_supports) {
+        const auto it = nodesByExternal.constFind(support.nodeId);
+        if (it == nodesByExternal.constEnd()) {
+            continue;
+        }
+        
+        SceneController::SupportVisual visual;
+        visual.position = QVector3D(
+            static_cast<float>(it->x),
+            static_cast<float>(it->y),
+            static_cast<float>(it->z)
+        );
+        
+        for (int i = 0; i < 6; ++i) {
+            visual.restraints[i] = support.restraints[i];
+        }
+        
+        supportVisuals.append(visual);
+    }
+    
+    m_sceneController->setSupportVisuals(supportVisuals);
+}
+
+void MainWindow::setupFooterBar()
+{
+    // Status bar styling and initial message
+    statusBar()->setSizeGripEnabled(false);
+    statusBar()->setStyleSheet(QStringLiteral(
+        "QStatusBar { background: #e9edf4; color: #1f242c; border-top: 1px solid #cbd4e2; }"
+    ));
+
+    // Create footer bar container
+    m_footerBar = new QWidget(this);
+    auto *footerLayout = new QHBoxLayout(m_footerBar);
+    footerLayout->setContentsMargins(8, 2, 8, 2);
+    footerLayout->setSpacing(12);
+
+    // View controls group
+    auto *viewControlsLabel = new QLabel(tr("Visualizacao:"), m_footerBar);
+    viewControlsLabel->setStyleSheet("font-weight: 600; color: #1e232b;");
+    footerLayout->addWidget(viewControlsLabel);
+
+    // Reset camera button
+    m_footerResetCameraButton = new QToolButton(m_footerBar);
+    m_footerResetCameraButton->setDefaultAction(m_resetCameraAction);
+    m_footerResetCameraButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_footerResetCameraButton->setAutoRaise(true);
+    m_footerResetCameraButton->setIconSize(QSize(20, 20));
+    m_footerResetCameraButton->setToolTip(tr("Visao inicial"));
+    footerLayout->addWidget(m_footerResetCameraButton);
+
+    // Zoom extents button
+    m_footerZoomExtentsButton = new QToolButton(m_footerBar);
+    m_footerZoomExtentsButton->setDefaultAction(m_zoomExtentsAction);
+    m_footerZoomExtentsButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_footerZoomExtentsButton->setAutoRaise(true);
+    m_footerZoomExtentsButton->setIconSize(QSize(20, 20));
+    m_footerZoomExtentsButton->setToolTip(tr("Zoom extents"));
+    footerLayout->addWidget(m_footerZoomExtentsButton);
+
+    // Separator
+    auto *separator1 = new QFrame(m_footerBar);
+    separator1->setFrameShape(QFrame::VLine);
+    separator1->setFrameShadow(QFrame::Sunken);
+    separator1->setStyleSheet("color: #cbd4e2;");
+    footerLayout->addWidget(separator1);
+
+    // Glyph scale control
+    auto *glyphScaleLabel = new QLabel(tr("Escala de glifos:"), m_footerBar);
+    glyphScaleLabel->setStyleSheet("font-weight: 600; color: #1e232b;");
+    footerLayout->addWidget(glyphScaleLabel);
+
+    m_glyphScaleSlider = new QSlider(Qt::Horizontal, m_footerBar);
+    m_glyphScaleSlider->setMinimum(50);
+    m_glyphScaleSlider->setMaximum(200);
+    m_glyphScaleSlider->setValue(100);
+    m_glyphScaleSlider->setFixedWidth(120);
+    m_glyphScaleSlider->setToolTip(tr("Ajustar tamanho dos glifos (nos, cargas, suportes)"));
+    footerLayout->addWidget(m_glyphScaleSlider);
+
+    auto *glyphScaleValueLabel = new QLabel(QStringLiteral("100%"), m_footerBar);
+    glyphScaleValueLabel->setMinimumWidth(40);
+    glyphScaleValueLabel->setStyleSheet("color: #1e232b;");
+    footerLayout->addWidget(glyphScaleValueLabel);
+
+    connect(m_glyphScaleSlider, &QSlider::valueChanged, this, [glyphScaleValueLabel](int value) {
+        glyphScaleValueLabel->setText(QString("%1%").arg(value));
+        // TODO: Apply scale to scene controller when implementing glyph scaling
+    });
+
+    // Separator
+    auto *separator2 = new QFrame(m_footerBar);
+    separator2->setFrameShape(QFrame::VLine);
+    separator2->setFrameShadow(QFrame::Sunken);
+    separator2->setStyleSheet("color: #cbd4e2;");
+    footerLayout->addWidget(separator2);
+
+    // Snap to grid checkbox
+    m_snapCheck = new QCheckBox(tr("Snap ao grid"), m_footerBar);
+    m_snapCheck->setChecked(true);
+    m_snapCheck->setStyleSheet("font-weight: 600; color: #1e232b;");
+    footerLayout->addWidget(m_snapCheck);
+    connect(m_snapCheck, &QCheckBox::toggled, this, &MainWindow::onSnapToggled);
+
+    footerLayout->addStretch(1);
+
+    statusBar()->addPermanentWidget(m_footerBar, 1);
+}
 
 void MainWindow::updateGridInsertFromPoint(const QVector3D &worldPoint)
 {
@@ -1672,6 +1799,111 @@ void MainWindow::onApplyDistributedLoad()
     }
 
     updateLoadActionsEnabled();
+}
+
+void MainWindow::onApplyRestraints()
+{
+    if (!m_selectionModel || !m_sceneController) {
+        return;
+    }
+
+    const QSet<QUuid> selectedNodes = m_selectionModel->selectedNodes();
+    if (selectedNodes.isEmpty()) {
+        QMessageBox::information(this, tr("Restricoes nodais"),
+                                 tr("Selecione ao menos um no para aplicar restricoes."));
+        return;
+    }
+
+    RestraintDialog dialog(this);
+    
+    // Check if all selected nodes have the same restraints
+    bool firstNode = true;
+    std::array<bool, 6> commonRestraints = {false, false, false, false, false, false};
+    bool hasMixedValues = false;
+    
+    for (const QUuid &nodeId : selectedNodes) {
+        const SceneController::Node *node = m_sceneController->findNode(nodeId);
+        if (!node) {
+            continue;
+        }
+        
+        std::array<bool, 6> nodeRestraints = node->restraints();
+        if (firstNode) {
+            commonRestraints = nodeRestraints;
+            firstNode = false;
+        } else {
+            for (int i = 0; i < 6; ++i) {
+                if (commonRestraints[i] != nodeRestraints[i]) {
+                    hasMixedValues = true;
+                    break;
+                }
+            }
+        }
+        if (hasMixedValues) {
+            break;
+        }
+    }
+    
+    if (!hasMixedValues) {
+        dialog.setRestraints(commonRestraints);
+    } else {
+        dialog.setMixedState(true);
+    }
+    
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    const std::array<bool, 6> newRestraints = dialog.restraints();
+    
+    // Apply restraints to all selected nodes
+    int affected = 0;
+    for (const QUuid &nodeId : selectedNodes) {
+        SceneController::Node *node = m_sceneController->findNode(nodeId);
+        if (!node) {
+            continue;
+        }
+        
+        for (int i = 0; i < 6; ++i) {
+            node->setRestraint(i, newRestraints[i]);
+        }
+        
+        // Update support visualization
+        const int externalId = node->externalId();
+        m_supports.erase(std::remove_if(m_supports.begin(), m_supports.end(),
+                                        [externalId](const NodeSupport &sup) {
+                                            return sup.nodeId == externalId;
+                                        }),
+                         m_supports.end());
+        
+        // Only add to m_supports if at least one restraint is active
+        bool hasAnyRestraint = false;
+        for (bool r : newRestraints) {
+            if (r) {
+                hasAnyRestraint = true;
+                break;
+            }
+        }
+        
+        if (hasAnyRestraint) {
+            NodeSupport support;
+            support.nodeId = externalId;
+            for (int i = 0; i < 6; ++i) {
+                support.restraints[i] = newRestraints[i];
+            }
+            m_supports.append(support);
+        }
+        
+        ++affected;
+    }
+    
+    // Update visualization
+    syncSupportVisuals();
+    refreshPropertiesPanel();
+    
+    if (affected > 0) {
+        statusBar()->showMessage(tr("Restricoes aplicadas a %1 no(s).").arg(affected), 4000);
+    }
 }
 
 void MainWindow::onStartScreenInsert()
@@ -2586,6 +2818,14 @@ bool MainWindow::loadFromDat(const QString &filePath)
     for (const auto &node : nodesTmp) {
         const QUuid uuid = m_sceneController->addPointWithId(node.x, node.y, node.z, node.id);
         nodeUuidMap.insert(node.id, uuid);
+        
+        // Apply restraints to the node
+        SceneController::Node *sceneNode = m_sceneController->findNode(uuid);
+        if (sceneNode) {
+            for (int i = 0; i < 6; ++i) {
+                sceneNode->setRestraint(i, node.restraints[i] != 0);
+            }
+        }
     }
 
     for (const auto &member : membersTmp) {
@@ -2604,6 +2844,7 @@ bool MainWindow::loadFromDat(const QString &filePath)
     }
 
     syncLoadVisuals();
+    syncSupportVisuals();
     refreshPropertiesPanel();
     updateStatus();
     return true;

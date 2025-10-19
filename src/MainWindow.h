@@ -19,6 +19,7 @@ class QVTKOpenGLNativeWidget;
 class SceneController;
 class GridDialog;
 class QCheckBox;
+class QSlider;
 class QGridLayout;
 class QLabel;
 class MaterialDialog;
@@ -27,6 +28,7 @@ class BarPropertiesDialog;
 class AssignBarPropertiesDialog;
 class NodalLoadDialog;
 class DistributedLoadDialog;
+class RestraintDialog;
 class QHBoxLayout;
 class QUndoStack;
 
@@ -50,6 +52,7 @@ private slots:
     void onDeleteGridLine();
     void onApplyNodalLoad();
     void onApplyDistributedLoad();
+    void onApplyRestraints();
     void onSnapToggled(bool checked);
     void onInsertBar();
     void onCreateMaterial();
@@ -150,6 +153,8 @@ private:
     Structura::Model::GridLine::Axis commandToAxis(Command command) const;
     void updateLoadActionsEnabled();
     void syncLoadVisuals();
+    void syncSupportVisuals();
+    void setupFooterBar();
     static bool isZeroNodalLoad(double fx, double fy, double fz, double mx, double my, double mz);
     static bool isZeroDistributedLoad(double qx, double qy, double qz);
 
@@ -173,6 +178,7 @@ private:
     QAction *m_deleteGridLineAction;
     QAction *m_applyNodalLoadAction;
     QAction *m_applyDistributedLoadAction;
+    QAction *m_applyRestraintsAction;
     QAction *m_resetCameraAction;
     QAction *m_zoomExtentsAction;
     QAction *m_insertBarAction;
@@ -188,6 +194,10 @@ private:
     Command m_command { Command::None };
     QUuid m_firstBarNodeId;
     QCheckBox *m_snapCheck {nullptr};
+    QWidget *m_footerBar {nullptr};
+    QToolButton *m_footerResetCameraButton {nullptr};
+    QToolButton *m_footerZoomExtentsButton {nullptr};
+    QSlider *m_glyphScaleSlider {nullptr};
     QWidget *m_toolColumn {nullptr};
     QToolButton *m_propertiesToolButton {nullptr};
     QWidget *m_propertiesContainer {nullptr};

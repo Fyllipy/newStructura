@@ -57,6 +57,11 @@ public:
         bool localSystem {false};
     };
 
+    struct SupportVisual {
+        QVector3D position;
+        std::array<bool, 6> restraints; // UX, UY, UZ, RX, RY, RZ
+    };
+
     struct NodeInfo {
         QUuid id;
         int externalId;
@@ -116,6 +121,9 @@ public:
     void setNodalLoadVisuals(const QVector<NodalLoadVisual> &visuals);
     void setMemberLoadVisuals(const QVector<MemberLoadVisual> &visuals);
 
+    // Supports (restraints)
+    void setSupportVisuals(const QVector<SupportVisual> &visuals);
+
     // Nodes
     int nodeCount() const;
     std::vector<NodeInfo> nodeInfos() const;
@@ -165,6 +173,7 @@ private:
     std::pair<double, double> minMaxAlongAxis(GridLine::Axis axis) const;
     QString gridLineKey(GridLine::Axis axis, double coord1, double coord2) const;
     void updateLoadVisuals();
+    void updateSupportVisuals();
 
     vtkNew<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkNew<vtkRenderer> m_renderer;
@@ -212,6 +221,12 @@ private:
     std::unique_ptr<Structura::Visualization::LoadVisualization> m_loadVisualization;
     QVector<NodalLoadVisual> m_nodalLoadVisuals;
     QVector<MemberLoadVisual> m_memberLoadVisuals;
+
+    // Support visualization
+    QVector<SupportVisual> m_supportVisuals;
+    vtkSmartPointer<vtkPolyData> m_supportData;
+    vtkSmartPointer<vtkPolyDataMapper> m_supportMapper;
+    vtkSmartPointer<vtkActor> m_supportActor;
 
     // Picker
     vtkSmartPointer<vtkCellPicker> m_picker;

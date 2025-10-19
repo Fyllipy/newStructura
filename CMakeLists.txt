@@ -48,6 +48,8 @@ if (QT_VERSION_MAJOR EQUAL 6)
         src/NodalLoadDialog.cpp
         src/DistributedLoadDialog.h
         src/DistributedLoadDialog.cpp
+        src/RestraintDialog.h
+        src/RestraintDialog.cpp
         src/GridDialog.h
         src/GridDialog.cpp
         src/SceneController.h
@@ -82,6 +84,8 @@ else()
         src/NodalLoadDialog.cpp
         src/DistributedLoadDialog.h
         src/DistributedLoadDialog.cpp
+        src/RestraintDialog.h
+        src/RestraintDialog.cpp
         src/GridDialog.h
         src/GridDialog.cpp
         src/SceneController.h

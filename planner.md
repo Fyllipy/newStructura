@@ -100,7 +100,7 @@ Este documento descreve, em alto nível, as etapas para evoluir o aplicativo par
 ### Etapa 9 — Configurações (QuickAccessBar)
 - Botão “Configurações” na quick bar abre preferências não modais:
   - Tamanho base dos glifos; escala de texto; paleta (clara/escura/azulada SE); tolerâncias de snap/pick.
-  - Persistir em `.ini` de configurações; botão “Restaurar padrão”.
+  - Persistir em `.ini` de configurações na pasta raíz do software; botão “Restaurar padrão”.
 
 ### Etapa 10 — Janela lateral “Entes”
 - Dock à esquerda listando Nós e Barras (árvore): grupos por tipo; filtros/ordenação; busca.
