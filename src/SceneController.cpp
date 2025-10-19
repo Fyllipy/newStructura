@@ -1,5 +1,6 @@
 #include "SceneController.h"
 #include "LoadVisualization.h"
+#include "LocalCoordinateSystem.h"
 
 #include <QVTKOpenGLNativeWidget.h>
 
@@ -37,6 +38,10 @@
 
 namespace {
 constexpr double kCoordEpsilon = 1e-6;
+
+#ifndef M_PI
+constexpr double M_PI = 3.14159265358979323846;
+#endif
 }
 
 SceneController::SceneController(QObject *parent)
@@ -137,6 +142,29 @@ SceneController::SceneController(QObject *parent)
     m_barPicker->SetTolerance(0.005);
     m_barPicker->SetPickFromList(true);
     m_barPicker->AddPickList(m_barActor);
+    
+    // Initialize Bar LCS visualization with lines and arrow heads
+    m_lcsData = vtkSmartPointer<vtkPolyData>::New();
+    m_lcsPoints = vtkSmartPointer<vtkPoints>::New();
+    m_lcsCells = vtkSmartPointer<vtkCellArray>::New();
+    m_lcsColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    m_lcsMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_lcsActor = vtkSmartPointer<vtkActor>::New();
+    
+    m_lcsColors->SetNumberOfComponents(3);
+    m_lcsColors->SetName("LCSColors");
+    m_lcsData->SetPoints(m_lcsPoints);
+    m_lcsData->SetLines(m_lcsCells);
+    m_lcsData->GetCellData()->SetScalars(m_lcsColors);
+    m_lcsMapper->SetInputData(m_lcsData);
+    m_lcsMapper->ScalarVisibilityOn();
+    m_lcsMapper->SetColorModeToDirectScalars();
+    m_lcsMapper->SetScalarModeToUseCellData();
+    m_lcsActor->SetMapper(m_lcsMapper);
+    m_lcsActor->GetProperty()->SetLineWidth(2.5);
+    m_lcsActor->GetProperty()->LightingOff();
+    m_lcsActor->PickableOff();
+    m_lcsActor->SetVisibility(false);
 }
 
 SceneController::~SceneController() = default;
@@ -157,6 +185,7 @@ void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget)
     m_renderer->AddActor(m_pointActor);
     m_renderer->AddActor(m_gridActor);
     m_renderer->AddActor(m_gridGhostActor);
+    m_renderer->AddActor(m_lcsActor);
     
     // Initialize load visualization
     if (m_loadVisualization) {
@@ -1165,6 +1194,7 @@ QUuid SceneController::addBar(const QUuid &startNodeId,
         m_barData->GetCellData()->SetScalars(m_barColors);
     }
 
+    updateBarLCSVisuals();
     m_renderWindow->Render();
     return barId;
 }
@@ -1588,4 +1618,152 @@ int SceneController::gridLineIndex(const QUuid &id) const
         return -1;
     }
     return it.value();
+}
+
+void SceneController::setShowBarLCS(bool show)
+{
+    m_showBarLCS = show;
+    if (show) {
+        rebuildBarLCSVisuals();
+    }
+    m_lcsActor->SetVisibility(show);
+    m_renderWindow->Render();
+}
+
+void SceneController::updateBarLCSVisuals()
+{
+    if (m_showBarLCS) {
+        rebuildBarLCSVisuals();
+        m_renderWindow->Render();
+    }
+}
+
+void SceneController::rebuildBarLCSVisuals()
+{
+    m_lcsPoints->Reset();
+    m_lcsCells->Reset();
+    m_lcsColors->Reset();
+    
+    if (m_bars.empty()) {
+        m_lcsData->Modified();
+        return;
+    }
+    
+    Structura::Geometry::DefaultLocalAxisProvider lcsProvider;
+    
+    // Colors for each axis: X' = red, Y' = green, Z' = blue
+    unsigned char xColor[3] = {255, 0, 0};    // Red
+    unsigned char yColor[3] = {0, 255, 0};    // Green
+    unsigned char zColor[3] = {0, 0, 255};    // Blue
+    
+    // Arrow parameters
+    constexpr double arrowLength = 0.15;        // Total arrow length
+    constexpr double arrowHeadLength = 0.04;    // Length of arrow head
+    constexpr double arrowHeadWidth = 0.02;     // Half-width of arrow head
+    
+    for (const auto &bar : m_bars) {
+        // Get start and end node positions
+        const Node *startNode = findNode(bar.startNodeId());
+        const Node *endNode = findNode(bar.endNodeId());
+        
+        if (!startNode || !endNode) {
+            continue;
+        }
+        
+        std::array<double, 3> pointA = {startNode->x(), startNode->y(), startNode->z()};
+        std::array<double, 3> pointB = {endNode->x(), endNode->y(), endNode->z()};
+        
+        // Compute bar length
+        double dx = pointB[0] - pointA[0];
+        double dy = pointB[1] - pointA[1];
+        double dz = pointB[2] - pointA[2];
+        double barLength = std::sqrt(dx*dx + dy*dy + dz*dz);
+        
+        if (barLength < 1e-9) {
+            continue; // Skip degenerate bars
+        }
+        
+        // Compute LCS
+        try {
+            auto lcs = lcsProvider.computeLCS(pointA, pointB, bar.kPoint());
+            
+            // Origin point (midpoint of bar)
+            const auto &origin = lcs.origin;
+            
+            // Helper lambda to create an arrow with line-based head
+            auto createArrow = [&](const std::array<double, 3> &direction, 
+                                   const unsigned char color[3]) {
+                // Arrow tip point
+                double tipX = origin[0] + direction[0] * arrowLength;
+                double tipY = origin[1] + direction[1] * arrowLength;
+                double tipZ = origin[2] + direction[2] * arrowLength;
+                
+                // Arrow base (where head starts)
+                double baseX = origin[0] + direction[0] * (arrowLength - arrowHeadLength);
+                double baseY = origin[1] + direction[1] * (arrowLength - arrowHeadLength);
+                double baseZ = origin[2] + direction[2] * (arrowLength - arrowHeadLength);
+                
+                // Main shaft line (origin to base)
+                vtkIdType p0 = m_lcsPoints->InsertNextPoint(origin[0], origin[1], origin[2]);
+                vtkIdType pBase = m_lcsPoints->InsertNextPoint(baseX, baseY, baseZ);
+                vtkIdType pTip = m_lcsPoints->InsertNextPoint(tipX, tipY, tipZ);
+                
+                m_lcsCells->InsertNextCell(2);
+                m_lcsCells->InsertCellPoint(p0);
+                m_lcsCells->InsertCellPoint(pTip);
+                m_lcsColors->InsertNextTypedTuple(color);
+                
+                // Create arrow head (two lines forming a V)
+                // We need two perpendicular vectors to the arrow direction
+                std::array<double, 3> perp1, perp2;
+                
+                // Find first perpendicular vector
+                if (std::abs(direction[0]) < 0.9) {
+                    perp1[0] = 0.0;
+                    perp1[1] = -direction[2];
+                    perp1[2] = direction[1];
+                } else {
+                    perp1[0] = -direction[1];
+                    perp1[1] = direction[0];
+                    perp1[2] = 0.0;
+                }
+                
+                // Normalize perp1
+                double len1 = std::sqrt(perp1[0]*perp1[0] + perp1[1]*perp1[1] + perp1[2]*perp1[2]);
+                perp1[0] /= len1; perp1[1] /= len1; perp1[2] /= len1;
+                
+                // Second perpendicular (cross product)
+                perp2[0] = direction[1]*perp1[2] - direction[2]*perp1[1];
+                perp2[1] = direction[2]*perp1[0] - direction[0]*perp1[2];
+                perp2[2] = direction[0]*perp1[1] - direction[1]*perp1[0];
+                
+                // Create 4 points around the base forming arrow head
+                for (int i = 0; i < 4; ++i) {
+                    double angle = i * M_PI / 2.0;
+                    double px = baseX + (perp1[0] * std::cos(angle) + perp2[0] * std::sin(angle)) * arrowHeadWidth;
+                    double py = baseY + (perp1[1] * std::cos(angle) + perp2[1] * std::sin(angle)) * arrowHeadWidth;
+                    double pz = baseZ + (perp1[2] * std::cos(angle) + perp2[2] * std::sin(angle)) * arrowHeadWidth;
+                    
+                    vtkIdType pSide = m_lcsPoints->InsertNextPoint(px, py, pz);
+                    
+                    // Line from side point to tip
+                    m_lcsCells->InsertNextCell(2);
+                    m_lcsCells->InsertCellPoint(pSide);
+                    m_lcsCells->InsertCellPoint(pTip);
+                    m_lcsColors->InsertNextTypedTuple(color);
+                }
+            };
+            
+            // Create arrows for each axis
+            createArrow(lcs.xPrime, xColor);
+            createArrow(lcs.yPrime, yColor);
+            createArrow(lcs.zPrime, zColor);
+            
+        } catch (const std::exception &e) {
+            // Skip bars that fail LCS computation
+            continue;
+        }
+    }
+    
+    m_lcsData->Modified();
 }

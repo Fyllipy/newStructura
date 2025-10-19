@@ -54,6 +54,7 @@ private slots:
     void onApplyDistributedLoad();
     void onApplyRestraints();
     void onSnapToggled(bool checked);
+    void onShowBarLCSToggled(bool checked);
     void onInsertBar();
     void onCreateMaterial();
     void onCreateSection();
@@ -122,6 +123,7 @@ private:
     void changeEvent(QEvent *event) override;
     void setCommand(Command command);
     void updateStatus();
+    void showStatusMessage(const QString &message, int timeout = 0);
     MaterialInfo *findMaterial(const QUuid &id);
     const MaterialInfo *findMaterial(const QUuid &id) const;
     SectionInfo *findSection(const QUuid &id);
@@ -195,11 +197,13 @@ private:
     QUuid m_firstBarNodeId;
     QCheckBox *m_snapCheck {nullptr};
     QWidget *m_footerBar {nullptr};
+    QLabel *m_statusLabel {nullptr};
     QToolButton *m_footerResetCameraButton {nullptr};
     QToolButton *m_footerZoomExtentsButton {nullptr};
     QSlider *m_glyphScaleSlider {nullptr};
     QWidget *m_toolColumn {nullptr};
     QToolButton *m_propertiesToolButton {nullptr};
+    QToolButton *m_showBarLCSToolButton {nullptr};
     QWidget *m_propertiesContainer {nullptr};
     PropertiesPanel *m_propertiesPanel {nullptr};
     QHBoxLayout *m_contentLayout {nullptr};

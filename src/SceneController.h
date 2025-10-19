@@ -123,6 +123,11 @@ public:
 
     // Supports (restraints)
     void setSupportVisuals(const QVector<SupportVisual> &visuals);
+    
+    // Bar Local Coordinate Systems (LCS)
+    void setShowBarLCS(bool show);
+    bool isShowingBarLCS() const { return m_showBarLCS; }
+    void updateBarLCSVisuals();
 
     // Nodes
     int nodeCount() const;
@@ -174,6 +179,7 @@ private:
     QString gridLineKey(GridLine::Axis axis, double coord1, double coord2) const;
     void updateLoadVisuals();
     void updateSupportVisuals();
+    void rebuildBarLCSVisuals();
 
     vtkNew<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkNew<vtkRenderer> m_renderer;
@@ -227,6 +233,15 @@ private:
     vtkSmartPointer<vtkPolyData> m_supportData;
     vtkSmartPointer<vtkPolyDataMapper> m_supportMapper;
     vtkSmartPointer<vtkActor> m_supportActor;
+    
+    // Bar LCS visualization
+    bool m_showBarLCS {false};
+    vtkSmartPointer<vtkPolyData> m_lcsData;
+    vtkSmartPointer<vtkPoints> m_lcsPoints;
+    vtkSmartPointer<vtkCellArray> m_lcsCells;
+    vtkSmartPointer<vtkUnsignedCharArray> m_lcsColors;
+    vtkSmartPointer<vtkPolyDataMapper> m_lcsMapper;
+    vtkSmartPointer<vtkActor> m_lcsActor;
 
     // Picker
     vtkSmartPointer<vtkCellPicker> m_picker;

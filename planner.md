@@ -37,7 +37,7 @@ Este documento descreve, em alto nível, as etapas para evoluir o aplicativo par
 
 ## Etapas (fatiamento por entregas)
 
-### Etapa 1 — Refatoração OOP mínima e seleção unificada
+### DONE Etapa 1 — Refatoração OOP mínima e seleção unificada
 - Introduzir classes `Node`, `Bar`, `Material`, `Section`, `GridLine` no núcleo.
 - Adaptar `SceneController` para aceitar/retornar ids dessas entidades, mantendo render atual.
 - Implementar `SelectionModel` (nó/bar/misto), com highlight visual consistente.
@@ -45,7 +45,7 @@ Este documento descreve, em alto nível, as etapas para evoluir o aplicativo par
   - Adição/remoção/seleção de nós e barras funciona como hoje.
   - Serialização `.dat` continua operando (backwards compat) com o novo modelo interno.
 
-### Etapa 2 — Barra lateral e painel de Propriedades
+### DONE Etapa 2 — Barra lateral e painel de Propriedades
 - Adicionar coluna de botões fixos (dock/overlay) à direita: primeiro botão “Propriedades” (apenas ícone de “tools”).
 - Clicar em “Propriedades” abre/ancora um painel não modal mostrando:
   - Nó: id, coords, restraints (check), cargas (lista), material/ seção (N/A).
@@ -56,14 +56,14 @@ Este documento descreve, em alto nível, as etapas para evoluir o aplicativo par
   - Selecionar item atualiza o painel.
   - Multi‑seleção mostra campos em estado “variam” e permite atribuição em lote.
 
-### Etapa 3 — Inserção de nó (duas entradas) e snap na barra inferior
+### DONE Etapa 3 — Inserção de nó (duas entradas) e snap na barra inferior
 - Ribbon `Início`: separar “Inserir nó (Coordenadas)” e “Inserir nó (Tela)”.
 - Mover checkbox “Snap ao grid” para a barra inferior; estado global.
 - Melhorar picking na view plane e snapping consistente.
 - Critérios
   - Ambos os fluxos inserem corretos; snap visível/alternável no rodapé.
 
-### Etapa 4 — Linhas individuais de grid (add/delete) com ghost e highlight
+### DONE Etapa 4 — Linhas individuais de grid (add/delete) com ghost e highlight
 - Ações: “Adicionar linha X/Y/Z” (habilitar apenas se grid existente para modo com referência; senão, modo livre por clique).
 - Lógica
   - Ao acionar, mostrar “ghost” (linha translúcida) movimentando ao longo do plano selecionado.
@@ -74,7 +74,7 @@ Este documento descreve, em alto nível, as etapas para evoluir o aplicativo par
   - Ghost segue snapping; highlight correto; confirmação não bloqueia a UI.
 - Mova todos os botões referentes a geração do gride para uma nova aba na ribbon chamada `Ferramentas`
 
-### Etapa 5 — Aba “Carregamentos” e aplicação de forças
+### DONE Etapa 5 — Aba “Carregamentos” e aplicação de forças
 - Ribbon `Carregamentos`: botões “Força concentrada (nós)” e “Distribuída (barras)”.
 - Fluxo
   - Selecionar 1..N nós/barras; abrir popover/dock para valores (com unidades); aplicar e desenhar glifos.
@@ -82,13 +82,13 @@ Este documento descreve, em alto nível, as etapas para evoluir o aplicativo par
 - Critérios
   - Visual em tela, transformação com zoom/manter tamanho em pixels (VTK glyph billboard/actors escalados por câmera).
 
-### Etapa 6 — Restrições nodais (Início)
+### DONE Etapa 6 — Restrições nodais (Início)
 - Ação “Restrições”: diálogo/dock para escolher DOFs fixos (UX, UY, UZ, RX, RY, RZ) e aplicar a multi‑seleção.
 - Desenhar ícones/triângulos/rolamentos conforme padrão de estruturas (glifos distintos por DOF fixo/solto).
 - Critérios
   - Persistência no projeto; visual muda conforme DOFs marcados.
 
-### Etapa 7 — Aba “Visualização” e espelhamento no rodapé
+### DONE Etapa 7 — Aba “Visualização” e espelhamento no rodapé
 - Mover comandos de visualização para tab `Visualização` (e criar botões espelhados no rodapé: reset, extents, projeção, eixos, tema).
 - Rodapé com slider de escala dos glifos (nos/cargas/suportes) e controle de snap.
 

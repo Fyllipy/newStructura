@@ -61,6 +61,8 @@ if (QT_VERSION_MAJOR EQUAL 6)
         src/PropertiesPanel.cpp
         src/LoadVisualization.h
         src/LoadVisualization.cpp
+        src/LocalCoordinateSystem.h
+        src/LocalCoordinateSystem.cpp
         resources.qrc
     )
 else()
@@ -97,6 +99,8 @@ else()
         src/PropertiesPanel.cpp
         src/LoadVisualization.h
         src/LoadVisualization.cpp
+        src/LocalCoordinateSystem.h
+        src/LocalCoordinateSystem.cpp
         resources.qrc
     )
 endif()

@@ -326,3 +326,381 @@ void updateLoadVisuals() {
 - `plannertemp.md` - Original requirements
 - VTK Documentation: https://vtk.org/doc/
 - Qt Documentation: https://doc.qt.io/
+
+---
+
+# Bar Local Coordinate System (LCS) - Developer Guide
+
+## Overview
+
+The Local Coordinate System (LCS) feature provides visualization of the local axes (x', y', z') for structural bars. This is essential for understanding how loads and internal forces are oriented relative to each bar's local reference frame.
+
+## Quick Reference
+
+### Basic Usage
+
+```cpp
+// Enable/disable LCS visualization
+m_sceneController->setShowBarLCS(true);
+
+// Update LCS after bar modifications
+m_sceneController->updateBarLCSVisuals();
+
+// Check if LCS is currently displayed
+bool showing = m_sceneController->isShowingBarLCS();
+
+// Set custom K point for a bar
+Bar* bar = m_sceneController->findBar(barId);
+if (bar) {
+    std::array<double, 3> kPoint = {1.0, 0.0, 0.0};
+    bar->setKPoint(kPoint);
+    m_sceneController->updateBarLCSVisuals();
+}
+```
+
+### User Interface
+
+In the footer bar (bottom of window):
+- **Checkbox**: "Mostrar eixos locais (LCS)"
+- Toggle on/off to show/hide all bar local axes
+
+## Class Structure
+
+```
+LocalCoordinateSystem (Geometry Module)
+├── struct LCS
+│   ├── xPrime: std::array<double, 3>  // Local x-axis
+│   ├── yPrime: std::array<double, 3>  // Local y-axis  
+│   ├── zPrime: std::array<double, 3>  // Local z-axis
+│   └── origin: std::array<double, 3>  // Origin point
+│
+├── interface ILocalAxisProvider
+│   └── computeLCS(pointA, pointB, kPoint) -> LCS
+│
+└── class DefaultLocalAxisProvider : ILocalAxisProvider
+    ├── computeLCS() [implements algorithm]
+    ├── setParallelEpsilon()
+    └── Private geometry utilities
+
+Bar (Model Entity)
+├── kPoint: std::optional<std::array<double, 3>>
+├── lcsDirty: bool
+├── setKPoint()
+├── clearKPoint()
+└── hasKPoint()
+
+SceneController (Visualization)
+├── setShowBarLCS(bool)
+├── isShowingBarLCS() -> bool
+├── updateBarLCSVisuals()
+└── rebuildBarLCSVisuals() [private]
+```
+
+## LCS Computation Algorithm
+
+### Mathematical Formulation
+
+The algorithm follows structural analysis conventions:
+
+1. **X' Axis (Longitudinal)**: Along bar direction
+   ```
+   x' = (B - A) / ||B - A||
+   ```
+
+2. **Auxiliary Vector Selection**: 
+   - If K point provided: `v = K - A`
+   - If parallel or invalid: Use fallback (global X, Y, or Z)
+
+3. **Z' Axis (Perpendicular)**: Cross product
+   ```
+   z' = (x' × v) / ||x' × v||
+   ```
+
+4. **Y' Axis (Completes right-hand system)**:
+   ```
+   y' = z' × x'
+   ```
+
+5. **Origin**: Bar midpoint
+   ```
+   origin = (A + B) / 2
+   ```
+
+### Code Implementation
+
+```cpp
+Structura::Geometry::DefaultLocalAxisProvider lcsProvider;
+
+std::array<double, 3> pointA = {nodeA->x(), nodeA->y(), nodeA->z()};
+std::array<double, 3> pointB = {nodeB->x(), nodeB->y(), nodeB->z()};
+std::optional<std::array<double, 3>> kPoint = bar.kPoint();
+
+try {
+    auto lcs = lcsProvider.computeLCS(pointA, pointB, kPoint);
+    // lcs.xPrime, lcs.yPrime, lcs.zPrime, lcs.origin
+} catch (const std::exception& e) {
+    // Handle degenerate bars or computation errors
+}
+```
+
+## K Point (Reference Point)
+
+### Purpose
+The K point defines the orientation of the local z-axis. It's crucial for:
+- Beam local axes orientation
+- Principal axes alignment with structure geometry
+- Consistent load and stress interpretation
+
+### Storage
+- **Type**: `std::optional<std::array<double, 3>>`
+- **Persistence**: Saved with bar data
+- **Default**: None (automatic selection)
+
+### Automatic Selection
+When no K point is specified, the algorithm tries:
+1. Global X direction: `(1, 0, 0)`
+2. Global Y direction: `(0, 1, 0)`  
+3. Global Z direction: `(0, 0, 1)`
+
+The first non-parallel direction is used.
+
+### Validation
+- **Parallel check**: K point cannot be parallel to bar axis
+- **Tolerance**: Default `1e-5` (configurable)
+- **Fallback**: Automatic if K point invalid
+
+## Visualization Details
+
+### Visual Properties
+
+```cpp
+// Colors (RGB 0-255)
+X' axis: Red   (255, 0, 0)
+Y' axis: Green (0, 255, 0)
+Z' axis: Blue  (0, 0, 255)
+
+// Arrow geometry
+Arrow length: 25% of bar length
+Line width: 2.5 pixels
+Lighting: Off (flat colors)
+Pickable: No (doesn't interfere with selection)
+```
+
+### Rendering Strategy
+
+1. **Full rebuild on demand**: Not real-time cached
+2. **Per-bar iteration**: Computes LCS for each bar
+3. **Error handling**: Skips degenerate bars
+4. **Efficient**: Uses VTK line primitives
+
+### Performance
+
+- **Typical overhead**: Negligible for <10,000 bars
+- **Update frequency**: Only when bars change or toggle state
+- **Memory**: 3 lines × 2 points × N bars
+
+## Configuration Constants
+
+In `SceneController.cpp`:
+
+```cpp
+constexpr double arrowScale = 0.25;  // Arrow length = 25% of bar length
+```
+
+In `LocalCoordinateSystem.cpp`:
+
+```cpp
+constexpr double kMinBarLength = 1e-9;     // Minimum valid bar length
+DefaultLocalAxisProvider::m_parallelEps = 1e-5;  // Parallel tolerance
+```
+
+### Adjusting Arrow Length
+
+```cpp
+// Current: 25% of bar length
+constexpr double arrowScale = 0.25;
+
+// Shorter (15%):
+constexpr double arrowScale = 0.15;
+
+// Longer (40%):
+constexpr double arrowScale = 0.40;
+```
+
+## Common Use Cases
+
+### 1. Verify Beam Orientation
+
+```cpp
+// Enable LCS display
+m_sceneController->setShowBarLCS(true);
+
+// Visual inspection in viewport:
+// - X' (red) should align with beam span
+// - Y' (green) typically vertical for floor beams
+// - Z' (blue) perpendicular to web for I-beams
+```
+
+### 2. Define Custom K Point
+
+```cpp
+Bar* bar = m_sceneController->findBar(barId);
+if (bar) {
+    // Example: Force Z' to point upward (for horizontal beam)
+    std::array<double, 3> kUp = {0.0, 0.0, 1.0};
+    bar->setKPoint(kUp);
+    bar->setLCSDirty(true);
+    m_sceneController->updateBarLCSVisuals();
+}
+```
+
+### 3. Export LCS Data
+
+```cpp
+Structura::Geometry::DefaultLocalAxisProvider provider;
+
+for (const auto& bar : bars) {
+    auto lcs = provider.computeLCS(pointA, pointB, bar.kPoint());
+    
+    // Export to analysis software
+    outputFile << "BAR " << bar.externalId() << "\n";
+    outputFile << "  X': " << lcs.xPrime[0] << ", " 
+               << lcs.xPrime[1] << ", " << lcs.xPrime[2] << "\n";
+    outputFile << "  Y': " << lcs.yPrime[0] << ", " 
+               << lcs.yPrime[1] << ", " << lcs.yPrime[2] << "\n";
+    outputFile << "  Z': " << lcs.zPrime[0] << ", " 
+               << lcs.zPrime[1] << ", " << lcs.zPrime[2] << "\n";
+}
+```
+
+## Edge Cases and Error Handling
+
+### Degenerate Bars
+- **Definition**: Bar length < 1e-9
+- **Behavior**: Skipped in visualization
+- **Exception**: `std::runtime_error` in `computeLCS()`
+
+### Parallel K Point
+- **Detection**: `|dot(x', normalize(K-A))| ≈ 1`
+- **Behavior**: Falls back to automatic selection
+- **User feedback**: Silent (uses valid fallback)
+
+### Zero-length Auxiliary Vector
+- **Cause**: K point = point A
+- **Behavior**: Falls back to automatic selection
+- **Prevention**: Validate K point before setting
+
+## Integration with Analysis
+
+### Local Load Application
+
+```cpp
+// Convert global load to local coordinates
+QVector3D globalLoad(Fx, Fy, Fz);
+
+// Get bar LCS
+auto lcs = provider.computeLCS(pointA, pointB, bar.kPoint());
+
+// Transform to local (matrix multiplication)
+double Fx_local = globalLoad.x() * lcs.xPrime[0] + 
+                  globalLoad.y() * lcs.xPrime[1] + 
+                  globalLoad.z() * lcs.xPrime[2];
+// ... (similarly for Fy_local, Fz_local)
+```
+
+### Stress Results Visualization
+
+```cpp
+// Bar internal forces are in local system
+double N = axialForce;      // Along x'
+double Vy = shearForceY;    // Along y'
+double Vz = shearForceZ;    // Along z'
+double Mx = torque;         // About x'
+double My = momentY;        // About y'
+double Mz = momentZ;        // About z'
+
+// Visualize using LCS orientation for proper alignment
+```
+
+## Debugging Tips
+
+### Verify Orthogonality
+
+```cpp
+auto lcs = provider.computeLCS(pointA, pointB, kPoint);
+
+// Check unit vectors
+auto lenX = sqrt(lcs.xPrime[0]*lcs.xPrime[0] + ...);
+assert(fabs(lenX - 1.0) < 1e-6);
+
+// Check orthogonality
+auto dotXY = lcs.xPrime[0]*lcs.yPrime[0] + ...;
+assert(fabs(dotXY) < 1e-6);
+```
+
+### Visualize K Points
+
+```cpp
+// Add temporary visualization of K points
+if (bar.hasKPoint()) {
+    auto k = bar.kPoint().value();
+    // Draw sphere at (k[0], k[1], k[2])
+    // Draw line from A to K
+}
+```
+
+### Check Handedness
+
+```cpp
+// Verify right-hand rule: x' × y' = z'
+auto computed_z = cross(lcs.xPrime, lcs.yPrime);
+assert(fabs(computed_z[0] - lcs.zPrime[0]) < 1e-6);
+// ... (similarly for y and z components)
+```
+
+## API Stability
+
+### Stable (safe to use):
+- `LCS` struct
+- `ILocalAxisProvider` interface
+- `DefaultLocalAxisProvider` public methods
+- `Bar::kPoint()`, `Bar::setKPoint()`, `Bar::clearKPoint()`
+- `SceneController::setShowBarLCS()`, `isShowingBarLCS()`
+
+### Internal (may change):
+- Private geometry utilities
+- Exact color values
+- Arrow scale factor
+- Rendering implementation details
+
+## Future Enhancements
+
+### Planned Features
+1. **Interactive K Point Selection**: Click in viewport to define K point
+2. **LCS Labels**: Show "X'", "Y'", "Z'" text labels
+3. **Per-bar Toggle**: Show/hide LCS for selected bars only
+4. **Analysis Integration**: Use LCS for local load input dialogs
+
+### Extension Points
+
+```cpp
+// Custom LCS provider (e.g., for shells, plates)
+class ShellLocalAxisProvider : public ILocalAxisProvider {
+    LCS computeLCS(pointA, pointB, kPoint) const override {
+        // Custom shell element orientation logic
+    }
+};
+
+// Use dependency injection
+SceneController::setLocalAxisProvider(
+    std::make_unique<ShellLocalAxisProvider>()
+);
+```
+
+## References
+
+- **Theory**: Bathe, K.J. "Finite Element Procedures", Chapter 5
+- **Implementation**: `src/LocalCoordinateSystem.h`, `.cpp`
+- **Visualization**: `src/SceneController.cpp` (rebuildBarLCSVisuals)
+- **Planning**: `plano2.md` (original specification)
+

@@ -465,6 +465,19 @@ void MainWindow::setupRightToolColumn()
     m_propertiesToolButton->setCursor(Qt::PointingHandCursor);
     m_propertiesToolButton->setToolTip(tr("Propriedades"));
     layout->addWidget(m_propertiesToolButton, 0, Qt::AlignHCenter | Qt::AlignTop);
+    
+    // Add LCS visualization button
+    m_showBarLCSToolButton = new QToolButton(m_toolColumn);
+    m_showBarLCSToolButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_showBarLCSToolButton->setText(QStringLiteral("LCS"));
+    m_showBarLCSToolButton->setIconSize(QSize(30, 30));
+    m_showBarLCSToolButton->setCheckable(true);
+    m_showBarLCSToolButton->setAutoRaise(false);
+    m_showBarLCSToolButton->setFixedSize(36, 36);
+    m_showBarLCSToolButton->setCursor(Qt::PointingHandCursor);
+    m_showBarLCSToolButton->setToolTip(tr("Mostrar Eixos Locais (LCS)"));
+    layout->addWidget(m_showBarLCSToolButton, 0, Qt::AlignHCenter);
+    
     layout->addStretch(1);
 
     connect(m_propertiesToolButton, &QToolButton::toggled, this, [this](bool checked) {
@@ -477,6 +490,8 @@ void MainWindow::setupRightToolColumn()
             refreshPropertiesPanel();
         }
     });
+    
+    connect(m_showBarLCSToolButton, &QToolButton::toggled, this, &MainWindow::onShowBarLCSToggled);
 }
 
 void MainWindow::ensurePropertiesPanel()
@@ -1227,14 +1242,11 @@ void MainWindow::setupFooterBar()
     separator2->setStyleSheet("color: #cbd4e2;");
     footerLayout->addWidget(separator2);
 
-    // Snap to grid checkbox
-    m_snapCheck = new QCheckBox(tr("Snap ao grid"), m_footerBar);
-    m_snapCheck->setChecked(true);
-    m_snapCheck->setStyleSheet("font-weight: 600; color: #1e232b;");
-    footerLayout->addWidget(m_snapCheck);
-    connect(m_snapCheck, &QCheckBox::toggled, this, &MainWindow::onSnapToggled);
-
-    footerLayout->addStretch(1);
+    // Status message label
+    m_statusLabel = new QLabel(tr("Pronto"), m_footerBar);
+    m_statusLabel->setStyleSheet("color: #1e232b; padding-left: 8px;");
+    m_statusLabel->setMinimumWidth(300);
+    footerLayout->addWidget(m_statusLabel, 1);  // Stretch factor 1 to take remaining space
 
     statusBar()->addPermanentWidget(m_footerBar, 1);
 }
@@ -3043,13 +3055,27 @@ void MainWindow::onSnapToggled(bool)
     }
 }
 
+void MainWindow::onShowBarLCSToggled(bool checked)
+{
+    if (m_sceneController) {
+        m_sceneController->setShowBarLCS(checked);
+    }
+}
+
+void MainWindow::showStatusMessage(const QString &message, int timeout)
+{
+    if (m_statusLabel) {
+        m_statusLabel->setText(message);
+    }
+    statusBar()->showMessage(message, timeout);
+}
+
 void MainWindow::updateStatus()
 {
     switch (m_command) {
     case Command::InsertNode:
     {
-        QString message = tr("Insercao de nos: clique esquerdo para inserir (%1) | Esc para sair")
-            .arg(m_snapCheck && m_snapCheck->isChecked() ? tr("snap ligado") : tr("snap desligado"));
+        QString message = tr("Insercao de nos: clique esquerdo para inserir | Esc para sair");
         if (m_hoverInsertPoint) {
             const QVector3D &p = *m_hoverInsertPoint;
             message += tr(" | X=%1 Y=%2 Z=%3")
@@ -3057,11 +3083,11 @@ void MainWindow::updateStatus()
                      QString::number(p.y(), 'f', 3),
                      QString::number(p.z(), 'f', 3));
         }
-        statusBar()->showMessage(message);
+        showStatusMessage(message);
         break;
     }
     case Command::InsertBarFirst:
-        statusBar()->showMessage(tr("Criar barra: selecione o primeiro no (Esc para cancelar)"));
+        showStatusMessage(tr("Criar barra: selecione o primeiro no (Esc para cancelar)"));
         break;
     case Command::InsertBarSecond:
     {
@@ -3071,7 +3097,7 @@ void MainWindow::updateStatus()
                 nodeLabel = QString::number(node->externalId());
             }
         }
-        statusBar()->showMessage(tr("Criar barra: selecione o segundo no (primeiro = N%1) | Esc para cancelar")
+        showStatusMessage(tr("Criar barra: selecione o segundo no (primeiro = N%1) | Esc para cancelar")
             .arg(nodeLabel));
         break;
     }
@@ -3090,14 +3116,14 @@ void MainWindow::updateStatus()
                      QString::number(m_gridInsertState.ghostCoord2, 'f', 3));
         }
         message += tr(" | Enter confirma | Esc cancelar");
-        statusBar()->showMessage(message);
+        showStatusMessage(message);
         break;
     }
     case Command::DeleteGridLine:
         if (!m_pendingDeleteLineId.isNull()) {
-            statusBar()->showMessage(tr("Excluir linha de grid: clique novamente para confirmar | Esc para cancelar"));
+            showStatusMessage(tr("Excluir linha de grid: clique novamente para confirmar | Esc para cancelar"));
         } else {
-            statusBar()->showMessage(tr("Excluir linha de grid: selecione uma linha e clique para marcar | Esc para cancelar"));
+            showStatusMessage(tr("Excluir linha de grid: selecione uma linha e clique para marcar | Esc para cancelar"));
         }
         break;
     default:
@@ -3105,9 +3131,9 @@ void MainWindow::updateStatus()
         const int nodeCount = m_selectionModel ? m_selectionModel->selectedNodes().size() : 0;
         const int barCount = m_selectionModel ? m_selectionModel->selectedBars().size() : 0;
         if (nodeCount > 0 || barCount > 0) {
-            statusBar()->showMessage(tr("Selecionados: %1 no(s), %2 barra(s)").arg(nodeCount).arg(barCount));
+            showStatusMessage(tr("Selecionados: %1 no(s), %2 barra(s)").arg(nodeCount).arg(barCount));
         } else {
-            statusBar()->showMessage(tr("Pronto"));
+            showStatusMessage(tr("Pronto"));
         }
         break;
     }
