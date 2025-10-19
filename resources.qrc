@@ -1,5 +1,18 @@
 <RCC>
     <qresource prefix="/icons">
         <file alias="addNode.png">icons/addNode.png</file>
+        <file alias="addBar.png">icons/addBar.png</file>
+        <file alias="addMaterial.png">icons/addMaterial.png</file>
+        <file alias="addSection.png">icons/addSection.png</file>
+        <file alias="genGrid.png">icons/genGrid.png</file>
+        <file alias="initial.png">icons/initial.png</file>
+        <file alias="new.png">icons/new.png</file>
+        <file alias="open.png">icons/open.png</file>
+        <file alias="properties.png">icons/properties.png</file>
+        <file alias="redo.png">icons/redo.png</file>
+        <file alias="undo.png">icons/undo.png</file>
+        <file alias="save.png">icons/save.png</file>
+        <file alias="setBars.png">icons/setBars.png</file>
+        <file alias="zoomExtents.png">icons/zoomExtents.png</file>
     </qresource>
 </RCC>

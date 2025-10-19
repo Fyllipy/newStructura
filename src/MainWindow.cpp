@@ -164,82 +164,82 @@ MainWindow::MainWindow(QWidget *parent)
     m_undoStack->setUndoLimit(128);
     m_undoAction = m_undoStack->createUndoAction(this, tr("Desfazer"));
     m_undoAction->setShortcut(QKeySequence::Undo);
-    m_undoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowBack));
+    m_undoAction->setIcon(QIcon(QStringLiteral(":/icons/undo.png")));
     addAction(m_undoAction);
 
     m_redoAction = m_undoStack->createRedoAction(this, tr("Refazer"));
     m_redoAction->setShortcut(QKeySequence::Redo);
-    m_redoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
+    m_redoAction->setIcon(QIcon(QStringLiteral(":/icons/redo.png")));
     addAction(m_redoAction);
 
-    m_insertNodeCoordinatesAction = new QAction(tr("Inserir no (Coordenadas)"), this);
+    m_insertNodeCoordinatesAction = new QAction(tr("Inserir\nno (Coordenadas)"), this);
     m_insertNodeCoordinatesAction->setIcon(style()->standardIcon(QStyle::SP_DialogYesButton));
     connect(m_insertNodeCoordinatesAction, &QAction::triggered, this, &MainWindow::onInsertNodeByCoordinates);
 
-    m_insertNodeScreenAction = new QAction(tr("Inserir no (Tela)"), this);
+    m_insertNodeScreenAction = new QAction(tr("Inserir\nno (Tela)"), this);
     m_insertNodeScreenAction->setIcon(QIcon(QStringLiteral(":/icons/addNode.png")));
     connect(m_insertNodeScreenAction, &QAction::triggered, this, &MainWindow::onStartScreenInsert);
 
-    m_insertBarAction = new QAction(tr("Inserir barra"), this);
-    m_insertBarAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
+    m_insertBarAction = new QAction(tr("Inserir\nbarra"), this);
+    m_insertBarAction->setIcon(QIcon(QStringLiteral(":/icons/addBar.png")));
     connect(m_insertBarAction, &QAction::triggered, this, &MainWindow::onInsertBar);
 
     m_openModelAction = new QAction(tr("Abrir .dat"), this);
-    m_openModelAction->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+    m_openModelAction->setIcon(QIcon(QStringLiteral(":/icons/open.png")));
     m_openModelAction->setShortcut(QKeySequence::Open);
     connect(m_openModelAction, &QAction::triggered, this, &MainWindow::onOpenModel);
 
     m_saveModelAction = new QAction(tr("Salvar .dat"), this);
-    m_saveModelAction->setIcon(style()->standardIcon(QStyle::SP_DialogSaveButton));
+    m_saveModelAction->setIcon(QIcon(QStringLiteral(":/icons/save.png")));
     m_saveModelAction->setShortcut(QKeySequence::Save);
     connect(m_saveModelAction, &QAction::triggered, this, &MainWindow::onSaveModel);
 
     m_generateGridAction = new QAction(tr("Gerar grid"), this);
-    m_generateGridAction->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
+    m_generateGridAction->setIcon(QIcon(QStringLiteral(":/icons/genGrid.png")));
     connect(m_generateGridAction, &QAction::triggered, this, &MainWindow::onGenerateGrid);
 
-    m_addGridLineXAction = new QAction(tr("Adicionar linha X"), this);
+    m_addGridLineXAction = new QAction(tr("Adicionar\nlinha X"), this);
     m_addGridLineXAction->setIcon(style()->standardIcon(QStyle::SP_ArrowRight));
     connect(m_addGridLineXAction, &QAction::triggered, this, &MainWindow::onAddGridLineX);
 
-    m_addGridLineYAction = new QAction(tr("Adicionar linha Y"), this);
+    m_addGridLineYAction = new QAction(tr("Adicionar\nlinha Y"), this);
     m_addGridLineYAction->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
     connect(m_addGridLineYAction, &QAction::triggered, this, &MainWindow::onAddGridLineY);
 
-    m_addGridLineZAction = new QAction(tr("Adicionar linha Z"), this);
+    m_addGridLineZAction = new QAction(tr("Adicionar\nlinha Z"), this);
     m_addGridLineZAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
     connect(m_addGridLineZAction, &QAction::triggered, this, &MainWindow::onAddGridLineZ);
 
-    m_deleteGridLineAction = new QAction(tr("Deletar linha de grid"), this);
+    m_deleteGridLineAction = new QAction(tr("Deletar\nlinha de grid"), this);
     m_deleteGridLineAction->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
     connect(m_deleteGridLineAction, &QAction::triggered, this, &MainWindow::onDeleteGridLine);
 
-    m_applyNodalLoadAction = new QAction(tr("Forca concentrada (nos)"), this);
+    m_applyNodalLoadAction = new QAction(tr("Forca\nconcentrada (nos)"), this);
     m_applyNodalLoadAction->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
     connect(m_applyNodalLoadAction, &QAction::triggered, this, &MainWindow::onApplyNodalLoad);
 
-    m_applyDistributedLoadAction = new QAction(tr("Distribuida (barras)"), this);
+    m_applyDistributedLoadAction = new QAction(tr("Distribuida\n(barras)"), this);
     m_applyDistributedLoadAction->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
     connect(m_applyDistributedLoadAction, &QAction::triggered, this, &MainWindow::onApplyDistributedLoad);
 
-    m_createMaterialAction = new QAction(tr("Novo material"), this);
-    m_createMaterialAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogNewFolder));
+    m_createMaterialAction = new QAction(tr("Novo\nmaterial"), this);
+    m_createMaterialAction->setIcon(QIcon(QStringLiteral(":/icons/addMaterial.png")));
     connect(m_createMaterialAction, &QAction::triggered, this, &MainWindow::onCreateMaterial);
 
-    m_createSectionAction = new QAction(tr("Nova secao"), this);
-    m_createSectionAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
+    m_createSectionAction = new QAction(tr("Nova\nsecao"), this);
+    m_createSectionAction->setIcon(QIcon(QStringLiteral(":/icons/addSection.png")));
     connect(m_createSectionAction, &QAction::triggered, this, &MainWindow::onCreateSection);
 
-    m_assignPropertiesAction = new QAction(tr("Atribuir a barras"), this);
-    m_assignPropertiesAction->setIcon(style()->standardIcon(QStyle::SP_DialogApplyButton));
+    m_assignPropertiesAction = new QAction(tr("Atribuir\na barras"), this);
+    m_assignPropertiesAction->setIcon(QIcon(QStringLiteral(":/icons/setBars.png")));
     connect(m_assignPropertiesAction, &QAction::triggered, this, &MainWindow::onAssignProperties);
 
-    m_resetCameraAction = new QAction(tr("Visao inicial"), this);
-    m_resetCameraAction->setIcon(style()->standardIcon(QStyle::SP_CommandLink));
+    m_resetCameraAction = new QAction(tr("Visao\ninicial"), this);
+    m_resetCameraAction->setIcon(QIcon(QStringLiteral(":/icons/initial.png")));
     connect(m_resetCameraAction, &QAction::triggered, this, &MainWindow::onResetCamera);
 
-    m_zoomExtentsAction = new QAction(tr("Zoom extents"), this);
-    m_zoomExtentsAction->setIcon(style()->standardIcon(QStyle::SP_DesktopIcon));
+    m_zoomExtentsAction = new QAction(tr("Zoom\nextents"), this);
+    m_zoomExtentsAction->setIcon(QIcon(QStringLiteral(":/icons/zoomExtents.png")));
     connect(m_zoomExtentsAction, &QAction::triggered, this, &MainWindow::onZoomExtents);
 
     addAction(m_openModelAction);
@@ -465,8 +465,8 @@ void MainWindow::setupRightToolColumn()
 
     m_propertiesToolButton = new QToolButton(m_toolColumn);
     m_propertiesToolButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    m_propertiesToolButton->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
-    m_propertiesToolButton->setIconSize(QSize(24, 24));
+    m_propertiesToolButton->setIcon(QIcon(QStringLiteral(":/icons/properties.png")));
+    m_propertiesToolButton->setIconSize(QSize(30, 30));
     m_propertiesToolButton->setCheckable(true);
     m_propertiesToolButton->setAutoRaise(false);
     m_propertiesToolButton->setFixedSize(36, 36);
@@ -690,10 +690,10 @@ void MainWindow::createRibbon()
     // Ribbon styling inspired by Solid Edge palette
     m_ribbon->setStyleSheet(R"(
         QTabWidget::pane { border: 0; background: #f2f5fa; top: 0px; }
-        QGroupBox {background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8fafc, stop:1 #f2f5fa);
-        border: 1px solid #bec7d4; border-radius: 3px; margin-top: 4px; color: #1e232b; padding-top: 6px;}
+        QGroupBox {background: transparent;
+        border: none; margin-top: 12px; color: #1e232b;}
         QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 4px; font-weight: 600; color: #0b6da1; }
-        QToolButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #fbfdff, stop:1 #e7ecf3);color: #1e232b; border: 1px solid #c0c7d2; border-radius: 3px; padding: 2px 4px;
+        QToolButton { background: transparent; border: none; padding: 0px; color: #1e232b;
         min-height: 34px; min-width: 60px; icon-size: 28px;}
         QToolButton:hover {background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f0f5fa, stop:1 #dbe3ef);}
         QToolButton:pressed {background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d6dde8, stop:1 #c5ccd8);}
@@ -726,12 +726,12 @@ void MainWindow::createRibbon()
     auto *modelGroup = new QGroupBox(tr("Modelagem"), this);
     auto *modelGrid = new QGridLayout(modelGroup);
     modelGrid->setContentsMargins(4, 5, 4, 4);
-    modelGrid->setHorizontalSpacing(4);
-    modelGrid->setVerticalSpacing(4);
+    modelGrid->setHorizontalSpacing(30);
+    modelGrid->setVerticalSpacing(15);
     modelGrid->setAlignment(Qt::AlignTop);
     const QList<QAction *> modelActions = { m_insertNodeCoordinatesAction, m_insertNodeScreenAction, m_insertBarAction };
     const int modelColumns = 2;
-    populateActionGrid(modelGrid, modelActions, modelColumns);
+    populateActionGrid(modelGrid, modelActions, modelActions.size());
     const int modelRows = (modelActions.count() + modelColumns - 1) / modelColumns;
     modelGrid->setRowStretch(modelRows, 1);
     homeLayout->addWidget(modelGroup, 0, Qt::AlignTop);
@@ -739,8 +739,8 @@ void MainWindow::createRibbon()
     auto *propGroup = new QGroupBox(tr("Propriedades"), this);
     auto *propGrid = new QGridLayout(propGroup);
     propGrid->setContentsMargins(4, 5, 4, 4);
-    propGrid->setHorizontalSpacing(4);
-    propGrid->setVerticalSpacing(4);
+    propGrid->setHorizontalSpacing(30);
+    propGrid->setVerticalSpacing(15);
     propGrid->setAlignment(Qt::AlignTop);
     populateActionGrid(propGrid, { m_createMaterialAction, m_createSectionAction, m_assignPropertiesAction }, 3);
     propGrid->setRowStretch(2, 1);
@@ -749,10 +749,10 @@ void MainWindow::createRibbon()
     auto *viewGroup = new QGroupBox(tr("Visualizacao"), this);
     auto *viewGrid = new QGridLayout(viewGroup);
     viewGrid->setContentsMargins(4, 5, 4, 4);
-    viewGrid->setHorizontalSpacing(4);
-    viewGrid->setVerticalSpacing(4);
+    viewGrid->setHorizontalSpacing(30);
+    viewGrid->setVerticalSpacing(15);
     viewGrid->setAlignment(Qt::AlignTop);
-    populateActionGrid(viewGrid, viewActions, 2);
+    populateActionGrid(viewGrid, viewActions, viewActions.size());
     viewGrid->setRowStretch(1, 1);
     homeLayout->addWidget(viewGroup, 0, Qt::AlignTop);
 
@@ -769,8 +769,8 @@ void MainWindow::createRibbon()
     auto *gridGroup = new QGroupBox(tr("Grid"), this);
     auto *gridLayout = new QGridLayout(gridGroup);
     gridLayout->setContentsMargins(4, 5, 4, 4);
-    gridLayout->setHorizontalSpacing(4);
-    gridLayout->setVerticalSpacing(4);
+    gridLayout->setHorizontalSpacing(30);
+    gridLayout->setVerticalSpacing(15);
     gridLayout->setAlignment(Qt::AlignTop);
     const QList<QAction *> gridActions = {
         m_generateGridAction,
@@ -780,7 +780,7 @@ void MainWindow::createRibbon()
         m_deleteGridLineAction
     };
     const int gridColumns = 2;
-    populateActionGrid(gridLayout, gridActions, gridColumns);
+    populateActionGrid(gridLayout, gridActions, gridActions.size());
     const int gridRows = (gridActions.count() + gridColumns - 1) / gridColumns;
     gridLayout->setRowStretch(gridRows, 1);
     toolsLayout->addWidget(gridGroup, 0, Qt::AlignTop);
@@ -802,7 +802,7 @@ void MainWindow::createRibbon()
     loadsGrid->setAlignment(Qt::AlignTop);
     const QList<QAction *> loadActions = { m_applyNodalLoadAction, m_applyDistributedLoadAction };
     const int loadColumns = 2;
-    populateActionGrid(loadsGrid, loadActions, loadColumns);
+    populateActionGrid(loadsGrid, loadActions, loadActions.size());
     const int loadRows = (loadActions.count() + loadColumns - 1) / loadColumns;
     loadsGrid->setRowStretch(loadRows, 1);
     loadsLayout->addWidget(loadsGroup, 0, Qt::AlignTop);
@@ -814,6 +814,7 @@ void MainWindow::createRibbon()
     // if (auto *tabBar = m_ribbon->tabBar()) {
     //     tabBar->hide();
     // }
+    // }
     connect(m_ribbon, &QTabWidget::currentChanged, this, &MainWindow::onRibbonTabChanged);
     updateRibbonTabButtons(m_ribbon->currentIndex());
 }
@@ -824,9 +825,15 @@ QToolButton *MainWindow::createToolButton(QAction *action)
     button->setDefaultAction(action);
     button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
     button->setAutoRaise(false);
-    button->setIconSize(QSize(28, 28));
-    button->setMinimumSize(68, 60);
-    button->setMaximumHeight(66);
+    const QSize iconSz(45, 45);
+    button->setIconSize(iconSz);
+    button->setFixedSize(iconSz.width() + 6, iconSz.height() + 6);
+    //button->setMinimumSize(68, 60);
+    button->setMinimumSize(80, 82);
+    //button->setMaximumHeight(66);
+    button->setMaximumHeight(86);
+    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    button->setStyleSheet("QToolButton { padding-top: 10px;}");
     button->setFocusPolicy(Qt::NoFocus);
     return button;
 }
