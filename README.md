@@ -33,7 +33,7 @@ Aplicativo C++ com Qt e VTK para renderização 3D. O projeto usa Widgets (Qt) e
 Na raiz do projeto, execute:
 
 ```
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DVTK_DIR="C:/src/VTK/install/lib/cmake/vtk-9.3" -DCMAKE_PREFIX_PATH="C:/Qt/6.x.y/msvc2022_64/lib/cmake"
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DVTK_DIR="D:/src/VTK/build/lib/cmake/vtk-9.5" -DCMAKE_PREFIX_PATH="D:/Qt/6.9.3/msvc2022_64/lib/cmake"
 cmake --build build --config Release
 ```
 

@@ -1,4 +1,5 @@
 #include "SceneController.h"
+#include "LoadVisualization.h"
 
 #include <QVTKOpenGLNativeWidget.h>
 
@@ -63,26 +64,7 @@ SceneController::SceneController(QObject *parent)
     , m_gridGhostCells(vtkSmartPointer<vtkCellArray>::New())
     , m_gridGhostMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
     , m_gridGhostActor(vtkSmartPointer<vtkActor>::New())
-    , m_nodalLoadPoints(vtkSmartPointer<vtkPoints>::New())
-    , m_nodalLoadVectors(vtkSmartPointer<vtkDoubleArray>::New())
-    , m_nodalLoadMagnitudes(vtkSmartPointer<vtkDoubleArray>::New())
-    , m_nodalLoadPolyData(vtkSmartPointer<vtkPolyData>::New())
-    , m_arrowSource(vtkSmartPointer<vtkArrowSource>::New())
-    , m_nodalGlyph(vtkSmartPointer<vtkGlyph3D>::New())
-    , m_nodalLoadMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
-    , m_nodalLoadActor(vtkSmartPointer<vtkActor>::New())
-    , m_memberLoadPoints(vtkSmartPointer<vtkPoints>::New())
-    , m_memberLoadVectors(vtkSmartPointer<vtkDoubleArray>::New())
-    , m_memberLoadMagnitudes(vtkSmartPointer<vtkDoubleArray>::New())
-    , m_memberLoadPolyData(vtkSmartPointer<vtkPolyData>::New())
-    , m_memberGlyph(vtkSmartPointer<vtkGlyph3D>::New())
-    , m_memberLoadMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
-    , m_memberLoadActor(vtkSmartPointer<vtkActor>::New())
-    , m_momentPoints(vtkSmartPointer<vtkPoints>::New())
-    , m_momentLines(vtkSmartPointer<vtkCellArray>::New())
-    , m_momentPolyData(vtkSmartPointer<vtkPolyData>::New())
-    , m_momentMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
-    , m_momentActor(vtkSmartPointer<vtkActor>::New())
+    , m_loadVisualization(std::make_unique<Structura::Visualization::LoadVisualization>())
     , m_picker(vtkSmartPointer<vtkCellPicker>::New())
     , m_nodePicker(vtkSmartPointer<vtkPointPicker>::New())
     , m_barPicker(vtkSmartPointer<vtkCellPicker>::New())
@@ -143,67 +125,7 @@ SceneController::SceneController(QObject *parent)
     m_gridGhostActor->PickableOff();
     m_gridGhostActor->SetVisibility(false);
 
-    // Nodal load glyphs
-    m_nodalLoadPolyData->SetPoints(m_nodalLoadPoints);
-    m_nodalLoadVectors->SetNumberOfComponents(3);
-    m_nodalLoadVectors->SetName("LoadDirection");
-    m_nodalLoadPolyData->GetPointData()->SetVectors(m_nodalLoadVectors);
-    m_nodalLoadMagnitudes->SetNumberOfComponents(1);
-    m_nodalLoadMagnitudes->SetName("LoadMagnitude");
-    m_nodalLoadPolyData->GetPointData()->SetScalars(m_nodalLoadMagnitudes);
-
-    m_arrowSource->SetTipLength(0.35);
-    m_arrowSource->SetTipRadius(0.08);
-    m_arrowSource->SetShaftRadius(0.03);
-
-    m_nodalGlyph->SetSourceConnection(m_arrowSource->GetOutputPort());
-    m_nodalGlyph->SetInputData(m_nodalLoadPolyData);
-    m_nodalGlyph->OrientOn();
-    m_nodalGlyph->SetVectorModeToUseVector();
-    m_nodalGlyph->SetScaleModeToScaleByScalar();
-    m_nodalGlyph->SetScaleFactor(0.18);
-    m_nodalGlyph->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "LoadMagnitude");
-
-    m_nodalLoadMapper->SetInputConnection(m_nodalGlyph->GetOutputPort());
-    m_nodalLoadActor->SetMapper(m_nodalLoadMapper);
-    m_nodalLoadActor->GetProperty()->SetColor(0.90, 0.15, 0.20);
-    m_nodalLoadActor->GetProperty()->SetOpacity(0.95);
-    m_nodalLoadActor->PickableOff();
-    m_nodalLoadActor->SetVisibility(false);
-
-    // Member distributed load glyphs
-    m_memberLoadPolyData->SetPoints(m_memberLoadPoints);
-    m_memberLoadVectors->SetNumberOfComponents(3);
-    m_memberLoadVectors->SetName("DistributedDirection");
-    m_memberLoadPolyData->GetPointData()->SetVectors(m_memberLoadVectors);
-    m_memberLoadMagnitudes->SetNumberOfComponents(1);
-    m_memberLoadMagnitudes->SetName("DistributedMagnitude");
-    m_memberLoadPolyData->GetPointData()->SetScalars(m_memberLoadMagnitudes);
-
-    m_memberGlyph->SetSourceConnection(m_arrowSource->GetOutputPort());
-    m_memberGlyph->SetInputData(m_memberLoadPolyData);
-    m_memberGlyph->OrientOn();
-    m_memberGlyph->SetVectorModeToUseVector();
-    m_memberGlyph->SetScaleModeToScaleByScalar();
-    m_memberGlyph->SetScaleFactor(0.14);
-    m_memberGlyph->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "DistributedMagnitude");
-
-    m_memberLoadMapper->SetInputConnection(m_memberGlyph->GetOutputPort());
-    m_memberLoadActor->SetMapper(m_memberLoadMapper);
-    m_memberLoadActor->GetProperty()->SetColor(0.15, 0.58, 0.32);
-    m_memberLoadActor->GetProperty()->SetOpacity(0.9);
-    m_memberLoadActor->PickableOff();
-    m_memberLoadActor->SetVisibility(false);
-
-    // Moment rings
-    m_momentPolyData->SetPoints(m_momentPoints);
-    m_momentPolyData->SetLines(m_momentLines);
-    m_momentMapper->SetInputData(m_momentPolyData);
-    m_momentActor->SetMapper(m_momentMapper);
-    m_momentActor->GetProperty()->SetColor(0.65, 0.20, 0.82);
-    m_momentActor->GetProperty()->SetLineWidth(2.2);
-    m_momentActor->PickableOff();
-    m_momentActor->SetVisibility(false);
+    // Load visualization will be initialized in initialize() method
 
     // Picker tolerance suitable for thin lines
     m_picker->SetTolerance(0.005);
@@ -234,10 +156,13 @@ void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget)
     m_renderer->AddActor(m_barActor);
     m_renderer->AddActor(m_pointActor);
     m_renderer->AddActor(m_gridActor);
-    m_renderer->AddActor(m_nodalLoadActor);
-    m_renderer->AddActor(m_memberLoadActor);
-    m_renderer->AddActor(m_momentActor);
     m_renderer->AddActor(m_gridGhostActor);
+    
+    // Initialize load visualization
+    if (m_loadVisualization) {
+        m_loadVisualization->initialize(m_renderer);
+    }
+    
     m_renderer->ResetCamera();
 
     auto axes = vtkSmartPointer<vtkAxesActor>::New();
@@ -876,7 +801,7 @@ std::optional<QUuid> SceneController::nearestGridLineId(GridLine::Axis axis,
 void SceneController::setNodalLoadVisuals(const QVector<NodalLoadVisual> &visuals)
 {
     m_nodalLoadVisuals = visuals;
-    rebuildNodalLoadGlyphs();
+    updateLoadVisuals();
     if (m_renderWindow) {
         m_renderWindow->Render();
     }
@@ -885,245 +810,46 @@ void SceneController::setNodalLoadVisuals(const QVector<NodalLoadVisual> &visual
 void SceneController::setMemberLoadVisuals(const QVector<MemberLoadVisual> &visuals)
 {
     m_memberLoadVisuals = visuals;
-    rebuildMemberLoadGlyphs();
+    updateLoadVisuals();
     if (m_renderWindow) {
         m_renderWindow->Render();
     }
 }
 
-void SceneController::rebuildNodalLoadGlyphs()
+void SceneController::updateLoadVisuals()
 {
-    if (!m_nodalLoadPoints || !m_nodalLoadVectors || !m_nodalLoadMagnitudes) {
+    if (!m_loadVisualization) {
         return;
     }
 
-    if (m_renderer) {
-        for (auto &actor : m_nodalLoadLabels) {
-            if (actor) {
-                m_renderer->RemoveActor(actor);
-            }
-        }
-        for (auto &actor : m_momentLabels) {
-            if (actor) {
-                m_renderer->RemoveActor(actor);
-            }
-        }
+    // Convert nodal load visuals to LoadVisualization format
+    QVector<Structura::Visualization::LoadVisualization::NodalLoad> nodalLoads;
+    nodalLoads.reserve(m_nodalLoadVisuals.size());
+    for (const auto& visual : m_nodalLoadVisuals) {
+        Structura::Visualization::LoadVisualization::NodalLoad load;
+        load.position = visual.position;
+        load.force = visual.force;
+        load.moment = visual.moment;
+        nodalLoads.append(load);
     }
-    m_nodalLoadLabels.clear();
-    m_momentLabels.clear();
+    m_loadVisualization->setNodalLoads(nodalLoads);
 
-    m_nodalLoadPoints->Reset();
-    m_nodalLoadVectors->Reset();
-    m_nodalLoadMagnitudes->Reset();
-    if (m_momentPoints && m_momentLines) {
-        m_momentPoints->Reset();
-        m_momentLines->Reset();
+    // Convert member load visuals to LoadVisualization format
+    QVector<Structura::Visualization::LoadVisualization::DistributedLoad> distributedLoads;
+    distributedLoads.reserve(m_memberLoadVisuals.size());
+    for (const auto& visual : m_memberLoadVisuals) {
+        // For distributed loads, we need to reconstruct the bar endpoints from the visual
+        // The visual contains position (midpoint) and barVector
+        const QVector3D barHalfVector = visual.barVector * 0.5f;
+        
+        Structura::Visualization::LoadVisualization::DistributedLoad load;
+        load.startPoint = visual.position - barHalfVector;
+        load.endPoint = visual.position + barHalfVector;
+        load.loadVector = visual.force;
+        load.isLocalSystem = visual.localSystem;
+        distributedLoads.append(load);
     }
-
-    auto scaledMagnitude = [](double magnitude) {
-        if (magnitude <= 0.0) {
-            return 0.0;
-        }
-        return std::max(0.12, std::log10(1.0 + magnitude) * 0.6);
-    };
-
-    for (const auto &visual : m_nodalLoadVisuals) {
-        const QVector3D position = visual.position;
-        const QVector3D force = visual.force;
-        const double magnitude = static_cast<double>(force.length());
-        if (magnitude > 1e-6) {
-            m_nodalLoadPoints->InsertNextPoint(position.x(), position.y(), position.z());
-            const QVector3D direction = force.normalized();
-            const double vec[3] = {
-                static_cast<double>(direction.x()),
-                static_cast<double>(direction.y()),
-                static_cast<double>(direction.z())
-            };
-            m_nodalLoadVectors->InsertNextTuple(vec);
-            m_nodalLoadMagnitudes->InsertNextValue(scaledMagnitude(magnitude));
-
-            if (m_renderer) {
-                QVector3D labelDir = direction;
-                if (labelDir.lengthSquared() < 1e-6f) {
-                    labelDir = QVector3D(0.0f, 0.0f, 1.0f);
-                }
-                labelDir.normalize();
-                const QVector3D labelPos = position + labelDir * 0.35f;
-                auto label = vtkSmartPointer<vtkBillboardTextActor3D>::New();
-                label->SetInput(qPrintable(QStringLiteral("%1 kN").arg(magnitude, 0, 'f', 2)));
-                label->SetPosition(labelPos.x(), labelPos.y(), labelPos.z());
-                label->GetTextProperty()->SetFontSize(14);
-                label->GetTextProperty()->SetColor(0.90, 0.15, 0.20);
-                label->GetTextProperty()->SetBold(true);
-                label->GetTextProperty()->ShadowOff();
-                m_renderer->AddActor(label);
-                m_nodalLoadLabels.append(label);
-            }
-        }
-
-        const double momentMagnitude = static_cast<double>(visual.moment.length());
-        if (momentMagnitude > 1e-6) {
-            const QVector3D axisDir = visual.moment.normalized();
-            const float ringRadius = appendMomentRing(position, visual.moment, momentMagnitude);
-            if (ringRadius > 0.0f && m_renderer) {
-                QVector3D labelDir = axisDir;
-                if (labelDir.lengthSquared() < 1e-6f) {
-                    labelDir = QVector3D(0.0f, 0.0f, 1.0f);
-                }
-                labelDir.normalize();
-                const QVector3D labelPos = position + labelDir * (ringRadius + 0.15f);
-                auto label = vtkSmartPointer<vtkBillboardTextActor3D>::New();
-                label->SetInput(qPrintable(QStringLiteral("%1 kN.m").arg(momentMagnitude, 0, 'f', 2)));
-                label->SetPosition(labelPos.x(), labelPos.y(), labelPos.z());
-                label->GetTextProperty()->SetFontSize(14);
-                label->GetTextProperty()->SetColor(0.65, 0.20, 0.82);
-                label->GetTextProperty()->SetBold(true);
-                label->GetTextProperty()->ShadowOff();
-                m_renderer->AddActor(label);
-                m_momentLabels.append(label);
-            }
-        }
-    }
-
-    m_nodalLoadPoints->Modified();
-    m_nodalLoadVectors->Modified();
-    m_nodalLoadMagnitudes->Modified();
-    m_nodalLoadPolyData->Modified();
-    m_nodalGlyph->Modified();
-
-    const bool hasForces = m_nodalLoadPoints->GetNumberOfPoints() > 0;
-    m_nodalLoadActor->SetVisibility(hasForces);
-
-    rebuildMomentGeometry();
-}
-
-void SceneController::rebuildMemberLoadGlyphs()
-{
-    if (!m_memberLoadPoints || !m_memberLoadVectors || !m_memberLoadMagnitudes) {
-        return;
-    }
-
-    if (m_renderer) {
-        for (auto &actor : m_memberLoadLabels) {
-            if (actor) {
-                m_renderer->RemoveActor(actor);
-            }
-        }
-    }
-    m_memberLoadLabels.clear();
-
-    m_memberLoadPoints->Reset();
-    m_memberLoadVectors->Reset();
-    m_memberLoadMagnitudes->Reset();
-
-    auto scaledMagnitude = [](double magnitude) {
-        if (magnitude <= 0.0) {
-            return 0.0;
-        }
-        return std::max(0.08, std::log10(1.0 + magnitude) * 0.5);
-    };
-
-    for (const auto &visual : m_memberLoadVisuals) {
-        const QVector3D force = visual.force;
-        const double magnitude = static_cast<double>(force.length());
-        if (magnitude <= 1e-6) {
-            continue;
-        }
-        const QVector3D direction = force.normalized();
-        m_memberLoadPoints->InsertNextPoint(visual.position.x(), visual.position.y(), visual.position.z());
-        const double vec[3] = {
-            static_cast<double>(direction.x()),
-            static_cast<double>(direction.y()),
-            static_cast<double>(direction.z())
-        };
-        m_memberLoadVectors->InsertNextTuple(vec);
-        m_memberLoadMagnitudes->InsertNextValue(scaledMagnitude(magnitude));
-
-        if (m_renderer) {
-            QVector3D labelDir = direction;
-            if (labelDir.lengthSquared() < 1e-6f) {
-                labelDir = QVector3D(0.0f, 0.0f, 1.0f);
-            }
-            labelDir.normalize();
-            const QVector3D labelPos = visual.position + labelDir * 0.35f;
-            auto label = vtkSmartPointer<vtkBillboardTextActor3D>::New();
-            label->SetInput(qPrintable(QStringLiteral("%1 kN/m").arg(magnitude, 0, 'f', 2)));
-            label->SetPosition(labelPos.x(), labelPos.y(), labelPos.z());
-            label->GetTextProperty()->SetFontSize(14);
-            label->GetTextProperty()->SetColor(0.15, 0.58, 0.32);
-            label->GetTextProperty()->SetBold(true);
-            label->GetTextProperty()->ShadowOff();
-            m_renderer->AddActor(label);
-            m_memberLoadLabels.append(label);
-        }
-    }
-
-    m_memberLoadPoints->Modified();
-    m_memberLoadVectors->Modified();
-    m_memberLoadMagnitudes->Modified();
-    m_memberLoadPolyData->Modified();
-    m_memberGlyph->Modified();
-
-    const bool hasLoads = m_memberLoadPoints->GetNumberOfPoints() > 0;
-    m_memberLoadActor->SetVisibility(hasLoads);
-}
-
-float SceneController::appendMomentRing(const QVector3D &position, const QVector3D &moment, double magnitude)
-{
-    if (!m_momentPoints || !m_momentLines) {
-        return 0.0f;
-    }
-
-    QVector3D axis = moment;
-    if (axis.lengthSquared() < 1e-6f) {
-        return 0.0f;
-    }
-    axis.normalize();
-
-    QVector3D reference(0.0f, 0.0f, 1.0f);
-    if (std::abs(QVector3D::dotProduct(axis, reference)) > 0.95f) {
-        reference = QVector3D(0.0f, 1.0f, 0.0f);
-    }
-    QVector3D tangent = QVector3D::crossProduct(axis, reference);
-    if (tangent.lengthSquared() < 1e-6f) {
-        reference = QVector3D(1.0f, 0.0f, 0.0f);
-        tangent = QVector3D::crossProduct(axis, reference);
-        if (tangent.lengthSquared() < 1e-6f) {
-            return 0.0f;
-        }
-    }
-    tangent.normalize();
-    QVector3D bitangent = QVector3D::crossProduct(axis, tangent);
-    bitangent.normalize();
-
-    const int segments = 32;
-    const double twoPi = 6.28318530717958647692;
-    const float radius = std::max(0.18f, static_cast<float>(0.35 + 0.08 * std::log10(1.0 + magnitude)));
-
-    std::vector<vtkIdType> ids;
-    ids.reserve(static_cast<std::size_t>(segments) + 1);
-    for (int i = 0; i <= segments; ++i) {
-        const double angle = (twoPi * static_cast<double>(i)) / static_cast<double>(segments);
-        const float c = static_cast<float>(std::cos(angle));
-        const float s = static_cast<float>(std::sin(angle));
-        const QVector3D offset = radius * (tangent * c + bitangent * s);
-        const QVector3D point = position + offset;
-        ids.push_back(m_momentPoints->InsertNextPoint(point.x(), point.y(), point.z()));
-    }
-    m_momentLines->InsertNextCell(static_cast<vtkIdType>(ids.size()), ids.data());
-    return radius;
-}
-
-void SceneController::rebuildMomentGeometry()
-{
-    if (!m_momentPoints || !m_momentLines || !m_momentPolyData) {
-        return;
-    }
-    m_momentPoints->Modified();
-    m_momentLines->Modified();
-    m_momentPolyData->Modified();
-    const bool hasMoments = m_momentLines->GetNumberOfCells() > 0;
-    m_momentActor->SetVisibility(hasMoments);
+    m_loadVisualization->setDistributedLoads(distributedLoads);
 }
 
 bool SceneController::pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z) const
@@ -1611,73 +1337,12 @@ void SceneController::clearAll()
     m_gridActor->SetVisibility(false);
     hideGridGhostLine();
 
-    if (m_renderer) {
-        for (auto &actor : m_nodalLoadLabels) {
-            if (actor) {
-                m_renderer->RemoveActor(actor);
-            }
-        }
-        for (auto &actor : m_memberLoadLabels) {
-            if (actor) {
-                m_renderer->RemoveActor(actor);
-            }
-        }
-        for (auto &actor : m_momentLabels) {
-            if (actor) {
-                m_renderer->RemoveActor(actor);
-            }
-        }
-    }
-
+    // Clear load visuals
     m_nodalLoadVisuals.clear();
     m_memberLoadVisuals.clear();
-    if (m_nodalLoadPoints) {
-        m_nodalLoadPoints->Reset();
-        m_nodalLoadPoints->Modified();
+    if (m_loadVisualization) {
+        m_loadVisualization->clearAll();
     }
-    if (m_nodalLoadVectors) {
-        m_nodalLoadVectors->Reset();
-        m_nodalLoadVectors->Modified();
-    }
-    if (m_nodalLoadMagnitudes) {
-        m_nodalLoadMagnitudes->Reset();
-        m_nodalLoadMagnitudes->Modified();
-    }
-    if (m_memberLoadPoints) {
-        m_memberLoadPoints->Reset();
-        m_memberLoadPoints->Modified();
-    }
-    if (m_memberLoadVectors) {
-        m_memberLoadVectors->Reset();
-        m_memberLoadVectors->Modified();
-    }
-    if (m_memberLoadMagnitudes) {
-        m_memberLoadMagnitudes->Reset();
-        m_memberLoadMagnitudes->Modified();
-    }
-    if (m_momentPoints) {
-        m_momentPoints->Reset();
-        m_momentPoints->Modified();
-    }
-    if (m_momentLines) {
-        m_momentLines->Reset();
-        m_momentLines->Modified();
-    }
-    if (m_momentPolyData) {
-        m_momentPolyData->Modified();
-    }
-    if (m_nodalLoadPolyData) {
-        m_nodalLoadPolyData->Modified();
-    }
-    if (m_memberLoadPolyData) {
-        m_memberLoadPolyData->Modified();
-    }
-    m_nodalLoadLabels.clear();
-    m_memberLoadLabels.clear();
-    m_momentLabels.clear();
-    m_nodalLoadActor->SetVisibility(false);
-    m_memberLoadActor->SetVisibility(false);
-    m_momentActor->SetVisibility(false);
 
     m_points->Modified();
     m_vertices->Modified();

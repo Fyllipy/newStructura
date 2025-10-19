@@ -57,6 +57,8 @@ if (QT_VERSION_MAJOR EQUAL 6)
         src/ModelEntities.h
         src/PropertiesPanel.h
         src/PropertiesPanel.cpp
+        src/LoadVisualization.h
+        src/LoadVisualization.cpp
         resources.qrc
     )
 else()
@@ -89,6 +91,8 @@ else()
         src/ModelEntities.h
         src/PropertiesPanel.h
         src/PropertiesPanel.cpp
+        src/LoadVisualization.h
+        src/LoadVisualization.cpp
         resources.qrc
     )
 endif()
