@@ -10,6 +10,8 @@
 #include "DistributedLoadDialog.h"
 #include "RestraintDialog.h"
 #include "SceneController.h"
+#include "app/UndoRedoService.h"
+#include "ui/MainWindowPresenter.h"
 
 #include <QAction>
 #include <QApplication>
@@ -44,7 +46,6 @@
 
 #include <QSlider>
 #include <QUndoStack>
-#include <QUndoCommand>
 #include <QVector3D>
 #include <QtMath>
 
@@ -53,104 +54,6 @@
 
 #include <QVTKOpenGLNativeWidget.h>
 
-namespace {
-
-class MoveNodesCommand : public QUndoCommand
-{
-public:
-    MoveNodesCommand(SceneController *scene,
-                     const QVector<QUuid> &ids,
-                     const QVector<QVector3D> &oldPositions,
-                     const QVector<QVector3D> &newPositions,
-                     QUndoCommand *parent = nullptr)
-        : QUndoCommand(parent)
-        , m_scene(scene)
-        , m_ids(ids)
-        , m_oldPositions(oldPositions)
-        , m_newPositions(newPositions)
-    {
-        setText(QObject::tr("Mover nÃ³(s)"));
-    }
-
-    void undo() override { apply(m_oldPositions); }
-    void redo() override { apply(m_newPositions); }
-
-private:
-    void apply(const QVector<QVector3D> &positions)
-    {
-        if (!m_scene) {
-            return;
-        }
-        m_scene->updateNodePositions(m_ids, positions);
-    }
-
-    SceneController *m_scene;
-    QVector<QUuid> m_ids;
-    QVector<QVector3D> m_oldPositions;
-    QVector<QVector3D> m_newPositions;
-};
-
-class SetBarPropertiesCommand : public QUndoCommand
-{
-public:
-    SetBarPropertiesCommand(SceneController *scene,
-                            const QVector<QUuid> &ids,
-                            const QVector<QUuid> &oldMaterials,
-                            const QVector<QUuid> &oldSections,
-                            const std::optional<QUuid> &newMaterial,
-                            const std::optional<QUuid> &newSection,
-                            QUndoCommand *parent = nullptr)
-        : QUndoCommand(parent)
-        , m_scene(scene)
-        , m_ids(ids)
-        , m_oldMaterials(oldMaterials)
-        , m_oldSections(oldSections)
-        , m_newMaterial(newMaterial)
-        , m_newSection(newSection)
-    {
-        setText(QObject::tr("Atualizar propriedades de barra"));
-    }
-
-    void undo() override
-    {
-        if (!m_scene) {
-            return;
-        }
-        for (int i = 0; i < m_ids.size(); ++i) {
-            std::vector<QUuid> single { m_ids.at(i) };
-            std::optional<QUuid> mat(m_oldMaterials.at(i));
-            std::optional<QUuid> sec(m_oldSections.at(i));
-            m_scene->assignBarProperties(single, mat, sec);
-        }
-    }
-
-    void redo() override
-    {
-        if (!m_scene) {
-            return;
-        }
-        if (!m_newMaterial.has_value() && !m_newSection.has_value()) {
-            return;
-        }
-        std::vector<QUuid> barIds;
-        barIds.reserve(m_ids.size());
-        for (const QUuid &id : m_ids) {
-            barIds.push_back(id);
-        }
-        m_scene->assignBarProperties(barIds, m_newMaterial, m_newSection);
-    }
-
-private:
-    SceneController *m_scene;
-    QVector<QUuid> m_ids;
-    QVector<QUuid> m_oldMaterials;
-    QVector<QUuid> m_oldSections;
-    std::optional<QUuid> m_newMaterial;
-    std::optional<QUuid> m_newSection;
-};
-
-} // namespace
-
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_sceneController(new SceneController(this))
@@ -158,22 +61,37 @@ MainWindow::MainWindow(QWidget *parent)
     , m_vtkWidget(new QVTKOpenGLNativeWidget(this))
     , m_ribbon(new QTabWidget(this))
     , m_homeTabButton(nullptr)
-    , m_undoStack(new QUndoStack(this))
+    , m_undoService(new Structura::App::UndoRedoService(this))
+    , m_presenter(nullptr)
 {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::CustomizeWindowHint);
     setMouseTracking(true);
     setWindowTitle(tr("Structura 3D"));
 
-    m_undoStack->setUndoLimit(128);
-    m_undoAction = m_undoStack->createUndoAction(this, tr("Desfazer"));
+    m_undoAction = m_undoService->createUndoAction(this, tr("Desfazer"));
     m_undoAction->setShortcut(QKeySequence::Undo);
     m_undoAction->setIcon(QIcon(QStringLiteral(":/icons/undo.png")));
     addAction(m_undoAction);
 
-    m_redoAction = m_undoStack->createRedoAction(this, tr("Refazer"));
+    m_redoAction = m_undoService->createRedoAction(this, tr("Refazer"));
     m_redoAction->setShortcut(QKeySequence::Redo);
     m_redoAction->setIcon(QIcon(QStringLiteral(":/icons/redo.png")));
     addAction(m_redoAction);
+
+    Structura::UI::MainWindowPresenter::Dependencies presenterDeps;
+    presenterDeps.sceneController = m_sceneController;
+    presenterDeps.selectionModel = m_selectionModel;
+    presenterDeps.undoService = m_undoService;
+    presenterDeps.materials = &m_materials;
+    presenterDeps.sections = &m_sections;
+    presenterDeps.lastMaterialId = &m_lastMaterialId;
+    presenterDeps.lastSectionId = &m_lastSectionId;
+    presenterDeps.supports = &m_supports;
+    presenterDeps.nodalLoads = &m_nodalLoads;
+    presenterDeps.memberLoads = &m_memberLoads;
+    presenterDeps.lastNodalPreset = &m_lastNodalPreset;
+    presenterDeps.lastDistributedPreset = &m_lastDistributedPreset;
+    m_presenter = new Structura::UI::MainWindowPresenter(presenterDeps, this);
 
     m_insertNodeCoordinatesAction = new QAction(tr("Inserir\nno (Coordenadas)"), this);
     m_insertNodeCoordinatesAction->setIcon(style()->standardIcon(QStyle::SP_DialogYesButton));
@@ -280,7 +198,7 @@ MainWindow::MainWindow(QWidget *parent)
                 updateStatus();
                 updateLoadActionsEnabled();
             });
-    connect(m_undoStack, &QUndoStack::indexChanged, this, [this](int) {
+    connect(m_undoService->stack(), &QUndoStack::indexChanged, this, [this](int) {
         refreshPropertiesPanel();
     });
 
@@ -1525,15 +1443,7 @@ void MainWindow::setCommand(Command command)
 
 MainWindow::MaterialInfo *MainWindow::findMaterial(const QUuid &id)
 {
-    if (id.isNull()) {
-        return nullptr;
-    }
-    for (auto &mat : m_materials) {
-        if (mat.uuid == id) {
-            return &mat;
-        }
-    }
-    return nullptr;
+    return m_presenter ? m_presenter->findMaterial(id) : nullptr;
 }
 
 const MainWindow::MaterialInfo *MainWindow::findMaterial(const QUuid &id) const
@@ -1543,15 +1453,7 @@ const MainWindow::MaterialInfo *MainWindow::findMaterial(const QUuid &id) const
 
 MainWindow::SectionInfo *MainWindow::findSection(const QUuid &id)
 {
-    if (id.isNull()) {
-        return nullptr;
-    }
-    for (auto &sec : m_sections) {
-        if (sec.uuid == id) {
-            return &sec;
-        }
-    }
-    return nullptr;
+    return m_presenter ? m_presenter->findSection(id) : nullptr;
 }
 
 const MainWindow::SectionInfo *MainWindow::findSection(const QUuid &id) const
@@ -3141,133 +3043,31 @@ void MainWindow::updateStatus()
 }
 void MainWindow::onNodeCoordinateEdited(const QVector<QUuid> &ids, char axis, double value)
 {
-    if (!m_sceneController || !m_undoStack || ids.isEmpty()) {
+    if (!m_presenter) {
         return;
     }
 
-    QVector<QUuid> validIds;
-    QVector<QVector3D> oldPositions;
-    QVector<QVector3D> newPositions;
-
-    for (const QUuid &id : ids) {
-        const SceneController::Node *node = m_sceneController->findNode(id);
-        if (!node) {
-            continue;
-        }
-        const auto pos = node->position();
-        QVector3D oldPos(pos[0], pos[1], pos[2]);
-        QVector3D newPos = oldPos;
-        switch (axis) {
-        case 'x':
-            newPos.setX(value);
-            break;
-        case 'y':
-            newPos.setY(value);
-            break;
-        case 'z':
-            newPos.setZ(value);
-            break;
-        default:
-            return;
-        }
-        if (qFuzzyCompare(oldPos.x() + 1.0, newPos.x() + 1.0) &&
-            qFuzzyCompare(oldPos.y() + 1.0, newPos.y() + 1.0) &&
-            qFuzzyCompare(oldPos.z() + 1.0, newPos.z() + 1.0)) {
-            continue;
-        }
-        validIds.append(id);
-        oldPositions.append(oldPos);
-        newPositions.append(newPos);
-    }
-
-    if (validIds.isEmpty()) {
-        return;
-    }
-
-    auto *command = new MoveNodesCommand(m_sceneController, validIds, oldPositions, newPositions);
-    m_undoStack->push(command);
+    m_presenter->handleNodeCoordinateEdited(ids, axis, value);
     refreshPropertiesPanel();
 }
 
 void MainWindow::onBarMaterialEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &materialId)
 {
-    if (!m_sceneController || !m_undoStack || ids.isEmpty() || !materialId.has_value()) {
+    if (!m_presenter) {
         return;
     }
 
-    QVector<QUuid> validIds;
-    QVector<QUuid> oldMaterials;
-    QVector<QUuid> oldSections;
-    bool changed = false;
-    const QUuid newMaterial = materialId.value();
-
-    for (const QUuid &id : ids) {
-        const SceneController::Bar *bar = m_sceneController->findBar(id);
-        if (!bar) {
-            continue;
-        }
-        validIds.append(id);
-        const QUuid oldMat = bar->materialId();
-        oldMaterials.append(oldMat);
-        oldSections.append(bar->sectionId());
-        if (oldMat != newMaterial) {
-            changed = true;
-        }
-    }
-
-    if (validIds.isEmpty() || !changed) {
-        return;
-    }
-
-    auto *command = new SetBarPropertiesCommand(m_sceneController,
-                                                validIds,
-                                                oldMaterials,
-                                                oldSections,
-                                                materialId,
-                                                std::nullopt);
-    m_undoStack->push(command);
-    m_lastMaterialId = newMaterial;
+    m_presenter->handleBarMaterialEdited(ids, materialId);
     refreshPropertiesPanel();
 }
 
 void MainWindow::onBarSectionEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &sectionId)
 {
-    if (!m_sceneController || !m_undoStack || ids.isEmpty() || !sectionId.has_value()) {
+    if (!m_presenter) {
         return;
     }
 
-    QVector<QUuid> validIds;
-    QVector<QUuid> oldMaterials;
-    QVector<QUuid> oldSections;
-    bool changed = false;
-    const QUuid newSection = sectionId.value();
-
-    for (const QUuid &id : ids) {
-        const SceneController::Bar *bar = m_sceneController->findBar(id);
-        if (!bar) {
-            continue;
-        }
-        validIds.append(id);
-        oldMaterials.append(bar->materialId());
-        const QUuid oldSec = bar->sectionId();
-        oldSections.append(oldSec);
-        if (oldSec != newSection) {
-            changed = true;
-        }
-    }
-
-    if (validIds.isEmpty() || !changed) {
-        return;
-    }
-
-    auto *command = new SetBarPropertiesCommand(m_sceneController,
-                                                validIds,
-                                                oldMaterials,
-                                                oldSections,
-                                                std::nullopt,
-                                                sectionId);
-    m_undoStack->push(command);
-    m_lastSectionId = newSection;
+    m_presenter->handleBarSectionEdited(ids, sectionId);
     refreshPropertiesPanel();
 }
 

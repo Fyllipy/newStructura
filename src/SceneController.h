@@ -12,6 +12,7 @@
 #include <vector>
 #include <memory>
 #include <optional>
+#include <array>
 
 #include "ModelEntities.h"
 #include "LoadVisualization.h"
@@ -40,6 +41,8 @@ class SceneController : public QObject
     Q_OBJECT
 
 public:
+    static constexpr double kCoordTolerance = 1e-6;
+
     using Node = Structura::Model::Node;
     using Bar = Structura::Model::Bar;
     using GridLine = Structura::Model::GridLine;
@@ -164,6 +167,20 @@ private:
     void applyNodeColor(const QUuid &id, const unsigned char color[3]);
     void applyBarColor(int barIndex, const unsigned char color[3]);
     void updateGridColors();
+    void initializePointRendering();
+    void initializeBarRendering();
+    void initializeGridRendering();
+    void initializeGridGhostRendering();
+    void initializeBarLcsRendering();
+    void initializePickers();
+    void clearNodes();
+    void clearBars();
+    void clearGrid();
+    void clearLoads();
+    void clearSupports();
+    void requestRender();
+    static void populateAxisCoordinates(QVector<double> &coords, double step, int count);
+    static bool nearlyEqual(double lhs, double rhs, double epsilon = kCoordTolerance);
 
     struct LineEndpoints {
         std::array<double, 3> start;

@@ -63,6 +63,23 @@ if (QT_VERSION_MAJOR EQUAL 6)
         src/LoadVisualization.cpp
         src/LocalCoordinateSystem.h
         src/LocalCoordinateSystem.cpp
+    src/ui/MainWindowPresenter.h
+    src/ui/MainWindowPresenter.cpp
+        src/core/model/Vector3.h
+        src/core/model/ModelEntities.h
+        src/app/IModelRepository.h
+        src/app/InMemoryModelRepository.h
+        src/app/NodeService.h
+        src/app/NodeService.cpp
+        src/app/BarService.h
+        src/app/BarService.cpp
+    src/app/UndoRedoService.h
+    src/app/UndoRedoService.cpp
+        src/app/SceneControllerFacade.h
+        src/app/SceneControllerFacade.cpp
+        src/viz/ISceneRenderer.h
+        src/viz/VtkSceneRenderer.h
+        src/viz/VtkSceneRenderer.cpp
         resources.qrc
     )
 else()
@@ -101,6 +118,23 @@ else()
         src/LoadVisualization.cpp
         src/LocalCoordinateSystem.h
         src/LocalCoordinateSystem.cpp
+    src/ui/MainWindowPresenter.h
+    src/ui/MainWindowPresenter.cpp
+        src/core/model/Vector3.h
+        src/core/model/ModelEntities.h
+        src/app/IModelRepository.h
+        src/app/InMemoryModelRepository.h
+        src/app/NodeService.h
+        src/app/NodeService.cpp
+        src/app/BarService.h
+        src/app/BarService.cpp
+    src/app/UndoRedoService.h
+    src/app/UndoRedoService.cpp
+        src/app/SceneControllerFacade.h
+        src/app/SceneControllerFacade.cpp
+        src/viz/ISceneRenderer.h
+        src/viz/VtkSceneRenderer.h
+        src/viz/VtkSceneRenderer.cpp
         resources.qrc
     )
 endif()

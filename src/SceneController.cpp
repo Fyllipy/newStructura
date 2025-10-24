@@ -37,11 +37,272 @@
 #include "CustomInteractorStyle.h"
 
 namespace {
-constexpr double kCoordEpsilon = 1e-6;
-
 #ifndef M_PI
 constexpr double M_PI = 3.14159265358979323846;
 #endif
+}
+
+bool SceneController::nearlyEqual(double lhs, double rhs, double epsilon)
+{
+    return std::abs(lhs - rhs) <= epsilon;
+}
+
+void SceneController::populateAxisCoordinates(QVector<double> &coords, double step, int count)
+{
+    coords.clear();
+    if (count <= 0 || step <= 0.0) {
+        return;
+    }
+
+    coords.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        coords.append(static_cast<double>(i) * step);
+    }
+}
+
+void SceneController::initializePointRendering()
+{
+    m_pointCloud->SetPoints(m_points);
+    m_pointCloud->SetVerts(m_vertices);
+
+    m_pointMapper->SetInputData(m_pointCloud);
+    m_pointActor->SetMapper(m_pointMapper);
+
+    if (auto *property = m_pointActor->GetProperty()) {
+        property->SetColor(0.95, 0.32, 0.18);
+        property->SetPointSize(10.0);
+        property->SetRenderPointsAsSpheres(true);
+    }
+
+    m_pointColors->SetNumberOfComponents(3);
+    m_pointColors->SetName("NodeColors");
+    m_pointCloud->GetPointData()->SetScalars(m_pointColors);
+    m_pointMapper->ScalarVisibilityOn();
+}
+
+void SceneController::initializeBarRendering()
+{
+    m_barData->SetPoints(m_points);
+    m_barData->SetLines(m_barLines);
+    m_barColors->SetNumberOfComponents(3);
+    m_barColors->SetName("BarColors");
+    m_barData->GetCellData()->SetScalars(m_barColors);
+    m_barMapper->SetInputData(m_barData);
+    m_barMapper->ScalarVisibilityOn();
+    m_barMapper->SetColorModeToDirectScalars();
+    m_barMapper->SetScalarModeToUseCellData();
+    m_barActor->SetMapper(m_barMapper);
+
+    if (auto *property = m_barActor->GetProperty()) {
+        property->SetLineWidth(2.0);
+        property->LightingOff();
+    }
+
+    m_barActor->PickableOn();
+}
+
+void SceneController::initializeGridRendering()
+{
+    m_gridData->SetPoints(m_gridPoints);
+    m_gridData->SetLines(m_gridCells);
+    m_gridColors->SetNumberOfComponents(3);
+    m_gridColors->SetName("GridColors");
+    m_gridData->GetCellData()->SetScalars(m_gridColors);
+    m_gridMapper->SetInputData(m_gridData);
+    m_gridMapper->ScalarVisibilityOn();
+    m_gridMapper->SetColorModeToDirectScalars();
+    m_gridMapper->SetScalarModeToUseCellData();
+    m_gridActor->SetMapper(m_gridMapper);
+
+    if (auto *property = m_gridActor->GetProperty()) {
+        property->SetColor(0.55, 0.60, 0.68);
+        property->SetOpacity(0.55);
+        property->SetLineWidth(1.0);
+    }
+
+    m_gridActor->PickableOn();
+    m_gridActor->SetVisibility(false);
+}
+
+void SceneController::initializeGridGhostRendering()
+{
+    m_gridGhostData->SetPoints(m_gridGhostPoints);
+    m_gridGhostData->SetLines(m_gridGhostCells);
+    m_gridGhostMapper->SetInputData(m_gridGhostData);
+    m_gridGhostActor->SetMapper(m_gridGhostMapper);
+
+    if (auto *property = m_gridGhostActor->GetProperty()) {
+        property->SetColor(0.98, 0.45, 0.15);
+        property->SetOpacity(0.35);
+        property->SetLineWidth(2.0);
+    }
+
+    m_gridGhostActor->PickableOff();
+    m_gridGhostActor->SetVisibility(false);
+}
+
+void SceneController::initializeBarLcsRendering()
+{
+    m_lcsData = vtkSmartPointer<vtkPolyData>::New();
+    m_lcsPoints = vtkSmartPointer<vtkPoints>::New();
+    m_lcsCells = vtkSmartPointer<vtkCellArray>::New();
+    m_lcsColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    m_lcsMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_lcsActor = vtkSmartPointer<vtkActor>::New();
+
+    m_lcsColors->SetNumberOfComponents(3);
+    m_lcsColors->SetName("LCSColors");
+    m_lcsData->SetPoints(m_lcsPoints);
+    m_lcsData->SetLines(m_lcsCells);
+    m_lcsData->GetCellData()->SetScalars(m_lcsColors);
+    m_lcsMapper->SetInputData(m_lcsData);
+    m_lcsMapper->ScalarVisibilityOn();
+    m_lcsMapper->SetColorModeToDirectScalars();
+    m_lcsMapper->SetScalarModeToUseCellData();
+    m_lcsActor->SetMapper(m_lcsMapper);
+
+    if (auto *property = m_lcsActor->GetProperty()) {
+        property->SetLineWidth(2.5);
+        property->LightingOff();
+    }
+
+    m_lcsActor->PickableOff();
+    m_lcsActor->SetVisibility(false);
+}
+
+void SceneController::initializePickers()
+{
+    if (m_picker) {
+        m_picker->SetTolerance(0.005);
+    }
+
+    if (m_nodePicker) {
+        m_nodePicker->SetTolerance(0.01);
+        m_nodePicker->SetPickFromList(true);
+        m_nodePicker->AddPickList(m_pointActor);
+    }
+
+    if (m_barPicker) {
+        m_barPicker->SetTolerance(0.005);
+        m_barPicker->SetPickFromList(true);
+        m_barPicker->AddPickList(m_barActor);
+    }
+}
+
+void SceneController::requestRender()
+{
+    if (auto *renderWindow = m_renderWindow.GetPointer()) {
+        renderWindow->Render();
+    }
+}
+
+void SceneController::clearNodes()
+{
+    m_points->Reset();
+    m_vertices->Reset();
+
+    if (m_pointColors) {
+        m_pointColors->Reset();
+        m_pointColors->SetNumberOfComponents(3);
+        m_pointColors->SetName("NodeColors");
+        m_pointCloud->GetPointData()->SetScalars(m_pointColors);
+        m_pointColors->Modified();
+    }
+
+    m_nodes.clear();
+    m_nodePointIds.clear();
+    m_pointIdToNodeId.clear();
+    m_nodeIndexById.clear();
+    m_highlightNodeId = QUuid();
+    m_selectedNodeIds.clear();
+    m_nextNodeExternalId = 1;
+
+    m_points->Modified();
+    m_vertices->Modified();
+    m_pointCloud->Modified();
+}
+
+void SceneController::clearBars()
+{
+    m_barLines->Reset();
+    m_barLines->Modified();
+    m_barData->SetLines(m_barLines);
+
+    if (m_barColors) {
+        m_barColors->Reset();
+        m_barColors->SetNumberOfComponents(3);
+        m_barColors->SetName("BarColors");
+        m_barData->GetCellData()->SetScalars(m_barColors);
+        m_barColors->Modified();
+    }
+
+    m_bars.clear();
+    m_barIndexById.clear();
+    m_selectedBarIds.clear();
+
+    m_barData->Modified();
+}
+
+void SceneController::clearGrid()
+{
+    m_gridLines.clear();
+    m_gridLineIndexById.clear();
+    m_gridCellToLineIndex.clear();
+    m_highlightGridLineId = QUuid();
+
+    m_dx = 0.0;
+    m_dy = 0.0;
+    m_dz = 0.0;
+    m_nx = 0;
+    m_ny = 0;
+    m_nz = 0;
+
+    m_xCoords.clear();
+    m_yCoords.clear();
+    m_zCoords.clear();
+
+    if (m_gridPoints) {
+        m_gridPoints->Reset();
+        m_gridPoints->Modified();
+    }
+    if (m_gridCells) {
+        m_gridCells->Reset();
+        m_gridCells->Modified();
+    }
+    if (m_gridColors) {
+        m_gridColors->Reset();
+        m_gridColors->SetNumberOfComponents(3);
+        m_gridColors->SetName("GridColors");
+        m_gridColors->Modified();
+    }
+
+    if (m_gridData) {
+        m_gridData->GetCellData()->SetScalars(m_gridColors);
+        m_gridData->Modified();
+    }
+
+    m_gridActor->SetVisibility(false);
+    hideGridGhostLine();
+}
+
+void SceneController::clearLoads()
+{
+    m_nodalLoadVisuals.clear();
+    m_memberLoadVisuals.clear();
+
+    if (m_loadVisualization) {
+        m_loadVisualization->clearAll();
+    }
+}
+
+void SceneController::clearSupports()
+{
+    m_supportVisuals.clear();
+
+    if (m_supportData) {
+        m_supportData->Initialize();
+        m_supportData->Modified();
+    }
 }
 
 SceneController::SceneController(QObject *parent)
@@ -74,97 +335,12 @@ SceneController::SceneController(QObject *parent)
     , m_nodePicker(vtkSmartPointer<vtkPointPicker>::New())
     , m_barPicker(vtkSmartPointer<vtkCellPicker>::New())
 {
-    m_pointCloud->SetPoints(m_points);
-    m_pointCloud->SetVerts(m_vertices);
-
-    m_pointMapper->SetInputData(m_pointCloud);
-    m_pointActor->SetMapper(m_pointMapper);
-    m_pointActor->GetProperty()->SetColor(0.95, 0.32, 0.18);
-    m_pointActor->GetProperty()->SetPointSize(10.0);
-    m_pointActor->GetProperty()->SetRenderPointsAsSpheres(true);
-    m_pointColors->SetNumberOfComponents(3);
-    m_pointColors->SetName("NodeColors");
-    m_pointCloud->GetPointData()->SetScalars(m_pointColors);
-    m_pointMapper->ScalarVisibilityOn();
-
-    // Bars share the same point set
-    m_barData->SetPoints(m_points);
-    m_barData->SetLines(m_barLines);
-    m_barColors->SetNumberOfComponents(3);
-    m_barColors->SetName("BarColors");
-    m_barData->GetCellData()->SetScalars(m_barColors);
-    m_barMapper->SetInputData(m_barData);
-    m_barMapper->ScalarVisibilityOn();
-    m_barMapper->SetColorModeToDirectScalars();
-    m_barMapper->SetScalarModeToUseCellData();
-    m_barActor->SetMapper(m_barMapper);
-    m_barActor->GetProperty()->SetLineWidth(2.0);
-    m_barActor->GetProperty()->LightingOff();
-    m_barActor->PickableOn();
-
-    // Grid default visuals
-    m_gridData->SetPoints(m_gridPoints);
-    m_gridData->SetLines(m_gridCells);
-    m_gridColors->SetNumberOfComponents(3);
-    m_gridColors->SetName("GridColors");
-    m_gridData->GetCellData()->SetScalars(m_gridColors);
-    m_gridMapper->SetInputData(m_gridData);
-    m_gridMapper->ScalarVisibilityOn();
-    m_gridMapper->SetColorModeToDirectScalars();
-    m_gridMapper->SetScalarModeToUseCellData();
-    m_gridActor->SetMapper(m_gridMapper);
-    m_gridActor->GetProperty()->SetColor(0.55, 0.60, 0.68);
-    m_gridActor->GetProperty()->SetOpacity(0.55);
-    m_gridActor->GetProperty()->SetLineWidth(1.0);
-    m_gridActor->PickableOn();
-    m_gridActor->SetVisibility(false);
-
-    // Ghost grid line visuals
-    m_gridGhostData->SetPoints(m_gridGhostPoints);
-    m_gridGhostData->SetLines(m_gridGhostCells);
-    m_gridGhostMapper->SetInputData(m_gridGhostData);
-    m_gridGhostActor->SetMapper(m_gridGhostMapper);
-    m_gridGhostActor->GetProperty()->SetColor(0.98, 0.45, 0.15);
-    m_gridGhostActor->GetProperty()->SetOpacity(0.35);
-    m_gridGhostActor->GetProperty()->SetLineWidth(2.0);
-    m_gridGhostActor->PickableOff();
-    m_gridGhostActor->SetVisibility(false);
-
-    // Load visualization will be initialized in initialize() method
-
-    // Picker tolerance suitable for thin lines
-    m_picker->SetTolerance(0.005);
-
-    m_nodePicker->SetTolerance(0.01);
-    m_nodePicker->SetPickFromList(true);
-    m_nodePicker->AddPickList(m_pointActor);
-
-    m_barPicker->SetTolerance(0.005);
-    m_barPicker->SetPickFromList(true);
-    m_barPicker->AddPickList(m_barActor);
-    
-    // Initialize Bar LCS visualization with lines and arrow heads
-    m_lcsData = vtkSmartPointer<vtkPolyData>::New();
-    m_lcsPoints = vtkSmartPointer<vtkPoints>::New();
-    m_lcsCells = vtkSmartPointer<vtkCellArray>::New();
-    m_lcsColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
-    m_lcsMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    m_lcsActor = vtkSmartPointer<vtkActor>::New();
-    
-    m_lcsColors->SetNumberOfComponents(3);
-    m_lcsColors->SetName("LCSColors");
-    m_lcsData->SetPoints(m_lcsPoints);
-    m_lcsData->SetLines(m_lcsCells);
-    m_lcsData->GetCellData()->SetScalars(m_lcsColors);
-    m_lcsMapper->SetInputData(m_lcsData);
-    m_lcsMapper->ScalarVisibilityOn();
-    m_lcsMapper->SetColorModeToDirectScalars();
-    m_lcsMapper->SetScalarModeToUseCellData();
-    m_lcsActor->SetMapper(m_lcsMapper);
-    m_lcsActor->GetProperty()->SetLineWidth(2.5);
-    m_lcsActor->GetProperty()->LightingOff();
-    m_lcsActor->PickableOff();
-    m_lcsActor->SetVisibility(false);
+    initializePointRendering();
+    initializeBarRendering();
+    initializeGridRendering();
+    initializeGridGhostRendering();
+    initializeBarLcsRendering();
+    initializePickers();
 }
 
 SceneController::~SceneController() = default;
@@ -214,7 +390,7 @@ void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget)
         interactor->SetInteractorStyle(style);
     }
 
-    m_renderWindow->Render();
+    requestRender();
 }
 
 QUuid SceneController::addPoint(double x, double y, double z)
@@ -259,7 +435,7 @@ QUuid SceneController::addPointWithId(double x, double y, double z, int external
     m_barData->Modified();
 
     updateBounds();
-    m_renderWindow->Render();
+    requestRender();
 
     return nodeId;
 }
@@ -267,7 +443,7 @@ QUuid SceneController::addPointWithId(double x, double y, double z, int external
 void SceneController::resetCamera()
 {
     m_renderer->ResetCamera();
-    m_renderWindow->Render();
+    requestRender();
 }
 
 void SceneController::zoomExtents()
@@ -278,7 +454,7 @@ void SceneController::zoomExtents()
     }
 
     m_renderer->ResetCamera(m_pointActor->GetBounds());
-    m_renderWindow->Render();
+    requestRender();
 }
 
 void SceneController::updateBounds()
@@ -292,42 +468,22 @@ void SceneController::updateBounds()
 
 void SceneController::createGrid(double dx, double dy, double dz, int nx, int ny, int nz)
 {
-    m_dx = dx; m_dy = dy; m_dz = dz;
-    m_nx = nx; m_ny = ny; m_nz = nz;
+    clearGrid();
 
-    m_gridLines.clear();
-    m_gridLineIndexById.clear();
-    m_gridCellToLineIndex.clear();
-    m_highlightGridLineId = QUuid();
+    m_dx = dx;
+    m_dy = dy;
+    m_dz = dz;
+    m_nx = nx;
+    m_ny = ny;
+    m_nz = nz;
 
-    hideGridGhostLine();
-
-    m_xCoords.clear();
-    m_yCoords.clear();
-    m_zCoords.clear();
-
-    if (nx > 0 && dx > 0.0) {
-        m_xCoords.reserve(nx);
-        for (int i = 0; i < nx; ++i) {
-            m_xCoords.append(static_cast<double>(i) * dx);
-        }
-    }
-    if (ny > 0 && dy > 0.0) {
-        m_yCoords.reserve(ny);
-        for (int j = 0; j < ny; ++j) {
-            m_yCoords.append(static_cast<double>(j) * dy);
-        }
-    }
-    if (nz > 0 && dz > 0.0) {
-        m_zCoords.reserve(nz);
-        for (int k = 0; k < nz; ++k) {
-            m_zCoords.append(static_cast<double>(k) * dz);
-        }
-    }
+    populateAxisCoordinates(m_xCoords, dx, nx);
+    populateAxisCoordinates(m_yCoords, dy, ny);
+    populateAxisCoordinates(m_zCoords, dz, nz);
 
     rebuildGridFromCoordinates();
     m_gridActor->SetVisibility(!m_gridLines.isEmpty());
-    m_renderWindow->Render();
+    requestRender();
 }
 
 bool SceneController::hasGrid() const
@@ -363,7 +519,7 @@ bool SceneController::insertCoordinate(QVector<double> &coords, double value) co
         return false;
     }
     for (double current : coords) {
-        if (std::abs(current - value) <= kCoordEpsilon) {
+        if (nearlyEqual(current, value)) {
             return false;
         }
     }
@@ -375,7 +531,7 @@ bool SceneController::insertCoordinate(QVector<double> &coords, double value) co
 bool SceneController::removeCoordinate(QVector<double> &coords, double value)
 {
     for (int i = 0; i < coords.size(); ++i) {
-        if (std::abs(coords[i] - value) <= kCoordEpsilon) {
+        if (nearlyEqual(coords[i], value)) {
             coords.removeAt(i);
             return true;
         }
@@ -524,8 +680,8 @@ void SceneController::rebuildGridFromCoordinates()
 
         const auto &start = line.startPoint();
         const auto &end = line.endPoint();
-        vtkIdType id0 = m_gridPoints->InsertNextPoint(start.data());
-        vtkIdType id1 = m_gridPoints->InsertNextPoint(end.data());
+        vtkIdType id0 = m_gridPoints->InsertNextPoint(start.x(), start.y(), start.z());
+        vtkIdType id1 = m_gridPoints->InsertNextPoint(end.x(), end.y(), end.z());
         vtkIdType lineIds[2] = { id0, id1 };
         vtkIdType cellId = m_gridCells->InsertNextCell(2, lineIds);
 
@@ -611,7 +767,7 @@ QUuid SceneController::addGridLine(GridLine::Axis axis, double coordinate1, doub
 
     rebuildGridFromCoordinates();
     m_gridActor->SetVisibility(!m_gridLines.isEmpty());
-    m_renderWindow->Render();
+    requestRender();
 
     double canonicalCoord1 = coordinate1;
     double canonicalCoord2 = coordinate2;
@@ -634,10 +790,10 @@ QUuid SceneController::addGridLine(GridLine::Axis axis, double coordinate1, doub
         if (line.axis() != axis) {
             continue;
         }
-        if (std::abs(line.coordinate1() - canonicalCoord1) > kCoordEpsilon) {
+        if (!nearlyEqual(line.coordinate1(), canonicalCoord1)) {
             continue;
         }
-        if (std::abs(line.coordinate2() - canonicalCoord2) > kCoordEpsilon) {
+        if (!nearlyEqual(line.coordinate2(), canonicalCoord2)) {
             continue;
         }
         return line.id();
@@ -686,7 +842,7 @@ bool SceneController::removeGridLine(const QUuid &lineId)
 
     rebuildGridFromCoordinates();
     m_gridActor->SetVisibility(!m_gridLines.isEmpty());
-    m_renderWindow->Render();
+    requestRender();
     return true;
 }
 
@@ -740,7 +896,7 @@ void SceneController::setHighlightedGridLine(const QUuid &lineId)
     }
 
     updateGridColors();
-    m_renderWindow->Render();
+    requestRender();
 }
 
 void SceneController::clearHighlightedGridLine()
@@ -772,7 +928,7 @@ void SceneController::showGridGhostLine(GridLine::Axis axis, double coordinate1,
     if (!m_gridGhostActor->GetVisibility()) {
         m_gridGhostActor->SetVisibility(true);
     }
-    m_renderWindow->Render();
+    requestRender();
 }
 
 void SceneController::hideGridGhostLine()
@@ -793,7 +949,7 @@ void SceneController::hideGridGhostLine()
     }
     if (m_gridGhostActor->GetVisibility()) {
         m_gridGhostActor->SetVisibility(false);
-        m_renderWindow->Render();
+        requestRender();
     }
 }
 
@@ -831,18 +987,14 @@ void SceneController::setNodalLoadVisuals(const QVector<NodalLoadVisual> &visual
 {
     m_nodalLoadVisuals = visuals;
     updateLoadVisuals();
-    if (m_renderWindow) {
-        m_renderWindow->Render();
-    }
+    requestRender();
 }
 
 void SceneController::setMemberLoadVisuals(const QVector<MemberLoadVisual> &visuals)
 {
     m_memberLoadVisuals = visuals;
     updateLoadVisuals();
-    if (m_renderWindow) {
-        m_renderWindow->Render();
-    }
+    requestRender();
 }
 
 void SceneController::updateLoadVisuals()
@@ -1070,7 +1222,7 @@ void SceneController::setHighlightedNode(const QUuid &nodeId)
 
     m_pointColors->Modified();
     m_pointCloud->Modified();
-    m_renderWindow->Render();
+    requestRender();
 }
 
 void SceneController::clearHighlightedNode()
@@ -1111,7 +1263,7 @@ void SceneController::setSelectedNodes(const QSet<QUuid> &nodeIds)
     m_selectedNodeIds = nodeIds;
     m_pointColors->Modified();
     m_pointCloud->Modified();
-    m_renderWindow->Render();
+    requestRender();
 }
 
 bool SceneController::updateNodePosition(const QUuid &nodeId, double x, double y, double z)
@@ -1155,7 +1307,7 @@ bool SceneController::updateNodePositions(const QVector<QUuid> &nodeIds, const Q
         m_pointCloud->Modified();
         m_barData->Modified();
         updateBounds();
-        m_renderWindow->Render();
+        requestRender();
     }
     return changed;
 }
@@ -1195,7 +1347,7 @@ QUuid SceneController::addBar(const QUuid &startNodeId,
     }
 
     updateBarLCSVisuals();
-    m_renderWindow->Render();
+    requestRender();
     return barId;
 }
 
@@ -1226,7 +1378,7 @@ void SceneController::assignBarProperties(const std::vector<QUuid> &barIds,
         }
     }
     if (changed) {
-        m_renderWindow->Render();
+        requestRender();
     }
 }
 
@@ -1301,7 +1453,7 @@ void SceneController::setSelectedBars(const QSet<QUuid> &barIds)
     m_selectedBarIds = barIds;
     m_barColors->Modified();
     m_barData->Modified();
-    m_renderWindow->Render();
+    requestRender();
 }
 
 void SceneController::setBarExternalId(const QUuid &barId, int externalId)
@@ -1315,75 +1467,18 @@ void SceneController::setBarExternalId(const QUuid &barId, int externalId)
 
 void SceneController::clearAll()
 {
-    m_points->Reset();
-    m_vertices->Reset();
-    m_pointColors->Reset();
-    m_pointColors->SetNumberOfComponents(3);
-    m_pointColors->SetName("NodeColors");
-    m_barLines->Reset();
-    m_barData->SetLines(m_barLines);
+    clearNodes();
+    clearBars();
+    clearGrid();
+    clearLoads();
+    clearSupports();
 
-    m_nodes.clear();
-    m_nodePointIds.clear();
-    m_pointIdToNodeId.clear();
-    m_nodeIndexById.clear();
-    m_bars.clear();
-    m_barIndexById.clear();
-    m_highlightNodeId = QUuid();
-    m_selectedNodeIds.clear();
-    m_selectedBarIds.clear();
-    if (m_barColors) {
-        m_barColors->Reset();
-        m_barColors->SetNumberOfComponents(3);
-        m_barColors->SetName("BarColors");
-        m_barData->GetCellData()->SetScalars(m_barColors);
-    }
-    m_nextNodeExternalId = 1;
-
-    m_gridLines.clear();
-    m_gridLineIndexById.clear();
-    m_gridCellToLineIndex.clear();
-    m_highlightGridLineId = QUuid();
-    m_dx = 0.0; m_dy = 0.0; m_dz = 0.0;
-    m_nx = 0; m_ny = 0; m_nz = 0;
-    m_xCoords.clear();
-    m_yCoords.clear();
-    m_zCoords.clear();
-    if (m_gridPoints) {
-        m_gridPoints->Reset();
-        m_gridPoints->Modified();
-    }
-    if (m_gridCells) {
-        m_gridCells->Reset();
-        m_gridCells->Modified();
-    }
-    if (m_gridColors) {
-        m_gridColors->Reset();
-        m_gridColors->SetNumberOfComponents(3);
-        m_gridColors->SetName("GridColors");
-        m_gridColors->Modified();
-    }
-    m_gridData->Modified();
-    m_gridActor->SetVisibility(false);
-    hideGridGhostLine();
-
-    // Clear load visuals
-    m_nodalLoadVisuals.clear();
-    m_memberLoadVisuals.clear();
-    if (m_loadVisualization) {
-        m_loadVisualization->clearAll();
-    }
-
-    m_points->Modified();
-    m_vertices->Modified();
-    m_pointColors->Modified();
-    m_barData->Modified();
-    m_pointCloud->Modified();
+    rebuildBarLCSVisuals();
 
     if (m_renderer) {
         m_renderer->ResetCamera();
     }
-    m_renderWindow->Render();
+    requestRender();
 }
 
 void SceneController::applyNodeColor(const QUuid &id, const unsigned char color[3])
@@ -1431,9 +1526,7 @@ void SceneController::setSupportVisuals(const QVector<SupportVisual> &visuals)
 {
     m_supportVisuals = visuals;
     updateSupportVisuals();
-    if (m_renderWindow) {
-        m_renderWindow->Render();
-    }
+    requestRender();
 }
 
 void SceneController::updateSupportVisuals()
@@ -1627,14 +1720,14 @@ void SceneController::setShowBarLCS(bool show)
         rebuildBarLCSVisuals();
     }
     m_lcsActor->SetVisibility(show);
-    m_renderWindow->Render();
+    requestRender();
 }
 
 void SceneController::updateBarLCSVisuals()
 {
     if (m_showBarLCS) {
         rebuildBarLCSVisuals();
-        m_renderWindow->Render();
+        requestRender();
     }
 }
 
@@ -1683,9 +1776,15 @@ void SceneController::rebuildBarLCSVisuals()
             continue; // Skip degenerate bars
         }
         
-        // Compute LCS
+        // Compute LCS - convert Vector3 kPoint to array format if present
+        std::optional<std::array<double, 3>> kPointArray;
+        if (bar.kPoint().has_value()) {
+            const auto &kp = bar.kPoint().value();
+            kPointArray = std::array<double, 3>{{kp.x(), kp.y(), kp.z()}};
+        }
+        
         try {
-            auto lcs = lcsProvider.computeLCS(pointA, pointB, bar.kPoint());
+            auto lcs = lcsProvider.computeLCS(pointA, pointB, kPointArray);
             
             // Origin point (midpoint of bar)
             const auto &origin = lcs.origin;

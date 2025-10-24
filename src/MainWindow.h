@@ -11,6 +11,7 @@
 #include "SelectionModel.h"
 #include "PropertiesPanel.h"
 #include "ModelEntities.h"
+#include "ui/MainWindowPresenter.h"
 
 class QAction;
 class QTabWidget;
@@ -30,7 +31,15 @@ class NodalLoadDialog;
 class DistributedLoadDialog;
 class RestraintDialog;
 class QHBoxLayout;
-class QUndoStack;
+
+namespace Structura {
+namespace App {
+class UndoRedoService;
+}
+namespace UI {
+class MainWindowPresenter;
+}
+}
 
 class MainWindow : public QMainWindow
 {
@@ -67,6 +76,15 @@ private slots:
     void onBarSectionEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &sectionId);
 
 private:
+    using Presenter = Structura::UI::MainWindowPresenter;
+    using MaterialInfo = Presenter::MaterialInfo;
+    using SectionInfo = Presenter::SectionInfo;
+    using NodeSupport = Presenter::NodeSupport;
+    using NodalLoad = Presenter::NodalLoad;
+    using MemberLoad = Presenter::MemberLoad;
+    using NodalLoadPreset = Presenter::NodalLoadPreset;
+    using DistributedLoadPreset = Presenter::DistributedLoadPreset;
+
     enum class Command {
         None,
         InsertNode,
@@ -76,24 +94,6 @@ private:
         AddGridLineY,
         AddGridLineZ,
         DeleteGridLine
-    };
-
-    struct MaterialInfo {
-        QUuid uuid;
-        int externalId {0};
-        QString name;
-        double youngModulus {0.0};
-        double shearModulus {0.0};
-    };
-
-    struct SectionInfo {
-        QUuid uuid;
-        int externalId {0};
-        QString name;
-        double area {0.0};
-        double iz {0.0};
-        double iy {0.0};
-        double j {0.0};
     };
 
     struct GridInsertState {
@@ -191,7 +191,7 @@ private:
     QAction *m_saveModelAction;
     QAction *m_undoAction;
     QAction *m_redoAction;
-    QUndoStack *m_undoStack;
+    Structura::App::UndoRedoService *m_undoService;
 
     Command m_command { Command::None };
     QUuid m_firstBarNodeId;
@@ -211,46 +211,11 @@ private:
     QUuid m_pendingDeleteLineId;
     GridInsertState m_gridInsertState;
 
+    Presenter *m_presenter;
     QVector<MaterialInfo> m_materials;
     QVector<SectionInfo> m_sections;
     QUuid m_lastMaterialId;
     QUuid m_lastSectionId;
-
-    struct NodeSupport {
-        int nodeId;
-        bool restraints[6];
-    };
-    struct NodalLoad {
-        int nodeId;
-        double fx;
-        double fy;
-        double fz;
-        double mx;
-        double my;
-        double mz;
-    };
-    struct MemberLoad {
-        int memberId;
-        QString system;
-        double qx;
-        double qy;
-        double qz;
-    };
-    struct NodalLoadPreset {
-        double fx {0.0};
-        double fy {0.0};
-        double fz {0.0};
-        double mx {0.0};
-        double my {0.0};
-        double mz {0.0};
-    };
-    struct DistributedLoadPreset {
-        QString system {QStringLiteral("GLOBAL")};
-        double qx {0.0};
-        double qy {0.0};
-        double qz {0.0};
-    };
-
     QVector<NodeSupport> m_supports;
     QVector<NodalLoad> m_nodalLoads;
     QVector<MemberLoad> m_memberLoads;
