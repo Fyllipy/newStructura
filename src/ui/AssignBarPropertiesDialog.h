@@ -6,7 +6,7 @@
 #include <QUuid>
 #include <vector>
 
-#include "SceneController.h"
+#include "viz/SceneController.h"
 
 class QListWidget;
 class QComboBox;

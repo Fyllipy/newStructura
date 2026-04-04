@@ -1,6 +1,6 @@
-#include "VtkSceneRenderer.h"
-#include "../LoadVisualization.h"
-#include "../CustomInteractorStyle.h"
+#include "viz/VtkSceneRenderer.h"
+#include "viz/LoadVisualization.h"
+#include "viz/CustomInteractorStyle.h"
 
 #include <QVTKOpenGLNativeWidget.h>
 #include <vtkGenericOpenGLRenderWindow.h>

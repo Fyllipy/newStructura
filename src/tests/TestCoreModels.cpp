@@ -1,6 +1,10 @@
 #include <QtTest/QtTest>
 #include "../core/model/Vector3.h"
-#include "../core/model/ModelEntities.h"
+#include "core/model/Node.h"
+#include "core/model/Bar.h"
+#include "core/model/Material.h"
+#include "core/model/Section.h"
+#include "core/model/GridLine.h"
 
 using namespace Structura::Model;
 

@@ -1,6 +1,10 @@
 #pragma once
 
-#include "../core/model/ModelEntities.h"
+#include "core/model/Node.h"
+#include "core/model/Bar.h"
+#include "core/model/Material.h"
+#include "core/model/Section.h"
+#include "core/model/GridLine.h"
 #include <QUuid>
 #include <QString>
 #include <vector>

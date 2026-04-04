@@ -10,7 +10,11 @@
 
 #include "SelectionModel.h"
 #include "PropertiesPanel.h"
-#include "ModelEntities.h"
+#include "core/model/Node.h"
+#include "core/model/Bar.h"
+#include "core/model/Material.h"
+#include "core/model/Section.h"
+#include "core/model/GridLine.h"
 #include "ui/MainWindowPresenter.h"
 
 class QAction;

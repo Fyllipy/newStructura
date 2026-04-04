@@ -9,7 +9,7 @@
 #include "NodalLoadDialog.h"
 #include "DistributedLoadDialog.h"
 #include "RestraintDialog.h"
-#include "SceneController.h"
+#include "viz/SceneController.h"
 #include "app/UndoRedoService.h"
 #include "ui/MainWindowPresenter.h"
 

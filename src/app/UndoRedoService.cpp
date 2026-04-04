@@ -1,6 +1,6 @@
 #include "UndoRedoService.h"
 
-#include "../SceneController.h"
+#include "viz/SceneController.h"
 
 #include <QAction>
 #include <vector>

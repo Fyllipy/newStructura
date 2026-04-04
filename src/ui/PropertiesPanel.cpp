@@ -1,4 +1,5 @@
 #include "PropertiesPanel.h"
+#include "viz/SceneController.h"
 
 #include <QGroupBox>
 #include <QFormLayout>

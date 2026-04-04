@@ -1,4 +1,4 @@
-#include "MainWindow.h"
+#include "ui/MainWindow.h"
 
 #include <QApplication>
 #include <QSurfaceFormat>
@@ -9,6 +9,8 @@ int main(int argc, char *argv[])
 {
     // Ensure VTK uses the correct OpenGL context inside Qt.
     QSurfaceFormat::setDefaultFormat(QVTKOpenGLNativeWidget::defaultFormat());
+
+    Q_INIT_RESOURCE(resources);
 
     QApplication app(argc, argv);
 

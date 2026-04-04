@@ -9,6 +9,9 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+# User-specific paths
+list(APPEND CMAKE_PREFIX_PATH "D:/Qt/6.9.3/msvc2022_64" "D:/src/vtk")
+
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
@@ -27,117 +30,120 @@ find_package(VTK REQUIRED COMPONENTS
     GUISupportQt
 )
 
-if (QT_VERSION_MAJOR EQUAL 6)
-    qt_add_executable(StructuraRibbon3D
-        src/main.cpp
-        src/MainWindow.h
-        src/MainWindow.cpp
-        src/CoordinateDialog.h
-        src/CoordinateDialog.cpp
-        src/CustomInteractorStyle.h
-        src/CustomInteractorStyle.cpp
-        src/MaterialDialog.h
-        src/MaterialDialog.cpp
-        src/SectionDialog.h
-        src/SectionDialog.cpp
-        src/BarPropertiesDialog.h
-        src/BarPropertiesDialog.cpp
-        src/AssignBarPropertiesDialog.h
-        src/AssignBarPropertiesDialog.cpp
-        src/NodalLoadDialog.h
-        src/NodalLoadDialog.cpp
-        src/DistributedLoadDialog.h
-        src/DistributedLoadDialog.cpp
-        src/RestraintDialog.h
-        src/RestraintDialog.cpp
-        src/GridDialog.h
-        src/GridDialog.cpp
-        src/SceneController.h
-        src/SceneController.cpp
-        src/SelectionModel.h
-        src/SelectionModel.cpp
-        src/ModelEntities.h
-        src/PropertiesPanel.h
-        src/PropertiesPanel.cpp
-        src/LoadVisualization.h
-        src/LoadVisualization.cpp
-        src/LocalCoordinateSystem.h
-        src/LocalCoordinateSystem.cpp
-    src/ui/MainWindowPresenter.h
-    src/ui/MainWindowPresenter.cpp
-        src/core/model/Vector3.h
-        src/core/model/ModelEntities.h
-        src/app/IModelRepository.h
-        src/app/InMemoryModelRepository.h
-        src/app/NodeService.h
-        src/app/NodeService.cpp
-        src/app/BarService.h
-        src/app/BarService.cpp
+# Include directories
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# --- Source Groups ---
+
+set(CORE_SOURCES
+    src/core/model/Vector3.h
+    src/core/model/Node.h
+    src/core/model/Bar.h
+    src/core/model/Material.h
+    src/core/model/Section.h
+    src/core/model/GridLine.h
+)
+
+set(VIZ_SOURCES
+    src/viz/ISceneRenderer.h
+    src/viz/VtkSceneRenderer.h
+    src/viz/VtkSceneRenderer.cpp
+    src/viz/SceneController.h
+    src/viz/SceneController.cpp
+    src/viz/LoadVisualization.h
+    src/viz/LoadVisualization.cpp
+    src/viz/LocalCoordinateSystem.h
+    src/viz/LocalCoordinateSystem.cpp
+    src/viz/CustomInteractorStyle.h
+    src/viz/CustomInteractorStyle.cpp
+)
+
+set(APP_SOURCES
+    src/app/IModelRepository.h
+    src/app/InMemoryModelRepository.h
+    src/app/NodeService.h
+    src/app/NodeService.cpp
+    src/app/BarService.h
+    src/app/BarService.cpp
     src/app/UndoRedoService.h
     src/app/UndoRedoService.cpp
-        src/app/SceneControllerFacade.h
-        src/app/SceneControllerFacade.cpp
-        src/viz/ISceneRenderer.h
-        src/viz/VtkSceneRenderer.h
-        src/viz/VtkSceneRenderer.cpp
-        resources.qrc
-    )
-else()
-    add_executable(StructuraRibbon3D
-        src/main.cpp
-        src/MainWindow.h
-        src/MainWindow.cpp
-        src/CoordinateDialog.h
-        src/CoordinateDialog.cpp
-        src/CustomInteractorStyle.h
-        src/CustomInteractorStyle.cpp
-        src/MaterialDialog.h
-        src/MaterialDialog.cpp
-        src/SectionDialog.h
-        src/SectionDialog.cpp
-        src/BarPropertiesDialog.h
-        src/BarPropertiesDialog.cpp
-        src/AssignBarPropertiesDialog.h
-        src/AssignBarPropertiesDialog.cpp
-        src/NodalLoadDialog.h
-        src/NodalLoadDialog.cpp
-        src/DistributedLoadDialog.h
-        src/DistributedLoadDialog.cpp
-        src/RestraintDialog.h
-        src/RestraintDialog.cpp
-        src/GridDialog.h
-        src/GridDialog.cpp
-        src/SceneController.h
-        src/SceneController.cpp
-        src/SelectionModel.h
-        src/SelectionModel.cpp
-        src/ModelEntities.h
-        src/PropertiesPanel.h
-        src/PropertiesPanel.cpp
-        src/LoadVisualization.h
-        src/LoadVisualization.cpp
-        src/LocalCoordinateSystem.h
-        src/LocalCoordinateSystem.cpp
+    src/app/SceneControllerFacade.h
+    src/app/SceneControllerFacade.cpp
+)
+
+set(UI_SOURCES
+    src/ui/MainWindow.h
+    src/ui/MainWindow.cpp
     src/ui/MainWindowPresenter.h
     src/ui/MainWindowPresenter.cpp
-        src/core/model/Vector3.h
-        src/core/model/ModelEntities.h
-        src/app/IModelRepository.h
-        src/app/InMemoryModelRepository.h
-        src/app/NodeService.h
-        src/app/NodeService.cpp
-        src/app/BarService.h
-        src/app/BarService.cpp
-    src/app/UndoRedoService.h
-    src/app/UndoRedoService.cpp
-        src/app/SceneControllerFacade.h
-        src/app/SceneControllerFacade.cpp
-        src/viz/ISceneRenderer.h
-        src/viz/VtkSceneRenderer.h
-        src/viz/VtkSceneRenderer.cpp
-        resources.qrc
-    )
-endif()
+    src/ui/CoordinateDialog.h
+    src/ui/CoordinateDialog.cpp
+    src/ui/MaterialDialog.h
+    src/ui/MaterialDialog.cpp
+    src/ui/SectionDialog.h
+    src/ui/SectionDialog.cpp
+    src/ui/BarPropertiesDialog.h
+    src/ui/BarPropertiesDialog.cpp
+    src/ui/AssignBarPropertiesDialog.h
+    src/ui/AssignBarPropertiesDialog.cpp
+    src/ui/NodalLoadDialog.h
+    src/ui/NodalLoadDialog.cpp
+    src/ui/DistributedLoadDialog.h
+    src/ui/DistributedLoadDialog.cpp
+    src/ui/RestraintDialog.h
+    src/ui/RestraintDialog.cpp
+    src/ui/GridDialog.h
+    src/ui/GridDialog.cpp
+    src/ui/SelectionModel.h
+    src/ui/SelectionModel.cpp
+    src/ui/PropertiesPanel.h
+    src/ui/PropertiesPanel.cpp
+)
+
+set(RESOURCES
+    resources.qrc
+)
+
+# --- Library ---
+
+add_library(StructuraLib STATIC
+    ${CORE_SOURCES}
+    ${VIZ_SOURCES}
+    ${APP_SOURCES}
+    ${UI_SOURCES}
+    ${RESOURCES}
+)
+
+target_link_libraries(StructuraLib
+    PUBLIC
+        Qt${QT_VERSION_MAJOR}::Widgets
+        $<$<STREQUAL:${QT_VERSION_MAJOR},6>:Qt6::OpenGLWidgets>
+        ${VTK_LIBRARIES}
+)
+
+target_include_directories(StructuraLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+vtk_module_autoinit(
+    TARGETS StructuraLib
+    MODULES ${VTK_LIBRARIES}
+)
+
+# --- Executable ---
+
+add_executable(StructuraRibbon3D
+    src/main.cpp
+)
+
+target_link_libraries(StructuraRibbon3D
+    PRIVATE
+        StructuraLib
+)
+
+# --- Enable Testing ---
+enable_testing()
+add_subdirectory(src/tests)
+
+# --- Link Libraries ---
 
 target_link_libraries(StructuraRibbon3D
     PRIVATE

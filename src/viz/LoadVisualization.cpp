@@ -1,4 +1,4 @@
-#include "LoadVisualization.h"
+#include "viz/LoadVisualization.h"
 
 #include <vtkRenderer.h>
 #include <vtkPoints.h>

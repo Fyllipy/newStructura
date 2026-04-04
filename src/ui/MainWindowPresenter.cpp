@@ -1,8 +1,8 @@
 #include "MainWindowPresenter.h"
 
-#include "../SceneController.h"
-#include "../SelectionModel.h"
-#include "../app/UndoRedoService.h"
+#include "viz/SceneController.h"
+#include "ui/SelectionModel.h"
+#include "app/UndoRedoService.h"
 
 #include <QtGlobal>
 

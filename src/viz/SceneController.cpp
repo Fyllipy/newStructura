@@ -1,6 +1,6 @@
-#include "SceneController.h"
-#include "LoadVisualization.h"
-#include "LocalCoordinateSystem.h"
+#include "viz/SceneController.h"
+#include "viz/LoadVisualization.h"
+#include "viz/LocalCoordinateSystem.h"
 
 #include <QVTKOpenGLNativeWidget.h>
 
@@ -34,7 +34,7 @@
 #include <optional>
 #include <limits>
 #include <algorithm>
-#include "CustomInteractorStyle.h"
+#include "viz/CustomInteractorStyle.h"
 
 namespace {
 #ifndef M_PI
