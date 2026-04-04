@@ -6,8 +6,6 @@
 #include <QUuid>
 #include <vector>
 
-#include "viz/SceneController.h"
-
 class QListWidget;
 class QComboBox;
 
@@ -16,10 +14,27 @@ class AssignBarPropertiesDialog : public QDialog
     Q_OBJECT
 
 public:
+    struct BarInfo {
+        QUuid id;
+        QUuid startNodeId;
+        QUuid endNodeId;
+        QUuid materialId;
+        QUuid sectionId;
+        int externalId {0};
+    };
+
+    struct NodeInfo {
+        QUuid id;
+        int externalId {0};
+        double x {0.0};
+        double y {0.0};
+        double z {0.0};
+    };
+
     AssignBarPropertiesDialog(const QVector<QPair<QUuid, QString>> &materials,
                               const QVector<QPair<QUuid, QString>> &sections,
-                              const std::vector<SceneController::BarInfo> &bars,
-                              const std::vector<SceneController::NodeInfo> &nodes,
+                              const std::vector<BarInfo> &bars,
+                              const std::vector<NodeInfo> &nodes,
                               QWidget *parent = nullptr);
 
     void setCurrentMaterial(const QUuid &id);

@@ -19,6 +19,8 @@
 #include "core/model/Material.h"
 #include "core/model/Section.h"
 #include "core/model/GridLine.h"
+#include "app/ISceneEditGateway.h"
+#include "app/ISceneModelGateway.h"
 #include "LoadVisualization.h"
 
 class QVTKOpenGLNativeWidget;
@@ -40,7 +42,9 @@ class vtkArrowSource;
 class vtkDoubleArray;
 class vtkBillboardTextActor3D;
 
-class SceneController : public QObject
+class SceneController : public QObject,
+                        public Structura::App::ISceneEditGateway,
+                        public Structura::App::ISceneModelGateway
 {
     Q_OBJECT
 
@@ -69,22 +73,8 @@ public:
         std::array<bool, 6> restraints; // UX, UY, UZ, RX, RY, RZ
     };
 
-    struct NodeInfo {
-        QUuid id;
-        int externalId;
-        double x;
-        double y;
-        double z;
-    };
-
-    struct BarInfo {
-        QUuid id;
-        QUuid startNodeId;
-        QUuid endNodeId;
-        QUuid materialId;
-        QUuid sectionId;
-        int externalId {0};
-    };
+    using NodeInfo = Structura::App::SceneNodeInfo;
+    using BarInfo = Structura::App::SceneBarInfo;
 
     explicit SceneController(QObject *parent = nullptr);
     ~SceneController() override;

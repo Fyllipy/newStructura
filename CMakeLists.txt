@@ -46,20 +46,24 @@ set(CORE_SOURCES
 
 set(VIZ_SOURCES
     src/viz/ISceneRenderer.h
-    src/viz/VtkSceneRenderer.h
-    src/viz/VtkSceneRenderer.cpp
     src/viz/SceneController.h
     src/viz/SceneController.cpp
     src/viz/LoadVisualization.h
     src/viz/LoadVisualization.cpp
     src/viz/LocalCoordinateSystem.h
     src/viz/LocalCoordinateSystem.cpp
+    src/viz/LoadSupportVisualMapper.h
+    src/viz/LoadSupportVisualMapper.cpp
     src/viz/CustomInteractorStyle.h
     src/viz/CustomInteractorStyle.cpp
 )
 
 set(APP_SOURCES
     src/app/IModelRepository.h
+    src/app/ISceneEditGateway.h
+    src/app/ISceneModelGateway.h
+    src/app/ProjectDataTypes.h
+    src/app/SceneDataTypes.h
     src/app/InMemoryModelRepository.h
     src/app/NodeService.h
     src/app/NodeService.cpp
@@ -71,11 +75,26 @@ set(APP_SOURCES
     src/app/SolverBridge.cpp
     src/app/SceneControllerFacade.h
     src/app/SceneControllerFacade.cpp
+    src/app/services/IdGeneratorService.h
+    src/app/services/IdGeneratorService.cpp
+    src/app/services/DatModelIoService.h
+    src/app/services/DatModelIoService.cpp
+    src/app/services/AnalysisService.h
+    src/app/services/AnalysisService.cpp
 )
 
 set(UI_SOURCES
     src/ui/MainWindow.h
     src/ui/MainWindow.cpp
+    src/ui/MainWindowRibbon.cpp
+    src/ui/MainWindowEventFilter.cpp
+    src/ui/MainWindowViewportInteraction.cpp
+    src/ui/MainWindowGridStatus.cpp
+    src/ui/MainWindowCommands.cpp
+    src/ui/MainWindowWindowState.cpp
+    src/ui/MainWindowProperties.cpp
+    src/ui/MainWindowLoads.cpp
+    src/ui/MainWindowAnalysisIo.cpp
     src/ui/MainWindowPresenter.h
     src/ui/MainWindowPresenter.cpp
     src/ui/TemporaryAnalysisResultsDialog.h
@@ -102,6 +121,12 @@ set(UI_SOURCES
     src/ui/SelectionModel.cpp
     src/ui/PropertiesPanel.h
     src/ui/PropertiesPanel.cpp
+    src/ui/GridInsertController.h
+    src/ui/GridInsertController.cpp
+    src/ui/GridDeleteTooltipHelper.h
+    src/ui/GridDeleteTooltipHelper.cpp
+    src/ui/PropertiesPanelEntryBuilder.h
+    src/ui/PropertiesPanelEntryBuilder.cpp
 )
 
 set(RESOURCES

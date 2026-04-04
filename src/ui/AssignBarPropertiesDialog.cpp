@@ -13,8 +13,8 @@
 
 AssignBarPropertiesDialog::AssignBarPropertiesDialog(const QVector<QPair<QUuid, QString>> &materials,
                                                      const QVector<QPair<QUuid, QString>> &sections,
-                                                     const std::vector<SceneController::BarInfo> &bars,
-                                                     const std::vector<SceneController::NodeInfo> &nodes,
+                                                     const std::vector<BarInfo> &bars,
+                                                     const std::vector<NodeInfo> &nodes,
                                                      QWidget *parent)
     : QDialog(parent)
     , m_materialOptions(materials)

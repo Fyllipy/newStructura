@@ -223,6 +223,7 @@ void SceneControllerFacade::highlightGridLine(const QUuid& lineId)
     m_highlightedGridLineId = lineId;
     
     if (m_renderer) {
+        m_renderer->highlightNode(QUuid());
         m_renderer->highlightGridLine(lineId);
     }
 }
@@ -339,9 +340,20 @@ void SceneControllerFacade::onNodeCreated(const QUuid& nodeId)
 void SceneControllerFacade::onNodeDeleted(const QUuid& nodeId)
 {
     // Remove from selection if deleted
-    m_selectedNodeIds.remove(nodeId);
+    const bool selectionChanged = m_selectedNodeIds.remove(nodeId);
+    const bool highlightChanged = (m_highlightedNodeId == nodeId);
+
     if (m_highlightedNodeId == nodeId) {
         m_highlightedNodeId = QUuid();
+    }
+
+    if (m_renderer) {
+        if (selectionChanged) {
+            m_renderer->setSelectedNodes(m_selectedNodeIds);
+        }
+        if (highlightChanged) {
+            m_renderer->highlightNode(QUuid());
+        }
     }
     
     updateNodeRendering();
@@ -363,9 +375,13 @@ void SceneControllerFacade::onBarCreated(const QUuid& barId)
 void SceneControllerFacade::onBarDeleted(const QUuid& barId)
 {
     // Remove from selection if deleted
-    m_selectedBarIds.remove(barId);
+    const bool selectionChanged = m_selectedBarIds.remove(barId);
     if (m_highlightedBarId == barId) {
         m_highlightedBarId = QUuid();
+    }
+
+    if (m_renderer && selectionChanged) {
+        m_renderer->setSelectedBars(m_selectedBarIds);
     }
     
     updateBarRendering();

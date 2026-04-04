@@ -95,6 +95,24 @@ public:
         m_hideGridGhostLineCalled = true;
     }
 
+    void updateLoads(const std::vector<Structura::Viz::ModelSnapshot::NodalLoadData>& nodalLoads,
+                     const std::vector<Structura::Viz::ModelSnapshot::MemberLoadData>& memberLoads) override {
+        m_updateLoadsCalled = true;
+        m_lastNodalLoads = nodalLoads;
+        m_lastMemberLoads = memberLoads;
+    }
+
+    void updateSupports(const std::vector<Structura::Viz::ModelSnapshot::SupportData>& supports) override {
+        m_updateSupportsCalled = true;
+        m_lastSupports = supports;
+    }
+
+    void updateBarLCS(const std::vector<Structura::Viz::ModelSnapshot::BarLCSData>& barLCS, bool visible) override {
+        m_updateBarLCSCalled = true;
+        m_lastBarLCS = barLCS;
+        m_lastBarLCSVisible = visible;
+    }
+
     void clearAll() override {
         m_clearAllCalled = true;
     }
@@ -143,6 +161,10 @@ public:
         return m_mockPickWorldPointSuccess;
     }
 
+    int viewportHeight() const override {
+        return m_mockViewportHeight;
+    }
+
     // Test inspection methods
     void reset() {
         m_initializeCalled = false;
@@ -160,6 +182,9 @@ public:
         m_resetCameraCalled = false;
         m_zoomExtentsCalled = false;
         m_refreshCalled = false;
+        m_updateLoadsCalled = false;
+        m_updateSupportsCalled = false;
+        m_updateBarLCSCalled = false;
         m_pickNodeCalled = false;
         m_pickBarCalled = false;
         m_pickGridLineCalled = false;
@@ -178,6 +203,11 @@ public:
         m_lastSelectedBarIds.clear();
         m_lastHighlightedNodeId = QUuid();
         m_lastHighlightedGridLineId = QUuid();
+        m_lastNodalLoads.clear();
+        m_lastMemberLoads.clear();
+        m_lastSupports.clear();
+        m_lastBarLCS.clear();
+        m_lastBarLCSVisible = false;
     }
 
     // Query methods for test verification
@@ -196,6 +226,9 @@ public:
     bool wasResetCameraCalled() const { return m_resetCameraCalled; }
     bool wasZoomExtentsCalled() const { return m_zoomExtentsCalled; }
     bool wasRefreshCalled() const { return m_refreshCalled; }
+    bool wasUpdateLoadsCalled() const { return m_updateLoadsCalled; }
+    bool wasUpdateSupportsCalled() const { return m_updateSupportsCalled; }
+    bool wasUpdateBarLCSCalled() const { return m_updateBarLCSCalled; }
     
     int renderSnapshotCallCount() const { return m_renderSnapshotCallCount; }
     int updateNodesCallCount() const { return m_updateNodesCallCount; }
@@ -208,8 +241,8 @@ public:
     const std::vector<Structura::Viz::ModelSnapshot::BarData>& lastBars() const { return m_lastBars; }
     const std::vector<Structura::Viz::ModelSnapshot::GridLineData>& lastGridLines() const { return m_lastGridLines; }
     
-    size_t lastNodeCount() const { return m_lastNodes.size(); }
-    size_t lastBarCount() const { return m_lastBars.size(); }
+    size_t lastNodeCount() const { return m_lastNodes.empty() ? m_lastSnapshot.nodes.size() : m_lastNodes.size(); }
+    size_t lastBarCount() const { return m_lastBars.empty() ? m_lastSnapshot.bars.size() : m_lastBars.size(); }
     size_t lastGridLineCount() const { return m_lastGridLines.size(); }
     
     const QSet<QUuid>& lastSelectedNodeIds() const { return m_lastSelectedNodeIds; }
@@ -245,6 +278,9 @@ private:
     mutable bool m_resetCameraCalled;
     mutable bool m_zoomExtentsCalled;
     mutable bool m_refreshCalled;
+    mutable bool m_updateLoadsCalled;
+    mutable bool m_updateSupportsCalled;
+    mutable bool m_updateBarLCSCalled;
     mutable bool m_pickNodeCalled;
     mutable bool m_pickBarCalled;
     mutable bool m_pickGridLineCalled;
@@ -263,6 +299,11 @@ private:
     std::vector<Structura::Viz::ModelSnapshot::NodeData> m_lastNodes;
     std::vector<Structura::Viz::ModelSnapshot::BarData> m_lastBars;
     std::vector<Structura::Viz::ModelSnapshot::GridLineData> m_lastGridLines;
+    std::vector<Structura::Viz::ModelSnapshot::NodalLoadData> m_lastNodalLoads;
+    std::vector<Structura::Viz::ModelSnapshot::MemberLoadData> m_lastMemberLoads;
+    std::vector<Structura::Viz::ModelSnapshot::SupportData> m_lastSupports;
+    std::vector<Structura::Viz::ModelSnapshot::BarLCSData> m_lastBarLCS;
+    bool m_lastBarLCSVisible = false;
     QSet<QUuid> m_lastSelectedNodeIds;
     QSet<QUuid> m_lastSelectedBarIds;
     QUuid m_lastHighlightedNodeId;
@@ -281,6 +322,7 @@ private:
     double m_mockWorldY = 0.0;
     double m_mockWorldZ = 0.0;
     bool m_mockPickWorldPointSuccess = true;
+    int m_mockViewportHeight = 720;
 };
 
 } // namespace Structura::Tests

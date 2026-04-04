@@ -454,5 +454,5 @@ private slots:
 };
 
 // Main function to run all tests
-QTEST_MAIN(TestVector3)
+QTEST_APPLESS_MAIN(TestVector3)
 #include "TestCoreModels.moc"

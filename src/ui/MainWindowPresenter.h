@@ -7,7 +7,8 @@
 #include <QString>
 #include <optional>
 
-class SceneController;
+#include "app/ISceneEditGateway.h"
+#include "app/ProjectDataTypes.h"
 
 namespace Structura {
 class SelectionModel;
@@ -24,65 +25,16 @@ class MainWindowPresenter : public QObject
     Q_OBJECT
 
 public:
-    struct MaterialInfo {
-        QUuid uuid;
-        int externalId {0};
-        QString name;
-        double youngModulus {0.0};
-        double shearModulus {0.0};
-    };
-
-    struct SectionInfo {
-        QUuid uuid;
-        int externalId {0};
-        QString name;
-        double area {0.0};
-        double iz {0.0};
-        double iy {0.0};
-        double j {0.0};
-    };
-
-    struct NodeSupport {
-        int nodeId {0};
-        bool restraints[6] {false, false, false, false, false, false};
-    };
-
-    struct NodalLoad {
-        int nodeId {0};
-        double fx {0.0};
-        double fy {0.0};
-        double fz {0.0};
-        double mx {0.0};
-        double my {0.0};
-        double mz {0.0};
-    };
-
-    struct MemberLoad {
-        int memberId {0};
-        QString system;
-        double qx {0.0};
-        double qy {0.0};
-        double qz {0.0};
-    };
-
-    struct NodalLoadPreset {
-        double fx {0.0};
-        double fy {0.0};
-        double fz {0.0};
-        double mx {0.0};
-        double my {0.0};
-        double mz {0.0};
-    };
-
-    struct DistributedLoadPreset {
-        QString system {QStringLiteral("GLOBAL")};
-        double qx {0.0};
-        double qy {0.0};
-        double qz {0.0};
-    };
+    using MaterialInfo = Structura::App::ProjectData::MaterialInfo;
+    using SectionInfo = Structura::App::ProjectData::SectionInfo;
+    using NodeSupport = Structura::App::ProjectData::NodeSupport;
+    using NodalLoad = Structura::App::ProjectData::NodalLoad;
+    using MemberLoad = Structura::App::ProjectData::MemberLoad;
+    using NodalLoadPreset = Structura::App::ProjectData::NodalLoadPreset;
+    using DistributedLoadPreset = Structura::App::ProjectData::DistributedLoadPreset;
 
     struct Dependencies {
-        SceneController *sceneController {nullptr};
+        Structura::App::ISceneEditGateway *sceneController {nullptr};
         Structura::SelectionModel *selectionModel {nullptr};
         Structura::App::UndoRedoService *undoService {nullptr};
         QVector<MaterialInfo> *materials {nullptr};
@@ -98,7 +50,7 @@ public:
 
     explicit MainWindowPresenter(const Dependencies &deps, QObject *parent = nullptr);
 
-    [[nodiscard]] SceneController *scene() const noexcept { return m_sceneController; }
+    [[nodiscard]] Structura::App::ISceneEditGateway *scene() const noexcept { return m_sceneController; }
     [[nodiscard]] Structura::SelectionModel *selectionModel() const noexcept { return m_selectionModel; }
     [[nodiscard]] Structura::App::UndoRedoService *undoService() const noexcept { return m_undoService; }
 
@@ -134,7 +86,7 @@ public:
     void handleBarSectionEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &sectionId);
 
 private:
-    SceneController *m_sceneController;
+    Structura::App::ISceneEditGateway *m_sceneController;
     Structura::SelectionModel *m_selectionModel;
     Structura::App::UndoRedoService *m_undoService;
 

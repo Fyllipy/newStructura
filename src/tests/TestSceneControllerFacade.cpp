@@ -6,7 +6,7 @@
 #include "MockSceneRenderer.h"
 
 using namespace Structura::App;
-using namespace Structura::Core::Model;
+using namespace Structura::Model;
 using namespace Structura::Tests;
 
 /**
@@ -233,12 +233,9 @@ void TestSceneControllerFacade::testBarUpdatedTriggersUpdate()
     auto barId = m_barService->createBar(node1, node2);
     
     m_mockRenderer->reset();
-    
-    // Trigger an update (e.g., by setting external ID)
-    auto bar = m_repository->findBar(barId);
-    QVERIFY(bar.has_value());
-    bar->setExternalId(100);
-    m_repository->updateBar(*bar);
+
+    // Trigger update through service API to ensure signals are emitted.
+    QVERIFY(m_barService->assignProperties(barId, QUuid::createUuid(), QUuid::createUuid()));
     
     QVERIFY(m_mockRenderer->wasUpdateBarsCalled());
 }
@@ -390,7 +387,7 @@ void TestSceneControllerFacade::testHighlightingOneTypeClearsOthers()
 void TestSceneControllerFacade::testUpdateGridLines()
 {
     std::vector<GridLine> gridLines;
-    GridLine line1(0, 5.0);
+    GridLine line1(QUuid::createUuid(), GridLine::Axis::X, 5.0, 0);
     line1.setStartPoint(Vector3{0, 0, 0});
     line1.setEndPoint(Vector3{10, 0, 0});
     gridLines.push_back(line1);
@@ -493,5 +490,5 @@ void TestSceneControllerFacade::testSelectionChangedSignal()
     QCOMPARE(spy.count(), 1);
 }
 
-QTEST_MAIN(TestSceneControllerFacade)
+QTEST_APPLESS_MAIN(TestSceneControllerFacade)
 #include "TestSceneControllerFacade.moc"

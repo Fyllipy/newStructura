@@ -1,6 +1,5 @@
 #include "MainWindowPresenter.h"
 
-#include "viz/SceneController.h"
 #include "ui/SelectionModel.h"
 #include "app/UndoRedoService.h"
 
@@ -78,7 +77,7 @@ void MainWindowPresenter::handleNodeCoordinateEdited(const QVector<QUuid> &ids, 
     QVector<QVector3D> newPositions;
 
     for (const QUuid &id : ids) {
-        const SceneController::Node *node = m_sceneController->findNode(id);
+        const auto *node = m_sceneController->findNode(id);
         if (!node) {
             continue;
         }
@@ -128,7 +127,7 @@ void MainWindowPresenter::handleBarMaterialEdited(const QVector<QUuid> &ids, con
     const QUuid newMaterial = materialId.value();
 
     for (const QUuid &id : ids) {
-        const SceneController::Bar *bar = m_sceneController->findBar(id);
+        const auto *bar = m_sceneController->findBar(id);
         if (!bar) {
             continue;
         }
@@ -169,7 +168,7 @@ void MainWindowPresenter::handleBarSectionEdited(const QVector<QUuid> &ids, cons
     const QUuid newSection = sectionId.value();
 
     for (const QUuid &id : ids) {
-        const SceneController::Bar *bar = m_sceneController->findBar(id);
+        const auto *bar = m_sceneController->findBar(id);
         if (!bar) {
             continue;
         }

@@ -8,8 +8,9 @@
 #include <QString>
 #include <optional>
 
+#include "app/ISceneEditGateway.h"
+
 class QAction;
-class SceneController;
 
 namespace Structura::App {
 
@@ -27,12 +28,12 @@ public:
     [[nodiscard]] QAction *createUndoAction(QObject *parent, const QString &text) const;
     [[nodiscard]] QAction *createRedoAction(QObject *parent, const QString &text) const;
 
-    void pushMoveNodesCommand(SceneController *scene,
+    void pushMoveNodesCommand(ISceneEditGateway *scene,
                               const QVector<QUuid> &ids,
                               const QVector<QVector3D> &oldPositions,
                               const QVector<QVector3D> &newPositions);
 
-    void pushSetBarPropertiesCommand(SceneController *scene,
+    void pushSetBarPropertiesCommand(ISceneEditGateway *scene,
                                      const QVector<QUuid> &ids,
                                      const QVector<QUuid> &oldMaterials,
                                      const QVector<QUuid> &oldSections,

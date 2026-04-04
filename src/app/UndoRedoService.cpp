@@ -1,7 +1,5 @@
 #include "UndoRedoService.h"
 
-#include "viz/SceneController.h"
-
 #include <QAction>
 #include <vector>
 
@@ -12,7 +10,7 @@ namespace {
 class MoveNodesCommandImpl : public QUndoCommand
 {
 public:
-    MoveNodesCommandImpl(SceneController *scene,
+    MoveNodesCommandImpl(ISceneEditGateway *scene,
                          QVector<QUuid> ids,
                          QVector<QVector3D> oldPositions,
                          QVector<QVector3D> newPositions,
@@ -38,7 +36,7 @@ private:
         m_scene->updateNodePositions(m_ids, positions);
     }
 
-    SceneController *m_scene;
+    ISceneEditGateway *m_scene;
     QVector<QUuid> m_ids;
     QVector<QVector3D> m_oldPositions;
     QVector<QVector3D> m_newPositions;
@@ -47,7 +45,7 @@ private:
 class SetBarPropertiesCommandImpl : public QUndoCommand
 {
 public:
-    SetBarPropertiesCommandImpl(SceneController *scene,
+    SetBarPropertiesCommandImpl(ISceneEditGateway *scene,
                                 QVector<QUuid> ids,
                                 QVector<QUuid> oldMaterials,
                                 QVector<QUuid> oldSections,
@@ -95,7 +93,7 @@ public:
     }
 
 private:
-    SceneController *m_scene;
+    ISceneEditGateway *m_scene;
     QVector<QUuid> m_ids;
     QVector<QUuid> m_oldMaterials;
     QVector<QUuid> m_oldSections;
@@ -122,7 +120,7 @@ QAction *UndoRedoService::createRedoAction(QObject *parent, const QString &text)
     return m_stack->createRedoAction(parent, text);
 }
 
-void UndoRedoService::pushMoveNodesCommand(SceneController *scene,
+void UndoRedoService::pushMoveNodesCommand(ISceneEditGateway *scene,
                                            const QVector<QUuid> &ids,
                                            const QVector<QVector3D> &oldPositions,
                                            const QVector<QVector3D> &newPositions)
@@ -138,7 +136,7 @@ void UndoRedoService::pushMoveNodesCommand(SceneController *scene,
     m_stack->push(new MoveNodesCommandImpl(scene, ids, oldPositions, newPositions));
 }
 
-void UndoRedoService::pushSetBarPropertiesCommand(SceneController *scene,
+void UndoRedoService::pushSetBarPropertiesCommand(ISceneEditGateway *scene,
                                                   const QVector<QUuid> &ids,
                                                   const QVector<QUuid> &oldMaterials,
                                                   const QVector<QUuid> &oldSections,

@@ -370,5 +370,5 @@ private slots:
 };
 
 // Main function to run all tests
-QTEST_MAIN(TestInMemoryModelRepository)
+QTEST_APPLESS_MAIN(TestInMemoryModelRepository)
 #include "TestRepositoryAndServices.moc"

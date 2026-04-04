@@ -15,6 +15,8 @@
 #include "core/model/Material.h"
 #include "core/model/Section.h"
 #include "core/model/GridLine.h"
+#include "ui/GridInsertController.h"
+#include "ui/AssignBarPropertiesDialog.h"
 #include "ui/MainWindowPresenter.h"
 
 class QAction;
@@ -30,7 +32,6 @@ class QLabel;
 class MaterialDialog;
 class SectionDialog;
 class BarPropertiesDialog;
-class AssignBarPropertiesDialog;
 class NodalLoadDialog;
 class DistributedLoadDialog;
 class RestraintDialog;
@@ -101,38 +102,27 @@ private:
         DeleteGridLine
     };
 
-    struct GridInsertState {
-        Structura::Model::GridLine::Axis axis {Structura::Model::GridLine::Axis::X};
-        bool active {false};
-        bool pointerValid {false};
-        double pointerCoord1 {0.0};
-        double pointerCoord2 {0.0};
-        double pointerAxisCoord {0.0};
-        QUuid highlightedLineId;
-        QUuid referenceLineId;
-        double referenceCoord1 {0.0};
-        double referenceCoord2 {0.0};
-        bool referenceLocked {false};
-        QString inputBuffer;
-        double typedValue {0.0};
-        bool hasTypedValue {false};
-        double ghostCoord1 {0.0};
-        double ghostCoord2 {0.0};
-        bool ghostVisible {false};
-    };
+    using GridInsertState = Structura::UI::GridInsertController::State;
 
     void createRibbon();
     QWidget *createQuickAccessBar();
     QToolButton *createToolButton(QAction *action);
     bool eventFilter(QObject *obj, QEvent *event) override;
     void changeEvent(QEvent *event) override;
+    bool handleWindowDragEvent(QEvent *event);
+    bool handleViewportCommandEvent(QEvent *event);
+    bool handleInsertNodeEvent(QEvent *event);
+    bool handleInsertBarEvent(QEvent *event);
+    bool handleGridInsertEvent(QEvent *event);
+    bool handleGridDeleteEvent(QEvent *event);
+    bool handleDefaultViewportEvent(QEvent *event);
+    bool handleWindowDragMousePress(Qt::MouseButton button, const QPoint &globalPos);
+    bool handleWindowDragMouseMove(const QPoint &globalPos);
+    bool handleWindowDragMouseRelease(Qt::MouseButton button);
+    bool handleWindowDragMouseDoubleClick(Qt::MouseButton button);
     void setCommand(Command command);
     void updateStatus();
     void showStatusMessage(const QString &message, int timeout = 0);
-    MaterialInfo *findMaterial(const QUuid &id);
-    const MaterialInfo *findMaterial(const QUuid &id) const;
-    SectionInfo *findSection(const QUuid &id);
-    const SectionInfo *findSection(const QUuid &id) const;
     void populateActionGrid(QGridLayout *layout, const QList<QAction *> &actions, int columns);
     int nextMaterialExternalId() const;
     int nextSectionExternalId() const;
@@ -142,11 +132,31 @@ private:
     void setupRightToolColumn();
     void ensurePropertiesPanel();
     void refreshPropertiesPanel();
+    QVector<QPair<QUuid, QString>> buildMaterialOptions() const;
+    QVector<QPair<QUuid, QString>> buildSectionOptions() const;
+    std::vector<AssignBarPropertiesDialog::BarInfo> buildAssignDialogBarInfos() const;
+    std::vector<AssignBarPropertiesDialog::NodeInfo> buildAssignDialogNodeInfos() const;
+    std::vector<QUuid> collectAssignDialogSelectionIds(const QList<int> &selection,
+                                                       const std::vector<AssignBarPropertiesDialog::BarInfo> &bars) const;
+    QPoint toDisplayPoint(const QPoint &widgetPos) const;
+    QUuid pickNodeAtWidgetPos(const QPoint &widgetPos) const;
+    QUuid pickBarAtWidgetPos(const QPoint &widgetPos) const;
+    void updateHighlightedNodeAtWidgetPos(const QPoint &widgetPos);
     QVector<PropertiesPanel::NodeEntry> buildNodeEntries(const QSet<QUuid> &nodeIds) const;
     QVector<PropertiesPanel::BarEntry> buildBarEntries(const QSet<QUuid> &barIds) const;
     void updateGridInfoOnPanel();
     bool computeWorldPointForInsert(const QPoint &widgetPos, double &x, double &y, double &z, bool applySnap) const;
     void setHoverInsertPoint(const std::optional<QVector3D> &point);
+    bool handleInsertNodeMousePress(Qt::MouseButton button, const QPoint &widgetPos);
+    bool handleInsertNodeMouseMove(const QPoint &widgetPos);
+    bool handleInsertNodeKeyPress(int key);
+    bool handleInsertBarMouseMove(const QPoint &widgetPos);
+    bool handleInsertBarMousePress(Qt::MouseButton button, const QPoint &widgetPos);
+    bool handleInsertBarKeyPress(int key);
+    bool handleGridInsertMouseMove(const QPoint &widgetPos);
+    bool handleGridInsertMousePress(Qt::MouseButton button);
+    bool handleGridInsertKeyPress(int key, Qt::KeyboardModifiers modifiers, const QString &text);
+    bool commitGridInsertIfValid();
     void beginGridInsert(Structura::Model::GridLine::Axis axis);
     void updateGridInsertFromPoint(const QVector3D &worldPoint);
     void refreshGridInsertVisuals();
@@ -156,6 +166,12 @@ private:
     QString gridAxisLabel(Structura::Model::GridLine::Axis axis) const;
     void updateGridDeleteTooltip(const QPoint &widgetPos, const QUuid &lineId);
     void hideGridDeleteTooltip();
+    bool handleGridDeleteMouseMove(const QPoint &widgetPos);
+    bool handleGridDeleteMousePress(Qt::MouseButton button, const QPoint &widgetPos);
+    bool handleGridDeleteKeyPress(int key);
+    bool handleDefaultViewportMouseMove(const QPoint &widgetPos);
+    bool handleDefaultViewportMousePress(Qt::MouseButton button, Qt::KeyboardModifiers modifiers, const QPoint &widgetPos);
+    bool handleDefaultViewportLeave();
     void updateGridActionsEnabled();
     Structura::Model::GridLine::Axis commandToAxis(Command command) const;
     void updateLoadActionsEnabled();
@@ -230,6 +246,8 @@ private:
 
     void updateMaximizeButtonIcon();
     void toggleMaximized();
+    QString datDialogInitialDirectory() const;
+    void showDatStatusMessage(const QString &prefix, const QString &filePath);
     bool loadFromDat(const QString &filePath);
     bool saveToDat(const QString &filePath);
     void resetModel();

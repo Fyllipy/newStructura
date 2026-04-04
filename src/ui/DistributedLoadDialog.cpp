@@ -1,5 +1,7 @@
 #include "DistributedLoadDialog.h"
 
+#include "app/LoadSystemUtils.h"
+
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
@@ -68,7 +70,7 @@ void DistributedLoadDialog::setInitialValues(double qx, double qy, double qz, co
     if (m_qySpin) m_qySpin->setValue(qy);
     if (m_qzSpin) m_qzSpin->setValue(qz);
     if (m_systemCombo) {
-        const QString normalized = system.trimmed().toUpper();
+        const QString normalized = Structura::App::normalizeMemberLoadSystem(system);
         const int index = m_systemCombo->findData(normalized);
         m_systemCombo->setCurrentIndex(index >= 0 ? index : 0);
     }
