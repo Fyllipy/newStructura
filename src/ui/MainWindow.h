@@ -74,6 +74,7 @@ private slots:
     void onAssignProperties();
     void onOpenModel();
     void onSaveModel();
+    void onRunStructuralAnalysis();
     void onRibbonTabChanged(int index);
     void onNodeCoordinateEdited(const QVector<QUuid> &ids, char axis, double value);
     void onBarMaterialEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &materialId);
@@ -193,6 +194,7 @@ private:
     QAction *m_assignPropertiesAction;
     QAction *m_openModelAction;
     QAction *m_saveModelAction;
+    QAction *m_runAnalysisAction;
     QAction *m_undoAction;
     QAction *m_redoAction;
     Structura::App::UndoRedoService *m_undoService;

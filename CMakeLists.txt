@@ -67,6 +67,8 @@ set(APP_SOURCES
     src/app/BarService.cpp
     src/app/UndoRedoService.h
     src/app/UndoRedoService.cpp
+    src/app/SolverBridge.h
+    src/app/SolverBridge.cpp
     src/app/SceneControllerFacade.h
     src/app/SceneControllerFacade.cpp
 )
@@ -76,6 +78,8 @@ set(UI_SOURCES
     src/ui/MainWindow.cpp
     src/ui/MainWindowPresenter.h
     src/ui/MainWindowPresenter.cpp
+    src/ui/TemporaryAnalysisResultsDialog.h
+    src/ui/TemporaryAnalysisResultsDialog.cpp
     src/ui/CoordinateDialog.h
     src/ui/CoordinateDialog.cpp
     src/ui/MaterialDialog.h
@@ -138,6 +142,42 @@ target_link_libraries(StructuraRibbon3D
     PRIVATE
         StructuraLib
 )
+
+set(STRUCTURA_SOLVER_HINT_DIR "" CACHE PATH "Optional path containing solver_dll shared library")
+
+if (WIN32)
+    find_library(STRUCTURA_SOLVER_LIBRARY
+        NAMES solver_dll
+        HINTS ${STRUCTURA_SOLVER_HINT_DIR}
+        PATH_SUFFIXES . bin lib
+    )
+else()
+    find_library(STRUCTURA_SOLVER_LIBRARY
+        NAMES solver_dll libsolver_dll
+        HINTS ${STRUCTURA_SOLVER_HINT_DIR}
+        PATH_SUFFIXES . bin lib
+    )
+endif()
+
+if (STRUCTURA_SOLVER_LIBRARY)
+    add_library(structura_solver_dll SHARED IMPORTED GLOBAL)
+    set_target_properties(structura_solver_dll PROPERTIES
+        IMPORTED_LOCATION "${STRUCTURA_SOLVER_LIBRARY}"
+    )
+
+    target_link_libraries(StructuraRibbon3D PRIVATE structura_solver_dll)
+
+    add_custom_command(TARGET StructuraRibbon3D POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "Copying solver shared library to output dir"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${STRUCTURA_SOLVER_LIBRARY}" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
+        VERBATIM
+    )
+
+    message(STATUS "Using solver shared library: ${STRUCTURA_SOLVER_LIBRARY}")
+else()
+    message(WARNING "solver_dll shared library not found. Set STRUCTURA_SOLVER_HINT_DIR to the folder containing the DLL/.so.")
+endif()
 
 # --- Enable Testing ---
 enable_testing()

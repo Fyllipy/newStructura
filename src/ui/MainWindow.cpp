@@ -9,8 +9,10 @@
 #include "NodalLoadDialog.h"
 #include "DistributedLoadDialog.h"
 #include "RestraintDialog.h"
+#include "TemporaryAnalysisResultsDialog.h"
 #include "viz/SceneController.h"
 #include "app/UndoRedoService.h"
+#include "app/SolverBridge.h"
 #include "ui/MainWindowPresenter.h"
 
 #include <QAction>
@@ -51,6 +53,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
+#include <sstream>
+#include <vector>
 
 #include <QVTKOpenGLNativeWidget.h>
 
@@ -115,6 +120,11 @@ MainWindow::MainWindow(QWidget *parent)
     m_saveModelAction->setShortcut(QKeySequence::Save);
     connect(m_saveModelAction, &QAction::triggered, this, &MainWindow::onSaveModel);
 
+    m_runAnalysisAction = new QAction(tr("Rodar\nanalise"), this);
+    m_runAnalysisAction->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    m_runAnalysisAction->setShortcut(Qt::Key_F5);
+    connect(m_runAnalysisAction, &QAction::triggered, this, &MainWindow::onRunStructuralAnalysis);
+
     m_generateGridAction = new QAction(tr("Gerar grid"), this);
     m_generateGridAction->setIcon(QIcon(QStringLiteral(":/icons/genGrid.png")));
     connect(m_generateGridAction, &QAction::triggered, this, &MainWindow::onGenerateGrid);
@@ -169,6 +179,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     addAction(m_openModelAction);
     addAction(m_saveModelAction);
+    addAction(m_runAnalysisAction);
 
     m_quickBar = createQuickAccessBar();
     m_quickBar->setMouseTracking(true);
@@ -715,7 +726,7 @@ void MainWindow::createRibbon()
     loadsGrid->setHorizontalSpacing(4);
     loadsGrid->setVerticalSpacing(4);
     loadsGrid->setAlignment(Qt::AlignTop);
-    const QList<QAction *> loadActions = { m_applyNodalLoadAction, m_applyDistributedLoadAction };
+    const QList<QAction *> loadActions = { m_applyNodalLoadAction, m_applyDistributedLoadAction, m_runAnalysisAction };
     const int loadColumns = 2;
     populateActionGrid(loadsGrid, loadActions, loadActions.size());
     const int loadRows = (loadActions.count() + loadColumns - 1) / loadColumns;
@@ -2440,6 +2451,260 @@ void MainWindow::onSaveModel()
     if (saveToDat(finalPath)) {
         m_lastDatDirectory = QFileInfo(finalPath).absolutePath();
         statusBar()->showMessage(tr("Modelo salvo: %1").arg(QFileInfo(finalPath).fileName()), 5000);
+    }
+}
+
+void MainWindow::onRunStructuralAnalysis()
+{
+    if (!m_sceneController) {
+        return;
+    }
+
+    auto bars = m_sceneController->bars();
+    auto materials = m_materials;
+    auto sections = m_sections;
+    auto nodes = m_sceneController->nodeInfos();
+
+    if (nodes.empty()) {
+        QMessageBox::information(this, tr("Analise estrutural"), tr("Nao ha nos no modelo para analisar."));
+        return;
+    }
+    if (bars.empty()) {
+        QMessageBox::information(this, tr("Analise estrutural"), tr("Nao ha barras no modelo para analisar."));
+        return;
+    }
+    if (materials.isEmpty()) {
+        QMessageBox::warning(this, tr("Analise estrutural"), tr("Cadastre ao menos um material antes de rodar a analise."));
+        return;
+    }
+    if (sections.isEmpty()) {
+        QMessageBox::warning(this, tr("Analise estrutural"), tr("Cadastre ao menos uma secao antes de rodar a analise."));
+        return;
+    }
+
+    int maxMatId = 0;
+    for (const auto &mat : materials) {
+        if (mat.externalId > maxMatId) {
+            maxMatId = mat.externalId;
+        }
+    }
+    int nextMatId = maxMatId + 1;
+    for (auto &mat : materials) {
+        if (mat.externalId <= 0) {
+            mat.externalId = nextMatId++;
+        }
+    }
+
+    int maxSecId = 0;
+    for (const auto &sec : sections) {
+        if (sec.externalId > maxSecId) {
+            maxSecId = sec.externalId;
+        }
+    }
+    int nextSecId = maxSecId + 1;
+    for (auto &sec : sections) {
+        if (sec.externalId <= 0) {
+            sec.externalId = nextSecId++;
+        }
+    }
+
+    // Persist assigned external IDs back to UI state.
+    for (const auto &mat : materials) {
+        for (auto &orig : m_materials) {
+            if (orig.uuid == mat.uuid) {
+                orig.externalId = mat.externalId;
+                break;
+            }
+        }
+    }
+    for (const auto &sec : sections) {
+        for (auto &orig : m_sections) {
+            if (orig.uuid == sec.uuid) {
+                orig.externalId = sec.externalId;
+                break;
+            }
+        }
+    }
+
+    int nextBarId = nextBarExternalId();
+    for (const auto &bar : bars) {
+        if (bar.externalId <= 0) {
+            m_sceneController->setBarExternalId(bar.id, nextBarId++);
+        }
+    }
+    bars = m_sceneController->bars();
+
+    std::sort(nodes.begin(), nodes.end(), [](const SceneController::NodeInfo &a, const SceneController::NodeInfo &b) {
+        return a.externalId < b.externalId;
+    });
+    std::sort(bars.begin(), bars.end(), [](const SceneController::BarInfo &a, const SceneController::BarInfo &b) {
+        return a.externalId < b.externalId;
+    });
+
+    QHash<QUuid, SceneController::NodeInfo> nodeInfoMap;
+    for (const auto &node : nodes) {
+        nodeInfoMap.insert(node.id, node);
+    }
+
+    QHash<int, NodeSupport> supportMap;
+    for (const auto &support : m_supports) {
+        supportMap.insert(support.nodeId, support);
+    }
+
+    Structura::App::SolverBridge::ModelData model;
+    model.materials.reserve(static_cast<std::size_t>(materials.size()));
+    model.sections.reserve(static_cast<std::size_t>(sections.size()));
+    model.nodes.reserve(nodes.size());
+    model.members.reserve(bars.size());
+    model.nodalLoads.reserve(static_cast<std::size_t>(m_nodalLoads.size()));
+    model.memberLoads.reserve(static_cast<std::size_t>(m_memberLoads.size()));
+
+    for (const auto &mat : materials) {
+        Structura::App::SolverBridge::MaterialData data;
+        data.id = mat.externalId;
+        data.e = mat.youngModulus;
+        data.g = mat.shearModulus;
+        model.materials.push_back(data);
+    }
+
+    for (const auto &sec : sections) {
+        Structura::App::SolverBridge::SectionData data;
+        data.id = sec.externalId;
+        data.area = sec.area;
+        data.iz = sec.iz;
+        data.iy = sec.iy;
+        data.j = sec.j;
+        model.sections.push_back(data);
+    }
+
+    for (const auto &node : nodes) {
+        Structura::App::SolverBridge::NodeData data;
+        data.id = node.externalId;
+        data.x = node.x;
+        data.y = node.y;
+        data.z = node.z;
+        const auto supportIt = supportMap.constFind(node.externalId);
+        if (supportIt != supportMap.constEnd()) {
+            for (int i = 0; i < 6; ++i) {
+                data.restraints[static_cast<std::size_t>(i)] = supportIt.value().restraints[i] ? 1 : 0;
+            }
+        }
+        model.nodes.push_back(data);
+    }
+
+    QStringList memberErrors;
+    for (const auto &bar : bars) {
+        const auto startIt = nodeInfoMap.constFind(bar.startNodeId);
+        const auto endIt = nodeInfoMap.constFind(bar.endNodeId);
+        const auto *material = findMaterial(bar.materialId);
+        const auto *section = findSection(bar.sectionId);
+
+        if (startIt == nodeInfoMap.constEnd() || endIt == nodeInfoMap.constEnd()) {
+            memberErrors.append(tr("Barra %1 referencia no(s) inexistente(s)." ).arg(bar.externalId));
+            continue;
+        }
+        if (!material || material->externalId <= 0) {
+            memberErrors.append(tr("Barra %1 sem material valido." ).arg(bar.externalId));
+            continue;
+        }
+        if (!section || section->externalId <= 0) {
+            memberErrors.append(tr("Barra %1 sem secao valida." ).arg(bar.externalId));
+            continue;
+        }
+
+        Structura::App::SolverBridge::MemberData data;
+        data.id = bar.externalId;
+        data.nodeI = startIt.value().externalId;
+        data.nodeJ = endIt.value().externalId;
+        data.materialId = material->externalId;
+        data.sectionId = section->externalId;
+        model.members.push_back(data);
+    }
+
+    if (!memberErrors.isEmpty()) {
+        QMessageBox::warning(this,
+                             tr("Analise estrutural"),
+                             tr("Nao foi possivel montar o modelo para o solver:\n%1").arg(memberErrors.join(QLatin1Char('\n'))));
+        return;
+    }
+
+    for (const auto &load : m_nodalLoads) {
+        Structura::App::SolverBridge::NodalLoadData data;
+        data.nodeId = load.nodeId;
+        data.values = {{load.fx, load.fy, load.fz, load.mx, load.my, load.mz}};
+        model.nodalLoads.push_back(data);
+    }
+
+    for (const auto &load : m_memberLoads) {
+        Structura::App::SolverBridge::MemberLoadData data;
+        data.memberId = load.memberId;
+        const QString system = load.system.trimmed().toUpper();
+        data.coordSystem = (system == QLatin1String("GLOBAL") || system == QLatin1String("G"))
+            ? Structura::App::SolverBridge::MemberLoadCoordSystem::Global
+            : Structura::App::SolverBridge::MemberLoadCoordSystem::Local;
+        data.qx = load.qx;
+        data.qy = load.qy;
+        data.qz = load.qz;
+        model.memberLoads.push_back(data);
+    }
+
+    try {
+        Structura::App::SolverBridge solver;
+        const auto result = solver.solve(model);
+        statusBar()->showMessage(tr("Analise concluida com sucesso."), 5000);
+
+        std::ostringstream report;
+        report.setf(std::ios::scientific);
+        report << std::setprecision(6);
+
+        report << "ANALISE ESTRUTURAL - RESULTADOS (PROVISORIO)\n";
+        report << "==========================================\n\n";
+        report << "Nos resolvidos: " << result.nodeResults.size() << "\n";
+        report << "Barras resolvidas: " << result.memberResults.size() << "\n\n";
+
+        report << "[DESLOCAMENTOS E REACOES NODAIS]\n";
+        report << "# No      UX            UY            UZ            RX            RY            RZ"
+               << " | Fx            Fy            Fz            Mx            My            Mz\n";
+        for (const auto &nodeResult : result.nodeResults) {
+            report << std::setw(6) << nodeResult.nodeId << " ";
+            for (const double value : nodeResult.displacements) {
+                report << std::setw(13) << value << " ";
+            }
+            report << "| ";
+            for (const double value : nodeResult.reactions) {
+                report << std::setw(13) << value << " ";
+            }
+            report << "\n";
+        }
+
+        report << "\n[ESFORCOS LOCAIS EM BARRAS]\n";
+        report << "# Barra   N_i           Vy_i          Vz_i          T_i           My_i          Mz_i"
+               << "          N_j           Vy_j          Vz_j          T_j           My_j          Mz_j"
+               << " | k1            k2            k3\n";
+        for (const auto &memberResult : result.memberResults) {
+            report << std::setw(7) << memberResult.memberId << " ";
+            for (const double value : memberResult.localForces) {
+                report << std::setw(13) << value << " ";
+            }
+            report << "| ";
+            for (const double value : memberResult.auxK) {
+                report << std::setw(13) << value << " ";
+            }
+            report << "\n";
+        }
+
+        Structura::UI::TemporaryAnalysisResultsDialog dialog(
+            QString::fromStdString(report.str()),
+            this);
+        dialog.exec();
+    } catch (const Structura::App::SolverBridgeError &error) {
+        QMessageBox::critical(this,
+                              tr("Falha na analise estrutural"),
+                              tr("A DLL retornou erro:\n%1").arg(QString::fromStdString(error.what())));
+    } catch (const std::exception &error) {
+        QMessageBox::critical(this,
+                              tr("Falha na analise estrutural"),
+                              tr("Erro inesperado:\n%1").arg(QString::fromStdString(error.what())));
     }
 }
 
