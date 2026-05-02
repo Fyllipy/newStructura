@@ -26,8 +26,5 @@ private:
     QVector<QPair<QUuid, QString>> m_sectionOptions;
     QComboBox *m_materialCombo;
     QComboBox *m_sectionCombo;
-
-    void populateCombo(QComboBox *combo, const QVector<QPair<QUuid, QString>> &options, const QString &emptyLabel);
-    int indexForId(const QVector<QPair<QUuid, QString>> &options, const QUuid &id) const;
 };
 

@@ -1,60 +1,45 @@
 #include "IdGeneratorService.h"
 
+#include "app/ExternalIdUtils.h"
 #include "app/ISceneModelGateway.h"
 
 namespace Structura::App::Services {
 
 int IdGeneratorService::nextMaterialExternalId(const QVector<MaterialInfo> &materials)
 {
-    int maxId = 0;
-    for (const auto &mat : materials) {
-        if (mat.externalId > maxId) {
-            maxId = mat.externalId;
-        }
-    }
-    return maxId + 1;
+    return Structura::App::nextExternalIdFrom(materials, [](const MaterialInfo &mat) {
+        return mat.externalId;
+    });
 }
 
 int IdGeneratorService::nextSectionExternalId(const QVector<SectionInfo> &sections)
 {
-    int maxId = 0;
-    for (const auto &sec : sections) {
-        if (sec.externalId > maxId) {
-            maxId = sec.externalId;
-        }
-    }
-    return maxId + 1;
+    return Structura::App::nextExternalIdFrom(sections, [](const SectionInfo &sec) {
+        return sec.externalId;
+    });
 }
 
 int IdGeneratorService::nextBarExternalId(const std::vector<int> &externalIds)
 {
-    int maxId = 0;
-    for (int externalId : externalIds) {
-        if (externalId > maxId) {
-            maxId = externalId;
-        }
-    }
-    return maxId + 1;
+    return Structura::App::nextExternalIdFrom(externalIds, [](int externalId) {
+        return externalId;
+    });
 }
 
 void IdGeneratorService::ensureMaterialExternalIds(QVector<MaterialInfo> &materials)
 {
-    int nextId = nextMaterialExternalId(materials);
-    for (auto &mat : materials) {
-        if (mat.externalId <= 0) {
-            mat.externalId = nextId++;
-        }
-    }
+    Structura::App::ensurePositiveExternalIds(
+        materials,
+        [](const MaterialInfo &mat) { return mat.externalId; },
+        [](MaterialInfo &mat, int externalId) { mat.externalId = externalId; });
 }
 
 void IdGeneratorService::ensureSectionExternalIds(QVector<SectionInfo> &sections)
 {
-    int nextId = nextSectionExternalId(sections);
-    for (auto &sec : sections) {
-        if (sec.externalId <= 0) {
-            sec.externalId = nextId++;
-        }
-    }
+    Structura::App::ensurePositiveExternalIds(
+        sections,
+        [](const SectionInfo &sec) { return sec.externalId; },
+        [](SectionInfo &sec, int externalId) { sec.externalId = externalId; });
 }
 
 void IdGeneratorService::ensureBarExternalIds(Structura::App::ISceneModelGateway *sceneController)
@@ -64,18 +49,12 @@ void IdGeneratorService::ensureBarExternalIds(Structura::App::ISceneModelGateway
     }
 
     const auto bars = sceneController->bars();
-    std::vector<int> externalIds;
-    externalIds.reserve(bars.size());
-    for (const auto &bar : bars) {
-        externalIds.push_back(bar.externalId);
-    }
-
-    int nextId = nextBarExternalId(externalIds);
-    for (const auto &bar : bars) {
-        if (bar.externalId <= 0) {
-            sceneController->setBarExternalId(bar.id, nextId++);
-        }
-    }
+    Structura::App::applyMissingExternalIds(
+        bars,
+        [](const auto &bar) { return bar.externalId; },
+        [sceneController](const auto &bar, int externalId) {
+            sceneController->setBarExternalId(bar.id, externalId);
+        });
 }
 
 } // namespace Structura::App::Services

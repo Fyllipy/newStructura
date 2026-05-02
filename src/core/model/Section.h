@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ModelValidationUtils.h"
+
 #include <QUuid>
 #include <QString>
 
@@ -65,8 +67,11 @@ public:
     /// Validate that section properties are physically reasonable
     bool isValid() const noexcept
     {
-        return m_area > 0.0 && m_iz > 0.0 && m_iy > 0.0 && 
-               m_torsionalConstant > 0.0 && !m_name.isEmpty();
+        return isPositive(m_area)
+            && isPositive(m_iz)
+            && isPositive(m_iy)
+            && isPositive(m_torsionalConstant)
+            && hasName(m_name);
     }
 
 private:

@@ -6,6 +6,44 @@
 using namespace Structura::App;
 using namespace Structura::Model;
 
+namespace {
+
+struct NodeServiceFixture {
+    InMemoryModelRepository repo;
+    NodeService service;
+
+    NodeServiceFixture()
+        : service(&repo)
+    {
+    }
+};
+
+struct BarServiceFixture {
+    InMemoryModelRepository repo;
+    NodeService nodeService;
+    BarService barService;
+
+    BarServiceFixture()
+        : nodeService(&repo)
+        , barService(&repo)
+    {
+    }
+
+    QUuid createNode(double x, double y, double z)
+    {
+        return nodeService.createNode(Vector3(x, y, z));
+    }
+
+    QUuid createBarBetween(const Vector3 &a, const Vector3 &b)
+    {
+        const QUuid node1 = createNode(a.x(), a.y(), a.z());
+        const QUuid node2 = createNode(b.x(), b.y(), b.z());
+        return barService.createBar(node1, node2);
+    }
+};
+
+} // namespace
+
 /**
  * @brief Unit tests for InMemoryModelRepository
  */
@@ -136,16 +174,15 @@ class TestNodeService : public QObject
 private slots:
     void testCreateNode()
     {
-        InMemoryModelRepository repo;
-        NodeService service(&repo);
+        NodeServiceFixture fixture;
         
         Vector3 pos(1.0, 2.0, 3.0);
-        QUuid id = service.createNode(pos);
+        QUuid id = fixture.service.createNode(pos);
         
         QVERIFY(!id.isNull());
-        QCOMPARE(repo.nodeCount(), static_cast<size_t>(1));
+        QCOMPARE(fixture.repo.nodeCount(), static_cast<size_t>(1));
         
-        auto node = service.findNode(id);
+        auto node = fixture.service.findNode(id);
         QVERIFY(node.has_value());
         QCOMPARE(node->x(), 1.0);
         QCOMPARE(node->y(), 2.0);
@@ -155,16 +192,15 @@ private slots:
     
     void testCreateMultipleNodes()
     {
-        InMemoryModelRepository repo;
-        NodeService service(&repo);
+        NodeServiceFixture fixture;
         
-        QUuid id1 = service.createNode(Vector3(0, 0, 0));
-        QUuid id2 = service.createNode(Vector3(1, 1, 1));
+        QUuid id1 = fixture.service.createNode(Vector3(0, 0, 0));
+        QUuid id2 = fixture.service.createNode(Vector3(1, 1, 1));
         
-        QCOMPARE(service.nodeCount(), static_cast<size_t>(2));
+        QCOMPARE(fixture.service.nodeCount(), static_cast<size_t>(2));
         
-        auto node1 = service.findNode(id1);
-        auto node2 = service.findNode(id2);
+        auto node1 = fixture.service.findNode(id1);
+        auto node2 = fixture.service.findNode(id2);
         
         QCOMPARE(node1->externalId(), 1);
         QCOMPARE(node2->externalId(), 2);
@@ -172,28 +208,26 @@ private slots:
     
     void testDeleteNode()
     {
-        InMemoryModelRepository repo;
-        NodeService service(&repo);
+        NodeServiceFixture fixture;
         
-        QUuid id = service.createNode(Vector3(0, 0, 0));
-        QVERIFY(service.nodeExists(id));
+        QUuid id = fixture.service.createNode(Vector3(0, 0, 0));
+        QVERIFY(fixture.service.nodeExists(id));
         
-        QVERIFY(service.deleteNode(id));
-        QVERIFY(!service.nodeExists(id));
-        QCOMPARE(service.nodeCount(), static_cast<size_t>(0));
+        QVERIFY(fixture.service.deleteNode(id));
+        QVERIFY(!fixture.service.nodeExists(id));
+        QCOMPARE(fixture.service.nodeCount(), static_cast<size_t>(0));
     }
     
     void testSetNodePosition()
     {
-        InMemoryModelRepository repo;
-        NodeService service(&repo);
+        NodeServiceFixture fixture;
         
-        QUuid id = service.createNode(Vector3(0, 0, 0));
+        QUuid id = fixture.service.createNode(Vector3(0, 0, 0));
         Vector3 newPos(10, 20, 30);
         
-        QVERIFY(service.setNodePosition(id, newPos));
+        QVERIFY(fixture.service.setNodePosition(id, newPos));
         
-        auto node = service.findNode(id);
+        auto node = fixture.service.findNode(id);
         QCOMPARE(node->x(), 10.0);
         QCOMPARE(node->y(), 20.0);
         QCOMPARE(node->z(), 30.0);
@@ -201,15 +235,14 @@ private slots:
     
     void testSetNodeRestraints()
     {
-        InMemoryModelRepository repo;
-        NodeService service(&repo);
+        NodeServiceFixture fixture;
         
-        QUuid id = service.createNode(Vector3(0, 0, 0));
+        QUuid id = fixture.service.createNode(Vector3(0, 0, 0));
         std::array<bool, 6> restraints = {true, true, false, false, false, false};
         
-        QVERIFY(service.setNodeRestraints(id, restraints));
+        QVERIFY(fixture.service.setNodeRestraints(id, restraints));
         
-        auto node = service.findNode(id);
+        auto node = fixture.service.findNode(id);
         auto nodeRestraints = node->restraints();
         QVERIFY(nodeRestraints[0]);
         QVERIFY(nodeRestraints[1]);
@@ -218,16 +251,39 @@ private slots:
     
     void testNextExternalId()
     {
-        InMemoryModelRepository repo;
-        NodeService service(&repo);
+        NodeServiceFixture fixture;
         
-        QCOMPARE(service.nextExternalId(), 1);
+        QCOMPARE(fixture.service.nextExternalId(), 1);
         
-        service.createNode(Vector3(0, 0, 0));
-        QCOMPARE(service.nextExternalId(), 2);
+        fixture.service.createNode(Vector3(0, 0, 0));
+        QCOMPARE(fixture.service.nextExternalId(), 2);
         
-        service.createNode(Vector3(1, 1, 1));
-        QCOMPARE(service.nextExternalId(), 3);
+        fixture.service.createNode(Vector3(1, 1, 1));
+        QCOMPARE(fixture.service.nextExternalId(), 3);
+    }
+
+    void testCreateNodeWithExternalId()
+    {
+        NodeServiceFixture fixture;
+
+        QUuid id = fixture.service.createNodeWithExternalId(Vector3(1.0, 2.0, 3.0), 42);
+        QVERIFY(!id.isNull());
+
+        auto node = fixture.service.findNode(id);
+        QVERIFY(node.has_value());
+        QCOMPARE(node->externalId(), 42);
+    }
+
+    void testCreateNodeWithExternalIdConflict()
+    {
+        NodeServiceFixture fixture;
+
+        QUuid firstId = fixture.service.createNodeWithExternalId(Vector3(0.0, 0.0, 0.0), 7);
+        QVERIFY(!firstId.isNull());
+
+        QUuid conflictId = fixture.service.createNodeWithExternalId(Vector3(1.0, 1.0, 1.0), 7);
+        QVERIFY(conflictId.isNull());
+        QCOMPARE(fixture.service.nodeCount(), static_cast<size_t>(1));
     }
 };
 
@@ -241,19 +297,17 @@ class TestBarService : public QObject
 private slots:
     void testCreateBar()
     {
-        InMemoryModelRepository repo;
-        NodeService nodeService(&repo);
-        BarService barService(&repo);
+        BarServiceFixture fixture;
         
-        QUuid node1 = nodeService.createNode(Vector3(0, 0, 0));
-        QUuid node2 = nodeService.createNode(Vector3(3, 4, 0));
+        QUuid node1 = fixture.createNode(0, 0, 0);
+        QUuid node2 = fixture.createNode(3, 4, 0);
         
-        QUuid barId = barService.createBar(node1, node2);
+        QUuid barId = fixture.barService.createBar(node1, node2);
         
         QVERIFY(!barId.isNull());
-        QCOMPARE(barService.barCount(), static_cast<size_t>(1));
+        QCOMPARE(fixture.barService.barCount(), static_cast<size_t>(1));
         
-        auto bar = barService.findBar(barId);
+        auto bar = fixture.barService.findBar(barId);
         QVERIFY(bar.has_value());
         QCOMPARE(bar->startNodeId(), node1);
         QCOMPARE(bar->endNodeId(), node2);
@@ -262,113 +316,146 @@ private slots:
     
     void testCreateBarWithInvalidNodes()
     {
-        InMemoryModelRepository repo;
-        BarService barService(&repo);
+        BarServiceFixture fixture;
         
         QUuid fakeId1 = QUuid::createUuid();
         QUuid fakeId2 = QUuid::createUuid();
         
-        QUuid barId = barService.createBar(fakeId1, fakeId2);
+        QUuid barId = fixture.barService.createBar(fakeId1, fakeId2);
         QVERIFY(barId.isNull());
     }
     
     void testCreateBarSameNode()
     {
-        InMemoryModelRepository repo;
-        NodeService nodeService(&repo);
-        BarService barService(&repo);
+        BarServiceFixture fixture;
         
-        QUuid node1 = nodeService.createNode(Vector3(0, 0, 0));
+        QUuid node1 = fixture.createNode(0, 0, 0);
         
-        QUuid barId = barService.createBar(node1, node1);
+        QUuid barId = fixture.barService.createBar(node1, node1);
         QVERIFY(barId.isNull());
     }
     
     void testDeleteBar()
     {
-        InMemoryModelRepository repo;
-        NodeService nodeService(&repo);
-        BarService barService(&repo);
+        BarServiceFixture fixture;
         
-        QUuid node1 = nodeService.createNode(Vector3(0, 0, 0));
-        QUuid node2 = nodeService.createNode(Vector3(1, 1, 1));
-        QUuid barId = barService.createBar(node1, node2);
+        QUuid node1 = fixture.createNode(0, 0, 0);
+        QUuid node2 = fixture.createNode(1, 1, 1);
+        QUuid barId = fixture.barService.createBar(node1, node2);
         
-        QVERIFY(barService.barExists(barId));
-        QVERIFY(barService.deleteBar(barId));
-        QVERIFY(!barService.barExists(barId));
+        QVERIFY(fixture.barService.barExists(barId));
+        QVERIFY(fixture.barService.deleteBar(barId));
+        QVERIFY(!fixture.barService.barExists(barId));
     }
     
     void testAssignProperties()
     {
-        InMemoryModelRepository repo;
-        NodeService nodeService(&repo);
-        BarService barService(&repo);
+        BarServiceFixture fixture;
         
-        QUuid node1 = nodeService.createNode(Vector3(0, 0, 0));
-        QUuid node2 = nodeService.createNode(Vector3(1, 1, 1));
-        QUuid barId = barService.createBar(node1, node2);
+        QUuid barId = fixture.createBarBetween(Vector3(0, 0, 0), Vector3(1, 1, 1));
         
         QUuid matId = QUuid::createUuid();
         QUuid secId = QUuid::createUuid();
         
-        QVERIFY(barService.assignProperties(barId, matId, secId));
+        QVERIFY(fixture.barService.assignProperties(barId, matId, secId));
         
-        auto bar = barService.findBar(barId);
+        auto bar = fixture.barService.findBar(barId);
         QCOMPARE(bar->materialId(), matId);
         QCOMPARE(bar->sectionId(), secId);
     }
     
     void testCalculateBarLength()
     {
-        InMemoryModelRepository repo;
-        NodeService nodeService(&repo);
-        BarService barService(&repo);
+        BarServiceFixture fixture;
         
-        QUuid node1 = nodeService.createNode(Vector3(0, 0, 0));
-        QUuid node2 = nodeService.createNode(Vector3(3, 4, 0));
-        QUuid barId = barService.createBar(node1, node2);
+        QUuid barId = fixture.createBarBetween(Vector3(0, 0, 0), Vector3(3, 4, 0));
         
-        double length = barService.calculateBarLength(barId);
+        double length = fixture.barService.calculateBarLength(barId);
         QCOMPARE(length, 5.0);
     }
     
     void testFindBarsConnectedToNode()
     {
-        InMemoryModelRepository repo;
-        NodeService nodeService(&repo);
-        BarService barService(&repo);
+        BarServiceFixture fixture;
         
-        QUuid node1 = nodeService.createNode(Vector3(0, 0, 0));
-        QUuid node2 = nodeService.createNode(Vector3(1, 1, 1));
-        QUuid node3 = nodeService.createNode(Vector3(2, 2, 2));
+        QUuid node1 = fixture.createNode(0, 0, 0);
+        QUuid node2 = fixture.createNode(1, 1, 1);
+        QUuid node3 = fixture.createNode(2, 2, 2);
         
-        QUuid bar1 = barService.createBar(node1, node2);
-        QUuid bar2 = barService.createBar(node1, node3);
+        QUuid bar1 = fixture.barService.createBar(node1, node2);
+        QUuid bar2 = fixture.barService.createBar(node1, node3);
+        Q_UNUSED(bar1);
+        Q_UNUSED(bar2);
         
-        auto connected = barService.findBarsConnectedToNode(node1);
+        auto connected = fixture.barService.findBarsConnectedToNode(node1);
         QCOMPARE(connected.size(), static_cast<size_t>(2));
     }
     
     void testSetKPoint()
     {
-        InMemoryModelRepository repo;
-        NodeService nodeService(&repo);
-        BarService barService(&repo);
+        BarServiceFixture fixture;
         
-        QUuid node1 = nodeService.createNode(Vector3(0, 0, 0));
-        QUuid node2 = nodeService.createNode(Vector3(1, 0, 0));
-        QUuid barId = barService.createBar(node1, node2);
+        QUuid barId = fixture.createBarBetween(Vector3(0, 0, 0), Vector3(1, 0, 0));
         
         Vector3 kp(0, 1, 0);
-        QVERIFY(barService.setKPoint(barId, kp));
+        QVERIFY(fixture.barService.setKPoint(barId, kp));
         
-        auto bar = barService.findBar(barId);
+        auto bar = fixture.barService.findBar(barId);
         QVERIFY(bar->hasKPoint());
         QVERIFY(bar->isLCSDirty());
     }
+
+    void testAssignMaterialPreservesSection()
+    {
+        BarServiceFixture fixture;
+        QUuid barId = fixture.createBarBetween(Vector3(0, 0, 0), Vector3(1, 0, 0));
+
+        QUuid originalSection = QUuid::createUuid();
+        QUuid originalMaterial = QUuid::createUuid();
+        QVERIFY(fixture.barService.assignProperties(barId, originalMaterial, originalSection));
+
+        QUuid newMaterial = QUuid::createUuid();
+        QVERIFY(fixture.barService.assignMaterial(barId, newMaterial));
+
+        auto bar = fixture.barService.findBar(barId);
+        QVERIFY(bar.has_value());
+        QCOMPARE(bar->materialId(), newMaterial);
+        QCOMPARE(bar->sectionId(), originalSection);
+    }
+
+    void testAssignSectionPreservesMaterial()
+    {
+        BarServiceFixture fixture;
+        QUuid barId = fixture.createBarBetween(Vector3(0, 0, 0), Vector3(1, 0, 0));
+
+        QUuid originalMaterial = QUuid::createUuid();
+        QUuid originalSection = QUuid::createUuid();
+        QVERIFY(fixture.barService.assignProperties(barId, originalMaterial, originalSection));
+
+        QUuid newSection = QUuid::createUuid();
+        QVERIFY(fixture.barService.assignSection(barId, newSection));
+
+        auto bar = fixture.barService.findBar(barId);
+        QVERIFY(bar.has_value());
+        QCOMPARE(bar->materialId(), originalMaterial);
+        QCOMPARE(bar->sectionId(), newSection);
+    }
 };
 
-// Main function to run all tests
-QTEST_APPLESS_MAIN(TestInMemoryModelRepository)
+int main(int argc, char *argv[])
+{
+    int status = 0;
+
+    TestInMemoryModelRepository repositoryTests;
+    status |= QTest::qExec(&repositoryTests, argc, argv);
+
+    TestNodeService nodeServiceTests;
+    status |= QTest::qExec(&nodeServiceTests, argc, argv);
+
+    TestBarService barServiceTests;
+    status |= QTest::qExec(&barServiceTests, argc, argv);
+
+    return status;
+}
+
 #include "TestRepositoryAndServices.moc"

@@ -14,6 +14,24 @@
 #include <array>
 #include <cmath>
 
+namespace {
+
+bool isNearZero(double value)
+{
+    constexpr double eps = 1e-6;
+    return std::abs(value) <= eps;
+}
+
+template<typename Container, typename Predicate>
+bool eraseIf(Container &container, Predicate predicate)
+{
+    const int beforeCount = container.size();
+    container.erase(std::remove_if(container.begin(), container.end(), predicate), container.end());
+    return beforeCount != container.size();
+}
+
+} // namespace
+
 void MainWindow::syncLoadVisuals()
 {
     if (!m_sceneController) {
@@ -29,17 +47,13 @@ void MainWindow::syncLoadVisuals()
 
 bool MainWindow::isZeroNodalLoad(double fx, double fy, double fz, double mx, double my, double mz)
 {
-    const double eps = 1e-6;
-    auto nearZero = [eps](double value) { return std::abs(value) <= eps; };
-    return nearZero(fx) && nearZero(fy) && nearZero(fz)
-        && nearZero(mx) && nearZero(my) && nearZero(mz);
+    return isNearZero(fx) && isNearZero(fy) && isNearZero(fz)
+        && isNearZero(mx) && isNearZero(my) && isNearZero(mz);
 }
 
 bool MainWindow::isZeroDistributedLoad(double qx, double qy, double qz)
 {
-    const double eps = 1e-6;
-    auto nearZero = [eps](double value) { return std::abs(value) <= eps; };
-    return nearZero(qx) && nearZero(qy) && nearZero(qz);
+    return isNearZero(qx) && isNearZero(qy) && isNearZero(qz);
 }
 
 void MainWindow::syncSupportVisuals()
@@ -103,13 +117,10 @@ void MainWindow::onApplyNodalLoad()
             continue;
         }
         const int externalId = node->externalId();
-        const int beforeCount = m_nodalLoads.size();
-        m_nodalLoads.erase(std::remove_if(m_nodalLoads.begin(), m_nodalLoads.end(),
-                                          [externalId](const NodalLoad &load) {
-                                              return load.nodeId == externalId;
-                                          }),
-                           m_nodalLoads.end());
-        const bool hadPrevious = beforeCount != m_nodalLoads.size();
+        const bool hadPrevious = eraseIf(m_nodalLoads,
+                                         [externalId](const NodalLoad &load) {
+                                             return load.nodeId == externalId;
+                                         });
 
         if (removeLoad) {
             if (hadPrevious) {
@@ -198,13 +209,10 @@ void MainWindow::onApplyDistributedLoad()
             continue;
         }
 
-        const int beforeCount = m_memberLoads.size();
-        m_memberLoads.erase(std::remove_if(m_memberLoads.begin(), m_memberLoads.end(),
-                                           [externalId](const MemberLoad &load) {
-                                               return load.memberId == externalId;
-                                           }),
-                            m_memberLoads.end());
-        const bool hadPrevious = beforeCount != m_memberLoads.size();
+        const bool hadPrevious = eraseIf(m_memberLoads,
+                                         [externalId](const MemberLoad &load) {
+                                             return load.memberId == externalId;
+                                         });
 
         if (removeLoad) {
             if (hadPrevious) {
@@ -313,11 +321,10 @@ void MainWindow::onApplyRestraints()
         }
 
         const int externalId = node->externalId();
-        m_supports.erase(std::remove_if(m_supports.begin(), m_supports.end(),
-                                        [externalId](const NodeSupport &sup) {
-                                            return sup.nodeId == externalId;
-                                        }),
-                         m_supports.end());
+        eraseIf(m_supports,
+                [externalId](const NodeSupport &sup) {
+                    return sup.nodeId == externalId;
+                });
 
         bool hasAnyRestraint = false;
         for (bool r : newRestraints) {

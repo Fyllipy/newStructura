@@ -1,6 +1,7 @@
 #include "LoadSupportVisualMapper.h"
 
 #include "app/LoadSystemUtils.h"
+#include "app/LookupUtils.h"
 
 #include <QHash>
 
@@ -17,11 +18,10 @@ QVector<SceneController::NodalLoadVisual> LoadSupportVisualMapper::mapNodalLoadV
     }
 
     const auto nodeInfos = sceneController->nodeInfos();
-    QHash<int, SceneController::NodeInfo> nodesByExternal;
-    nodesByExternal.reserve(nodeInfos.size());
-    for (const auto &info : nodeInfos) {
-        nodesByExternal.insert(info.externalId, info);
-    }
+    const QHash<int, SceneController::NodeInfo> nodesByExternal =
+        Structura::App::buildLookup<int, SceneController::NodeInfo>(
+            nodeInfos,
+            [](const SceneController::NodeInfo &info) { return info.externalId; });
 
     nodalVisuals.reserve(nodalLoads.size());
     for (const auto &load : nodalLoads) {
@@ -49,20 +49,17 @@ QVector<SceneController::MemberLoadVisual> LoadSupportVisualMapper::mapMemberLoa
     }
 
     const auto nodeInfos = sceneController->nodeInfos();
-    QHash<QUuid, SceneController::NodeInfo> nodesById;
-    nodesById.reserve(nodeInfos.size());
-    for (const auto &info : nodeInfos) {
-        nodesById.insert(info.id, info);
-    }
+    const QHash<QUuid, SceneController::NodeInfo> nodesById =
+        Structura::App::buildLookup<QUuid, SceneController::NodeInfo>(
+            nodeInfos,
+            [](const SceneController::NodeInfo &info) { return info.id; });
 
     const auto barInfos = sceneController->bars();
-    QHash<int, SceneController::BarInfo> barsByExternal;
-    barsByExternal.reserve(barInfos.size());
-    for (const auto &info : barInfos) {
-        if (info.externalId > 0) {
-            barsByExternal.insert(info.externalId, info);
-        }
-    }
+    const QHash<int, SceneController::BarInfo> barsByExternal =
+        Structura::App::buildPositiveExternalLookup<SceneController::BarInfo>(
+            barInfos,
+            [](const SceneController::BarInfo &info) { return info.externalId; },
+            [](const SceneController::BarInfo &info) { return info.externalId > 0; });
 
     memberVisuals.reserve(memberLoads.size());
     for (const auto &load : memberLoads) {
@@ -139,11 +136,10 @@ QVector<SceneController::SupportVisual> LoadSupportVisualMapper::mapSupportVisua
     }
 
     const auto nodeInfos = sceneController->nodeInfos();
-    QHash<int, SceneController::NodeInfo> nodesByExternal;
-    nodesByExternal.reserve(nodeInfos.size());
-    for (const auto &info : nodeInfos) {
-        nodesByExternal.insert(info.externalId, info);
-    }
+    const QHash<int, SceneController::NodeInfo> nodesByExternal =
+        Structura::App::buildLookup<int, SceneController::NodeInfo>(
+            nodeInfos,
+            [](const SceneController::NodeInfo &info) { return info.externalId; });
 
     supportVisuals.reserve(supports.size());
     for (const auto &support : supports) {

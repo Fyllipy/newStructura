@@ -61,7 +61,7 @@ public:
     /// For backward compatibility: return position as array
     std::array<double, 3> positionArray() const noexcept
     {
-        return {{m_position.x(), m_position.y(), m_position.z()}};
+        return m_position.data();
     }
     
     void setPosition(double x, double y, double z) noexcept

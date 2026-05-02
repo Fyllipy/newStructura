@@ -74,7 +74,7 @@ public:
     const Vector3& startPoint() const noexcept { return m_startPoint; }
     std::array<double, 3> startPointArray() const noexcept
     {
-        return {{m_startPoint.x(), m_startPoint.y(), m_startPoint.z()}};
+        return m_startPoint.data();
     }
     void setStartPoint(double x, double y, double z) noexcept
     {
@@ -88,7 +88,7 @@ public:
     const Vector3& endPoint() const noexcept { return m_endPoint; }
     std::array<double, 3> endPointArray() const noexcept
     {
-        return {{m_endPoint.x(), m_endPoint.y(), m_endPoint.z()}};
+        return m_endPoint.data();
     }
     void setEndPoint(double x, double y, double z) noexcept
     {

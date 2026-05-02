@@ -1,4 +1,5 @@
 #include "NodeService.h"
+#include "ExternalIdUtils.h"
 #include <algorithm>
 
 namespace Structura::App {
@@ -113,19 +114,8 @@ size_t NodeService::nodeCount() const
 
 int NodeService::nextExternalId() const
 {
-    auto nodes = m_repository->allNodes();
-    if (nodes.empty()) {
-        return 1;
-    }
-    
-    int maxId = 0;
-    for (const auto &node : nodes) {
-        if (node.externalId() > maxId) {
-            maxId = node.externalId();
-        }
-    }
-    
-    return maxId + 1;
+    const auto nodes = m_repository->allNodes();
+    return nextExternalIdFrom(nodes, [](const Node &node) { return node.externalId(); });
 }
 
 bool NodeService::nodeExists(const QUuid &id) const

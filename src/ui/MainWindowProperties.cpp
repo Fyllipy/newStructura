@@ -12,6 +12,32 @@
 #include <QStatusBar>
 #include <QVBoxLayout>
 
+namespace {
+
+template<typename InfoContainer, typename IdFn, typename NameFn>
+QVector<QPair<QUuid, QString>> mapToOptions(const InfoContainer &items, IdFn idFn, NameFn nameFn)
+{
+    QVector<QPair<QUuid, QString>> options;
+    options.reserve(static_cast<int>(items.size()));
+    for (const auto &item : items) {
+        options.append({idFn(item), nameFn(item)});
+    }
+    return options;
+}
+
+template<typename Output, typename InputContainer, typename Mapper>
+std::vector<Output> mapToStdVector(const InputContainer &items, Mapper mapper)
+{
+    std::vector<Output> output;
+    output.reserve(items.size());
+    for (const auto &item : items) {
+        output.push_back(mapper(item));
+    }
+    return output;
+}
+
+} // namespace
+
 void MainWindow::ensurePropertiesPanel()
 {
     if (m_propertiesPanel) {
@@ -71,49 +97,43 @@ void MainWindow::refreshPropertiesPanel()
 
 QVector<QPair<QUuid, QString>> MainWindow::buildMaterialOptions() const
 {
-    QVector<QPair<QUuid, QString>> materialOptions;
-    materialOptions.reserve(m_materials.size());
-    for (const auto &mat : m_materials) {
-        materialOptions.append({mat.uuid, mat.name});
-    }
-    return materialOptions;
+    return mapToOptions(
+        m_materials,
+        [](const MaterialInfo &mat) { return mat.uuid; },
+        [](const MaterialInfo &mat) { return mat.name; });
 }
 
 QVector<QPair<QUuid, QString>> MainWindow::buildSectionOptions() const
 {
-    QVector<QPair<QUuid, QString>> sectionOptions;
-    sectionOptions.reserve(m_sections.size());
-    for (const auto &sec : m_sections) {
-        sectionOptions.append({sec.uuid, sec.name});
-    }
-    return sectionOptions;
+    return mapToOptions(
+        m_sections,
+        [](const SectionInfo &sec) { return sec.uuid; },
+        [](const SectionInfo &sec) { return sec.name; });
 }
 
 std::vector<AssignBarPropertiesDialog::BarInfo> MainWindow::buildAssignDialogBarInfos() const
 {
     const auto sceneBars = m_sceneController->bars();
-    std::vector<AssignBarPropertiesDialog::BarInfo> bars;
-    bars.reserve(sceneBars.size());
-    for (const auto &bar : sceneBars) {
-        bars.push_back({bar.id,
-                        bar.startNodeId,
-                        bar.endNodeId,
-                        bar.materialId,
-                        bar.sectionId,
-                        bar.externalId});
-    }
-    return bars;
+    return mapToStdVector<AssignBarPropertiesDialog::BarInfo>(
+        sceneBars,
+        [](const auto &bar) {
+            return AssignBarPropertiesDialog::BarInfo{bar.id,
+                                                      bar.startNodeId,
+                                                      bar.endNodeId,
+                                                      bar.materialId,
+                                                      bar.sectionId,
+                                                      bar.externalId};
+        });
 }
 
 std::vector<AssignBarPropertiesDialog::NodeInfo> MainWindow::buildAssignDialogNodeInfos() const
 {
     const auto sceneNodes = m_sceneController->nodeInfos();
-    std::vector<AssignBarPropertiesDialog::NodeInfo> nodes;
-    nodes.reserve(sceneNodes.size());
-    for (const auto &node : sceneNodes) {
-        nodes.push_back({node.id, node.externalId, node.x, node.y, node.z});
-    }
-    return nodes;
+    return mapToStdVector<AssignBarPropertiesDialog::NodeInfo>(
+        sceneNodes,
+        [](const auto &node) {
+            return AssignBarPropertiesDialog::NodeInfo{node.id, node.externalId, node.x, node.y, node.z};
+        });
 }
 
 std::vector<QUuid> MainWindow::collectAssignDialogSelectionIds(const QList<int> &selection,

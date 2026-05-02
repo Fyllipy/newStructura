@@ -8,6 +8,24 @@
 
 using namespace Structura::Model;
 
+namespace {
+
+void assertVector3Components(const Vector3 &v, double x, double y, double z)
+{
+    QCOMPARE(v.x(), x);
+    QCOMPARE(v.y(), y);
+    QCOMPARE(v.z(), z);
+}
+
+void assertNodeCoordinates(const Node &node, double x, double y, double z)
+{
+    QCOMPARE(node.x(), x);
+    QCOMPARE(node.y(), y);
+    QCOMPARE(node.z(), z);
+}
+
+} // namespace
+
 /**
  * @brief Unit tests for Vector3 class
  */
@@ -19,17 +37,13 @@ private slots:
     void testDefaultConstructor()
     {
         Vector3 v;
-        QCOMPARE(v.x(), 0.0);
-        QCOMPARE(v.y(), 0.0);
-        QCOMPARE(v.z(), 0.0);
+        assertVector3Components(v, 0.0, 0.0, 0.0);
     }
 
     void testParameterizedConstructor()
     {
         Vector3 v(1.0, 2.0, 3.0);
-        QCOMPARE(v.x(), 1.0);
-        QCOMPARE(v.y(), 2.0);
-        QCOMPARE(v.z(), 3.0);
+        assertVector3Components(v, 1.0, 2.0, 3.0);
     }
 
     void testIndexOperator()
@@ -46,9 +60,7 @@ private slots:
         v.setX(5.0);
         v.setY(6.0);
         v.setZ(7.0);
-        QCOMPARE(v.x(), 5.0);
-        QCOMPARE(v.y(), 6.0);
-        QCOMPARE(v.z(), 7.0);
+        assertVector3Components(v, 5.0, 6.0, 7.0);
     }
 
     void testLength()
@@ -150,9 +162,7 @@ private slots:
         Node node;
         QVERIFY(!node.id().isNull());
         QCOMPARE(node.externalId(), 0);
-        QCOMPARE(node.x(), 0.0);
-        QCOMPARE(node.y(), 0.0);
-        QCOMPARE(node.z(), 0.0);
+        assertNodeCoordinates(node, 0.0, 0.0, 0.0);
         QVERIFY(!node.isSelected());
         QVERIFY(!node.hasRestraints());
     }
@@ -163,18 +173,14 @@ private slots:
         Node node(id, 42, 1.0, 2.0, 3.0);
         QCOMPARE(node.id(), id);
         QCOMPARE(node.externalId(), 42);
-        QCOMPARE(node.x(), 1.0);
-        QCOMPARE(node.y(), 2.0);
-        QCOMPARE(node.z(), 3.0);
+        assertNodeCoordinates(node, 1.0, 2.0, 3.0);
     }
 
     void testSetPosition()
     {
         Node node;
         node.setPosition(10.0, 20.0, 30.0);
-        QCOMPARE(node.x(), 10.0);
-        QCOMPARE(node.y(), 20.0);
-        QCOMPARE(node.z(), 30.0);
+        assertNodeCoordinates(node, 10.0, 20.0, 30.0);
     }
 
     void testMoveTo()
@@ -263,9 +269,7 @@ private slots:
         
         QVERIFY(bar.hasKPoint());
         QVERIFY(bar.isLCSDirty());
-        QCOMPARE(bar.kPoint()->x(), 1.0);
-        QCOMPARE(bar.kPoint()->y(), 2.0);
-        QCOMPARE(bar.kPoint()->z(), 3.0);
+        assertVector3Components(*bar.kPoint(), 1.0, 2.0, 3.0);
         
         bar.clearKPoint();
         QVERIFY(!bar.hasKPoint());
@@ -433,13 +437,9 @@ private slots:
     {
         GridLine line;
         line.setEndpoints(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
-        
-        QCOMPARE(line.startPoint().x(), 1.0);
-        QCOMPARE(line.startPoint().y(), 2.0);
-        QCOMPARE(line.startPoint().z(), 3.0);
-        QCOMPARE(line.endPoint().x(), 4.0);
-        QCOMPARE(line.endPoint().y(), 5.0);
-        QCOMPARE(line.endPoint().z(), 6.0);
+
+        assertVector3Components(line.startPoint(), 1.0, 2.0, 3.0);
+        assertVector3Components(line.endPoint(), 4.0, 5.0, 6.0);
     }
 
     void testHighlightAndGhost()
@@ -453,6 +453,29 @@ private slots:
     }
 };
 
-// Main function to run all tests
-QTEST_APPLESS_MAIN(TestVector3)
+int main(int argc, char *argv[])
+{
+    int status = 0;
+
+    TestVector3 vector3Tests;
+    status |= QTest::qExec(&vector3Tests, argc, argv);
+
+    TestNode nodeTests;
+    status |= QTest::qExec(&nodeTests, argc, argv);
+
+    TestBar barTests;
+    status |= QTest::qExec(&barTests, argc, argv);
+
+    TestMaterial materialTests;
+    status |= QTest::qExec(&materialTests, argc, argv);
+
+    TestSection sectionTests;
+    status |= QTest::qExec(&sectionTests, argc, argv);
+
+    TestGridLine gridLineTests;
+    status |= QTest::qExec(&gridLineTests, argc, argv);
+
+    return status;
+}
+
 #include "TestCoreModels.moc"

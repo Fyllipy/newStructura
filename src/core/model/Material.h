@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ModelValidationUtils.h"
+
 #include <QUuid>
 #include <QString>
 
@@ -55,7 +57,9 @@ public:
     /// Validate that material properties are physically reasonable
     bool isValid() const noexcept
     {
-        return m_youngModulus > 0.0 && m_shearModulus > 0.0 && !m_name.isEmpty();
+        return isPositive(m_youngModulus)
+            && isPositive(m_shearModulus)
+            && hasName(m_name);
     }
 
 private:

@@ -1,4 +1,5 @@
 #include "BarService.h"
+#include "ExternalIdUtils.h"
 #include <algorithm>
 
 namespace Structura::App {
@@ -86,17 +87,8 @@ bool BarService::assignMaterial(const QUuid &barId, const QUuid &materialId)
     if (!barOpt.has_value()) {
         return false;
     }
-    
-    Bar bar = barOpt.value();
-    bar.setMaterialId(materialId);
-    
-    if (m_repository->updateBar(bar)) {
-        emit barPropertiesAssigned(barId);
-        emit barUpdated(barId);
-        return true;
-    }
-    
-    return false;
+
+    return assignProperties(barId, materialId, barOpt->sectionId());
 }
 
 bool BarService::assignSection(const QUuid &barId, const QUuid &sectionId)
@@ -105,17 +97,8 @@ bool BarService::assignSection(const QUuid &barId, const QUuid &sectionId)
     if (!barOpt.has_value()) {
         return false;
     }
-    
-    Bar bar = barOpt.value();
-    bar.setSectionId(sectionId);
-    
-    if (m_repository->updateBar(bar)) {
-        emit barPropertiesAssigned(barId);
-        emit barUpdated(barId);
-        return true;
-    }
-    
-    return false;
+
+    return assignProperties(barId, barOpt->materialId(), sectionId);
 }
 
 bool BarService::assignProperties(const QUuid &barId, const QUuid &materialId, const QUuid &sectionId)
@@ -233,19 +216,8 @@ std::vector<Bar> BarService::findBarsConnectedToNode(const QUuid &nodeId) const
 
 int BarService::nextExternalId() const
 {
-    auto bars = m_repository->allBars();
-    if (bars.empty()) {
-        return 1;
-    }
-    
-    int maxId = 0;
-    for (const auto &bar : bars) {
-        if (bar.externalId() > maxId) {
-            maxId = bar.externalId();
-        }
-    }
-    
-    return maxId + 1;
+    const auto bars = m_repository->allBars();
+    return nextExternalIdFrom(bars, [](const Bar &bar) { return bar.externalId(); });
 }
 
 bool BarService::barExists(const QUuid &id) const

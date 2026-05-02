@@ -79,13 +79,7 @@ public:
     
     std::optional<Node> findNodeByExternalId(int externalId) const override
     {
-        auto it = std::find_if(m_nodes.begin(), m_nodes.end(),
-            [externalId](const Node &n) { return n.externalId() == externalId; });
-        
-        if (it != m_nodes.end()) {
-            return *it;
-        }
-        return std::nullopt;
+        return findByExternalId(m_nodes, externalId);
     }
     
     std::vector<Node> allNodes() const override
@@ -153,13 +147,7 @@ public:
     
     std::optional<Bar> findBarByExternalId(int externalId) const override
     {
-        auto it = std::find_if(m_bars.begin(), m_bars.end(),
-            [externalId](const Bar &b) { return b.externalId() == externalId; });
-        
-        if (it != m_bars.end()) {
-            return *it;
-        }
-        return std::nullopt;
+        return findByExternalId(m_bars, externalId);
     }
     
     std::vector<Bar> allBars() const override
@@ -395,45 +383,51 @@ public:
     }
 
 private:
+    template<typename T>
+    static std::optional<T> findByExternalId(const std::vector<T> &items, int externalId)
+    {
+        auto it = std::find_if(items.begin(), items.end(),
+            [externalId](const T &item) { return item.externalId() == externalId; });
+
+        if (it != items.end()) {
+            return *it;
+        }
+        return std::nullopt;
+    }
+
+    template<typename T>
+    static void rebuildIndexMap(const std::vector<T> &items, QHash<QUuid, int> &indexMap)
+    {
+        indexMap.clear();
+        for (size_t i = 0; i < items.size(); ++i) {
+            indexMap[items[i].id()] = static_cast<int>(i);
+        }
+    }
+
     // Helper methods to rebuild index maps after removal
     void rebuildNodeIndex()
     {
-        m_nodeById.clear();
-        for (size_t i = 0; i < m_nodes.size(); ++i) {
-            m_nodeById[m_nodes[i].id()] = static_cast<int>(i);
-        }
+        rebuildIndexMap(m_nodes, m_nodeById);
     }
     
     void rebuildBarIndex()
     {
-        m_barById.clear();
-        for (size_t i = 0; i < m_bars.size(); ++i) {
-            m_barById[m_bars[i].id()] = static_cast<int>(i);
-        }
+        rebuildIndexMap(m_bars, m_barById);
     }
     
     void rebuildMaterialIndex()
     {
-        m_materialById.clear();
-        for (size_t i = 0; i < m_materials.size(); ++i) {
-            m_materialById[m_materials[i].id()] = static_cast<int>(i);
-        }
+        rebuildIndexMap(m_materials, m_materialById);
     }
     
     void rebuildSectionIndex()
     {
-        m_sectionById.clear();
-        for (size_t i = 0; i < m_sections.size(); ++i) {
-            m_sectionById[m_sections[i].id()] = static_cast<int>(i);
-        }
+        rebuildIndexMap(m_sections, m_sectionById);
     }
     
     void rebuildGridLineIndex()
     {
-        m_gridLineById.clear();
-        for (size_t i = 0; i < m_gridLines.size(); ++i) {
-            m_gridLineById[m_gridLines[i].id()] = static_cast<int>(i);
-        }
+        rebuildIndexMap(m_gridLines, m_gridLineById);
     }
 
     // Storage

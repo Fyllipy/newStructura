@@ -1,5 +1,7 @@
 #include "BarPropertiesDialog.h"
 
+#include "DialogComboUtils.h"
+
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -19,8 +21,8 @@ BarPropertiesDialog::BarPropertiesDialog(const QVector<QPair<QUuid, QString>> &m
     setModal(true);
     setMinimumWidth(300);
 
-    populateCombo(m_materialCombo, m_materialOptions, tr("Sem material"));
-    populateCombo(m_sectionCombo, m_sectionOptions, tr("Sem secao"));
+    Structura::UI::populateUuidCombo(m_materialCombo, m_materialOptions, tr("Sem material"));
+    Structura::UI::populateUuidCombo(m_sectionCombo, m_sectionOptions, tr("Sem secao"));
 
     auto *form = new QFormLayout();
     form->addRow(tr("Material"), m_materialCombo);
@@ -35,36 +37,14 @@ BarPropertiesDialog::BarPropertiesDialog(const QVector<QPair<QUuid, QString>> &m
     layout->addWidget(buttons);
 }
 
-void BarPropertiesDialog::populateCombo(QComboBox *combo, const QVector<QPair<QUuid, QString>> &options, const QString &emptyLabel)
-{
-    combo->clear();
-    combo->addItem(emptyLabel, QVariant());
-    for (const auto &option : options) {
-        combo->addItem(option.second, option.first);
-    }
-}
-
-int BarPropertiesDialog::indexForId(const QVector<QPair<QUuid, QString>> &options, const QUuid &id) const
-{
-    if (id.isNull()) {
-        return 0;
-    }
-    for (int i = 0; i < options.size(); ++i) {
-        if (options[i].first == id) {
-            return i + 1; // +1 because of "Sem" entry
-        }
-    }
-    return 0;
-}
-
 void BarPropertiesDialog::setCurrentMaterial(const QUuid &id)
 {
-    m_materialCombo->setCurrentIndex(indexForId(m_materialOptions, id));
+    m_materialCombo->setCurrentIndex(Structura::UI::indexForUuid(m_materialOptions, id));
 }
 
 void BarPropertiesDialog::setCurrentSection(const QUuid &id)
 {
-    m_sectionCombo->setCurrentIndex(indexForId(m_sectionOptions, id));
+    m_sectionCombo->setCurrentIndex(Structura::UI::indexForUuid(m_sectionOptions, id));
 }
 
 QUuid BarPropertiesDialog::selectedMaterial() const

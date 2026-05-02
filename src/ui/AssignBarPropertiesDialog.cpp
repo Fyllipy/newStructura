@@ -1,5 +1,7 @@
 #include "AssignBarPropertiesDialog.h"
 
+#include "DialogComboUtils.h"
+
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -27,8 +29,8 @@ AssignBarPropertiesDialog::AssignBarPropertiesDialog(const QVector<QPair<QUuid, 
     setModal(true);
     resize(420, 360);
 
-    populateCombo(m_materialCombo, m_materialOptions, tr("Sem material"));
-    populateCombo(m_sectionCombo, m_sectionOptions, tr("Sem secao"));
+    Structura::UI::populateUuidCombo(m_materialCombo, m_materialOptions, tr("Sem material"));
+    Structura::UI::populateUuidCombo(m_sectionCombo, m_sectionOptions, tr("Sem secao"));
 
     m_barList->setSelectionMode(QAbstractItemView::ExtendedSelection);
     QHash<QUuid, int> nodeLabels;
@@ -73,36 +75,14 @@ AssignBarPropertiesDialog::AssignBarPropertiesDialog(const QVector<QPair<QUuid, 
     mainLayout->addWidget(buttons);
 }
 
-void AssignBarPropertiesDialog::populateCombo(QComboBox *combo, const QVector<QPair<QUuid, QString>> &options, const QString &emptyLabel)
-{
-    combo->clear();
-    combo->addItem(emptyLabel, QVariant());
-    for (const auto &option : options) {
-        combo->addItem(option.second, option.first);
-    }
-}
-
-int AssignBarPropertiesDialog::indexForId(const QVector<QPair<QUuid, QString>> &options, const QUuid &id) const
-{
-    if (id.isNull()) {
-        return 0;
-    }
-    for (int i = 0; i < options.size(); ++i) {
-        if (options[i].first == id) {
-            return i + 1;
-        }
-    }
-    return 0;
-}
-
 void AssignBarPropertiesDialog::setCurrentMaterial(const QUuid &id)
 {
-    m_materialCombo->setCurrentIndex(indexForId(m_materialOptions, id));
+    m_materialCombo->setCurrentIndex(Structura::UI::indexForUuid(m_materialOptions, id));
 }
 
 void AssignBarPropertiesDialog::setCurrentSection(const QUuid &id)
 {
-    m_sectionCombo->setCurrentIndex(indexForId(m_sectionOptions, id));
+    m_sectionCombo->setCurrentIndex(Structura::UI::indexForUuid(m_sectionOptions, id));
 }
 
 QUuid AssignBarPropertiesDialog::selectedMaterial() const

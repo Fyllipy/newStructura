@@ -1,11 +1,30 @@
 #include "PropertiesPanelEntryBuilder.h"
 
+#include "app/LookupUtils.h"
+
 #include "viz/SceneController.h"
 
 #include <QHash>
 #include <QVector3D>
 
 namespace Structura::UI {
+
+namespace {
+
+QHash<int, PropertiesPanelEntryBuilder::NodeSupport> buildSupportsByNodeId(
+    const QVector<PropertiesPanelEntryBuilder::NodeSupport> &supports)
+{
+    QHash<int, PropertiesPanelEntryBuilder::NodeSupport> map;
+    map.reserve(supports.size());
+    for (const auto &support : supports) {
+        if (!map.contains(support.nodeId)) {
+            map.insert(support.nodeId, support);
+        }
+    }
+    return map;
+}
+
+} // namespace
 
 QVector<PropertiesPanel::NodeEntry> PropertiesPanelEntryBuilder::buildNodeEntries(const SceneController *sceneController,
                                                                                    const QSet<QUuid> &nodeIds,
@@ -16,6 +35,11 @@ QVector<PropertiesPanel::NodeEntry> PropertiesPanelEntryBuilder::buildNodeEntrie
     if (!sceneController) {
         return entries;
     }
+
+    const QHash<int, NodeSupport> supportsByNodeId = buildSupportsByNodeId(supports);
+    const QHash<int, int> nodalLoadsByNodeId = Structura::App::buildCounts<int>(
+        nodalLoads,
+        [](const NodalLoad &load) { return load.nodeId; });
 
     for (const QUuid &id : nodeIds) {
         const SceneController::Node *node = sceneController->findNode(id);
@@ -32,22 +56,14 @@ QVector<PropertiesPanel::NodeEntry> PropertiesPanelEntryBuilder::buildNodeEntrie
         entry.z = pos[2];
         entry.restraints.fill(false);
 
-        for (const auto &support : supports) {
-            if (support.nodeId == entry.externalId) {
-                for (int i = 0; i < 6; ++i) {
-                    entry.restraints[static_cast<std::size_t>(i)] = support.restraints[i];
-                }
-                break;
+        const auto supportIt = supportsByNodeId.constFind(entry.externalId);
+        if (supportIt != supportsByNodeId.constEnd()) {
+            for (int i = 0; i < 6; ++i) {
+                entry.restraints[static_cast<std::size_t>(i)] = supportIt->restraints[i];
             }
         }
 
-        int loadCount = 0;
-        for (const auto &load : nodalLoads) {
-            if (load.nodeId == entry.externalId) {
-                ++loadCount;
-            }
-        }
-        entry.loadCount = loadCount;
+        entry.loadCount = nodalLoadsByNodeId.value(entry.externalId, 0);
 
         entries.append(entry);
     }
@@ -68,24 +84,23 @@ QVector<PropertiesPanel::BarEntry> PropertiesPanelEntryBuilder::buildBarEntries(
         return entries;
     }
 
-    QHash<QUuid, MaterialInfo> materialById;
-    materialById.reserve(materials.size());
-    for (const auto &mat : materials) {
-        materialById.insert(mat.uuid, mat);
-    }
+    const QHash<QUuid, MaterialInfo> materialById = Structura::App::buildLookup<QUuid, MaterialInfo>(
+        materials,
+        [](const MaterialInfo &mat) { return mat.uuid; });
 
-    QHash<QUuid, SectionInfo> sectionById;
-    sectionById.reserve(sections.size());
-    for (const auto &sec : sections) {
-        sectionById.insert(sec.uuid, sec);
-    }
+    const QHash<QUuid, SectionInfo> sectionById = Structura::App::buildLookup<QUuid, SectionInfo>(
+        sections,
+        [](const SectionInfo &sec) { return sec.uuid; });
 
     const auto nodeInfos = sceneController->nodeInfos();
-    QHash<QUuid, SceneController::NodeInfo> nodeMap;
-    nodeMap.reserve(static_cast<int>(nodeInfos.size()));
-    for (const auto &info : nodeInfos) {
-        nodeMap.insert(info.id, info);
-    }
+    const QHash<QUuid, SceneController::NodeInfo> nodeMap =
+        Structura::App::buildLookup<QUuid, SceneController::NodeInfo>(
+            nodeInfos,
+            [](const SceneController::NodeInfo &info) { return info.id; });
+
+    const QHash<int, int> memberLoadsByBarExternalId = Structura::App::buildCounts<int>(
+        memberLoads,
+        [](const MemberLoad &load) { return load.memberId; });
 
     for (const QUuid &id : barIds) {
         const SceneController::Bar *bar = sceneController->findBar(id);
@@ -125,13 +140,7 @@ QVector<PropertiesPanel::BarEntry> PropertiesPanelEntryBuilder::buildBarEntries(
 
         entry.length = (hasStart && hasEnd) ? (startPos - endPos).length() : 0.0;
 
-        int distributedLoads = 0;
-        for (const auto &load : memberLoads) {
-            if (load.memberId == entry.externalId) {
-                ++distributedLoads;
-            }
-        }
-        entry.distributedLoadCount = distributedLoads;
+        entry.distributedLoadCount = memberLoadsByBarExternalId.value(entry.externalId, 0);
 
         entries.append(entry);
     }
