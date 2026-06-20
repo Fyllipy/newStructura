@@ -18,6 +18,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QMessageBox>
 #include <QPair>
 #include <QSize>
@@ -34,6 +35,12 @@
 #include <vector>
 
 #include <QVTKOpenGLNativeWidget.h>
+#include <vtkRenderWindow.h>
+#include <vtkRendererCollection.h>
+#include <vtkRenderer.h>
+
+#include "viz/postprocessor/PostProcessorRenderer.h"
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -173,6 +180,11 @@ MainWindow::MainWindow(QWidget *parent)
     refreshPropertiesPanel();
 
     m_sceneController->initialize(m_vtkWidget);
+
+    if (m_postProcessor && m_vtkWidget->renderWindow() && m_vtkWidget->renderWindow()->GetRenderers()->GetFirstRenderer()) {
+        m_postProcessor->initialize(m_vtkWidget->renderWindow()->GetRenderers()->GetFirstRenderer());
+    }
+
     connect(m_selectionModel, &Structura::SelectionModel::selectionChanged, this,
             [this](const QSet<QUuid> &nodes, const QSet<QUuid> &bars) {
                 if (!m_sceneController) {
@@ -180,6 +192,26 @@ MainWindow::MainWindow(QWidget *parent)
                 }
                 m_sceneController->setSelectedNodes(nodes);
                 m_sceneController->setSelectedBars(bars);
+                
+                if (m_postProcessor) {
+                    std::vector<int> activeIds;
+                    activeIds.reserve(bars.size());
+                    for (const auto& barId : bars) {
+                        if (const auto* bar = m_sceneController->findBar(barId)) {
+                            activeIds.push_back(bar->externalId());
+                        }
+                    }
+                    m_postProcessor->setActiveElementIds(activeIds);
+                    
+                    // Se o modo for SelectedElements, redesenha
+                    if (m_scaleModeCombo && 
+                        m_scaleModeCombo->currentData().toInt() == static_cast<int>(Structura::Visualization::DiagramScaleMode::SelectedElements)) {
+                        if (m_diagramCombo && m_postProcessor->isActive()) {
+                            onDiagramTypeChanged(m_diagramCombo->currentIndex());
+                        }
+                    }
+                }
+
                 refreshPropertiesPanel();
                 updateStatus();
                 updateLoadActionsEnabled();

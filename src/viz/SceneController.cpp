@@ -60,46 +60,6 @@ void SceneController::populateAxisCoordinates(QVector<double> &coords, double st
     }
 }
 
-void SceneController::initializePointRendering()
-{
-    m_pointCloud->SetPoints(m_points);
-    m_pointCloud->SetVerts(m_vertices);
-
-    m_pointMapper->SetInputData(m_pointCloud);
-    m_pointActor->SetMapper(m_pointMapper);
-
-    if (auto *property = m_pointActor->GetProperty()) {
-        property->SetColor(0.95, 0.32, 0.18);
-        property->SetPointSize(10.0);
-        property->SetRenderPointsAsSpheres(true);
-    }
-
-    m_pointColors->SetNumberOfComponents(3);
-    m_pointColors->SetName("NodeColors");
-    m_pointCloud->GetPointData()->SetScalars(m_pointColors);
-    m_pointMapper->ScalarVisibilityOn();
-}
-
-void SceneController::initializeBarRendering()
-{
-    m_barData->SetPoints(m_points);
-    m_barData->SetLines(m_barLines);
-    m_barColors->SetNumberOfComponents(3);
-    m_barColors->SetName("BarColors");
-    m_barData->GetCellData()->SetScalars(m_barColors);
-    m_barMapper->SetInputData(m_barData);
-    m_barMapper->ScalarVisibilityOn();
-    m_barMapper->SetColorModeToDirectScalars();
-    m_barMapper->SetScalarModeToUseCellData();
-    m_barActor->SetMapper(m_barMapper);
-
-    if (auto *property = m_barActor->GetProperty()) {
-        property->SetLineWidth(2.0);
-        property->LightingOff();
-    }
-
-    m_barActor->PickableOn();
-}
 
 void SceneController::initializeGridRendering()
 {
@@ -179,13 +139,13 @@ void SceneController::initializePickers()
     if (m_nodePicker) {
         m_nodePicker->SetTolerance(0.01);
         m_nodePicker->SetPickFromList(true);
-        m_nodePicker->AddPickList(m_pointActor);
+        m_nodePicker->AddPickList(m_structureRenderer->getNodeActor());
     }
 
     if (m_barPicker) {
         m_barPicker->SetTolerance(0.005);
         m_barPicker->SetPickFromList(true);
-        m_barPicker->AddPickList(m_barActor);
+        m_barPicker->AddPickList(m_structureRenderer->getBarActor());
     }
 }
 
@@ -198,49 +158,23 @@ void SceneController::requestRender()
 
 void SceneController::clearNodes()
 {
-    m_points->Reset();
-    m_vertices->Reset();
-
-    if (m_pointColors) {
-        m_pointColors->Reset();
-        m_pointColors->SetNumberOfComponents(3);
-        m_pointColors->SetName("NodeColors");
-        m_pointCloud->GetPointData()->SetScalars(m_pointColors);
-        m_pointColors->Modified();
-    }
-
     m_nodes.clear();
-    m_nodePointIds.clear();
-    m_pointIdToNodeId.clear();
     m_nodeIndexById.clear();
     m_highlightNodeId = QUuid();
     m_selectedNodeIds.clear();
     m_nextNodeExternalId = 1;
 
-    m_points->Modified();
-    m_vertices->Modified();
-    m_pointCloud->Modified();
+    m_structureRenderer->clear();
 }
 
 void SceneController::clearBars()
 {
-    m_barLines->Reset();
-    m_barLines->Modified();
-    m_barData->SetLines(m_barLines);
-
-    if (m_barColors) {
-        m_barColors->Reset();
-        m_barColors->SetNumberOfComponents(3);
-        m_barColors->SetName("BarColors");
-        m_barData->GetCellData()->SetScalars(m_barColors);
-        m_barColors->Modified();
-    }
-
     m_bars.clear();
     m_barIndexById.clear();
     m_selectedBarIds.clear();
-
-    m_barData->Modified();
+    
+    // As linhas também são apagadas via m_structureRenderer->clear()
+    // Mas clearBars isolado pode precisar de tratamento (TODO: se necessário)
 }
 
 void SceneController::clearGrid()
@@ -290,8 +224,14 @@ void SceneController::clearLoads()
     m_nodalLoadVisuals.clear();
     m_memberLoadVisuals.clear();
 
-    if (m_loadVisualization) {
-        m_loadVisualization->clearAll();
+    if (m_nodalLoadActor) {
+        m_nodalLoadActor->SetVisibility(false);
+    }
+    if (m_distributedLoadActor) {
+        m_distributedLoadActor->SetVisibility(false);
+    }
+    if (m_momentActor) {
+        m_momentActor->SetVisibility(false);
     }
 }
 
@@ -308,17 +248,6 @@ void SceneController::clearSupports()
 SceneController::SceneController(QObject *parent)
     : QObject(parent)
     , m_orientationMarker(vtkSmartPointer<vtkOrientationMarkerWidget>::New())
-    , m_points(vtkSmartPointer<vtkPoints>::New())
-    , m_pointCloud(vtkSmartPointer<vtkPolyData>::New())
-    , m_vertices(vtkSmartPointer<vtkCellArray>::New())
-    , m_pointMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
-    , m_pointActor(vtkSmartPointer<vtkActor>::New())
-    , m_pointColors(vtkSmartPointer<vtkUnsignedCharArray>::New())
-    , m_barData(vtkSmartPointer<vtkPolyData>::New())
-    , m_barLines(vtkSmartPointer<vtkCellArray>::New())
-    , m_barMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
-    , m_barActor(vtkSmartPointer<vtkActor>::New())
-    , m_barColors(vtkSmartPointer<vtkUnsignedCharArray>::New())
     , m_gridData(vtkSmartPointer<vtkPolyData>::New())
     , m_gridMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
     , m_gridActor(vtkSmartPointer<vtkActor>::New())
@@ -330,15 +259,13 @@ SceneController::SceneController(QObject *parent)
     , m_gridGhostCells(vtkSmartPointer<vtkCellArray>::New())
     , m_gridGhostMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
     , m_gridGhostActor(vtkSmartPointer<vtkActor>::New())
-    , m_loadVisualization(std::make_unique<Structura::Visualization::LoadVisualization>())
     , m_picker(vtkSmartPointer<vtkCellPicker>::New())
     , m_nodePicker(vtkSmartPointer<vtkPointPicker>::New())
     , m_barPicker(vtkSmartPointer<vtkCellPicker>::New())
+    , m_structureRenderer(std::make_unique<Structura::Visualization::StructureRenderer>())
 {
-    initializePointRendering();
-    initializeBarRendering();
+    // Initialize component renderers
     initializeGridRendering();
-    initializeGridGhostRendering();
     initializeBarLcsRendering();
     initializePickers();
 }
@@ -352,21 +279,17 @@ void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget)
     }
 
     vtkWidget->setRenderWindow(m_renderWindow);
+    m_renderWindow->LineSmoothingOn();
+    
     m_renderWindow->AddRenderer(m_renderer);
     // Background similar to SolidWorks: soft light blue gradient
     m_renderer->GradientBackgroundOn();
     m_renderer->SetBackground(0.91, 0.94, 0.98);  // top
     m_renderer->SetBackground2(0.78, 0.85, 0.93); // bottom
-    m_renderer->AddActor(m_barActor);
-    m_renderer->AddActor(m_pointActor);
+    m_structureRenderer->addToRenderer(m_renderer);
     m_renderer->AddActor(m_gridActor);
     m_renderer->AddActor(m_gridGhostActor);
     m_renderer->AddActor(m_lcsActor);
-    
-    // Initialize load visualization
-    if (m_loadVisualization) {
-        m_loadVisualization->initialize(m_renderer);
-    }
     
     m_renderer->ResetCamera();
 
@@ -408,31 +331,12 @@ QUuid SceneController::addPointWithId(double x, double y, double z, int external
         }
     }
 
-    const vtkIdType pointId = m_points->InsertNextPoint(x, y, z);
-    m_vertices->InsertNextCell(1);
-    m_vertices->InsertCellPoint(pointId);
-
     QUuid nodeId = QUuid::createUuid();
     Node node(nodeId, externalId, x, y, z);
     m_nodes.push_back(node);
-    m_nodePointIds.push_back(pointId);
-
-    if (static_cast<std::size_t>(pointId + 1) > m_pointIdToNodeId.size()) {
-        m_pointIdToNodeId.resize(static_cast<std::size_t>(pointId) + 1);
-    }
-    m_pointIdToNodeId[static_cast<std::size_t>(pointId)] = nodeId;
     m_nodeIndexById.insert(nodeId, static_cast<int>(m_nodes.size()) - 1);
 
-    if (m_pointColors) {
-        m_pointColors->InsertNextTypedTuple(m_defaultNodeColor);
-        m_pointColors->Modified();
-        m_pointCloud->GetPointData()->SetScalars(m_pointColors);
-    }
-
-    m_points->Modified();
-    m_vertices->Modified();
-    m_pointCloud->Modified();
-    m_barData->Modified();
+    m_structureRenderer->addNode(nodeId, x, y, z);
 
     updateBounds();
     requestRender();
@@ -448,22 +352,17 @@ void SceneController::resetCamera()
 
 void SceneController::zoomExtents()
 {
-    if (m_points->GetNumberOfPoints() == 0) {
+    if (m_nodes.empty()) {
         resetCamera();
         return;
     }
 
-    m_renderer->ResetCamera(m_pointActor->GetBounds());
+    m_renderer->ResetCamera(m_structureRenderer->getNodeActor()->GetBounds());
     requestRender();
 }
 
 void SceneController::updateBounds()
 {
-    if (m_points->GetNumberOfPoints() == 0) {
-        return;
-    }
-
-    m_pointCloud->GetBounds(); // ensures bounds computation
 }
 
 void SceneController::createGrid(double dx, double dy, double dz, int nx, int ny, int nz)
@@ -999,38 +898,88 @@ void SceneController::setMemberLoadVisuals(const QVector<MemberLoadVisual> &visu
 
 void SceneController::updateLoadVisuals()
 {
-    if (!m_loadVisualization) {
-        return;
+    using namespace Structura::Visualization;
+
+    // Inicialização sob demanda dos atores
+    if (!m_nodalLoadMapper && m_renderer) {
+        // Inicializar apenas os atores (os PolyDatas são gerados pelo factory)
+        m_nodalLoadMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        m_nodalLoadActor = vtkSmartPointer<vtkActor>::New();
+        m_nodalLoadActor->SetMapper(m_nodalLoadMapper);
+        m_nodalLoadActor->GetProperty()->SetColor(0.90, 0.15, 0.20);
+        m_nodalLoadActor->GetProperty()->LightingOff();
+        m_renderer->AddActor(m_nodalLoadActor);
+
+        m_distributedLoadMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        m_distributedLoadActor = vtkSmartPointer<vtkActor>::New();
+        m_distributedLoadActor->SetMapper(m_distributedLoadMapper);
+        m_distributedLoadActor->GetProperty()->SetColor(0.15, 0.58, 0.32);
+        m_distributedLoadActor->GetProperty()->LightingOff();
+        m_renderer->AddActor(m_distributedLoadActor);
+
+        m_momentMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        m_momentActor = vtkSmartPointer<vtkActor>::New();
+        m_momentActor->SetMapper(m_momentMapper);
+        m_momentActor->GetProperty()->SetColor(0.65, 0.20, 0.82);
+        m_momentActor->GetProperty()->SetLineWidth(2.5);
+        m_momentActor->GetProperty()->LightingOff();
+        m_renderer->AddActor(m_momentActor);
     }
 
-    // Convert nodal load visuals to LoadVisualization format
-    QVector<Structura::Visualization::LoadVisualization::NodalLoad> nodalLoads;
-    nodalLoads.reserve(m_nodalLoadVisuals.size());
+    // Preparar dados para as forças nodais e momentos
+    std::vector<LoadGlyphFactory::NodalLoadData> nodalLoads;
+    std::vector<LoadGlyphFactory::NodalMomentData> nodalMoments;
+    
     for (const auto& visual : m_nodalLoadVisuals) {
-        Structura::Visualization::LoadVisualization::NodalLoad load;
-        load.position = visual.position;
-        load.force = visual.force;
-        load.moment = visual.moment;
-        nodalLoads.append(load);
+        if (visual.force.lengthSquared() > 1e-6f) {
+            LoadGlyphFactory::NodalLoadData nld;
+            nld.position = {visual.position.x(), visual.position.y(), visual.position.z()};
+            QVector3D dir = visual.force.normalized();
+            nld.direction = {dir.x(), dir.y(), dir.z()};
+            nld.magnitude = visual.force.length();
+            nld.arrowSize = 0.5;
+            nodalLoads.push_back(nld);
+        }
+        if (visual.moment.lengthSquared() > 1e-6f) {
+            LoadGlyphFactory::NodalMomentData nmd;
+            nmd.position = {visual.position.x(), visual.position.y(), visual.position.z()};
+            QVector3D dir = visual.moment.normalized();
+            nmd.axis = {dir.x(), dir.y(), dir.z()};
+            nmd.magnitude = visual.moment.length();
+            nmd.radius = 0.4;
+            nodalMoments.push_back(nmd);
+        }
     }
-    m_loadVisualization->setNodalLoads(nodalLoads);
 
-    // Convert member load visuals to LoadVisualization format
-    QVector<Structura::Visualization::LoadVisualization::DistributedLoad> distributedLoads;
-    distributedLoads.reserve(m_memberLoadVisuals.size());
+    // Preparar dados para cargas distribuídas
+    std::vector<LoadGlyphFactory::DistributedLoadData> distLoads;
     for (const auto& visual : m_memberLoadVisuals) {
-        // For distributed loads, we need to reconstruct the bar endpoints from the visual
-        // The visual contains position (midpoint) and barVector
         const QVector3D barHalfVector = visual.barVector * 0.5f;
+        QVector3D startP = visual.position - barHalfVector;
+        QVector3D endP = visual.position + barHalfVector;
         
-        Structura::Visualization::LoadVisualization::DistributedLoad load;
-        load.startPoint = visual.position - barHalfVector;
-        load.endPoint = visual.position + barHalfVector;
-        load.loadVector = visual.force;
-        load.isLocalSystem = visual.localSystem;
-        distributedLoads.append(load);
+        LoadGlyphFactory::DistributedLoadData dld;
+        dld.node1 = {startP.x(), startP.y(), startP.z()};
+        dld.node2 = {endP.x(), endP.y(), endP.z()};
+        QVector3D dir = visual.force.normalized();
+        dld.loadDir = {dir.x(), dir.y(), dir.z()};
+        dld.magnitude = visual.force.length();
+        dld.arrowSize = 0.3;
+        distLoads.push_back(dld);
     }
-    m_loadVisualization->setDistributedLoads(distributedLoads);
+
+    if (m_nodalLoadMapper) {
+        m_nodalLoadMapper->SetInputData(LoadGlyphFactory::buildNodalLoads(nodalLoads));
+        m_nodalLoadActor->SetVisibility(!nodalLoads.empty());
+    }
+    if (m_distributedLoadMapper) {
+        m_distributedLoadMapper->SetInputData(LoadGlyphFactory::buildDistributedLoads(distLoads));
+        m_distributedLoadActor->SetVisibility(!distLoads.empty());
+    }
+    if (m_momentMapper) {
+        m_momentMapper->SetInputData(LoadGlyphFactory::buildNodalMoments(nodalMoments));
+        m_momentActor->SetVisibility(!nodalMoments.empty());
+    }
 }
 
 bool SceneController::pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z) const
@@ -1177,8 +1126,8 @@ QUuid SceneController::pickNode(int displayX, int displayY) const
     }
     if (m_nodePicker->Pick(displayX, displayY, 0.0, m_renderer)) {
         vtkIdType pid = m_nodePicker->GetPointId();
-        if (pid >= 0 && pid < static_cast<vtkIdType>(m_pointIdToNodeId.size())) {
-            return m_pointIdToNodeId[static_cast<std::size_t>(pid)];
+        if (pid >= 0 && pid < static_cast<vtkIdType>(m_nodes.size())) {
+            return m_nodes[static_cast<std::size_t>(pid)].id();
         }
     }
     return {};
@@ -1200,69 +1149,19 @@ QUuid SceneController::pickBar(int displayX, int displayY) const
 
 void SceneController::setHighlightedNode(const QUuid &nodeId)
 {
-    if (!m_pointColors) {
-        return;
-    }
-
-    if (nodeId == m_highlightNodeId) {
-        return;
-    }
-
-    if (!m_highlightNodeId.isNull()) {
-        if (m_selectedNodeIds.contains(m_highlightNodeId)) {
-            applyNodeColor(m_highlightNodeId, m_selectedNodeColor);
-        } else {
-            applyNodeColor(m_highlightNodeId, m_defaultNodeColor);
-        }
-    }
-    m_highlightNodeId = nodeId;
-    if (!m_highlightNodeId.isNull()) {
-        applyNodeColor(m_highlightNodeId, m_hoverNodeColor);
-    }
-
-    m_pointColors->Modified();
-    m_pointCloud->Modified();
+    m_structureRenderer->setHoveredNode(nodeId);
     requestRender();
 }
 
 void SceneController::clearHighlightedNode()
 {
-    setHighlightedNode(QUuid());
+    m_structureRenderer->clearHoveredNode();
+    requestRender();
 }
 
 void SceneController::setSelectedNodes(const QSet<QUuid> &nodeIds)
 {
-    if (!m_pointColors) {
-        m_selectedNodeIds = nodeIds;
-        return;
-    }
-
-    if (m_selectedNodeIds == nodeIds) {
-        return;
-    }
-
-    for (const QUuid &id : m_selectedNodeIds) {
-        if (nodeIds.contains(id)) {
-            continue;
-        }
-        if (id == m_highlightNodeId) {
-            continue;
-        }
-        applyNodeColor(id, m_defaultNodeColor);
-    }
-
-    for (const QUuid &id : nodeIds) {
-        if (id == m_highlightNodeId) {
-            continue;
-        }
-        if (!m_selectedNodeIds.contains(id)) {
-            applyNodeColor(id, m_selectedNodeColor);
-        }
-    }
-
-    m_selectedNodeIds = nodeIds;
-    m_pointColors->Modified();
-    m_pointCloud->Modified();
+    m_structureRenderer->setSelectedNodes(nodeIds);
     requestRender();
 }
 
@@ -1284,7 +1183,7 @@ bool SceneController::updateNodePositions(const QVector<QUuid> &nodeIds, const Q
     for (int i = 0; i < nodeIds.size(); ++i) {
         const QUuid &id = nodeIds.at(i);
         const int idx = nodeIndex(id);
-        if (idx < 0 || static_cast<std::size_t>(idx) >= m_nodePointIds.size()) {
+        if (idx < 0) {
             continue;
         }
         Node &node = m_nodes[static_cast<std::size_t>(idx)];
@@ -1296,16 +1195,13 @@ bool SceneController::updateNodePositions(const QVector<QUuid> &nodeIds, const Q
             continue;
         }
 
-        const vtkIdType pointId = m_nodePointIds[static_cast<std::size_t>(idx)];
-        m_points->SetPoint(pointId, pos.x(), pos.y(), pos.z());
+        m_structureRenderer->updateNodePosition(id, pos.x(), pos.y(), pos.z());
         node.setPosition(pos.x(), pos.y(), pos.z());
         changed = true;
     }
 
     if (changed) {
-        m_points->Modified();
-        m_pointCloud->Modified();
-        m_barData->Modified();
+        m_structureRenderer->endUpdate();
         updateBounds();
         requestRender();
     }
@@ -1322,29 +1218,12 @@ QUuid SceneController::addBar(const QUuid &startNodeId,
     if (startIndex < 0 || endIndex < 0 || startIndex == endIndex) {
         return {};
     }
-    if (static_cast<std::size_t>(startIndex) >= m_nodePointIds.size()
-        || static_cast<std::size_t>(endIndex) >= m_nodePointIds.size()) {
-        return {};
-    }
-
-    vtkIdType ids[2] = {
-        m_nodePointIds[static_cast<std::size_t>(startIndex)],
-        m_nodePointIds[static_cast<std::size_t>(endIndex)]
-    };
-    m_barLines->InsertNextCell(2, ids);
-    m_barLines->Modified();
-    m_barData->SetLines(m_barLines);
-    m_barData->Modified();
-
     const QUuid barId = QUuid::createUuid();
     Bar bar(barId, startNodeId, endNodeId, materialId, sectionId);
     m_bars.push_back(bar);
     m_barIndexById.insert(barId, static_cast<int>(m_bars.size()) - 1);
-    if (m_barColors) {
-        m_barColors->InsertNextTypedTuple(m_defaultBarColor);
-        m_barColors->Modified();
-        m_barData->GetCellData()->SetScalars(m_barColors);
-    }
+    
+    m_structureRenderer->addBar(barId, startNodeId, endNodeId);
 
     updateBarLCSVisuals();
     requestRender();
@@ -1419,40 +1298,7 @@ SceneController::Bar *SceneController::findBar(const QUuid &id)
 
 void SceneController::setSelectedBars(const QSet<QUuid> &barIds)
 {
-    if (!m_barColors) {
-        m_selectedBarIds = barIds;
-        return;
-    }
-
-    if (m_selectedBarIds == barIds) {
-        return;
-    }
-
-    for (const QUuid &id : m_selectedBarIds) {
-        if (barIds.contains(id)) {
-            continue;
-        }
-        const int idx = barIndex(id);
-        if (idx < 0) {
-            continue;
-        }
-        applyBarColor(idx, m_defaultBarColor);
-    }
-
-    for (const QUuid &id : barIds) {
-        if (m_selectedBarIds.contains(id)) {
-            continue;
-        }
-        const int idx = barIndex(id);
-        if (idx < 0) {
-            continue;
-        }
-        applyBarColor(idx, m_selectedBarColor);
-    }
-
-    m_selectedBarIds = barIds;
-    m_barColors->Modified();
-    m_barData->Modified();
+    m_structureRenderer->setSelectedBars(barIds);
     requestRender();
 }
 
@@ -1481,46 +1327,6 @@ void SceneController::clearAll()
     requestRender();
 }
 
-void SceneController::applyNodeColor(const QUuid &id, const unsigned char color[3])
-{
-    if (!m_pointColors) {
-        return;
-    }
-    if (id.isNull()) {
-        return;
-    }
-    const int idx = nodeIndex(id);
-    if (idx < 0) {
-        return;
-    }
-    if (static_cast<std::size_t>(idx) >= m_nodePointIds.size()) {
-        return;
-    }
-    const vtkIdType pointId = m_nodePointIds[static_cast<std::size_t>(idx)];
-    if (pointId < 0) {
-        return;
-    }
-    const vtkIdType tupleCount = m_pointColors->GetNumberOfTuples();
-    if (pointId >= tupleCount) {
-        return;
-    }
-    m_pointColors->SetTypedTuple(pointId, color);
-}
-
-void SceneController::applyBarColor(int barIndex, const unsigned char color[3])
-{
-    if (!m_barColors) {
-        return;
-    }
-    if (barIndex < 0) {
-        return;
-    }
-    const vtkIdType tupleCount = m_barColors->GetNumberOfTuples();
-    if (barIndex >= tupleCount) {
-        return;
-    }
-    m_barColors->SetTypedTuple(barIndex, color);
-}
 
 void SceneController::setSupportVisuals(const QVector<SupportVisual> &visuals)
 {
@@ -1531,151 +1337,37 @@ void SceneController::setSupportVisuals(const QVector<SupportVisual> &visuals)
 
 void SceneController::updateSupportVisuals()
 {
-    if (!m_supportData) {
-        m_supportData = vtkSmartPointer<vtkPolyData>::New();
+    using namespace Structura::Visualization;
+
+    if (!m_supportMapper && m_renderer) {
         m_supportMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         m_supportActor = vtkSmartPointer<vtkActor>::New();
-        
-        m_supportMapper->SetInputData(m_supportData);
         m_supportActor->SetMapper(m_supportMapper);
-        m_supportActor->GetProperty()->SetLineWidth(3.0);
+        m_supportActor->GetProperty()->SetColor(0.15, 0.58, 0.32); // Greenish
+        m_supportActor->GetProperty()->LightingOff(); // Draw technical 2D flat
+        m_supportActor->GetProperty()->SetLineWidth(2.0);
         
-        if (m_renderer) {
-            m_renderer->AddActor(m_supportActor);
-        }
+        m_renderer->AddActor(m_supportActor);
     }
 
-    auto points = vtkSmartPointer<vtkPoints>::New();
-    auto lines = vtkSmartPointer<vtkCellArray>::New();
-    auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
-    colors->SetNumberOfComponents(3);
-    colors->SetName("Colors");
-
-    const unsigned char supportColor[3] = {0, 128, 0}; // Green for supports
-    const double supportSize = 0.5; // Size of support symbols
+    std::vector<SupportGlyphFactory::SupportData> supports;
+    supports.reserve(m_supportVisuals.size());
 
     for (const auto &visual : m_supportVisuals) {
-        const double x = visual.position.x();
-        const double y = visual.position.y();
-        const double z = visual.position.z();
-
-        // Draw translation restraints (UX, UY, UZ) as triangles
-        if (visual.restraints[0]) { // UX - triangle in YZ plane
-            vtkIdType p1 = points->InsertNextPoint(x, y, z);
-            vtkIdType p2 = points->InsertNextPoint(x, y + supportSize * 0.5, z + supportSize * 0.866);
-            vtkIdType p3 = points->InsertNextPoint(x, y - supportSize * 0.5, z + supportSize * 0.866);
-            
-            lines->InsertNextCell(2);
-            lines->InsertCellPoint(p1);
-            lines->InsertCellPoint(p2);
-            colors->InsertNextTypedTuple(supportColor);
-            
-            lines->InsertNextCell(2);
-            lines->InsertCellPoint(p2);
-            lines->InsertCellPoint(p3);
-            colors->InsertNextTypedTuple(supportColor);
-            
-            lines->InsertNextCell(2);
-            lines->InsertCellPoint(p3);
-            lines->InsertCellPoint(p1);
-            colors->InsertNextTypedTuple(supportColor);
-        }
-
-        if (visual.restraints[1]) { // UY - triangle in XZ plane
-            vtkIdType p1 = points->InsertNextPoint(x, y, z);
-            vtkIdType p2 = points->InsertNextPoint(x + supportSize * 0.5, y, z + supportSize * 0.866);
-            vtkIdType p3 = points->InsertNextPoint(x - supportSize * 0.5, y, z + supportSize * 0.866);
-            
-            lines->InsertNextCell(2);
-            lines->InsertCellPoint(p1);
-            lines->InsertCellPoint(p2);
-            colors->InsertNextTypedTuple(supportColor);
-            
-            lines->InsertNextCell(2);
-            lines->InsertCellPoint(p2);
-            lines->InsertCellPoint(p3);
-            colors->InsertNextTypedTuple(supportColor);
-            
-            lines->InsertNextCell(2);
-            lines->InsertCellPoint(p3);
-            lines->InsertCellPoint(p1);
-            colors->InsertNextTypedTuple(supportColor);
-        }
-
-        if (visual.restraints[2]) { // UZ - triangle in XY plane
-            vtkIdType p1 = points->InsertNextPoint(x, y, z);
-            vtkIdType p2 = points->InsertNextPoint(x + supportSize * 0.5, y + supportSize * 0.866, z);
-            vtkIdType p3 = points->InsertNextPoint(x - supportSize * 0.5, y + supportSize * 0.866, z);
-            
-            lines->InsertNextCell(2);
-            lines->InsertCellPoint(p1);
-            lines->InsertCellPoint(p2);
-            colors->InsertNextTypedTuple(supportColor);
-            
-            lines->InsertNextCell(2);
-            lines->InsertCellPoint(p2);
-            lines->InsertCellPoint(p3);
-            colors->InsertNextTypedTuple(supportColor);
-            
-            lines->InsertNextCell(2);
-            lines->InsertCellPoint(p3);
-            lines->InsertCellPoint(p1);
-            colors->InsertNextTypedTuple(supportColor);
-        }
-
-        // Draw rotation restraints (RX, RY, RZ) as small circles/boxes
-        const double rotSize = supportSize * 0.3;
-        if (visual.restraints[3]) { // RX - box in YZ plane
-            vtkIdType p1 = points->InsertNextPoint(x, y - rotSize, z - rotSize);
-            vtkIdType p2 = points->InsertNextPoint(x, y + rotSize, z - rotSize);
-            vtkIdType p3 = points->InsertNextPoint(x, y + rotSize, z + rotSize);
-            vtkIdType p4 = points->InsertNextPoint(x, y - rotSize, z + rotSize);
-            
-            lines->InsertNextCell(5);
-            lines->InsertCellPoint(p1);
-            lines->InsertCellPoint(p2);
-            lines->InsertCellPoint(p3);
-            lines->InsertCellPoint(p4);
-            lines->InsertCellPoint(p1);
-            colors->InsertNextTypedTuple(supportColor);
-        }
-
-        if (visual.restraints[4]) { // RY - box in XZ plane
-            vtkIdType p1 = points->InsertNextPoint(x - rotSize, y, z - rotSize);
-            vtkIdType p2 = points->InsertNextPoint(x + rotSize, y, z - rotSize);
-            vtkIdType p3 = points->InsertNextPoint(x + rotSize, y, z + rotSize);
-            vtkIdType p4 = points->InsertNextPoint(x - rotSize, y, z + rotSize);
-            
-            lines->InsertNextCell(5);
-            lines->InsertCellPoint(p1);
-            lines->InsertCellPoint(p2);
-            lines->InsertCellPoint(p3);
-            lines->InsertCellPoint(p4);
-            lines->InsertCellPoint(p1);
-            colors->InsertNextTypedTuple(supportColor);
-        }
-
-        if (visual.restraints[5]) { // RZ - box in XY plane
-            vtkIdType p1 = points->InsertNextPoint(x - rotSize, y - rotSize, z);
-            vtkIdType p2 = points->InsertNextPoint(x + rotSize, y - rotSize, z);
-            vtkIdType p3 = points->InsertNextPoint(x + rotSize, y + rotSize, z);
-            vtkIdType p4 = points->InsertNextPoint(x - rotSize, y + rotSize, z);
-            
-            lines->InsertNextCell(5);
-            lines->InsertCellPoint(p1);
-            lines->InsertCellPoint(p2);
-            lines->InsertCellPoint(p3);
-            lines->InsertCellPoint(p4);
-            lines->InsertCellPoint(p1);
-            colors->InsertNextTypedTuple(supportColor);
-        }
+        SupportGlyphFactory::SupportData sd;
+        sd.position = {visual.position.x(), visual.position.y(), visual.position.z()};
+        for (int i=0; i<6; ++i) sd.restraints[i] = visual.restraints[i];
+        sd.glyphSize = 0.5;
+        supports.push_back(sd);
     }
 
-    m_supportData->SetPoints(points);
-    m_supportData->SetLines(lines);
-    m_supportData->GetCellData()->SetScalars(colors);
-    m_supportData->Modified();
+    if (m_supportMapper) {
+        auto polyData = SupportGlyphFactory::build(supports);
+        m_supportMapper->SetInputData(polyData);
+        m_supportActor->SetVisibility(!supports.empty());
+    }
 }
+
 
 int SceneController::nodeIndex(const QUuid &id) const
 {

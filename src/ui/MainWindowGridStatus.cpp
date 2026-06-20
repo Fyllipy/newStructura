@@ -1,8 +1,10 @@
 #include "MainWindow.h"
 
 #include "viz/SceneController.h"
+#include "viz/postprocessor/PostProcessorRenderer.h"
 #include "ui/GridDeleteTooltipHelper.h"
 
+#include <QComboBox>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -10,6 +12,7 @@
 #include <QStatusBar>
 #include <QToolButton>
 #include <QVTKOpenGLNativeWidget.h>
+#include <vtkRenderWindow.h>
 
 void MainWindow::beginGridInsert(Structura::Model::GridLine::Axis axis)
 {
@@ -122,8 +125,120 @@ void MainWindow::setupFooterBar()
     m_statusLabel->setMinimumWidth(300);
     footerLayout->addWidget(m_statusLabel, 1);
 
+    // ── Controles de diagrama (pós-processamento) ────────────────────────
+    auto *separatorDiagram = new QFrame(m_footerBar);
+    separatorDiagram->setFrameShape(QFrame::VLine);
+    separatorDiagram->setFrameShadow(QFrame::Sunken);
+    separatorDiagram->setStyleSheet("color: #cbd4e2;");
+    footerLayout->addWidget(separatorDiagram);
+
+    auto *diagramLabel = new QLabel(tr("Diagrama:"), m_footerBar);
+    diagramLabel->setStyleSheet("font-weight: 600; color: #1e232b;");
+    footerLayout->addWidget(diagramLabel);
+
+    m_diagramCombo = new QComboBox(m_footerBar);
+    m_diagramCombo->addItem(tr("---"),  static_cast<int>(Structura::Visualization::DiagramType::None));
+    m_diagramCombo->addItem(tr("N"),    static_cast<int>(Structura::Visualization::DiagramType::N));
+    m_diagramCombo->addItem(tr("Vy"),   static_cast<int>(Structura::Visualization::DiagramType::Vy));
+    m_diagramCombo->addItem(tr("Vz"),   static_cast<int>(Structura::Visualization::DiagramType::Vz));
+    m_diagramCombo->addItem(tr("Mt"),   static_cast<int>(Structura::Visualization::DiagramType::Mt));
+    m_diagramCombo->addItem(tr("My"),   static_cast<int>(Structura::Visualization::DiagramType::My));
+    m_diagramCombo->addItem(tr("Mz"),   static_cast<int>(Structura::Visualization::DiagramType::Mz));
+    m_diagramCombo->setMinimumWidth(70);
+    m_diagramCombo->setEnabled(false);
+    m_diagramCombo->setToolTip(tr("Selecionar tipo de diagrama de esforços"));
+    footerLayout->addWidget(m_diagramCombo);
+
+    auto *scaleLabel = new QLabel(tr("Escala:"), m_footerBar);
+    scaleLabel->setStyleSheet("font-weight: 600; color: #1e232b;");
+    footerLayout->addWidget(scaleLabel);
+
+    m_diagramScaleSlider = new QSlider(Qt::Horizontal, m_footerBar);
+    m_diagramScaleSlider->setMinimum(1);
+    m_diagramScaleSlider->setMaximum(100);
+    m_diagramScaleSlider->setValue(33); // ~1.0
+    m_diagramScaleSlider->setFixedWidth(100);
+    m_diagramScaleSlider->setEnabled(false);
+    m_diagramScaleSlider->setToolTip(tr("Ajustar escala visual dos diagramas"));
+    footerLayout->addWidget(m_diagramScaleSlider);
+
+    auto *modLabel = new QLabel(tr("Modo:"), m_footerBar);
+    modLabel->setStyleSheet("font-weight: 600; color: #1e232b;");
+    footerLayout->addWidget(modLabel);
+
+    m_scaleModeCombo = new QComboBox(m_footerBar);
+    m_scaleModeCombo->addItem(tr("Global"),       static_cast<int>(Structura::Visualization::DiagramScaleMode::Global));
+    m_scaleModeCombo->addItem(tr("Caso Atual"),   static_cast<int>(Structura::Visualization::DiagramScaleMode::CurrentLoadCase));
+    m_scaleModeCombo->addItem(tr("Selecionados"), static_cast<int>(Structura::Visualization::DiagramScaleMode::SelectedElements));
+    m_scaleModeCombo->setEnabled(false);
+    m_scaleModeCombo->setToolTip(tr("Modo de normalização da escala"));
+    footerLayout->addWidget(m_scaleModeCombo);
+
+    // Conexões dos controles de diagrama
+    connect(m_diagramCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onDiagramTypeChanged);
+    connect(m_diagramScaleSlider, &QSlider::valueChanged,
+            this, &MainWindow::onDiagramScaleChanged);
+    connect(m_scaleModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onScaleModeChanged);
+
     statusBar()->addPermanentWidget(m_footerBar, 1);
 }
+
+// ── Slots do pós-processador ───────────────────────────────────────────────────────
+
+void MainWindow::onShowDiagrams()
+{
+    if (!m_postProcessor) return;
+    m_postProcessor->activate();
+    // Selecionar diagrama atual (se houver)
+    if (m_diagramCombo) {
+        onDiagramTypeChanged(m_diagramCombo->currentIndex());
+    }
+}
+
+void MainWindow::onHideDiagrams()
+{
+    if (!m_postProcessor) return;
+    m_postProcessor->deactivate();
+    if (m_vtkWidget && m_vtkWidget->renderWindow()) {
+        m_vtkWidget->renderWindow()->Render();
+    }
+}
+
+void MainWindow::onDiagramTypeChanged(int /*index*/)
+{
+    if (!m_postProcessor || !m_diagramCombo) return;
+    const auto type = static_cast<Structura::Visualization::DiagramType>(
+        m_diagramCombo->currentData().toInt());
+    m_postProcessor->showDiagram(type);
+    if (m_vtkWidget && m_vtkWidget->renderWindow()) {
+        m_vtkWidget->renderWindow()->Render();
+    }
+}
+
+void MainWindow::onDiagramScaleChanged(int value)
+{
+    if (!m_postProcessor) return;
+    // Mapear 1..100 -> 0.1..5.0 (curva raiz quadrada para resposta mais natural)
+    const double scale = 0.1 + (static_cast<double>(value) / 100.0) * 4.9;
+    m_postProcessor->setUserScale(scale);
+    if (m_vtkWidget && m_vtkWidget->renderWindow()) {
+        m_vtkWidget->renderWindow()->Render();
+    }
+}
+
+void MainWindow::onScaleModeChanged(int /*index*/)
+{
+    if (!m_postProcessor || !m_scaleModeCombo) return;
+    const auto mode = static_cast<Structura::Visualization::DiagramScaleMode>(
+        m_scaleModeCombo->currentData().toInt());
+    m_postProcessor->setScaleMode(mode);
+    if (m_vtkWidget && m_vtkWidget->renderWindow()) {
+        m_vtkWidget->renderWindow()->Render();
+    }
+}
+
 
 void MainWindow::updateGridInsertFromPoint(const QVector3D &worldPoint)
 {

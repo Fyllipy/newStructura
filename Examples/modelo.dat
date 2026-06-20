@@ -1,0 +1,39 @@
+[MATERIALS]
+# ID    E (Pa)          G (Pa)
+1          2.100000e+11   8.100000e+10
+
+[SECTIONS]
+# ID    A (m^2)     Iz (m^4)      Iy (m^4)      J (m^4)
+1          1.000000e-02   1.000000e-04   1.000000e-04   1.000000e-04
+
+[NODES]
+# ID    X (m)    Y (m)    Z (m)    UX  UY  UZ  RX  RY  RZ
+1          0.000000   0.000000   0.000000    1   1   1   1   1   1
+2          0.000000   3.000000   0.000000    0   0   0   0   0   0
+3          3.000000   3.000000   0.000000    0   0   0   0   0   0
+4          3.000000   0.000000   0.000000    1   1   1   1   1   1
+5          0.000000   0.000000   5.000000    1   1   1   1   1   1
+6          0.000000   3.000000   5.000000    0   0   0   0   0   0
+7          3.000000   3.000000   5.000000    0   0   0   0   0   0
+8          3.000000   0.000000   5.000000    1   1   1   1   1   1
+
+[MEMBERS]
+# ID    Node_i   Node_j   Material_ID   Section_ID
+1               1        2          1            1
+2               2        3          1            1
+3               3        4          1            1
+4               2        6          1            1
+5               7        6          1            1
+6               7        3          1            1
+7               6        5          1            1
+8               7        8          1            1
+
+[NODAL_LOADS]
+# Node_ID   Fx (N)    Fy (N)   Fz (N)   Mx (Nm)   My (Nm)   Mz (Nm)
+
+[MEMBER_LOADS]
+# Formato: Member_ID  Sistema(Local/Global)  qx (N/m)  qy (N/m)  qz (N/m)
+# Sistemas aceitos: LOCAL, GLOBAL (ou L/G)
+2            GLOBAL         0.000000   100.000000     0.000000
+5            GLOBAL         0.000000   100.000000     0.000000
+6            GLOBAL         0.000000   100.000000     0.000000

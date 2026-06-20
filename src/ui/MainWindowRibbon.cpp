@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include "viz/postprocessor/PostProcessorRenderer.h"
+
 #include <QAction>
 #include <QGroupBox>
 #include <QGridLayout>
@@ -263,6 +265,41 @@ void MainWindow::createRibbon()
     m_ribbon->addTab(toolsTab, tr("Ferramentas"));
     m_ribbon->addTab(loadsTab, tr("Carregamentos"));
     m_ribbon->addTab(visualizationTab, tr("Visualizacao"));
+
+    // ── Aba Resultados ─────────────────────────────────────────────────
+    m_showDiagramsAction = new QAction(tr("Mostrar\nDiagramas"), this);
+    m_showDiagramsAction->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    m_showDiagramsAction->setEnabled(false); // habilitado após análise
+    connect(m_showDiagramsAction, &QAction::triggered, this, &MainWindow::onShowDiagrams);
+
+    m_hideDiagramsAction = new QAction(tr("Ocultar\nDiagramas"), this);
+    m_hideDiagramsAction->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+    m_hideDiagramsAction->setEnabled(false);
+    connect(m_hideDiagramsAction, &QAction::triggered, this, &MainWindow::onHideDiagrams);
+
+    auto *resultsTab = new QWidget(this);
+    resultsTab->setObjectName(QStringLiteral("RibbonPage"));
+    resultsTab->setStyleSheet(QStringLiteral("#RibbonPage { background: #f2f5fa; }"));
+
+    auto *resultsLayout = new QHBoxLayout(resultsTab);
+    resultsLayout->setContentsMargins(4, 20, 4, 3);
+    resultsLayout->setSpacing(4);
+
+    auto *diagramsGroup = new QGroupBox(tr("Diagramas"), this);
+    auto *diagramsGrid = new QGridLayout(diagramsGroup);
+    diagramsGrid->setContentsMargins(4, 5, 4, 4);
+    diagramsGrid->setHorizontalSpacing(30);
+    diagramsGrid->setVerticalSpacing(15);
+    diagramsGrid->setAlignment(Qt::AlignTop);
+    populateActionGrid(diagramsGrid, { m_showDiagramsAction, m_hideDiagramsAction }, 2);
+    resultsLayout->addWidget(diagramsGroup, 0, Qt::AlignTop);
+    resultsLayout->addStretch(1);
+
+    m_ribbon->addTab(resultsTab, tr("Resultados"));
+
+    // Inicializar o pós-processador
+    m_postProcessor = std::make_unique<Structura::Visualization::PostProcessorRenderer>();
+
     // if (auto *tabBar = m_ribbon->tabBar()) {
     //     tabBar->hide();
     // }

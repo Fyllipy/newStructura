@@ -23,6 +23,7 @@ find_package(VTK REQUIRED COMPONENTS
     CommonCore
     CommonDataModel
     FiltersSources
+    FiltersCore          # vtkPolyDataNormals
     RenderingCore
     RenderingOpenGL2
     InteractionStyle
@@ -56,6 +57,36 @@ set(VIZ_SOURCES
     src/viz/LoadSupportVisualMapper.cpp
     src/viz/CustomInteractorStyle.h
     src/viz/CustomInteractorStyle.cpp
+    # ── Structure Rendering ──────────────────────────────────────────
+    src/viz/structure/NodeRenderer.h
+    src/viz/structure/NodeRenderer.cpp
+    src/viz/structure/MemberRenderer.h
+    src/viz/structure/MemberRenderer.cpp
+    src/viz/structure/StructureRenderer.h
+    src/viz/structure/StructureRenderer.cpp
+    # ── Pós-Processador ──────────────────────────────────────────────
+    src/viz/postprocessor/PostProcessorDataTypes.h
+    src/viz/postprocessor/VisualizationTheme.h
+    src/viz/postprocessor/InternalForceEvaluator.h
+    src/viz/postprocessor/UniformLoadForceEvaluator.h
+    src/viz/postprocessor/UniformLoadForceEvaluator.cpp
+    src/viz/postprocessor/DiagramGeometryCache.h
+    src/viz/postprocessor/DiagramGeometryCache.cpp
+    src/viz/postprocessor/DiagramScaleManager.h
+    src/viz/postprocessor/DiagramScaleManager.cpp
+    src/viz/postprocessor/DiagramMeshBuilder.h
+    src/viz/postprocessor/DiagramMeshBuilder.cpp
+    src/viz/postprocessor/DiagramExtremaFinder.h
+    src/viz/postprocessor/DiagramExtremaFinder.cpp
+    src/viz/postprocessor/DiagramLabelManager.h
+    src/viz/postprocessor/DiagramLabelManager.cpp
+    src/viz/postprocessor/SupportGlyphFactory.h
+    src/viz/postprocessor/SupportGlyphFactory.cpp
+    src/viz/postprocessor/LoadGlyphFactory.h
+    src/viz/postprocessor/LoadGlyphFactory.cpp
+    src/viz/postprocessor/DeformedShapeRenderer.h
+    src/viz/postprocessor/PostProcessorRenderer.h
+    src/viz/postprocessor/PostProcessorRenderer.cpp
 )
 
 set(APP_SOURCES

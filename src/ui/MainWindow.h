@@ -7,6 +7,7 @@
 #include <QPoint>
 #include <QVector3D>
 #include <optional>
+#include <memory>
 
 #include "SelectionModel.h"
 #include "PropertiesPanel.h"
@@ -18,6 +19,7 @@
 #include "ui/GridInsertController.h"
 #include "ui/AssignBarPropertiesDialog.h"
 #include "ui/MainWindowPresenter.h"
+#include "viz/postprocessor/PostProcessorDataTypes.h"
 
 class QAction;
 class QTabWidget;
@@ -29,6 +31,7 @@ class QCheckBox;
 class QSlider;
 class QGridLayout;
 class QLabel;
+class QComboBox;
 class MaterialDialog;
 class SectionDialog;
 class BarPropertiesDialog;
@@ -37,6 +40,7 @@ class DistributedLoadDialog;
 class RestraintDialog;
 class QHBoxLayout;
 
+
 namespace Structura {
 namespace App {
 class UndoRedoService;
@@ -44,7 +48,11 @@ class UndoRedoService;
 namespace UI {
 class MainWindowPresenter;
 }
+namespace Visualization {
+class PostProcessorRenderer;
 }
+}
+
 
 class MainWindow : public QMainWindow
 {
@@ -80,6 +88,13 @@ private slots:
     void onNodeCoordinateEdited(const QVector<QUuid> &ids, char axis, double value);
     void onBarMaterialEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &materialId);
     void onBarSectionEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &sectionId);
+    // Pós-processador
+    void onShowDiagrams();
+    void onHideDiagrams();
+    void onDiagramTypeChanged(int index);
+    void onDiagramScaleChanged(int value);
+    void onScaleModeChanged(int index);
+
 
 private:
     using Presenter = Structura::UI::MainWindowPresenter;
@@ -256,4 +271,17 @@ private:
     bool m_draggingWindow { false };
     QPoint m_dragOffset;
     std::optional<QVector3D> m_hoverInsertPoint;
+
+    // ── Pós-processador ─────────────────────────────────────────────────────
+    std::unique_ptr<Structura::Visualization::PostProcessorRenderer> m_postProcessor;
+    int m_analysisRevision{0};
+
+    // Ações da ribbon (aba Resultados)
+    QAction *m_showDiagramsAction{nullptr};
+    QAction *m_hideDiagramsAction{nullptr};
+
+    // Controles da footer bar
+    QComboBox *m_diagramCombo{nullptr};       ///< N / Vy / Vz / Mt / My / Mz
+    QSlider   *m_diagramScaleSlider{nullptr}; ///< 1..100 → 0.1..5.0
+    QComboBox *m_scaleModeCombo{nullptr};     ///< Global / Caso Atual / Selecionados
 };

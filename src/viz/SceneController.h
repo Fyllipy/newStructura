@@ -21,8 +21,9 @@
 #include "core/model/GridLine.h"
 #include "app/ISceneEditGateway.h"
 #include "app/ISceneModelGateway.h"
-#include "LoadVisualization.h"
-
+#include "viz/postprocessor/SupportGlyphFactory.h"
+#include "viz/postprocessor/LoadGlyphFactory.h"
+#include "viz/structure/StructureRenderer.h"
 class QVTKOpenGLNativeWidget;
 class vtkGenericOpenGLRenderWindow;
 class vtkRenderer;
@@ -161,8 +162,6 @@ private:
     void applyNodeColor(const QUuid &id, const unsigned char color[3]);
     void applyBarColor(int barIndex, const unsigned char color[3]);
     void updateGridColors();
-    void initializePointRendering();
-    void initializeBarRendering();
     void initializeGridRendering();
     void initializeGridGhostRendering();
     void initializeBarLcsRendering();
@@ -196,18 +195,7 @@ private:
     vtkNew<vtkRenderer> m_renderer;
     vtkSmartPointer<vtkOrientationMarkerWidget> m_orientationMarker;
 
-    vtkSmartPointer<vtkPoints> m_points;
-    vtkSmartPointer<vtkPolyData> m_pointCloud;
-    vtkSmartPointer<vtkCellArray> m_vertices;
-    vtkSmartPointer<vtkPolyDataMapper> m_pointMapper;
-    vtkSmartPointer<vtkActor> m_pointActor;
-    vtkSmartPointer<vtkUnsignedCharArray> m_pointColors;
-
-    vtkSmartPointer<vtkPolyData> m_barData;
-    vtkSmartPointer<vtkCellArray> m_barLines;
-    vtkSmartPointer<vtkPolyDataMapper> m_barMapper;
-    vtkSmartPointer<vtkActor> m_barActor;
-    vtkSmartPointer<vtkUnsignedCharArray> m_barColors;
+    std::unique_ptr<Structura::Visualization::StructureRenderer> m_structureRenderer;
 
     // Grid state
     vtkSmartPointer<vtkPolyData> m_gridData;
@@ -234,10 +222,18 @@ private:
     QVector<double> m_yCoords;
     QVector<double> m_zCoords;
 
-    // Load visualization (new clean implementation)
-    std::unique_ptr<Structura::Visualization::LoadVisualization> m_loadVisualization;
+    // Load visualization (Vector Glyphs)
     QVector<NodalLoadVisual> m_nodalLoadVisuals;
     QVector<MemberLoadVisual> m_memberLoadVisuals;
+    
+    vtkSmartPointer<vtkPolyDataMapper> m_nodalLoadMapper;
+    vtkSmartPointer<vtkActor> m_nodalLoadActor;
+    
+    vtkSmartPointer<vtkPolyDataMapper> m_distributedLoadMapper;
+    vtkSmartPointer<vtkActor> m_distributedLoadActor;
+    
+    vtkSmartPointer<vtkPolyDataMapper> m_momentMapper;
+    vtkSmartPointer<vtkActor> m_momentActor;
 
     // Support visualization
     QVector<SupportVisual> m_supportVisuals;
@@ -260,8 +256,6 @@ private:
     vtkSmartPointer<vtkCellPicker> m_barPicker;
 
     std::vector<Node> m_nodes;
-    std::vector<vtkIdType> m_nodePointIds;
-    std::vector<QUuid> m_pointIdToNodeId;
     QHash<QUuid, int> m_nodeIndexById;
 
     std::vector<Bar> m_bars;
@@ -270,11 +264,7 @@ private:
     QUuid m_highlightNodeId;
     QSet<QUuid> m_selectedNodeIds;
     QSet<QUuid> m_selectedBarIds;
-    unsigned char m_defaultNodeColor[3] {228, 74, 25};
-    unsigned char m_selectedNodeColor[3] {30, 126, 255};
-    unsigned char m_hoverNodeColor[3] {255, 198, 30};
-    unsigned char m_defaultBarColor[3] {71, 82, 102};
-    unsigned char m_selectedBarColor[3] {255, 198, 30};
+    
     unsigned char m_defaultGridColor[3] {140, 153, 173};
     unsigned char m_highlightGridColor[3] {255, 198, 30};
 
