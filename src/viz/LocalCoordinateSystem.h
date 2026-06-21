@@ -123,13 +123,6 @@ private:
     std::array<double, 3> selectAuxiliaryVector(const std::array<double, 3> &xPrime) const;
     
     double m_parallelEps; // Tolerance for parallel vector detection
-    
-    // Fallback auxiliary vectors to try in order
-    static constexpr std::array<std::array<double, 3>, 3> s_fallbackVectors = {{
-        {1.0, 0.0, 0.0},  // Global X
-        {0.0, 1.0, 0.0},  // Global Y
-        {0.0, 0.0, 1.0}   // Global Z
-    }};
 };
 
 } // namespace Structura::Geometry

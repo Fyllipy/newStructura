@@ -122,16 +122,11 @@ bool DefaultLocalAxisProvider::areParallel(const std::array<double, 3> &a,
 std::array<double, 3> DefaultLocalAxisProvider::selectAuxiliaryVector(
     const std::array<double, 3> &xPrime) const
 {
-    // Try each fallback vector in order until we find one that's not parallel
-    for (const auto &fallback : s_fallbackVectors) {
-        if (!areParallel(xPrime, fallback)) {
-            return fallback;
-        }
+    if (std::abs(xPrime[2]) > 1.0 - m_parallelEps) {
+        return {-1.0, 0.0, 0.0};
+    } else {
+        return {0.0, 0.0, 1.0};
     }
-    
-    // This should never happen with the three cardinal directions,
-    // but return a safe default just in case
-    return {0.0, 1.0, 0.0};
 }
 
 } // namespace Structura::Geometry
