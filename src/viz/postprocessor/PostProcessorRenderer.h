@@ -8,7 +8,6 @@
 #include "DiagramGeometryCache.h"
 #include "DeformedShapeRenderer.h"
 #include "SupportGlyphFactory.h"
-#include "LoadGlyphFactory.h"
 
 #include <vtkSmartPointer.h>
 

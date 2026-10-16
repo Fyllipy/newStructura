@@ -1,11 +1,8 @@
 #include "MainWindow.h"
 
-#include "CoordinateDialog.h"
-#include "GridDialog.h"
 #include "viz/SceneController.h"
 #include "app/UndoRedoService.h"
 #include "app/services/IdGeneratorService.h"
-#include "ui/GridInsertController.h"
 #include "ui/PropertiesPanelEntryBuilder.h"
 #include "ui/MainWindowPresenter.h"
 
@@ -40,6 +37,14 @@
 #include <vtkRenderer.h>
 
 #include "viz/postprocessor/PostProcessorRenderer.h"
+#include "PlacementController.h"
+#include "SvgIcons.h"
+#include "ProfileLibrary.h"
+#include "app/services/MaterialLibrary.h"
+#include "app/services/UserLibrary.h"
+#include "AxesPanel.h"
+#include "SectionPlacementPanel.h"
+#include "PlacementOverlay.h"
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -55,6 +60,10 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::CustomizeWindowHint);
     setMouseTracking(true);
     setWindowTitle(tr("Structura 3D"));
+
+    // Banco de dados do programa: perfis e materiais salvos pelo usuario
+    Structura::UI::ProfileLibrary::setUserProfiles(Structura::App::Services::UserLibrary::loadProfiles());
+    Structura::App::Services::MaterialLibrary::setUserEntries(Structura::App::Services::UserLibrary::loadMaterials());
 
     m_undoAction = m_undoService->createUndoAction(this, tr("Desfazer"));
     m_undoAction->setShortcut(QKeySequence::Undo);
@@ -79,18 +88,11 @@ MainWindow::MainWindow(QWidget *parent)
     presenterDeps.memberLoads = &m_memberLoads;
     presenterDeps.lastNodalPreset = &m_lastNodalPreset;
     presenterDeps.lastDistributedPreset = &m_lastDistributedPreset;
+    presenterDeps.expandIds = [this](const QVector<QUuid> &ids) { return expandWithGroups(ids); };
     m_presenter = new Structura::UI::MainWindowPresenter(presenterDeps, this);
 
-    m_insertNodeCoordinatesAction = new QAction(tr("Inserir\nno (Coordenadas)"), this);
-    m_insertNodeCoordinatesAction->setIcon(style()->standardIcon(QStyle::SP_DialogYesButton));
-    connect(m_insertNodeCoordinatesAction, &QAction::triggered, this, &MainWindow::onInsertNodeByCoordinates);
-
-    m_insertNodeScreenAction = new QAction(tr("Inserir\nno (Tela)"), this);
-    m_insertNodeScreenAction->setIcon(QIcon(QStringLiteral(":/icons/addNode.png")));
-    connect(m_insertNodeScreenAction, &QAction::triggered, this, &MainWindow::onStartScreenInsert);
-
     m_insertBarAction = new QAction(tr("Inserir\nbarra"), this);
-    m_insertBarAction->setIcon(QIcon(QStringLiteral(":/icons/addBar.png")));
+    m_insertBarAction->setIcon(Structura::UI::svgIcon(QStringLiteral("bar-insert.svg"), QColor(QStringLiteral("#1e232b")), 64));
     connect(m_insertBarAction, &QAction::triggered, this, &MainWindow::onInsertBar);
 
     m_openModelAction = new QAction(tr("Abrir .dat"), this);
@@ -108,40 +110,75 @@ MainWindow::MainWindow(QWidget *parent)
     m_runAnalysisAction->setShortcut(Qt::Key_F5);
     connect(m_runAnalysisAction, &QAction::triggered, this, &MainWindow::onRunStructuralAnalysis);
 
-    m_generateGridAction = new QAction(tr("Gerar grid"), this);
-    m_generateGridAction->setIcon(QIcon(QStringLiteral(":/icons/genGrid.png")));
-    connect(m_generateGridAction, &QAction::triggered, this, &MainWindow::onGenerateGrid);
-
-    m_addGridLineXAction = new QAction(tr("Adicionar\nlinha X"), this);
-    m_addGridLineXAction->setIcon(style()->standardIcon(QStyle::SP_ArrowRight));
-    connect(m_addGridLineXAction, &QAction::triggered, this, &MainWindow::onAddGridLineX);
-
-    m_addGridLineYAction = new QAction(tr("Adicionar\nlinha Y"), this);
-    m_addGridLineYAction->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
-    connect(m_addGridLineYAction, &QAction::triggered, this, &MainWindow::onAddGridLineY);
-
-    m_addGridLineZAction = new QAction(tr("Adicionar\nlinha Z"), this);
-    m_addGridLineZAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
-    connect(m_addGridLineZAction, &QAction::triggered, this, &MainWindow::onAddGridLineZ);
-
-    m_deleteGridLineAction = new QAction(tr("Deletar\nlinha de grid"), this);
-    m_deleteGridLineAction->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
-    connect(m_deleteGridLineAction, &QAction::triggered, this, &MainWindow::onDeleteGridLine);
-
     m_applyNodalLoadAction = new QAction(tr("Forca\nconcentrada (nos)"), this);
-    m_applyNodalLoadAction->setIcon(style()->standardIcon(QStyle::SP_ArrowUp));
+    m_applyNodalLoadAction->setIcon(Structura::UI::svgIcon(QStringLiteral("force-point.svg"), QColor(QStringLiteral("#1e232b")), 64));
     connect(m_applyNodalLoadAction, &QAction::triggered, this, &MainWindow::onApplyNodalLoad);
 
     m_applyDistributedLoadAction = new QAction(tr("Distribuida\n(barras)"), this);
-    m_applyDistributedLoadAction->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
+    m_applyDistributedLoadAction->setIcon(Structura::UI::svgIcon(QStringLiteral("force-distributed.svg"), QColor(QStringLiteral("#1e232b")), 64));
     connect(m_applyDistributedLoadAction, &QAction::triggered, this, &MainWindow::onApplyDistributedLoad);
 
+    m_copyElementsAction = new QAction(tr("Copiar\nelementos"), this);
+    m_copyElementsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("copy.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_copyElementsAction->setEnabled(false);
+    connect(m_copyElementsAction, &QAction::triggered, this, &MainWindow::onCopyElements);
+
+    m_moveElementsAction = new QAction(tr("Mover\nelementos"), this);
+    m_moveElementsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("move.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_moveElementsAction->setEnabled(false);
+    connect(m_moveElementsAction, &QAction::triggered, this, &MainWindow::onMoveElements);
+
+    auto makeEditAction = [this](const QString &text, const QString &icon, void (MainWindow::*slot)()) {
+        auto *action = new QAction(text, this);
+        action->setIcon(Structura::UI::svgIcon(icon, QColor(QStringLiteral("#1e232b")), 64));
+        action->setEnabled(false);
+        connect(action, &QAction::triggered, this, slot);
+        return action;
+    };
+    m_serialCopyAction = makeEditAction(tr("Copia em\nserie"), QStringLiteral("serial.svg"), &MainWindow::onSerialCopy);
+    m_rotateElementsAction = makeEditAction(tr("Rotacionar\nelementos"), QStringLiteral("rotate.svg"), &MainWindow::onRotateElements);
+    m_mirrorElementsAction = makeEditAction(tr("Espelhar\nelementos"), QStringLiteral("mirror.svg"), &MainWindow::onMirrorElements);
+
+    m_applyMemberMomentAction = new QAction(tr("Momento\ndistribuido"), this);
+    m_applyMemberMomentAction->setIcon(Structura::UI::svgIcon(QStringLiteral("bar-moment.svg"),
+                                                              QColor(QStringLiteral("#1e232b")), 64));
+    connect(m_applyMemberMomentAction, &QAction::triggered, this, &MainWindow::onApplyMemberMoment);
+
+    m_loadCasesAction = new QAction(tr("Casos e\ncombinacoes"), this);
+    m_loadCasesAction->setIcon(Structura::UI::svgIcon(QStringLiteral("cases.svg"),
+                                                      QColor(QStringLiteral("#1e232b")), 64));
+    connect(m_loadCasesAction, &QAction::triggered, this, &MainWindow::onEditLoadCases);
+    m_genCombinationsAction = new QAction(tr("Gerar\ncombinacoes"), this);
+    m_genCombinationsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("combinations.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_genCombinationsAction->setToolTip(tr("Gera automaticamente as combinações ELU e ELS (NBR 8681 / NBR 8800) a partir dos casos de carga"));
+    connect(m_genCombinationsAction, &QAction::triggered, this, &MainWindow::onGenerateCombinations);
+    m_bucklingAction = new QAction(tr("Flambagem\nelastica"), this);
+    m_bucklingAction->setIcon(Structura::UI::svgIcon(QStringLiteral("buckling.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_bucklingAction->setToolTip(tr("Fatores críticos de carga e modos de flambagem elástica linear de uma combinação"));
+    connect(m_bucklingAction, &QAction::triggered, this, &MainWindow::onBucklingAnalysis);
+    m_modalAction = new QAction(tr("Analise\nmodal"), this);
+    m_modalAction->setIcon(Structura::UI::svgIcon(QStringLiteral("modal.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_modalAction->setToolTip(tr("Frequências naturais, períodos, participação de massa e formas modais"));
+    connect(m_modalAction, &QAction::triggered, this, &MainWindow::onModalAnalysis);
+    m_connectionsAction = new QAction(tr("Ligacoes"), this);
+    m_connectionsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("connection.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_connectionsAction->setToolTip(tr("Verifica grupos de parafusos e filetes de solda (NBR 8800:2024, 6.2 e 6.3), com esforços da barra selecionada"));
+    connect(m_connectionsAction, &QAction::triggered, this, &MainWindow::onCheckConnections);
+    m_quantitiesAction = new QAction(tr("Quantitativos"), this);
+    m_quantitiesAction->setIcon(Structura::UI::svgIcon(QStringLiteral("quantities.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_quantitiesAction->setToolTip(tr("Lista de materiais por perfil: comprimento, massa e área de pintura"));
+    connect(m_quantitiesAction, &QAction::triggered, this, &MainWindow::onShowQuantities);
+    m_exportDxfAction = new QAction(tr("Exportar\nDXF"), this);
+    m_exportDxfAction->setIcon(Structura::UI::svgIcon(QStringLiteral("dxf.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_exportDxfAction->setToolTip(tr("Exporta os eixos das barras em DXF (3D, planta ou elevações), uma camada por perfil"));
+    connect(m_exportDxfAction, &QAction::triggered, this, &MainWindow::onExportDxf);
+
     m_applyRestraintsAction = new QAction(tr("Restricoes\nnodais"), this);
-    m_applyRestraintsAction->setIcon(style()->standardIcon(QStyle::SP_DialogNoButton));
+    m_applyRestraintsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("restraint.svg"), QColor(QStringLiteral("#1e232b")), 64));
     connect(m_applyRestraintsAction, &QAction::triggered, this, &MainWindow::onApplyRestraints);
 
     m_createMaterialAction = new QAction(tr("Novo\nmaterial"), this);
-    m_createMaterialAction->setIcon(QIcon(QStringLiteral(":/icons/addMaterial.png")));
+    m_createMaterialAction->setIcon(Structura::UI::svgIcon(QStringLiteral("material-new.svg"), QColor(QStringLiteral("#1e232b")), 64));
     connect(m_createMaterialAction, &QAction::triggered, this, &MainWindow::onCreateMaterial);
 
     m_createSectionAction = new QAction(tr("Nova\nsecao"), this);
@@ -159,6 +196,22 @@ MainWindow::MainWindow(QWidget *parent)
     m_zoomExtentsAction = new QAction(tr("Zoom\nextents"), this);
     m_zoomExtentsAction->setIcon(QIcon(QStringLiteral(":/icons/zoomExtents.png")));
     connect(m_zoomExtentsAction, &QAction::triggered, this, &MainWindow::onZoomExtents);
+
+    m_profileManagerAction = new QAction(tr("Gerenciador\nde perfis"), this);
+    m_profileManagerAction->setIcon(Structura::UI::svgIcon(QStringLiteral("section.svg"),
+                                                           QColor(QStringLiteral("#0d7fb9")), 64));
+    connect(m_profileManagerAction, &QAction::triggered, this, &MainWindow::onOpenProfileManager);
+
+    m_axesAction = new QAction(tr("Eixos de\nreferencia"), this);
+    m_axesAction->setIcon(Structura::UI::svgIcon(QStringLiteral("axes-config.svg"),
+                                                  QColor(QStringLiteral("#0d7fb9")), 64));
+    connect(m_axesAction, &QAction::triggered, this, &MainWindow::onToggleAxesPanel);
+
+    m_placementAction = new QAction(tr("Posicionar\nseção"), this);
+    m_placementAction->setIcon(Structura::UI::svgIcon(QStringLiteral("section-place.svg"),
+                                                      QColor(QStringLiteral("#0d7fb9")), 64));
+    m_placementAction->setToolTip(tr("Posicionar a seção em relação ao nó: giro, ponto de referência, excentricidade e articulações"));
+    connect(m_placementAction, &QAction::triggered, this, &MainWindow::onTogglePlacementPanel);
 
     addAction(m_openModelAction);
     addAction(m_saveModelAction);
@@ -215,15 +268,20 @@ MainWindow::MainWindow(QWidget *parent)
                 refreshPropertiesPanel();
                 updateStatus();
                 updateLoadActionsEnabled();
+                updateEditActionsEnabled();
             });
     connect(m_undoService->stack(), &QUndoStack::indexChanged, this, [this](int) {
         refreshPropertiesPanel();
+        syncLoadVisuals();
+        syncSupportVisuals();
+        syncPlacementVisuals();
     });
 
     // Handle screen-click events during insertion
     m_vtkWidget->installEventFilter(this);
 
     setupFooterBar();
+    setupPlacement();
 
     setCommand(Command::None);
 
@@ -304,7 +362,27 @@ void MainWindow::setupRightToolColumn()
     m_showBarLCSToolButton->setCursor(Qt::PointingHandCursor);
     m_showBarLCSToolButton->setToolTip(tr("Mostrar Eixos Locais (LCS)"));
     layout->addWidget(m_showBarLCSToolButton, 0, Qt::AlignHCenter);
-    
+
+    auto addShortcut = [&](const QString &icon, const QString &tip, std::function<void()> handler) {
+        auto *button = new QToolButton(m_toolColumn);
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setIcon(Structura::UI::svgIcon(icon, QColor(QStringLiteral("#1e232b")), 64));
+        button->setIconSize(QSize(26, 26));
+        button->setAutoRaise(false);
+        button->setFixedSize(36, 36);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setToolTip(tip);
+        layout->addWidget(button, 0, Qt::AlignHCenter);
+        connect(button, &QToolButton::clicked, this, [handler]() { handler(); });
+        return button;
+    };
+    addShortcut(QStringLiteral("groups.svg"), tr("Painel de grupos"), [this]() { onToggleGroupsPanel(); });
+    addShortcut(QStringLiteral("axes-config.svg"), tr("Eixos de referência"), [this]() {
+        if (m_axesAction) {
+            m_axesAction->trigger();
+        }
+    });
+
     layout->addStretch(1);
 
     connect(m_propertiesToolButton, &QToolButton::toggled, this, [this](bool checked) {
@@ -364,38 +442,8 @@ QVector<PropertiesPanel::BarEntry> MainWindow::buildBarEntries(const QSet<QUuid>
                                                                         m_sections,
                                                                         m_memberLoads,
                                                                         tr("Sem material"),
-                                                                        tr("Sem secao"));
-}
-
-bool MainWindow::computeWorldPointForInsert(const QPoint &widgetPos,
-                                            double &x,
-                                            double &y,
-                                            double &z,
-                                            bool applySnap) const
-{
-    if (!m_sceneController) {
-        return false;
-    }
-    const int viewportHeight = m_sceneController->viewportHeight();
-    if (viewportHeight <= 0) {
-        return false;
-    }
-    const int displayX = widgetPos.x();
-    const int displayY = viewportHeight - 1 - widgetPos.y();
-    bool ok = m_sceneController->worldPointOnViewPlane(displayX, displayY, x, y, z);
-    if (!ok) {
-        ok = m_sceneController->pickWorldPoint(displayX, displayY, x, y, z);
-    }
-    if (!ok) {
-        ok = m_sceneController->worldPointOnPlaneZ0(displayX, displayY, x, y, z);
-    }
-    if (!ok) {
-        return false;
-    }
-    if (applySnap && m_snapCheck && m_snapCheck->isChecked() && m_sceneController->hasGrid()) {
-        m_sceneController->snapToGrid(x, y, z);
-    }
-    return true;
+                                                                        tr("Sem secao"),
+                                                                        m_extras.placements);
 }
 
 void MainWindow::setHoverInsertPoint(const std::optional<QVector3D> &point)
@@ -420,13 +468,6 @@ void MainWindow::setHoverInsertPoint(const std::optional<QVector3D> &point)
 
     m_hoverInsertPoint = point;
     updateStatus();
-}
-
-bool MainWindow::isGridInsertCommand(Command command) const
-{
-    return command == Command::AddGridLineX
-        || command == Command::AddGridLineY
-        || command == Command::AddGridLineZ;
 }
 
 int MainWindow::nextMaterialExternalId() const
@@ -462,51 +503,38 @@ void MainWindow::setCommand(Command command)
 
     const bool wasBarMode = (m_command == Command::InsertBarFirst || m_command == Command::InsertBarSecond);
     const bool willBeBarMode = (command == Command::InsertBarFirst || command == Command::InsertBarSecond);
-    const bool wasGridInsert = isGridInsertCommand(m_command);
-    const bool willBeGridInsert = isGridInsertCommand(command);
-    const bool wasGridDelete = (m_command == Command::DeleteGridLine);
-    const bool willBeGridDelete = (command == Command::DeleteGridLine);
+    const bool willBeEditMode = (command == Command::CopyElements || command == Command::MoveElements
+                                 || command == Command::RotateElements || command == Command::MirrorElements);
 
     if (wasBarMode && !willBeBarMode) {
         m_sceneController->clearHighlightedNode();
         m_firstBarNodeId = QUuid();
     }
 
-    if (wasGridInsert && !willBeGridInsert) {
-        cancelGridInsert();
-    }
-
-    if (wasGridDelete && !willBeGridDelete) {
-        hideGridDeleteTooltip();
-        if (m_sceneController) {
-            m_sceneController->clearHighlightedGridLine();
-        }
-        m_pendingDeleteLineId = QUuid();
-    }
-
     m_command = command;
+
+    if (m_placement) {
+        if (willBeBarMode) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Bar);
+        } else if (command == Command::CopyElements) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Copy);
+        } else if (command == Command::MoveElements) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Move);
+        } else if (command == Command::RotateElements) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Rotate);
+        } else if (command == Command::MirrorElements) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Mirror);
+        } else {
+            m_placement->stop();
+        }
+    }
 
     if (!willBeBarMode) {
         m_sceneController->clearHighlightedNode();
         m_firstBarNodeId = QUuid();
     }
 
-    if (willBeGridInsert) {
-        beginGridInsert(commandToAxis(command));
-    } else if (!willBeGridInsert) {
-        m_gridInsertState.active = false;
-    }
-
-    if (willBeGridDelete) {
-        hideGridDeleteTooltip();
-        if (m_sceneController) {
-            m_sceneController->hideGridGhostLine();
-            m_sceneController->clearHighlightedGridLine();
-        }
-        m_pendingDeleteLineId = QUuid();
-    }
-
-    if (command != Command::InsertNode) {
+    if (!willBeBarMode && !willBeEditMode) {
         m_hoverInsertPoint.reset();
     }
 
@@ -539,7 +567,11 @@ void MainWindow::onBarSectionEdited(const QVector<QUuid> &ids, const std::option
         return;
     }
 
-    m_presenter->handleBarSectionEdited(ids, sectionId);
+    std::optional<QUuid> resolved = sectionId;
+    if (sectionId) {
+        resolved = resolveSectionId(*sectionId);
+    }
+    m_presenter->handleBarSectionEdited(ids, resolved);
     refreshPropertiesPanel();
 }
 

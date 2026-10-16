@@ -1,5 +1,7 @@
 #include "NodalLoadDialog.h"
 
+#include <QComboBox>
+
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -45,6 +47,8 @@ NodalLoadDialog::NodalLoadDialog(QWidget *parent)
     m_mySpin = createSpin();
     m_mzSpin = createSpin();
 
+    m_caseCombo = new QComboBox(this);
+    formLayout->addRow(tr("Caso de carga"), m_caseCombo);
     formLayout->addRow(tr("Fx (kN)"), m_fxSpin);
     formLayout->addRow(tr("Fy (kN)"), m_fySpin);
     formLayout->addRow(tr("Fz (kN)"), m_fzSpin);
@@ -83,6 +87,19 @@ NodalLoadDialog::Values NodalLoadDialog::values() const
     if (m_mySpin) result.my = m_mySpin->value();
     if (m_mzSpin) result.mz = m_mzSpin->value();
     return result;
+}
+
+void NodalLoadDialog::setLoadCases(const QStringList &names, const QString &current)
+{
+    m_caseCombo->clear();
+    m_caseCombo->addItems(names);
+    const int index = m_caseCombo->findText(current);
+    m_caseCombo->setCurrentIndex(index >= 0 ? index : 0);
+}
+
+QString NodalLoadDialog::loadCase() const
+{
+    return m_caseCombo->currentText();
 }
 
 void NodalLoadDialog::setSelectedCount(int count)

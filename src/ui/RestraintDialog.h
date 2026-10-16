@@ -45,9 +45,10 @@ public:
 
 private:
     void setupUI();
-    void createDOFGroup(const QString &title, int startIndex);
+    void updateKindLabel();
 
     std::array<QCheckBox *, 6> m_restraintChecks;
     QLabel *m_infoLabel;
+    QLabel *m_kindLabel {nullptr};
     bool m_mixedState {false};
 };

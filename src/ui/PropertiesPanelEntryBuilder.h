@@ -31,7 +31,8 @@ public:
                                                               const QVector<SectionInfo> &sections,
                                                               const QVector<MemberLoad> &memberLoads,
                                                               const QString &noMaterialLabel,
-                                                              const QString &noSectionLabel);
+                                                              const QString &noSectionLabel,
+                                                              const QVector<Structura::App::ProjectData::MemberPlacement> &placements = {});
 };
 
 } // namespace Structura::UI

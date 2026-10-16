@@ -1,14 +1,23 @@
 #include "MainWindow.h"
 
 #include "TemporaryAnalysisResultsDialog.h"
+#include "ModelCheckDialog.h"
 #include "app/SolverBridge.h"
 #include "app/services/AnalysisService.h"
+#include "app/services/CombinationService.h"
+#include "ViewOptionsBar.h"
 #include "app/services/DatModelIoService.h"
+#include "app/services/DesignService.h"
+#include "app/services/ResultsPersistence.h"
+#include "DesignRunData.h"
 #include "viz/SceneController.h"
 #include "viz/LocalCoordinateSystem.h"
 #include "viz/postprocessor/PostProcessorRenderer.h"
+#include "viz/construction/ConstructionScene.h"
+#include "AxesPanel.h"
 
 #include <QComboBox>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QSlider>
 #include <QStatusBar>
@@ -17,12 +26,15 @@
 
 // ── feedPostProcessor ────────────────────────────────────────────────────────
 // Converte resultados do solver em BeamElementResults para o pós-processador.
+// `terms` lista (modelo do caso, fator): as cargas de cada caso entram no
+// reconstrutor de esforços internos ponderadas pelo fator da combinação.
 
 static void feedPostProcessor(
     MainWindow* window,
     Structura::Visualization::PostProcessorRenderer* pp,
-    const Structura::App::SolverBridge::ModelData& model,
+    const Structura::App::SolverBridge::ModelData& geometry,
     const Structura::App::SolverBridge::Result& result,
+    const std::vector<std::pair<const Structura::App::SolverBridge::ModelData*, double>>& terms,
     int analysisRevision,
     QComboBox* diagramCombo,
     QSlider* diagramScaleSlider,
@@ -30,21 +42,43 @@ static void feedPostProcessor(
     QAction* showDiagramsAction,
     QAction* hideDiagramsAction)
 {
-    // Mapa rápido: memberId → cargas distribuídas
-    std::unordered_map<int, Structura::App::SolverBridge::MemberLoadData> loadMap;
-    for (const auto& ml : model.memberLoads) {
-        loadMap[ml.memberId] = ml;
+    // Cargas distribuídas e momentos por barra (todos os casos do termo, ponderados)
+    std::unordered_multimap<int, Structura::Visualization::UniformDistributedLoad> loadMap;
+    std::unordered_multimap<int, Structura::Visualization::UniformDistributedMoment> momentMap;
+    for (const auto& term : terms) {
+        if (!term.first) {
+            continue;
+        }
+        const double factor = term.second;
+        for (const auto& ml : term.first->memberLoads) {
+            Structura::Visualization::UniformDistributedLoad udl;
+            udl.qx = ml.qx * factor;
+            udl.qy = ml.qy * factor;
+            udl.qz = ml.qz * factor;
+            udl.isLocalSystem =
+                (ml.coordSystem == Structura::App::SolverBridge::MemberLoadCoordSystem::Local);
+            loadMap.emplace(ml.memberId, udl);
+        }
+        for (const auto& mm : term.first->memberMoments) {
+            Structura::Visualization::UniformDistributedMoment udm;
+            udm.mx = mm.mx * factor;
+            udm.my = mm.my * factor;
+            udm.mz = mm.mz * factor;
+            udm.isLocalSystem =
+                (mm.coordSystem == Structura::App::SolverBridge::MemberLoadCoordSystem::Local);
+            momentMap.emplace(mm.memberId, udm);
+        }
     }
 
     // Mapa rápido: nodeId → coordenadas
     std::unordered_map<int, std::array<double, 3>> nodeMap;
-    for (const auto& nd : model.nodes) {
+    for (const auto& nd : geometry.nodes) {
         nodeMap[nd.id] = {nd.x, nd.y, nd.z};
     }
 
     // Mapa rápido: memberId → MemberData (para nodeI/nodeJ)
     std::unordered_map<int, Structura::App::SolverBridge::MemberData> memberMap;
-    for (const auto& mb : model.members) {
+    for (const auto& mb : geometry.members) {
         memberMap[mb.id] = mb;
     }
 
@@ -104,6 +138,14 @@ static void feedPostProcessor(
             ber.zLocal = lcs.zPrime;
         }
 
+        // Excentricidade da secao: os esforcos atuam no eixo da barra (centroide), deslocado do no.
+        if (mb.offsetY1 != 0.0 || mb.offsetZ1 != 0.0 || mb.offsetY2 != 0.0 || mb.offsetZ2 != 0.0) {
+            for (std::size_t k = 0; k < 3; ++k) {
+                ber.node1[k] += mb.offsetY1 * ber.yLocal[k] + mb.offsetZ1 * ber.zLocal[k];
+                ber.node2[k] += mb.offsetY2 * ber.yLocal[k] + mb.offsetZ2 * ber.zLocal[k];
+            }
+        }
+
         // Esforços internos nodais mapeados para a convenção estrutural PURA:
         // Nó I (face negativa) = -lf, Nó J (face positiva) = +lf para TODOS os eixos.
         // A inversão visual de Ftool (tração na fibra) é feita exclusivamente no DiagramMeshBuilder.
@@ -113,17 +155,13 @@ static void feedPostProcessor(
              lf[6],  lf[7],  lf[8],  lf[9],  lf[10], lf[11]   // nó j (N, Vy, Vz, Mt, My, Mz)
         };
 
-        // Carga distribuída (se existir para este elemento)
-        const auto loadIt = loadMap.find(mr.memberId);
-        if (loadIt != loadMap.end()) {
-            const auto& ml = loadIt->second;
-            Structura::Visualization::UniformDistributedLoad udl;
-            udl.qx = ml.qx;
-            udl.qy = ml.qy;
-            udl.qz = ml.qz;
-            udl.isLocalSystem =
-                (ml.coordSystem == Structura::App::SolverBridge::MemberLoadCoordSystem::Local);
-            ber.distributedLoads.push_back(udl);
+        const auto loadRange = loadMap.equal_range(mr.memberId);
+        for (auto it = loadRange.first; it != loadRange.second; ++it) {
+            ber.distributedLoads.push_back(it->second);
+        }
+        const auto momentRange = momentMap.equal_range(mr.memberId);
+        for (auto it = momentRange.first; it != momentRange.second; ++it) {
+            ber.distributedMoments.push_back(it->second);
         }
 
         postResults.push_back(std::move(ber));
@@ -142,12 +180,150 @@ static void feedPostProcessor(
     (void)window; // futuro uso
 }
 
+// ── showResultView ───────────────────────────────────────────────────────────
+// Alimenta o pós-processador com uma combinação (ou caso) já calculada.
+
+void MainWindow::showResultView(int index)
+{
+    if (index < 0 || index >= m_resultViews.size() || !m_postProcessor || m_caseRuns.isEmpty()) {
+        return;
+    }
+    const ResultView &view = m_resultViews.at(index);
+
+    std::vector<std::pair<const Structura::App::SolverBridge::ModelData*, double>> terms;
+    for (const auto& term : view.terms) {
+        const auto runIt = m_caseRuns.constFind(term.first);
+        if (runIt != m_caseRuns.constEnd()) {
+            terms.emplace_back(&runIt->model, term.second);
+        }
+    }
+    if (terms.empty()) {
+        return;
+    }
+
+    ++m_analysisRevision;
+    feedPostProcessor(this,
+                      m_postProcessor.get(),
+                      *terms.front().first,
+                      view.result,
+                      terms,
+                      m_analysisRevision,
+                      m_diagramCombo,
+                      m_diagramScaleSlider,
+                      m_scaleModeCombo,
+                      m_showDiagramsAction,
+                      m_hideDiagramsAction);
+    if (m_postProcessor->isActive() && m_diagramCombo) {
+        onDiagramTypeChanged(m_diagramCombo->currentIndex());
+    }
+}
+
 // ── onRunStructuralAnalysis ───────────────────────────────────────────────────
 
 void MainWindow::onRunStructuralAnalysis()
 {
-    if (!m_sceneController) {
+    if (m_sceneController) {
+        const auto issues = checkModel();
+        const int errors = Structura::App::Services::ModelCheckService::count(issues, Structura::App::Services::ModelCheckService::Severity::Error);
+        if (errors > 0) {
+            Structura::UI::ModelCheckDialog dialog(issues, true, this);
+            connect(&dialog, &Structura::UI::ModelCheckDialog::focusRequested, this,
+                    [this](Structura::App::Services::ModelCheckService::TargetKind kind, int id) { focusCheckTarget(static_cast<int>(kind), id); });
+            if (dialog.exec() != QDialog::Accepted) {
+                return;
+            }
+        } else if (!issues.isEmpty()) {
+            showStatusMessage(tr("Checagem do modelo: %1 aviso(s)/informação(ões) (Ferramentas > Checar modelo).").arg(issues.size()), 6000);
+        }
+    }
+    QString report;
+    if (!executeAnalysis(&report)) {
         return;
+    }
+    Structura::UI::TemporaryAnalysisResultsDialog dialog(report, this);
+    dialog.exec();
+
+    // ── Integração com o pós-processador ──────────────────────────────────
+    if (m_postProcessor) {
+        showResultView(m_viewOptionsBar ? std::max(0, m_viewOptionsBar->currentResultView()) : 0);
+    }
+}
+
+namespace {
+
+/// Modelo de segunda ordem de uma combinacao (cargas dos casos ponderadas; rigidez reduzida nas combinacoes ultimas).
+bool buildSecondOrderModel(const Structura::App::ProjectData::LoadCombination &combination,
+                           const QMap<QString, Structura::App::SolverBridge::ModelData> &caseModels, double stiffnessReduction,
+                           Structura::App::SolverBridge::ModelData &out)
+{
+    using Structura::App::Services::CombinationService;
+    std::vector<std::pair<const Structura::App::SolverBridge::ModelData *, double>> terms;
+    for (const auto &term : combination.factors) {
+        const auto it = caseModels.constFind(term.first);
+        if (it != caseModels.constEnd()) {
+            terms.emplace_back(&it.value(), term.second);
+        }
+    }
+    if (terms.empty()) {
+        return false;
+    }
+    out = CombinationService::mergeModels(terms);
+    out.secondOrder = true;
+    if (!combination.name.startsWith(QLatin1String("ELS"), Qt::CaseInsensitive)) {
+        for (auto &material : out.materials) {
+            material.e *= stiffnessReduction;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+void MainWindow::rebuildResultViews()
+{
+    using Structura::App::Services::CombinationService;
+    const auto cases = CombinationService::effectiveCases(m_extras);
+    const auto combinations = CombinationService::effectiveCombinations(m_extras);
+    m_resultViews.clear();
+    for (const auto& combination : combinations) {
+        ResultView view;
+        view.name = combination.name;
+        view.isCombination = true;
+        std::vector<CombinationService::Term> terms;
+        for (const auto& term : combination.factors) {
+            const auto runIt = m_caseRuns.constFind(term.first);
+            if (runIt == m_caseRuns.constEnd()) {
+                continue;
+            }
+            terms.push_back({&runIt->result, term.second});
+            view.terms.emplace_back(term.first, term.second);
+        }
+        if (terms.empty()) {
+            continue;
+        }
+        view.result = CombinationService::combine(terms);
+        const auto secondOrderRun = m_caseRuns.constFind(QStringLiteral("COMB:") + combination.name);
+        if (secondOrderRun != m_caseRuns.constEnd()) {
+            view.result = secondOrderRun->result;
+            view.terms.clear();
+            view.terms.emplace_back(QStringLiteral("COMB:") + combination.name, 1.0);
+        }
+        m_resultViews.append(std::move(view));
+    }
+    for (const auto& loadCase : cases) {
+        ResultView view;
+        view.name = loadCase.name;
+        view.isCombination = false;
+        view.result = m_caseRuns.value(loadCase.name).result;
+        view.terms.emplace_back(loadCase.name, 1.0);
+        m_resultViews.append(std::move(view));
+    }
+}
+
+bool MainWindow::executeAnalysis(QString *reportOut)
+{
+    if (!m_sceneController) {
+        return false;
     }
 
     auto bars = m_sceneController->bars();
@@ -155,71 +331,223 @@ void MainWindow::onRunStructuralAnalysis()
 
     if (nodes.empty()) {
         QMessageBox::information(this, tr("Analise estrutural"), tr("Nao ha nos no modelo para analisar."));
-        return;
+        return false;
     }
     if (bars.empty()) {
         QMessageBox::information(this, tr("Analise estrutural"), tr("Nao ha barras no modelo para analisar."));
-        return;
+        return false;
     }
     if (m_materials.isEmpty()) {
         QMessageBox::warning(this, tr("Analise estrutural"), tr("Cadastre ao menos um material antes de rodar a analise."));
-        return;
+        return false;
     }
     if (m_sections.isEmpty()) {
         QMessageBox::warning(this, tr("Analise estrutural"), tr("Cadastre ao menos uma secao antes de rodar a analise."));
-        return;
+        return false;
     }
 
+    using Structura::App::Services::CombinationService;
     Structura::App::Services::AnalysisService analysisService;
-    auto buildResult = analysisService.buildModel(m_sceneController,
-                                                  m_materials,
-                                                  m_sections,
-                                                  m_supports,
-                                                  m_nodalLoads,
-                                                  m_memberLoads);
 
-    if (!buildResult.success) {
-        QMessageBox::warning(this,
-                             tr("Analise estrutural"),
-                             tr("Nao foi possivel montar o modelo para o solver:\n%1").arg(buildResult.errors.join(QLatin1Char('\n'))));
-        return;
-    }
+    // Cada caso de carga e resolvido separadamente (o solver e linear); as
+    // combinacoes sao somas ponderadas dos resultados dos casos.
+    const auto cases = CombinationService::effectiveCases(m_extras);
+    const auto combinations = CombinationService::effectiveCombinations(m_extras);
 
+    QMap<QString, CaseRun> runs;
     try {
         Structura::App::SolverBridge solver;
-        const auto result = solver.solve(buildResult.model);
-        statusBar()->showMessage(tr("Analise concluida com sucesso."), 5000);
-
-        const QString report = analysisService.formatReport(result);
-
-        Structura::UI::TemporaryAnalysisResultsDialog dialog(
-            report,
-            this);
-        dialog.exec();
-
-        // ── Integração com o pós-processador ──────────────────────────────────
-        if (m_postProcessor) {
-            ++m_analysisRevision;
-            feedPostProcessor(this,
-                              m_postProcessor.get(),
-                              buildResult.model,
-                              result,
-                              m_analysisRevision,
-                              m_diagramCombo,
-                              m_diagramScaleSlider,
-                              m_scaleModeCombo,
-                              m_showDiagramsAction,
-                              m_hideDiagramsAction);
+        for (const auto& loadCase : cases) {
+            auto buildResult = analysisService.buildModel(m_sceneController,
+                                                          m_materials,
+                                                          m_sections,
+                                                          m_supports,
+                                                          m_nodalLoads,
+                                                          m_memberLoads,
+                                                          m_extras,
+                                                          loadCase.name);
+            if (!buildResult.success) {
+                QMessageBox::warning(this,
+                                     tr("Analise estrutural"),
+                                     tr("Nao foi possivel montar o modelo para o solver:\n%1")
+                                         .arg(buildResult.errors.join(QLatin1Char('\n'))));
+                return false;
+            }
+            CaseRun run;
+            run.model = buildResult.model;
+            run.result = solver.solve(buildResult.model);
+            runs.insert(loadCase.name, std::move(run));
         }
-
+        // Segunda ordem: nao ha superposicao, entao cada combinacao e resolvida com suas cargas ponderadas.
+        if (m_extras.design.secondOrder) {
+            QMap<QString, Structura::App::SolverBridge::ModelData> caseModels;
+            for (auto it = runs.constBegin(); it != runs.constEnd(); ++it) {
+                caseModels.insert(it.key(), it->model);
+            }
+            for (const auto& combination : combinations) {
+                CaseRun run;
+                if (!buildSecondOrderModel(combination, caseModels, m_extras.design.stiffnessReduction, run.model)) {
+                    continue;
+                }
+                run.result = solver.solve(run.model);
+                runs.insert(QStringLiteral("COMB:") + combination.name, std::move(run));
+            }
+        }
     } catch (const Structura::App::SolverBridgeError &error) {
         QMessageBox::critical(this,
                               tr("Falha na analise estrutural"),
                               tr("A DLL retornou erro:\n%1").arg(QString::fromStdString(error.what())));
+        return false;
     } catch (const std::exception &error) {
         QMessageBox::critical(this,
                               tr("Falha na analise estrutural"),
                               tr("Erro inesperado:\n%1").arg(QString::fromStdString(error.what())));
+        return false;
+    }
+
+    m_caseRuns = runs;
+    {
+        std::vector<const Structura::App::SolverBridge::ModelData *> models;
+        for (auto it = m_caseRuns.constBegin(); it != m_caseRuns.constEnd(); ++it) {
+            if (!it.key().startsWith(QLatin1String("COMB:"))) {
+                models.push_back(&it->model);
+            }
+        }
+        m_analysisFingerprint = Structura::App::Services::ResultsPersistence::fingerprint(models, m_extras.design.secondOrder, m_extras.design.stiffnessReduction);
+    }
+    rebuildResultViews();
+
+    statusBar()->showMessage(tr("Analise concluida com sucesso."), 5000);
+
+    QString report;
+    for (const auto& view : m_resultViews) {
+        report += QStringLiteral("\n########## %1: %2 ##########\n")
+                      .arg(view.isCombination ? tr("COMBINACAO") : tr("CASO"), view.name);
+        report += analysisService.formatReport(view.result);
+    }
+
+    rebuildResultViewSelector();
+    if (reportOut) {
+        *reportOut = report;
+    }
+    return true;
+}
+
+bool MainWindow::restoreStoredResults()
+{
+    using Structura::App::Services::AnalysisService;
+    using Structura::App::Services::CombinationService;
+    using Structura::App::Services::ResultsPersistence;
+    const auto &stored = m_extras.results;
+    if (stored.runs.isEmpty() || !m_sceneController) {
+        return false;
+    }
+    AnalysisService analysis;
+    QMap<QString, CaseRun> runs;
+    QMap<QString, Structura::App::SolverBridge::ModelData> caseModels;
+    for (const auto &loadCase : CombinationService::effectiveCases(m_extras)) {
+        auto build = analysis.buildModel(m_sceneController, m_materials, m_sections, m_supports, m_nodalLoads, m_memberLoads, m_extras, loadCase.name);
+        if (!build.success) {
+            return false;
+        }
+        CaseRun run;
+        run.model = build.model;
+        runs.insert(loadCase.name, run);
+        caseModels.insert(loadCase.name, build.model);
+    }
+    std::vector<const Structura::App::SolverBridge::ModelData *> models;
+    for (auto it = runs.constBegin(); it != runs.constEnd(); ++it) {
+        models.push_back(&it->model);
+    }
+    const QString current = ResultsPersistence::fingerprint(models, m_extras.design.secondOrder, m_extras.design.stiffnessReduction);
+    if (current != stored.fingerprint) {
+        m_extras.results = {};
+        showStatusMessage(tr("Os resultados gravados no arquivo não correspondem mais ao modelo e foram descartados: rode a análise novamente."), 9000);
+        return false;
+    }
+    auto find = [&stored](const QString &name) -> const Structura::App::ProjectData::StoredRun * {
+        for (const auto &run : stored.runs) {
+            if (run.name == name) {
+                return &run;
+            }
+        }
+        return nullptr;
+    };
+    for (auto it = runs.begin(); it != runs.end(); ++it) {
+        const auto *storedRun = find(it.key());
+        bool ok = false;
+        if (!storedRun) {
+            return false;
+        }
+        it->result = ResultsPersistence::fromStored(*storedRun, it->model, &ok);
+        if (!ok) {
+            return false;
+        }
+    }
+    if (m_extras.design.secondOrder) {
+        for (const auto &combination : CombinationService::effectiveCombinations(m_extras)) {
+            CaseRun run;
+            if (!buildSecondOrderModel(combination, caseModels, m_extras.design.stiffnessReduction, run.model)) {
+                continue;
+            }
+            const QString key = QStringLiteral("COMB:") + combination.name;
+            const auto *storedRun = find(key);
+            bool ok = false;
+            if (!storedRun) {
+                return false;
+            }
+            run.result = ResultsPersistence::fromStored(*storedRun, run.model, &ok);
+            if (!ok) {
+                return false;
+            }
+            runs.insert(key, std::move(run));
+        }
+    }
+    m_caseRuns = runs;
+    m_analysisFingerprint = stored.fingerprint;
+    rebuildResultViews();
+    rebuildResultViewSelector();
+    m_designEta.clear();
+    for (const auto &d : stored.design) {
+        m_designEta.insert(d.memberId, d.eta);
+    }
+    showStatusMessage(tr("Resultados da análise restaurados do arquivo (%1 caso(s)/combinação(ões)).").arg(stored.runs.size()), 7000);
+    return true;
+}
+
+void MainWindow::collectResultsForSave()
+{
+    using Structura::App::Services::DesignService;
+    using Structura::App::Services::ResultsPersistence;
+    auto &results = m_extras.results;
+    results.runs.clear();
+    results.design.clear();
+    results.fingerprint.clear();
+    if (m_caseRuns.isEmpty() || m_analysisFingerprint.isEmpty()) {
+        return;
+    }
+    results.fingerprint = m_analysisFingerprint;
+    for (auto it = m_caseRuns.constBegin(); it != m_caseRuns.constEnd(); ++it) {
+        results.runs.append(ResultsPersistence::toStored(it.key(), it->result));
+    }
+    // verificacao dos perfis adotados (aproveitamento e verificacao governante de cada barra)
+    DesignRunData run;
+    if (!buildDesignRun(run)) {
+        return;
+    }
+    const auto verdicts = DesignService::verifyAll(run.effects, run.refs, run.settings, run.lengthFactor);
+    for (const auto &v : verdicts) {
+        if (!v.supported || v.output.checks.empty()) {
+            continue;
+        }
+        Structura::App::ProjectData::StoredDesignResult d;
+        d.memberId = v.memberId;
+        d.section = v.sectionName;
+        d.eta = v.output.maxRatio;
+        d.check = QString::fromStdString(v.output.governingCheck);
+        d.combination = QString::fromStdString(v.output.governingCombo);
+        d.lengthM = v.lengthM;
+        results.design.append(d);
     }
 }
 
@@ -236,6 +564,22 @@ void MainWindow::resetModel()
     m_supports.clear();
     m_nodalLoads.clear();
     m_memberLoads.clear();
+    m_extras = {};
+    m_caseRuns.clear();
+    m_analysisFingerprint.clear();
+    m_designEta.clear();
+    m_resultViews.clear();
+    m_extras.loadCases.append({Structura::App::ProjectData::defaultLoadCaseName(),
+                               Structura::App::ProjectData::defaultLoadCaseName(), false});
+    syncPlacementVisuals();
+    rebuildCaseSelector();
+    rebuildResultViewSelector();
+    if (m_axesPanel) {
+        m_axesPanel->discard();
+    }
+    if (m_sceneController && m_sceneController->constructionScene()) {
+        m_sceneController->constructionScene()->setAxes({});
+    }
     m_lastMaterialId = QUuid();
     m_lastSectionId = QUuid();
     m_lastNodalPreset = {};
@@ -247,6 +591,7 @@ void MainWindow::resetModel()
 bool MainWindow::loadFromDat(const QString &filePath)
 {
     resetModel();
+    m_projectName = QFileInfo(filePath).completeBaseName();
 
     Structura::App::Services::DatModelIoService datModelIoService;
     QString errorMessage;
@@ -258,6 +603,7 @@ bool MainWindow::loadFromDat(const QString &filePath)
                                 m_supports,
                                 m_nodalLoads,
                                 m_memberLoads,
+                                m_extras,
                                 m_lastMaterialId,
                                 m_lastSectionId,
                                 &errorMessage,
@@ -270,15 +616,28 @@ bool MainWindow::loadFromDat(const QString &filePath)
         QMessageBox::warning(this, tr("Erro"), warnings.join(QLatin1Char('\n')));
     }
 
+    if (m_sceneController && m_sceneController->constructionScene()) {
+        m_sceneController->constructionScene()->setAxes(m_extras.axes);
+    }
+    applyViewOptionsFromExtras();
+    rebuildCaseSelector();
+    refreshGroupsPanel();
+
     syncLoadVisuals();
     syncSupportVisuals();
+    syncPlacementVisuals();
     refreshPropertiesPanel();
+    restoreStoredResults();
     updateStatus();
     return true;
 }
 
 bool MainWindow::saveToDat(const QString &filePath)
 {
+    m_projectName = QFileInfo(filePath).completeBaseName();
+    storeViewOptionsInExtras();
+    collectResultsForSave();
+
     Structura::App::Services::DatModelIoService datModelIoService;
     QString errorMessage;
     if (!datModelIoService.save(filePath,
@@ -288,6 +647,7 @@ bool MainWindow::saveToDat(const QString &filePath)
                                 m_supports,
                                 m_nodalLoads,
                                 m_memberLoads,
+                                m_extras,
                                 &errorMessage)) {
         QMessageBox::critical(this, tr("Erro"), errorMessage);
         return false;

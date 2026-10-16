@@ -20,6 +20,12 @@ struct UniformDistributedLoad {
     bool isLocalSystem{true}; ///< true = sistema local, false = sistema global
 };
 
+/// Momento distribuído uniforme (por unidade de comprimento) sobre o elemento.
+struct UniformDistributedMoment {
+    double mx{0}, my{0}, mz{0};
+    bool isLocalSystem{true};
+};
+
 /// Dados completos de um elemento de barra para pós-processamento.
 struct BeamElementResults {
     int externalId{0};
@@ -37,6 +43,9 @@ struct BeamElementResults {
 
     /// Cargas distribuídas sobre o elemento. Pode estar vazio.
     std::vector<UniformDistributedLoad> distributedLoads;
+
+    /// Momentos distribuídos sobre o elemento. Pode estar vazio.
+    std::vector<UniformDistributedMoment> distributedMoments;
 };
 
 /// Tipo de diagrama de esforços internos.

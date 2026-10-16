@@ -2,6 +2,7 @@
 
 #include "app/LoadSystemUtils.h"
 #include "app/services/IdGeneratorService.h"
+#include "app/services/SectionPlacementService.h"
 
 #include <QHash>
 
@@ -15,7 +16,9 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
                                                          QVector<SectionInfo> &sections,
                                                          const QVector<NodeSupport> &supports,
                                                          const QVector<NodalLoad> &nodalLoads,
-                                                         const QVector<MemberLoad> &memberLoads) const
+                                                         const QVector<MemberLoad> &memberLoads,
+                                                         const Structura::App::ProjectData::ProjectExtras &extras,
+                                                         const QString &loadCase) const
 {
     BuildResult result;
     if (!sceneController) {
@@ -72,9 +75,13 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
         data.id = mat.externalId;
         data.e = mat.youngModulus;
         data.g = mat.shearModulus;
+        data.density = mat.unitWeight / 9.80665;   // massa especifica coerente com o sistema de unidades do projeto
         model.materials.push_back(data);
     }
 
+    // Secoes assimetricas (ex.: cantoneiras): o solver recebe as inercias principais e a barra e girada
+    // ate os eixos principais (giro do usuario + giro da secao).
+    QHash<int, double> principalAngleBySection;
     for (const auto &sec : sections) {
         Structura::App::SolverBridge::SectionData data;
         data.id = sec.externalId;
@@ -82,6 +89,12 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
         data.iz = sec.iz;
         data.iy = sec.iy;
         data.j = sec.j;
+        const auto principal = Structura::App::Services::SectionPlacementService::principalProperties(sec);
+        if (principal.valid && principal.inclined) {
+            data.iz = principal.izPrincipal;
+            data.iy = principal.iyPrincipal;
+            principalAngleBySection.insert(sec.externalId, principal.thetaDeg);
+        }
         model.sections.push_back(data);
     }
 
@@ -125,10 +138,59 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
         data.nodeJ = endIt.value().externalId;
         data.materialId = materialIt->externalId;
         data.sectionId = sectionIt->externalId;
+        const double principalAngle = principalAngleBySection.value(sectionIt->externalId, 0.0);
+        data.sectionRotationDeg = principalAngle;
+        for (const auto &placement : extras.placements) {
+            if (placement.memberId != bar.externalId) {
+                continue;
+            }
+            using Service = Structura::App::Services::SectionPlacementService;
+            const SectionInfo &section = sectionIt.value();
+            // Posicao do centroide em relacao a cada no, nos eixos da secao girada pelo usuario.
+            auto endOffset = [&](double extraA, double extraB) {
+                Structura::App::ProjectData::MemberPlacement end = placement;
+                end.offsetA = extraA;
+                end.offsetB = extraB;
+                return Service::toPrincipalFrame(Service::axisOffset(&section, end), principalAngle);
+            };
+            const auto startOffset = endOffset(placement.offsetA, placement.offsetB);
+            const auto finishOffset = endOffset(placement.endOffsetA(), placement.endOffsetB());
+            data.sectionRotationDeg = placement.rotationDeg + principalAngle;
+            data.offsetY1 = startOffset.dy;
+            data.offsetZ1 = startOffset.dz;
+            data.offsetY2 = finishOffset.dy;
+            data.offsetZ2 = finishOffset.dz;
+            for (int bit = 0; bit < 12; ++bit) {
+                data.releases[static_cast<std::size_t>(bit)] = ((placement.releaseMask >> bit) & 1) ? 1 : 0;
+            }
+            if (placement.memberType != Structura::App::ProjectData::MemberType::kNormal) {
+                // trelica e tirante: biarticulados (so esforco axial)
+                for (int bit = 0; bit < 12; ++bit) {
+                    if ((Structura::App::ProjectData::MemberType::kReleaseRotations >> bit) & 1) {
+                        data.releases[static_cast<std::size_t>(bit)] = 1;
+                    }
+                }
+                data.tensionOnly = (placement.memberType == Structura::App::ProjectData::MemberType::kTie);
+            }
+            break;
+        }
         model.members.push_back(data);
     }
 
+    // Com `loadCase` vazio, todas as cargas entram (compatibilidade); senao so as do caso.
+    const QString defaultCase = extras.loadCases.isEmpty() ? Structura::App::ProjectData::defaultLoadCaseName()
+                                                           : extras.loadCases.first().name;
+    auto belongsToCase = [&](const QString &name) {
+        if (loadCase.isEmpty()) {
+            return true;
+        }
+        return (name.isEmpty() ? defaultCase : name) == loadCase;
+    };
+
     for (const auto &load : nodalLoads) {
+        if (!belongsToCase(load.loadCase)) {
+            continue;
+        }
         Structura::App::SolverBridge::NodalLoadData data;
         data.nodeId = load.nodeId;
         data.values = {{load.fx, load.fy, load.fz, load.mx, load.my, load.mz}};
@@ -136,6 +198,9 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
     }
 
     for (const auto &load : memberLoads) {
+        if (!belongsToCase(load.loadCase)) {
+            continue;
+        }
         Structura::App::SolverBridge::MemberLoadData data;
         data.memberId = load.memberId;
         const QString system = Structura::App::normalizeMemberLoadSystem(load.system);
@@ -146,6 +211,48 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
         data.qy = load.qy;
         data.qz = load.qz;
         model.memberLoads.push_back(data);
+    }
+
+    for (const auto &moment : extras.memberMoments) {
+        if (!belongsToCase(moment.loadCase)) {
+            continue;
+        }
+        Structura::App::SolverBridge::MemberMomentData data;
+        data.memberId = moment.memberId;
+        const QString system = Structura::App::normalizeMemberLoadSystem(moment.system);
+        data.coordSystem = (system == QLatin1String("GLOBAL"))
+            ? Structura::App::SolverBridge::MemberLoadCoordSystem::Global
+            : Structura::App::SolverBridge::MemberLoadCoordSystem::Local;
+        data.mx = moment.mx;
+        data.my = moment.my;
+        data.mz = moment.mz;
+        model.memberMoments.push_back(data);
+    }
+
+    // Peso proprio: carga distribuida global -Z = gama (kN/m3) x area da secao (m2).
+    bool includeSelfWeight = false;
+    for (const auto &candidate : extras.loadCases) {
+        if (candidate.name == loadCase && candidate.selfWeight) {
+            includeSelfWeight = true;
+        }
+    }
+    if (includeSelfWeight) {
+        for (const auto &bar : bars) {
+            const auto materialIt = materialsById.constFind(bar.materialId);
+            const auto sectionIt = sectionsById.constFind(bar.sectionId);
+            if (materialIt == materialsById.constEnd() || sectionIt == sectionsById.constEnd()) {
+                continue;
+            }
+            const double weight = materialIt->unitWeight * sectionIt->area;
+            if (weight == 0.0) {
+                continue;
+            }
+            Structura::App::SolverBridge::MemberLoadData data;
+            data.memberId = bar.externalId;
+            data.coordSystem = Structura::App::SolverBridge::MemberLoadCoordSystem::Global;
+            data.qz = -weight;
+            model.memberLoads.push_back(data);
+        }
     }
 
     result.success = result.errors.isEmpty();

@@ -30,7 +30,9 @@ public:
                            QVector<SectionInfo> &sections,
                            const QVector<NodeSupport> &supports,
                            const QVector<NodalLoad> &nodalLoads,
-                           const QVector<MemberLoad> &memberLoads) const;
+                           const QVector<MemberLoad> &memberLoads,
+                           const Structura::App::ProjectData::ProjectExtras &extras,
+                           const QString &loadCase = QString()) const;
 
     QString formatReport(const Structura::App::SolverBridge::Result &result) const;
 };

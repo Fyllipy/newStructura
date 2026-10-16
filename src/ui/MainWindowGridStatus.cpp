@@ -2,7 +2,9 @@
 
 #include "viz/SceneController.h"
 #include "viz/postprocessor/PostProcessorRenderer.h"
-#include "ui/GridDeleteTooltipHelper.h"
+#include "PlacementController.h"
+#include "ViewOptionsBar.h"
+#include <QVBoxLayout>
 
 #include <QComboBox>
 #include <QFrame>
@@ -14,46 +16,6 @@
 #include <QVTKOpenGLNativeWidget.h>
 #include <vtkRenderWindow.h>
 
-void MainWindow::beginGridInsert(Structura::Model::GridLine::Axis axis)
-{
-    Structura::UI::GridInsertController::beginInsert(m_gridInsertState, axis, m_sceneController);
-    hideGridDeleteTooltip();
-    updateStatus();
-}
-
-void MainWindow::cancelGridInsert()
-{
-    Structura::UI::GridInsertController::cancelInsert(m_gridInsertState, m_sceneController);
-    updateStatus();
-}
-
-QString MainWindow::gridAxisLabel(Structura::Model::GridLine::Axis axis) const
-{
-    switch (axis) {
-    case Structura::Model::GridLine::Axis::Y:
-        return QStringLiteral("Y");
-    case Structura::Model::GridLine::Axis::Z:
-        return QStringLiteral("Z");
-    case Structura::Model::GridLine::Axis::X:
-    default:
-        return QStringLiteral("X");
-    }
-}
-
-Structura::Model::GridLine::Axis MainWindow::commandToAxis(Command command) const
-{
-    using Axis = Structura::Model::GridLine::Axis;
-    switch (command) {
-    case Command::AddGridLineY:
-        return Axis::Y;
-    case Command::AddGridLineZ:
-        return Axis::Z;
-    case Command::AddGridLineX:
-    default:
-        return Axis::X;
-    }
-}
-
 void MainWindow::setupFooterBar()
 {
     statusBar()->setSizeGripEnabled(false);
@@ -61,16 +23,30 @@ void MainWindow::setupFooterBar()
         "QStatusBar { background: #e9edf4; color: #1f242c; border-top: 1px solid #cbd4e2; }"
     ));
 
+    // O rodape agora tem duas linhas: opcoes de exibicao (acima) e os controles existentes.
     m_footerBar = new QWidget(this);
-    auto *footerLayout = new QHBoxLayout(m_footerBar);
+    auto *footerRoot = new QVBoxLayout(m_footerBar);
+    footerRoot->setContentsMargins(0, 0, 0, 0);
+    footerRoot->setSpacing(0);
+
+    auto *optionsRow = new QWidget(m_footerBar);
+    auto *optionsLayout = new QHBoxLayout(optionsRow);
+    optionsLayout->setContentsMargins(8, 2, 8, 0);
+    m_viewOptionsBar = new Structura::UI::ViewOptionsBar(optionsRow);
+    optionsLayout->addWidget(m_viewOptionsBar);
+    footerRoot->addWidget(optionsRow);
+
+    auto *footerRow = new QWidget(m_footerBar);
+    auto *footerLayout = new QHBoxLayout(footerRow);
     footerLayout->setContentsMargins(8, 2, 8, 2);
     footerLayout->setSpacing(12);
+    footerRoot->addWidget(footerRow);
 
     auto *viewControlsLabel = new QLabel(tr("Visualizacao:"), m_footerBar);
     viewControlsLabel->setStyleSheet("font-weight: 600; color: #1e232b;");
     footerLayout->addWidget(viewControlsLabel);
 
-    m_footerResetCameraButton = new QToolButton(m_footerBar);
+    m_footerResetCameraButton = new QToolButton(footerRow);
     m_footerResetCameraButton->setDefaultAction(m_resetCameraAction);
     m_footerResetCameraButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     m_footerResetCameraButton->setAutoRaise(true);
@@ -240,68 +216,6 @@ void MainWindow::onScaleModeChanged(int /*index*/)
 }
 
 
-void MainWindow::updateGridInsertFromPoint(const QVector3D &worldPoint)
-{
-    Structura::UI::GridInsertController::updateFromPoint(m_gridInsertState, worldPoint, m_sceneController);
-    refreshGridInsertVisuals();
-}
-
-void MainWindow::refreshGridInsertVisuals()
-{
-    Structura::UI::GridInsertController::refreshVisuals(m_gridInsertState, m_sceneController);
-    updateStatus();
-}
-
-void MainWindow::updateGridDeleteTooltip(const QPoint &widgetPos, const QUuid &lineId)
-{
-    if (!m_vtkWidget) {
-        return;
-    }
-
-    if (lineId.isNull()) {
-        hideGridDeleteTooltip();
-        return;
-    }
-
-    QString message;
-    if (!m_pendingDeleteLineId.isNull() && m_pendingDeleteLineId == lineId) {
-        message = tr("Clique novamente para confirmar exclusao");
-    } else {
-        QString details;
-        if (m_sceneController) {
-            if (const auto *line = m_sceneController->findGridLine(lineId)) {
-                details = tr("%1 @ %2 / %3")
-                    .arg(gridAxisLabel(line->axis()),
-                         QString::number(line->coordinate1(), 'f', 3),
-                         QString::number(line->coordinate2(), 'f', 3));
-            }
-        }
-        if (details.isEmpty()) {
-            details = tr("linha");
-        }
-        message = tr("Clique para selecionar %1").arg(details);
-    }
-
-    Structura::UI::GridDeleteTooltipHelper::show(m_gridDeleteTooltip,
-                                                  m_vtkWidget,
-                                                  widgetPos,
-                                                  message);
-}
-
-void MainWindow::hideGridDeleteTooltip()
-{
-    Structura::UI::GridDeleteTooltipHelper::hide(m_gridDeleteTooltip);
-}
-
-void MainWindow::updateGridActionsEnabled()
-{
-    const bool hasGrid = m_sceneController && m_sceneController->hasGrid();
-    if (m_addGridLineXAction) m_addGridLineXAction->setEnabled(hasGrid);
-    if (m_addGridLineYAction) m_addGridLineYAction->setEnabled(hasGrid);
-    if (m_addGridLineZAction) m_addGridLineZAction->setEnabled(hasGrid);
-    if (m_deleteGridLineAction) m_deleteGridLineAction->setEnabled(hasGrid);
-}
-
 void MainWindow::showStatusMessage(const QString &message, int timeout)
 {
     if (m_statusLabel) {
@@ -313,59 +227,41 @@ void MainWindow::showStatusMessage(const QString &message, int timeout)
 void MainWindow::updateStatus()
 {
     switch (m_command) {
-    case Command::InsertNode:
-    {
-        QString message = tr("Insercao de nos: clique esquerdo para inserir | Esc para sair");
-        if (m_hoverInsertPoint) {
-            const QVector3D &p = *m_hoverInsertPoint;
-            message += tr(" | X=%1 Y=%2 Z=%3")
-                .arg(QString::number(p.x(), 'f', 3),
-                     QString::number(p.y(), 'f', 3),
-                     QString::number(p.z(), 'f', 3));
-        }
-        showStatusMessage(message);
-        break;
-    }
     case Command::InsertBarFirst:
-        showStatusMessage(tr("Criar barra: selecione o primeiro no (Esc para cancelar)"));
-        break;
     case Command::InsertBarSecond:
     {
-        QString nodeLabel = QStringLiteral("?");
-        if (!m_firstBarNodeId.isNull()) {
-            if (const auto *node = m_sceneController->findNode(m_firstBarNodeId)) {
-                nodeLabel = QString::number(node->externalId());
-            }
-        }
-        showStatusMessage(tr("Criar barra: selecione o segundo no (primeiro = N%1) | Esc para cancelar")
-            .arg(nodeLabel));
-        break;
-    }
-    case Command::AddGridLineX:
-    case Command::AddGridLineY:
-    case Command::AddGridLineZ:
-    {
-        const auto axis = commandToAxis(m_command);
-        QString message = tr("Adicionar linha %1: clique para posicionar")
-            .arg(gridAxisLabel(axis));
-        if (m_gridInsertState.hasTypedValue) {
-            message += tr(" | deslocamento=%1 m").arg(QString::number(m_gridInsertState.typedValue, 'f', 3));
-        } else if (m_gridInsertState.pointerValid) {
-            message += tr(" | alvo=%1 / %2 m")
-                .arg(QString::number(m_gridInsertState.ghostCoord1, 'f', 3),
-                     QString::number(m_gridInsertState.ghostCoord2, 'f', 3));
-        }
-        message += tr(" | Enter confirma | Esc cancelar");
+        QString message = (m_placement && m_placement->hasStartPoint())
+            ? tr("Criar barra: clique no ponto final")
+            : tr("Criar barra: clique no ponto inicial");
+        message += tr(" | Tab edita | Esc sai");
         showStatusMessage(message);
         break;
     }
-    case Command::DeleteGridLine:
-        if (!m_pendingDeleteLineId.isNull()) {
-            showStatusMessage(tr("Excluir linha de grid: clique novamente para confirmar | Esc para cancelar"));
-        } else {
-            showStatusMessage(tr("Excluir linha de grid: selecione uma linha e clique para marcar | Esc para cancelar"));
-        }
+    case Command::CopyElements:
+    case Command::MoveElements:
+    {
+        const QString verb = m_command == Command::CopyElements ? tr("Copiar") : tr("Mover");
+        QString message = (m_placement && m_placement->hasStartPoint())
+            ? tr("%1: clique no ponto de destino").arg(verb)
+            : tr("%1: clique no ponto base").arg(verb);
+        message += tr(" | Tab edita | Esc sai");
+        showStatusMessage(message);
         break;
+    }
+    case Command::RotateElements:
+    {
+        showStatusMessage(tr("Rotacionar: clique no ponto central (pivo) | Esc sai"));
+        break;
+    }
+    case Command::MirrorElements:
+    {
+        QString message = (m_placement && m_placement->hasStartPoint())
+            ? tr("Espelhar: clique no segundo ponto do eixo")
+            : tr("Espelhar: clique no primeiro ponto do eixo");
+        message += tr(" | Tab edita | Esc sai");
+        showStatusMessage(message);
+        break;
+    }
     default:
     {
         const int nodeCount = m_selectionModel ? m_selectionModel->selectedNodes().size() : 0;

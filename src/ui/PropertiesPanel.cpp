@@ -1,5 +1,11 @@
 #include "PropertiesPanel.h"
 
+#include "ProfilePickerDialog.h"
+
+#include "SectionPlacementWidget.h"
+
+#include "app/services/SectionPlacementService.h"
+
 #include <QGroupBox>
 #include <QFormLayout>
 #include <QVBoxLayout>
@@ -7,7 +13,9 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QDoubleValidator>
+#include <QPushButton>
 #include <QLocale>
 
 namespace {
@@ -31,16 +39,13 @@ PropertiesPanel::PropertiesPanel(QWidget *parent)
 
     buildNodeGroup();
     buildBarGroup();
-    buildGridGroup();
 
     layout->addWidget(m_nodeGroup);
     layout->addWidget(m_barGroup);
-    layout->addWidget(m_gridGroup);
     layout->addStretch(1);
 
     setNodeEntries({});
     setBarEntries({});
-    setGridInfo(false, 0.0, 0.0, 0.0, 0, 0, 0);
 }
 
 void PropertiesPanel::buildNodeGroup()
@@ -103,28 +108,36 @@ void PropertiesPanel::buildBarGroup()
             this, &PropertiesPanel::handleMaterialComboChanged);
     form->addRow(tr("Material"), m_materialCombo);
 
-    m_sectionCombo = new QComboBox(m_barGroup);
-    m_sectionCombo->setPlaceholderText(tr("Selecionar seção"));
-    connect(m_sectionCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, &PropertiesPanel::handleSectionComboChanged);
-    form->addRow(tr("Seção"), m_sectionCombo);
-}
+    m_sectionPicker = new Structura::UI::SectionPickerButton(m_barGroup);
+    connect(m_sectionPicker, &Structura::UI::SectionPickerButton::picked,
+            this, &PropertiesPanel::handleSectionPicked);
+    connect(m_sectionPicker, &Structura::UI::SectionPickerButton::manageRequested,
+            this, &PropertiesPanel::manageProfilesRequested);
+    form->addRow(tr("Seção"), m_sectionPicker);
 
-void PropertiesPanel::buildGridGroup()
-{
-    m_gridGroup = new QGroupBox(tr("Grid"), this);
-    auto *form = new QFormLayout(m_gridGroup);
-    form->setContentsMargins(8, 8, 8, 8);
-    form->setSpacing(6);
+    // --- Disposicao da secao: miniatura + resumo + atalho para a janela de posicionamento ---
+    m_placementPreview = new Structura::UI::SectionPlacementWidget(m_barGroup);
+    m_placementPreview->setCompact(true);
+    m_placementPreview->setInteractive(false);
+    m_placementPreview->setFixedHeight(150);
+    form->addRow(m_placementPreview);
 
-    m_gridStatusLabel = new QLabel(tr("Nenhum grid gerado"), m_gridGroup);
-    form->addRow(m_gridStatusLabel);
+    m_placementSummary = new QLabel(tr("-"), m_barGroup);
+    m_placementSummary->setWordWrap(true);
+    m_placementSummary->setStyleSheet(QStringLiteral("color: #5a6574; font-size: 11px;"));
+    form->addRow(m_placementSummary);
 
-    m_gridSpacingLabel = new QLabel(tr("-"), m_gridGroup);
-    form->addRow(tr("Passo (dx/dy/dz)"), m_gridSpacingLabel);
+    m_placementButton = new QPushButton(tr("Posicionar seção e articulações…"), m_barGroup);
+    m_placementButton->setCursor(Qt::PointingHandCursor);
+    m_placementButton->setToolTip(tr("Abre a janela para girar a seção, escolher o ponto de referência e definir articulações."));
+    connect(m_placementButton, &QPushButton::clicked, this, &PropertiesPanel::placementEditorRequested);
+    form->addRow(m_placementButton);
 
-    m_gridCountLabel = new QLabel(tr("-"), m_gridGroup);
-    form->addRow(tr("Contagem (nx/ny/nz)"), m_gridCountLabel);
+    auto *reportButton = new QPushButton(tr("Memorial de cálculo da barra…"), m_barGroup);
+    reportButton->setCursor(Qt::PointingHandCursor);
+    reportButton->setToolTip(tr("Mostra o memorial de cálculo desta barra (completo ou por item de cálculo) e permite exportar para Word."));
+    connect(reportButton, &QPushButton::clicked, this, &PropertiesPanel::barReportRequested);
+    form->addRow(reportButton);
 }
 
 QString PropertiesPanel::formatDouble(double value) const
@@ -269,29 +282,59 @@ void PropertiesPanel::setBarEntries(const QVector<BarEntry> &entries)
 
         updateMaterialComboSelection(entries);
         updateSectionComboSelection(entries);
+        updatePlacementSummary(entries);
     }
 
     m_blockSignals = false;
 }
 
-void PropertiesPanel::setGridInfo(bool hasGrid,
-                                  double dx,
-                                  double dy,
-                                  double dz,
-                                  int nx,
-                                  int ny,
-                                  int nz)
+void PropertiesPanel::updatePlacementSummary(const QVector<BarEntry> &entries)
 {
-    if (!hasGrid) {
-        m_gridStatusLabel->setText(tr("Nenhum grid gerado"));
-        m_gridSpacingLabel->setText(tr("-"));
-        m_gridCountLabel->setText(tr("-"));
+    if (entries.isEmpty()) {
         return;
     }
-    m_gridStatusLabel->setText(tr("Grid ativo"));
-    m_gridSpacingLabel->setText(
-        tr("%1 / %2 / %3 m").arg(formatDouble(dx), formatDouble(dy), formatDouble(dz)));
-    m_gridCountLabel->setText(tr("%1 / %2 / %3").arg(nx).arg(ny).arg(nz));
+    using Structura::App::Services::SectionPlacementService;
+    namespace Release = Structura::App::ProjectData::MemberRelease;
+    const BarEntry &first = entries.first();
+
+    if (first.hasSection) {
+        m_placementPreview->setSection(first.section);
+    } else {
+        m_placementPreview->clearSection();
+    }
+    m_placementPreview->setPlacement(first.rotationDeg, first.reference, first.offsetA, first.offsetB);
+
+    auto releaseText = [](int mask, int rx, int ry, int rz) {
+        QStringList parts;
+        if (mask & rx) parts << QStringLiteral("Mx");
+        if (mask & ry) parts << QStringLiteral("My");
+        if (mask & rz) parts << QStringLiteral("Mz");
+        return parts.isEmpty() ? QStringLiteral("—") : parts.join(QLatin1Char('+'));
+    };
+    const auto offset = SectionPlacementService::axisOffset(first.hasSection ? &first.section : nullptr,
+                                                            [&first]() {
+                                                                Structura::App::ProjectData::MemberPlacement placement;
+                                                                placement.reference = first.reference;
+                                                                placement.offsetA = first.offsetA;
+                                                                placement.offsetB = first.offsetB;
+                                                                return placement;
+                                                            }());
+    QString text = tr("Giro %1°  ·  ponto: %2\nCentroide: y = %3 mm, z = %4 mm\nLiberações  I: %5   J: %6")
+                       .arg(first.rotationDeg, 0, 'f', 1)
+                       .arg(SectionPlacementService::referenceLabels().value(first.reference))
+                       .arg(offset.dy * 1000.0, 0, 'f', 1)
+                       .arg(offset.dz * 1000.0, 0, 'f', 1)
+                       .arg(releaseText(first.releaseMask, Release::kStartRx, Release::kStartRy, Release::kStartRz))
+                       .arg(releaseText(first.releaseMask, Release::kEndRx, Release::kEndRy, Release::kEndRz));
+    if (first.memberType == Structura::App::ProjectData::MemberType::kTruss) {
+        text.prepend(tr("Tipo: treliça (biarticulada, só esforço axial)\n"));
+    } else if (first.memberType == Structura::App::ProjectData::MemberType::kTie) {
+        text.prepend(tr("Tipo: tirante (biarticulado, só tração)\n"));
+    }
+    if (entries.size() > 1) {
+        text.prepend(tr("(valores da primeira barra)\n"));
+    }
+    m_placementSummary->setText(text);
 }
 
 void PropertiesPanel::setMaterialOptions(const QVector<QPair<QUuid, QString>> &options)
@@ -307,23 +350,9 @@ void PropertiesPanel::setMaterialOptions(const QVector<QPair<QUuid, QString>> &o
     m_blockSignals = blocked;
 }
 
-void PropertiesPanel::setSectionOptions(const QVector<QPair<QUuid, QString>> &options)
+void PropertiesPanel::setSections(const QVector<Structura::App::ProjectData::SectionInfo> &sections)
 {
-    m_sectionOptions = options;
-    const bool blocked = m_blockSignals;
-    m_blockSignals = true;
-    m_sectionCombo->clear();
-    m_sectionCombo->addItem(tr("Sem seção"), QVariant());
-    for (const auto &opt : m_sectionOptions) {
-        m_sectionCombo->addItem(opt.second, opt.first);
-    }
-    m_blockSignals = blocked;
-}
-
-void PropertiesPanel::clearSelections()
-{
-    setNodeEntries({});
-    setBarEntries({});
+    m_sectionPicker->setSections(sections);
 }
 
 void PropertiesPanel::handleNodeXEditing()
@@ -383,22 +412,12 @@ void PropertiesPanel::handleMaterialComboChanged(int index)
     emit barMaterialEdited(m_currentBarIds, material);
 }
 
-void PropertiesPanel::handleSectionComboChanged(int index)
+void PropertiesPanel::handleSectionPicked(const QUuid &id)
 {
     if (m_blockSignals || m_currentBarIds.isEmpty()) {
         return;
     }
-    if (index < 0) {
-        return;
-    }
-    QVariant data = m_sectionCombo->itemData(index);
-    std::optional<QUuid> section;
-    if (data.isValid()) {
-        section = data.toUuid();
-    } else {
-        section = QUuid();
-    }
-    emit barSectionEdited(m_currentBarIds, section);
+    emit barSectionEdited(m_currentBarIds, std::optional<QUuid>(id));
 }
 
 void PropertiesPanel::updateMaterialComboSelection(const QVector<BarEntry> &entries)
@@ -448,39 +467,16 @@ void PropertiesPanel::updateSectionComboSelection(const QVector<BarEntry> &entri
     if (entries.isEmpty()) {
         return;
     }
-    m_sectionCombo->blockSignals(true);
     bool mixed = false;
-    std::optional<QUuid> firstId;
     for (const auto &entry : entries) {
-        if (!firstId.has_value()) {
-            firstId = entry.sectionId;
-        } else if (entry.sectionId != firstId.value()) {
+        if (entry.sectionId != entries.first().sectionId) {
             mixed = true;
             break;
         }
     }
-
     if (mixed) {
-        m_sectionCombo->setCurrentIndex(-1);
-        m_sectionCombo->setPlaceholderText(tr("Seções variadas"));
+        m_sectionPicker->setMixed();
     } else {
-        const QUuid secId = firstId.value_or(QUuid());
-        int index = -1;
-        if (secId.isNull()) {
-            index = 0;
-        } else {
-            for (int i = 0; i < m_sectionCombo->count(); ++i) {
-                QVariant data = m_sectionCombo->itemData(i);
-                if (data.isValid() && data.toUuid() == secId) {
-                    index = i;
-                    break;
-                }
-            }
-        }
-        m_sectionCombo->setCurrentIndex(index);
-        if (!secId.isNull()) {
-            m_sectionCombo->setPlaceholderText(QString());
-        }
+        m_sectionPicker->setCurrent(entries.first().sectionId);
     }
-    m_sectionCombo->blockSignals(false);
 }

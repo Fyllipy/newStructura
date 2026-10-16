@@ -28,4 +28,4 @@
 [MEMBER_LOADS]
 # Formato: Member_ID  Sistema(Local/Global)  qx (N/m)  qy (N/m)  qz (N/m)
 # Sistemas aceitos: LOCAL, GLOBAL (ou L/G)
-2            LOCAL                0.0       0.0         100.0
+2            LOCAL                0.0       100.0         0.0

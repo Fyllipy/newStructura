@@ -32,6 +32,9 @@ DistributedLoadDialog::DistributedLoadDialog(QWidget *parent)
     formLayout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
     formLayout->setSpacing(6);
 
+    m_caseCombo = new QComboBox(this);
+    formLayout->addRow(tr("Caso de carga"), m_caseCombo);
+
     auto createSpin = [this]() -> QDoubleSpinBox * {
         auto *spin = new QDoubleSpinBox(this);
         spin->setDecimals(3);
@@ -86,6 +89,19 @@ DistributedLoadDialog::Values DistributedLoadDialog::values() const
         result.system = m_systemCombo->currentData().toString();
     }
     return result;
+}
+
+void DistributedLoadDialog::setLoadCases(const QStringList &names, const QString &current)
+{
+    m_caseCombo->clear();
+    m_caseCombo->addItems(names);
+    const int index = m_caseCombo->findText(current);
+    m_caseCombo->setCurrentIndex(index >= 0 ? index : 0);
+}
+
+QString DistributedLoadDialog::loadCase() const
+{
+    return m_caseCombo->currentText();
 }
 
 void DistributedLoadDialog::setSelectedCount(int count)

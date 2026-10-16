@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QDialog>
+#include <QString>
+#include <QStringList>
 
 class QDoubleSpinBox;
 class QLabel;
@@ -25,6 +27,9 @@ public:
                           double mx, double my, double mz);
     Values values() const;
     void setSelectedCount(int count);
+    /// Casos de carga disponiveis e o caso inicialmente selecionado.
+    void setLoadCases(const QStringList &names, const QString &current);
+    [[nodiscard]] QString loadCase() const;
 
 private:
     QDoubleSpinBox *m_fxSpin {nullptr};
@@ -34,5 +39,6 @@ private:
     QDoubleSpinBox *m_mySpin {nullptr};
     QDoubleSpinBox *m_mzSpin {nullptr};
     QLabel *m_selectionLabel {nullptr};
+    class QComboBox *m_caseCombo {nullptr};
 };
 

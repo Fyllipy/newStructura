@@ -15,7 +15,7 @@ MemberRenderer::MemberRenderer()
 {
     m_barData->SetLines(m_barLines);
 
-    m_colors->SetNumberOfComponents(3);
+    m_colors->SetNumberOfComponents(4);
     m_colors->SetName("BarColors");
     m_barData->GetCellData()->SetScalars(m_colors);
 
@@ -71,7 +71,10 @@ void MemberRenderer::addBar(const QUuid& id, vtkIdType nodeI_idx, vtkIdType node
     vtkIdType pts[2] = {nodeI_idx, nodeJ_idx};
     m_barLines->InsertNextCell(2, pts);
     m_bars.push_back(id);
-    m_colors->InsertNextTypedTuple(COLOR_NORMAL);
+    {
+        const unsigned char rgba[4] = {COLOR_NORMAL[0], COLOR_NORMAL[1], COLOR_NORMAL[2], 255};
+        m_colors->InsertNextTypedTuple(rgba);
+    }
 
     m_barLines->Modified();
     m_colors->Modified();
@@ -99,6 +102,12 @@ void MemberRenderer::setSelectedBars(const QSet<QUuid>& ids)
     rebuildColors();
 }
 
+void MemberRenderer::setAppearance(const AppearanceMap& appearance)
+{
+    m_appearance = appearance;
+    rebuildColors();
+}
+
 void MemberRenderer::setVisible(bool visible)
 {
     m_actor->SetVisibility(visible);
@@ -113,14 +122,31 @@ void MemberRenderer::rebuildColors()
 {
     for (int i = 0; i < static_cast<int>(m_bars.size()); ++i) {
         const QUuid& id = m_bars[i];
-        
-        if (m_selectedBars.contains(id)) {
-            m_colors->SetTypedTuple(i, COLOR_SELECTED);
-        } else if (id == m_hoveredBar) {
-            m_colors->SetTypedTuple(i, COLOR_HOVER);
-        } else {
-            m_colors->SetTypedTuple(i, COLOR_NORMAL);
+        const auto appearance = m_appearance.constFind(id);
+        unsigned char rgba[4] = {COLOR_NORMAL[0], COLOR_NORMAL[1], COLOR_NORMAL[2], 255};
+        if (appearance != m_appearance.constEnd()) {
+            if (appearance->hasColor) {
+                rgba[0] = appearance->color[0];
+                rgba[1] = appearance->color[1];
+                rgba[2] = appearance->color[2];
+            }
+            if (appearance->state == ElementAppearance::State::Dimmed) {
+                const auto dimmed = dimColor({{rgba[0], rgba[1], rgba[2]}});
+                rgba[0] = dimmed[0];
+                rgba[1] = dimmed[1];
+                rgba[2] = dimmed[2];
+            } else if (appearance->state == ElementAppearance::State::Hidden) {
+                rgba[3] = 0;
+            }
         }
+        if (rgba[3] != 0) {
+            if (m_selectedBars.contains(id)) {
+                rgba[0] = COLOR_SELECTED[0]; rgba[1] = COLOR_SELECTED[1]; rgba[2] = COLOR_SELECTED[2];
+            } else if (id == m_hoveredBar) {
+                rgba[0] = COLOR_HOVER[0]; rgba[1] = COLOR_HOVER[1]; rgba[2] = COLOR_HOVER[2];
+            }
+        }
+        m_colors->SetTypedTuple(i, rgba);
     }
     m_colors->Modified();
     m_barData->Modified();

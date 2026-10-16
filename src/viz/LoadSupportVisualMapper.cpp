@@ -2,6 +2,7 @@
 
 #include "app/LoadSystemUtils.h"
 #include "app/LookupUtils.h"
+#include "viz/LocalCoordinateSystem.h"
 
 #include <QHash>
 
@@ -9,11 +10,28 @@
 
 namespace Structura::Viz {
 
+namespace {
+
+bool inActiveCase(const QString &loadCase, const QString &active, const QString &defaultCase)
+{
+    if (active.isEmpty()) {
+        return true;
+    }
+    return (loadCase.isEmpty() ? defaultCase : loadCase) == active;
+}
+
+QString defaultCaseOf(const QVector<Structura::App::ProjectData::LoadCase> *cases)
+{
+    return (cases && !cases->isEmpty()) ? cases->first().name : Structura::App::ProjectData::defaultLoadCaseName();
+}
+
+} // namespace
+
 QVector<SceneController::NodalLoadVisual> LoadSupportVisualMapper::mapNodalLoadVisuals(const SceneController *sceneController,
-                                                                                         const QVector<NodalLoad> &nodalLoads)
+                                                                                         const LoadContext &context)
 {
     QVector<SceneController::NodalLoadVisual> nodalVisuals;
-    if (!sceneController) {
+    if (!sceneController || !context.nodalLoads) {
         return nodalVisuals;
     }
 
@@ -23,8 +41,11 @@ QVector<SceneController::NodalLoadVisual> LoadSupportVisualMapper::mapNodalLoadV
             nodeInfos,
             [](const SceneController::NodeInfo &info) { return info.externalId; });
 
-    nodalVisuals.reserve(nodalLoads.size());
-    for (const auto &load : nodalLoads) {
+    const QString defaultCase = defaultCaseOf(context.loadCases);
+    for (const auto &load : *context.nodalLoads) {
+        if (!inActiveCase(load.loadCase, context.activeCase, defaultCase)) {
+            continue;
+        }
         const auto it = nodesByExternal.constFind(load.nodeId);
         if (it == nodesByExternal.constEnd()) {
             continue;
@@ -40,12 +61,12 @@ QVector<SceneController::NodalLoadVisual> LoadSupportVisualMapper::mapNodalLoadV
     return nodalVisuals;
 }
 
-QVector<SceneController::MemberLoadVisual> LoadSupportVisualMapper::mapMemberLoadVisuals(const SceneController *sceneController,
-                                                                                           const QVector<MemberLoad> &memberLoads)
+QVector<SceneController::MemberActionVisual> LoadSupportVisualMapper::mapMemberActionVisuals(const SceneController *sceneController,
+                                                                                               const LoadContext &context)
 {
-    QVector<SceneController::MemberLoadVisual> memberVisuals;
+    QVector<SceneController::MemberActionVisual> visuals;
     if (!sceneController) {
-        return memberVisuals;
+        return visuals;
     }
 
     const auto nodeInfos = sceneController->nodeInfos();
@@ -61,70 +82,121 @@ QVector<SceneController::MemberLoadVisual> LoadSupportVisualMapper::mapMemberLoa
             [](const SceneController::BarInfo &info) { return info.externalId; },
             [](const SceneController::BarInfo &info) { return info.externalId > 0; });
 
-    memberVisuals.reserve(memberLoads.size());
-    for (const auto &load : memberLoads) {
-        const auto barIt = barsByExternal.constFind(load.memberId);
+    const QString defaultCase = defaultCaseOf(context.loadCases);
+    Structura::Geometry::DefaultLocalAxisProvider axisProvider;
+
+    // Geometria e eixos locais (mesma convencao do solver) de uma barra.
+    auto makeBase = [&](int memberId, SceneController::MemberActionVisual &visual) {
+        const auto barIt = barsByExternal.constFind(memberId);
         if (barIt == barsByExternal.constEnd()) {
-            continue;
+            return false;
         }
-
-        const auto startNodeIt = nodesById.constFind(barIt->startNodeId);
-        const auto endNodeIt = nodesById.constFind(barIt->endNodeId);
-        if (startNodeIt == nodesById.constEnd() || endNodeIt == nodesById.constEnd()) {
-            continue;
+        const auto startIt = nodesById.constFind(barIt->startNodeId);
+        const auto endIt = nodesById.constFind(barIt->endNodeId);
+        if (startIt == nodesById.constEnd() || endIt == nodesById.constEnd()) {
+            return false;
         }
-
-        const QVector3D start(static_cast<float>(startNodeIt->x), static_cast<float>(startNodeIt->y), static_cast<float>(startNodeIt->z));
-        const QVector3D end(static_cast<float>(endNodeIt->x), static_cast<float>(endNodeIt->y), static_cast<float>(endNodeIt->z));
-        const QVector3D barVector = end - start;
-        if (barVector.lengthSquared() < 1e-6f) {
-            continue;
+        const std::array<double, 3> a {startIt->x, startIt->y, startIt->z};
+        const std::array<double, 3> b {endIt->x, endIt->y, endIt->z};
+        const double dx = b[0] - a[0];
+        const double dy = b[1] - a[1];
+        const double dz = b[2] - a[2];
+        if (dx * dx + dy * dy + dz * dz < 1e-12) {
+            return false;
         }
-
-        QVector3D loadVector(static_cast<float>(load.qx), static_cast<float>(load.qy), static_cast<float>(load.qz));
-        const bool isLocal = Structura::App::isLocalMemberLoadSystem(load.system);
-
-        if (isLocal) {
-            QVector3D xDir = barVector.normalized();
-            QVector3D reference(0.0f, 0.0f, 1.0f);
-            if (std::abs(QVector3D::dotProduct(xDir, reference)) > 0.95f) {
-                reference = QVector3D(0.0f, 1.0f, 0.0f);
+        double rotationDeg = 0.0;
+        if (context.placements) {
+            for (const auto &placement : *context.placements) {
+                if (placement.memberId == memberId) {
+                    rotationDeg = placement.rotationDeg;
+                    break;
+                }
             }
-
-            QVector3D yDir = QVector3D::crossProduct(reference, xDir);
-            if (yDir.lengthSquared() < 1e-6f) {
-                reference = QVector3D(1.0f, 0.0f, 0.0f);
-                yDir = QVector3D::crossProduct(reference, xDir);
-            }
-            if (yDir.lengthSquared() < 1e-6f) {
-                yDir = QVector3D(0.0f, 1.0f, 0.0f);
-            }
-            yDir.normalize();
-
-            QVector3D zDir = QVector3D::crossProduct(xDir, yDir);
-            if (zDir.lengthSquared() < 1e-6f) {
-                zDir = QVector3D(0.0f, 0.0f, 1.0f);
-            }
-            zDir.normalize();
-
-            loadVector = static_cast<float>(load.qx) * xDir
-                       + static_cast<float>(load.qy) * yDir
-                       + static_cast<float>(load.qz) * zDir;
         }
+        const auto lcs = Structura::Geometry::rotatedAboutX(axisProvider.computeLCS(a, b, std::nullopt), rotationDeg);
+        auto toVector = [](const std::array<double, 3> &v) {
+            return QVector3D(static_cast<float>(v[0]), static_cast<float>(v[1]), static_cast<float>(v[2]));
+        };
+        visual.start = toVector(a);
+        visual.end = toVector(b);
+        visual.xAxis = toVector(lcs.xPrime);
+        visual.yAxis = toVector(lcs.yPrime);
+        visual.zAxis = toVector(lcs.zPrime);
+        return true;
+    };
 
-        if (loadVector.lengthSquared() < 1e-6f) {
-            continue;
+    if (context.memberLoads) {
+        for (const auto &load : *context.memberLoads) {
+            if (!inActiveCase(load.loadCase, context.activeCase, defaultCase)) {
+                continue;
+            }
+            SceneController::MemberActionVisual visual;
+            if (!makeBase(load.memberId, visual)) {
+                continue;
+            }
+            visual.values = QVector3D(static_cast<float>(load.qx), static_cast<float>(load.qy), static_cast<float>(load.qz));
+            visual.local = Structura::App::isLocalMemberLoadSystem(load.system);
+            visual.moment = false;
+            if (!visual.values.isNull()) {
+                visuals.append(visual);
+            }
         }
-
-        SceneController::MemberLoadVisual visual;
-        visual.position = (start + end) * 0.5f;
-        visual.force = loadVector;
-        visual.barVector = barVector;
-        visual.localSystem = isLocal;
-        memberVisuals.append(visual);
     }
 
-    return memberVisuals;
+    if (context.memberMoments) {
+        for (const auto &moment : *context.memberMoments) {
+            if (!inActiveCase(moment.loadCase, context.activeCase, defaultCase)) {
+                continue;
+            }
+            SceneController::MemberActionVisual visual;
+            if (!makeBase(moment.memberId, visual)) {
+                continue;
+            }
+            visual.values = QVector3D(static_cast<float>(moment.mx), static_cast<float>(moment.my), static_cast<float>(moment.mz));
+            visual.local = Structura::App::isLocalMemberLoadSystem(moment.system);
+            visual.moment = true;
+            if (!visual.values.isNull()) {
+                visuals.append(visual);
+            }
+        }
+    }
+
+    // Peso proprio: gama (kN/m3) x area (m2), global -Z, somado por caso que o inclui.
+    if (context.loadCases && context.materials && context.sections) {
+        int selfWeightCases = 0;
+        for (const auto &loadCase : *context.loadCases) {
+            if (loadCase.selfWeight && (context.activeCase.isEmpty() || loadCase.name == context.activeCase)) {
+                ++selfWeightCases;
+            }
+        }
+        if (selfWeightCases > 0) {
+            QHash<QUuid, double> gammaByMaterial;
+            for (const auto &material : *context.materials) {
+                gammaByMaterial.insert(material.uuid, material.unitWeight);
+            }
+            QHash<QUuid, double> areaBySection;
+            for (const auto &section : *context.sections) {
+                areaBySection.insert(section.uuid, section.area);
+            }
+            for (const auto &bar : barInfos) {
+                const double weight = gammaByMaterial.value(bar.materialId, 0.0) * areaBySection.value(bar.sectionId, 0.0)
+                                      * selfWeightCases;
+                if (weight == 0.0 || bar.externalId <= 0) {
+                    continue;
+                }
+                SceneController::MemberActionVisual visual;
+                if (!makeBase(bar.externalId, visual)) {
+                    continue;
+                }
+                visual.values = QVector3D(0.0f, 0.0f, static_cast<float>(-weight));
+                visual.local = false;
+                visual.selfWeight = true;
+                visuals.append(visual);
+            }
+        }
+    }
+
+    return visuals;
 }
 
 QVector<SceneController::SupportVisual> LoadSupportVisualMapper::mapSupportVisuals(const SceneController *sceneController,

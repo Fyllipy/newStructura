@@ -79,8 +79,6 @@ public:
     /// Invalida todo o cache (chamar após nova análise).
     void invalidateAll();
 
-    /// Invalida entradas de um elemento específico (ex.: barra modificada).
-    void invalidateElement(int elementId);
 
     bool has(const DiagramCacheKey& key) const;
     const SampledDiagram& get(const DiagramCacheKey& key) const;

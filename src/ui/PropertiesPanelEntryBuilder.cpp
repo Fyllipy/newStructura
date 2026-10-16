@@ -77,7 +77,8 @@ QVector<PropertiesPanel::BarEntry> PropertiesPanelEntryBuilder::buildBarEntries(
                                                                                  const QVector<SectionInfo> &sections,
                                                                                  const QVector<MemberLoad> &memberLoads,
                                                                                  const QString &noMaterialLabel,
-                                                                                 const QString &noSectionLabel)
+                                                                                 const QString &noSectionLabel,
+                                                                                 const QVector<Structura::App::ProjectData::MemberPlacement> &placements)
 {
     QVector<PropertiesPanel::BarEntry> entries;
     if (!sceneController) {
@@ -118,6 +119,23 @@ QVector<PropertiesPanel::BarEntry> PropertiesPanelEntryBuilder::buildBarEntries(
         entry.materialName = materialInfo != materialById.constEnd() ? materialInfo->name : noMaterialLabel;
         const auto sectionInfo = sectionById.constFind(entry.sectionId);
         entry.sectionName = sectionInfo != sectionById.constEnd() ? sectionInfo->name : noSectionLabel;
+        if (sectionInfo != sectionById.constEnd()) {
+            entry.sectionIy = sectionInfo->iy;
+            entry.sectionIz = sectionInfo->iz;
+            entry.section = *sectionInfo;
+            entry.hasSection = true;
+        }
+        for (const auto &placement : placements) {
+            if (placement.memberId == entry.externalId) {
+                entry.rotationDeg = placement.rotationDeg;
+                entry.reference = placement.reference;
+                entry.offsetA = placement.offsetA;
+                entry.offsetB = placement.offsetB;
+                entry.releaseMask = placement.releaseMask;
+                entry.memberType = placement.memberType;
+                break;
+            }
+        }
 
         QVector3D startPos;
         QVector3D endPos;

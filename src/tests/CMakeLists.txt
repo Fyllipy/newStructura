@@ -37,7 +37,23 @@ function(add_structura_test TARGET_NAME SOURCE_FILE)
 endfunction()
 
 add_structura_test(TestCoreModels TestCoreModels.cpp)
-add_structura_test(TestRepositoryAndServices TestRepositoryAndServices.cpp)
 add_structura_test(TestIdGeneratorService TestIdGeneratorService.cpp)
-add_structura_test(TestSceneControllerFacade TestSceneControllerFacade.cpp)
 add_structura_test(TestArchitectureBoundaries TestArchitectureBoundaries.cpp)
+add_structura_test(TestSectionShapes TestSectionShapes.cpp)
+add_structura_test(TestProjectIoAndSolver TestProjectIoAndSolver.cpp)
+add_structura_test(TestProfileUi TestProfileUi.cpp)
+
+# Testes de interface rodam em modo offscreen: copia o plugin de plataforma ao lado do executavel.
+if (MSVC)
+    add_custom_command(TARGET TestProfileUi POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:TestProfileUi>/platforms
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}/platforms/qoffscreen.dll"
+                $<TARGET_FILE_DIR:TestProfileUi>/platforms/qoffscreen.dll
+    )
+endif()
+
+add_structura_test(TestAppearanceRender TestAppearanceRender.cpp)
+vtk_module_autoinit(TARGETS TestAppearanceRender MODULES ${VTK_LIBRARIES})
+add_structura_test(TestDesign TestDesign.cpp)
+add_structura_test(TestReport TestReport.cpp)

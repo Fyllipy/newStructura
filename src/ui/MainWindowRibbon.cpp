@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "SvgIcons.h"
 
 #include "viz/postprocessor/PostProcessorRenderer.h"
 
@@ -172,7 +173,7 @@ void MainWindow::createRibbon()
     modelGrid->setHorizontalSpacing(30);
     modelGrid->setVerticalSpacing(15);
     modelGrid->setAlignment(Qt::AlignTop);
-    const QList<QAction *> modelActions = { m_insertNodeCoordinatesAction, m_insertNodeScreenAction, m_insertBarAction, m_applyRestraintsAction };
+    const QList<QAction *> modelActions = { m_insertBarAction, m_applyRestraintsAction };
     const int modelColumns = 2;
     populateActionGrid(modelGrid, modelActions, modelActions.size());
     const int modelRows = (modelActions.count() + modelColumns - 1) / modelColumns;
@@ -185,9 +186,61 @@ void MainWindow::createRibbon()
     propGrid->setHorizontalSpacing(30);
     propGrid->setVerticalSpacing(15);
     propGrid->setAlignment(Qt::AlignTop);
-    populateActionGrid(propGrid, { m_createMaterialAction, m_createSectionAction, m_assignPropertiesAction }, 3);
-    propGrid->setRowStretch(2, 1);
+    populateActionGrid(propGrid, { m_createMaterialAction, m_createSectionAction, m_profileManagerAction, m_assignPropertiesAction, m_placementAction }, 5);
+    propGrid->setRowStretch(3, 1);
     homeLayout->addWidget(propGroup, 0, Qt::AlignTop);
+
+    auto *editGroup = new QGroupBox(tr("Edicao"), this);
+    auto *editGrid = new QGridLayout(editGroup);
+    editGrid->setContentsMargins(4, 5, 4, 4);
+    editGrid->setHorizontalSpacing(30);
+    editGrid->setVerticalSpacing(15);
+    editGrid->setAlignment(Qt::AlignTop);
+    m_createGroupAction = new QAction(tr("Criar\ngrupo"), this);
+    m_createGroupAction->setIcon(Structura::UI::svgIcon(QStringLiteral("group.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_createGroupAction->setToolTip(tr("Cria um grupo com as barras selecionadas: perfil, posição e rotação são compartilhados"));
+    connect(m_createGroupAction, &QAction::triggered, this, &MainWindow::onCreateGroup);
+    m_groupsPanelAction = new QAction(tr("Grupos"), this);
+    m_groupsPanelAction->setIcon(Structura::UI::svgIcon(QStringLiteral("groups.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_groupsPanelAction->setToolTip(tr("Painel de grupos: exibir/ocultar, adicionar e remover barras"));
+    connect(m_groupsPanelAction, &QAction::triggered, this, &MainWindow::onToggleGroupsPanel);
+    const QList<QAction *> editActions = { m_copyElementsAction, m_moveElementsAction, m_serialCopyAction, m_rotateElementsAction, m_mirrorElementsAction, m_createGroupAction, m_groupsPanelAction };
+    populateActionGrid(editGrid, editActions, editActions.size());
+    editGrid->setRowStretch(1, 1);
+    homeLayout->addWidget(editGroup, 0, Qt::AlignTop);
+
+    auto *typeGroup = new QGroupBox(tr("Tipo de barra"), this);
+    auto *typeGrid = new QGridLayout(typeGroup);
+    typeGrid->setContentsMargins(4, 5, 4, 4);
+    typeGrid->setHorizontalSpacing(30);
+    typeGrid->setVerticalSpacing(15);
+    typeGrid->setAlignment(Qt::AlignTop);
+    struct TypeButton {
+        const char *text;
+        const char *icon;
+        const char *tip;
+        int op;
+    };
+    const TypeButton typeButtons[] = {
+        {"Rotular\ninício", "hinge-start.svg", "Articula (libera as rotações de flexão) a extremidade inicial das barras selecionadas", 0},
+        {"Rotular\nfim", "hinge-end.svg", "Articula a extremidade final das barras selecionadas", 1},
+        {"Bi-\nrotulada", "hinge-both.svg", "Articula as duas extremidades", 2},
+        {"Engastar\nextremidades", "fixed-ends.svg", "Remove as articulações (extremidades rígidas)", 3},
+        {"Treliça", "truss.svg", "Barra de treliça: biarticulada, trabalha só a esforço axial (tração e compressão)", 4},
+        {"Tirante", "tie.svg", "Tirante: biarticulado e só tração — a barra é desativada quando encurta (análise iterativa)", 5},
+    };
+    QList<QAction *> typeActions;
+    for (const auto &t : typeButtons) {
+        auto *action = new QAction(tr(t.text), this);
+        action->setIcon(Structura::UI::svgIcon(QString::fromLatin1(t.icon), QColor(QStringLiteral("#1e232b")), 64));
+        action->setToolTip(tr(t.tip));
+        const int op = t.op;
+        connect(action, &QAction::triggered, this, [this, op]() { applyBarTypeOperation(op); });
+        typeActions.append(action);
+    }
+    populateActionGrid(typeGrid, typeActions, typeActions.size());
+    typeGrid->setRowStretch(1, 1);
+    homeLayout->addWidget(typeGroup, 0, Qt::AlignTop);
 
     homeLayout->addStretch(1);
 
@@ -199,24 +252,41 @@ void MainWindow::createRibbon()
     toolsLayout->setContentsMargins(4, 20, 4, 3);
     toolsLayout->setSpacing(4);
 
-    auto *gridGroup = new QGroupBox(tr("Grid"), this);
-    auto *gridLayout = new QGridLayout(gridGroup);
-    gridLayout->setContentsMargins(4, 5, 4, 4);
-    gridLayout->setHorizontalSpacing(30);
-    gridLayout->setVerticalSpacing(15);
-    gridLayout->setAlignment(Qt::AlignTop);
-    const QList<QAction *> gridActions = {
-        m_generateGridAction,
-        m_addGridLineXAction,
-        m_addGridLineYAction,
-        m_addGridLineZAction,
-        m_deleteGridLineAction
-    };
-    const int gridColumns = 2;
-    populateActionGrid(gridLayout, gridActions, gridActions.size());
-    const int gridRows = (gridActions.count() + gridColumns - 1) / gridColumns;
-    gridLayout->setRowStretch(gridRows, 1);
-    toolsLayout->addWidget(gridGroup, 0, Qt::AlignTop);
+    auto *axesGroup = new QGroupBox(tr("Eixos"), this);
+    auto *axesLayout = new QGridLayout(axesGroup);
+    axesLayout->setContentsMargins(4, 5, 4, 4);
+    axesLayout->setHorizontalSpacing(30);
+    axesLayout->setVerticalSpacing(15);
+    axesLayout->setAlignment(Qt::AlignTop);
+    populateActionGrid(axesLayout, { m_axesAction }, 1);
+    axesLayout->setRowStretch(1, 1);
+    toolsLayout->addWidget(axesGroup, 0, Qt::AlignTop);
+
+    auto *checkGroup = new QGroupBox(tr("Modelo"), this);
+    auto *checkLayout = new QGridLayout(checkGroup);
+    checkLayout->setContentsMargins(4, 5, 4, 4);
+    checkLayout->setHorizontalSpacing(30);
+    checkLayout->setVerticalSpacing(15);
+    checkLayout->setAlignment(Qt::AlignTop);
+    m_checkModelAction = new QAction(tr("Checar\nmodelo"), this);
+    m_checkModelAction->setIcon(Structura::UI::svgIcon(QStringLiteral("model-check.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_checkModelAction->setToolTip(tr("Procura problemas antes de analisar: nós soltos, barras duplicadas, mecanismos, apoios insuficientes, cargas e unidades"));
+    connect(m_checkModelAction, &QAction::triggered, this, &MainWindow::onCheckModel);
+    m_templateAction = new QAction(tr("Modelo\npronto"), this);
+    m_templateAction->setIcon(Structura::UI::svgIcon(QStringLiteral("template.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_templateAction->setToolTip(tr("Gera um galpão de duas águas ou um edifício de pórticos parametrizado (perfis, grupos, tirantes, cargas e combinações)"));
+    connect(m_templateAction, &QAction::triggered, this, &MainWindow::onNewFromTemplate);
+    populateActionGrid(checkLayout, { m_templateAction, m_checkModelAction }, 2);
+    toolsLayout->addWidget(checkGroup, 0, Qt::AlignTop);
+
+    auto *docsGroup = new QGroupBox(tr("Documentação"), this);
+    auto *docsLayout = new QGridLayout(docsGroup);
+    docsLayout->setContentsMargins(4, 5, 4, 4);
+    docsLayout->setHorizontalSpacing(30);
+    docsLayout->setVerticalSpacing(15);
+    docsLayout->setAlignment(Qt::AlignTop);
+    populateActionGrid(docsLayout, { m_quantitiesAction, m_exportDxfAction }, 2);
+    toolsLayout->addWidget(docsGroup, 0, Qt::AlignTop);
     toolsLayout->addStretch(1);
 
     auto *loadsTab = new QWidget(this);
@@ -233,12 +303,34 @@ void MainWindow::createRibbon()
     loadsGrid->setHorizontalSpacing(4);
     loadsGrid->setVerticalSpacing(4);
     loadsGrid->setAlignment(Qt::AlignTop);
-    const QList<QAction *> loadActions = { m_applyNodalLoadAction, m_applyDistributedLoadAction, m_runAnalysisAction };
-    const int loadColumns = 2;
-    populateActionGrid(loadsGrid, loadActions, loadActions.size());
-    const int loadRows = (loadActions.count() + loadColumns - 1) / loadColumns;
-    loadsGrid->setRowStretch(loadRows, 1);
+    m_areaLoadAction = new QAction(tr("Carga de\nárea"), this);
+    m_areaLoadAction->setIcon(Structura::UI::svgIcon(QStringLiteral("area-load.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_areaLoadAction->setToolTip(tr("Distribui uma pressão (kN/m²) nas barras selecionadas pela largura de influência"));
+    connect(m_areaLoadAction, &QAction::triggered, this, &MainWindow::onApplyAreaLoad);
+    m_windLoadAction = new QAction(tr("Vento\nNBR 6123"), this);
+    m_windLoadAction->setIcon(Structura::UI::svgIcon(QStringLiteral("wind.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_windLoadAction->setToolTip(tr("Gera a carga de vento de uma face (q = 0,613 Vk²) nas barras selecionadas"));
+    connect(m_windLoadAction, &QAction::triggered, this, &MainWindow::onApplyWindLoad);
+    m_deleteLoadsAction = new QAction(tr("Excluir\ncargas"), this);
+    m_deleteLoadsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("delete-loads.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_deleteLoadsAction->setToolTip(tr("Exclui cargas por tipo, caso de carga e abrangência (seleção ou modelo inteiro)"));
+    connect(m_deleteLoadsAction, &QAction::triggered, this, &MainWindow::onDeleteLoads);
+    populateActionGrid(loadsGrid, { m_applyNodalLoadAction, m_applyDistributedLoadAction, m_applyMemberMomentAction, m_areaLoadAction, m_windLoadAction, m_deleteLoadsAction }, 6);
     loadsLayout->addWidget(loadsGroup, 0, Qt::AlignTop);
+
+    auto *casesGroup = new QGroupBox(tr("Casos e combinações"), this);
+    auto *casesGrid = new QGridLayout(casesGroup);
+    casesGrid->setContentsMargins(4, 5, 4, 4);
+    casesGrid->setAlignment(Qt::AlignTop);
+    populateActionGrid(casesGrid, { m_loadCasesAction, m_genCombinationsAction }, 2);
+    loadsLayout->addWidget(casesGroup, 0, Qt::AlignTop);
+
+    auto *analysisGroup = new QGroupBox(tr("Análise"), this);
+    auto *analysisGrid = new QGridLayout(analysisGroup);
+    analysisGrid->setContentsMargins(4, 5, 4, 4);
+    analysisGrid->setAlignment(Qt::AlignTop);
+    populateActionGrid(analysisGrid, { m_runAnalysisAction, m_bucklingAction, m_modalAction }, 3);
+    loadsLayout->addWidget(analysisGroup, 0, Qt::AlignTop);
     loadsLayout->addStretch(1);
 
     // Visualization tab
@@ -268,12 +360,12 @@ void MainWindow::createRibbon()
 
     // ── Aba Resultados ─────────────────────────────────────────────────
     m_showDiagramsAction = new QAction(tr("Mostrar\nDiagramas"), this);
-    m_showDiagramsAction->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    m_showDiagramsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("diagrams-show.svg"), QColor(QStringLiteral("#1e232b")), 64));
     m_showDiagramsAction->setEnabled(false); // habilitado após análise
     connect(m_showDiagramsAction, &QAction::triggered, this, &MainWindow::onShowDiagrams);
 
     m_hideDiagramsAction = new QAction(tr("Ocultar\nDiagramas"), this);
-    m_hideDiagramsAction->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+    m_hideDiagramsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("diagrams-hide.svg"), QColor(QStringLiteral("#1e232b")), 64));
     m_hideDiagramsAction->setEnabled(false);
     connect(m_hideDiagramsAction, &QAction::triggered, this, &MainWindow::onHideDiagrams);
 
@@ -297,6 +389,49 @@ void MainWindow::createRibbon()
 
     m_ribbon->addTab(resultsTab, tr("Resultados"));
 
+    // ── Aba Dimensionamento ────────────────────────────────────────────
+    m_designSettingsAction = new QAction(tr("Parâmetros"), this);
+    m_designSettingsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("design-params.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_designSettingsAction->setToolTip(tr("Aço, comprimentos efetivos, travamentos e combinações do dimensionamento"));
+    connect(m_designSettingsAction, &QAction::triggered, this, &MainWindow::onDesignSettings);
+    m_verifyDesignAction = new QAction(tr("Verificar\nperfis"), this);
+    m_verifyDesignAction->setIcon(Structura::UI::svgIcon(QStringLiteral("check-design.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_verifyDesignAction->setToolTip(tr("Verifica os perfis adotados (NBR 8800 / NBR 14762) com os esforços da última análise"));
+    connect(m_verifyDesignAction, &QAction::triggered, this, &MainWindow::onVerifyDesign);
+    m_optimizeDesignAction = new QAction(tr("Dimensionar\nperfis"), this);
+    m_optimizeDesignAction->setIcon(Structura::UI::svgIcon(QStringLiteral("design-optimize.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_optimizeDesignAction->setToolTip(tr("Adota o perfil mais leve da série que atende, reanalisando até convergir"));
+    connect(m_optimizeDesignAction, &QAction::triggered, this, &MainWindow::onOptimizeDesign);
+
+    auto *designTab = new QWidget(this);
+    designTab->setObjectName(QStringLiteral("RibbonPage"));
+    designTab->setStyleSheet(QStringLiteral("#RibbonPage { background: #f2f5fa; }"));
+    auto *designLayout = new QHBoxLayout(designTab);
+    designLayout->setContentsMargins(4, 20, 4, 3);
+    designLayout->setSpacing(4);
+    auto *designGroup = new QGroupBox(tr("Aço"), this);
+    auto *designGrid = new QGridLayout(designGroup);
+    designGrid->setContentsMargins(4, 5, 4, 4);
+    designGrid->setHorizontalSpacing(30);
+    designGrid->setVerticalSpacing(15);
+    designGrid->setAlignment(Qt::AlignTop);
+    populateActionGrid(designGrid, { m_designSettingsAction, m_verifyDesignAction, m_optimizeDesignAction, m_connectionsAction }, 4);
+    designLayout->addWidget(designGroup, 0, Qt::AlignTop);
+    m_reportAction = new QAction(tr("Memorial"), this);
+    m_reportAction->setIcon(Structura::UI::svgIcon(QStringLiteral("report.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_reportAction->setToolTip(tr("Gera o memorial de cálculo e o relatório geral: escolha o conteúdo, visualize e exporte para Word (.docx)"));
+    connect(m_reportAction, &QAction::triggered, this, &MainWindow::onGenerateReport);
+    auto *reportGroup = new QGroupBox(tr("Documentação"), this);
+    auto *reportGrid = new QGridLayout(reportGroup);
+    reportGrid->setContentsMargins(4, 5, 4, 4);
+    reportGrid->setHorizontalSpacing(30);
+    reportGrid->setVerticalSpacing(15);
+    reportGrid->setAlignment(Qt::AlignTop);
+    populateActionGrid(reportGrid, { m_reportAction }, 1);
+    designLayout->addWidget(reportGroup, 0, Qt::AlignTop);
+    designLayout->addStretch(1);
+    m_ribbon->addTab(designTab, tr("Dimensionamento"));
+
     // Inicializar o pós-processador
     m_postProcessor = std::make_unique<Structura::Visualization::PostProcessorRenderer>();
 
@@ -316,13 +451,18 @@ QToolButton *MainWindow::createToolButton(QAction *action)
     button->setAutoRaise(false);
     const QSize iconSz(45, 45);
     button->setIconSize(iconSz);
-    button->setFixedSize(iconSz.width() + 6, iconSz.height() + 6);
-    //button->setMinimumSize(68, 60);
-    button->setMinimumSize(80, 82);
-    //button->setMaximumHeight(66);
-    button->setMaximumHeight(86);
+    // Largura pela maior linha do texto (sem cortes) e altura para ate tres linhas.
+    const QFontMetrics metrics(button->font());
+    int textWidth = 0;
+    for (const QString &line : action->text().split(QLatin1Char('\n'))) {
+        textWidth = std::max(textWidth, metrics.horizontalAdvance(line));
+    }
+    const int lines = std::max(1, static_cast<int>(action->text().count(QLatin1Char('\n'))) + 1);
+    const int width = std::max(64, textWidth + 22);
+    const int height = 10 + iconSz.height() + 8 + lines * metrics.lineSpacing() + 6;
+    button->setFixedSize(width, std::max(88, height));
     button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    button->setStyleSheet("QToolButton { padding-top: 10px;}");
+    button->setStyleSheet("QToolButton { padding-top: 8px; }");
     button->setFocusPolicy(Qt::NoFocus);
     return button;
 }
@@ -336,6 +476,8 @@ void MainWindow::populateActionGrid(QGridLayout *layout, const QList<QAction *> 
         columns = 3;
     }
 
+    layout->setHorizontalSpacing(14);
+    layout->setVerticalSpacing(10);
     int row = 0;
     int column = 0;
     QWidget *container = layout->parentWidget();

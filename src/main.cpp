@@ -18,5 +18,10 @@ int main(int argc, char *argv[])
     mainWindow.resize(1280, 720);
     mainWindow.show();
 
+    const QStringList arguments = app.arguments();
+    if (arguments.size() > 1) {
+        mainWindow.openModelFile(arguments.at(1));
+    }
+
     return app.exec();
 }

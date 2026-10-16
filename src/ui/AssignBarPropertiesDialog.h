@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app/ProjectDataTypes.h"
+
 #include <QDialog>
 #include <QPair>
 #include <QVector>
@@ -8,6 +10,10 @@
 
 class QListWidget;
 class QComboBox;
+
+namespace Structura::UI {
+class SectionPickerButton;
+}
 
 class AssignBarPropertiesDialog : public QDialog
 {
@@ -32,7 +38,7 @@ public:
     };
 
     AssignBarPropertiesDialog(const QVector<QPair<QUuid, QString>> &materials,
-                              const QVector<QPair<QUuid, QString>> &sections,
+                              const QVector<Structura::App::ProjectData::SectionInfo> &sections,
                               const std::vector<BarInfo> &bars,
                               const std::vector<NodeInfo> &nodes,
                               QWidget *parent = nullptr);
@@ -45,8 +51,7 @@ public:
 
 private:
     QVector<QPair<QUuid, QString>> m_materialOptions;
-    QVector<QPair<QUuid, QString>> m_sectionOptions;
     QListWidget *m_barList;
     QComboBox *m_materialCombo;
-    QComboBox *m_sectionCombo;
+    Structura::UI::SectionPickerButton *m_sectionPicker;
 };

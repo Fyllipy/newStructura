@@ -42,6 +42,19 @@ UniformLoadForceEvaluator::UniformLoadForceEvaluator(const BeamElementResults& e
             m_qz_local += dot3(qg, el.zLocal);
         }
     }
+
+    // Acumula momentos distribuídos uniformes no sistema local
+    for (const auto& moment : el.distributedMoments) {
+        m_hasLoad = true;
+        if (moment.isLocalSystem) {
+            m_my_local += moment.my;
+            m_mz_local += moment.mz;
+        } else {
+            const std::array<double, 3> mg{moment.mx, moment.my, moment.mz};
+            m_my_local += dot3(mg, el.yLocal);
+            m_mz_local += dot3(mg, el.zLocal);
+        }
+    }
 }
 
 // ── evaluate ─────────────────────────────────────────────────────────────
@@ -76,8 +89,9 @@ InternalForces UniformLoadForceEvaluator::evaluate(double x) const
         // Torção: interpolação linear (sem carga de torção distribuída no modelo atual)
         f.Mt = m_ef.Mt1 + (m_ef.Mt2 - m_ef.Mt1) * (x / L);
         // Momentos: parabólicos (integração do cortante)
-        f.My = m_ef.My1 + m_ef.Vz1 * x - 0.5 * qz * x * x;
-        f.Mz = m_ef.Mz1 - m_ef.Vy1 * x + 0.5 * qy * x * x;
+        // Momento distribuído my/mz contribui com derivada constante (-m·x).
+        f.My = m_ef.My1 + m_ef.Vz1 * x - 0.5 * qz * x * x - m_my_local * x;
+        f.Mz = m_ef.Mz1 - m_ef.Vy1 * x + 0.5 * qy * x * x - m_mz_local * x;
     }
 
     // ── Verificações de consistência (apenas em builds Debug) ──────────────

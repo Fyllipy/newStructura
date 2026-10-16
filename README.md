@@ -55,17 +55,11 @@ cmake --build build --config Release
 Para evitar hardcode de caminhos no comando, considere usar `CMakePresets.json`/`CMakeUserPresets.json` ou variáveis de ambiente (`VTK_DIR`, `CMAKE_PREFIX_PATH`).
 
 
-## Uso (Grid, Inserção na tela e Snap)
+## Uso (lançamento de barras e snap)
 
-- Gerar grid: na guia "Início" → grupo "Modelagem" → "Gerar grid". Informe espaçamentos Dx, Dy, Dz e número de linhas Nx, Ny, Nz. O grid é desenhado como linhas nas três direções a partir da origem (0,0,0).
-- Inserir nó por coordenadas: "Inserir ponto" → preencha X, Y, Z → OK.
-- Inserir nó na tela: "Inserir ponto" → botão "Inserir na tela". O checkbox global "Snap ao grid" fica na guia "Início" → grupo "Modelagem" e pode ser alternado a qualquer momento durante a inserção:
-  - Clique esquerdo na viewport: cria nó na posição clicada; se o snap estiver marcado e houver grid, a posição é ajustada ao vértice de grid mais próximo.
-  - Clique direito ou tecla Esc: encerra o modo de inserção na tela.
+- Os nós são criados ao lançar barras ("Inserir barra"): clique no ponto inicial e no final. O lançamento usa o plano de construção, a malha de referência ("Malha" no rodapé), os eixos nomeados (Ferramentas > Eixos de referência) e os snaps de extremidade, centro de barra, malha e guias ortogonal/perpendicular. Com a barra alinhada a uma guia ortogonal, o ponto também é atraído pela malha.
+- Tab edita o valor digitado; Esc ou clique direito encerra o comando.
 
-Notas:
-- O snap considera o grid no intervalo [0, (N-1)*D] em cada eixo e faz clamp ao limite.
-- A inserção na tela calcula a interseção do raio de visão com o plano Z=0; se a câmera estiver paralela a esse plano, gire levemente a vista para permitir a interseção.
 ## Uso (Materiais, Secoes e Barras)
 
 - Criar material: In�cio -> Propriedades -> ""Novo material"". Informe nome, m�dulo de elasticidade (Pa) e densidade (kg/m3).
@@ -82,3 +76,50 @@ Notas adicionais:
 ## Arquivos .dat
 - Use ""Abrir .dat"" na guia In�cio para carregar arquivos no template indicado (materiais com E/G, se��es com A/Iz/Iy/J, n�s, barras e cargas).
 - ""Salvar .dat"" gera um arquivo com o mesmo template usando os dados atuais (resist�ncias e cargas continuam armazenadas para uso futuro).
+
+## Novidades de modelagem e visualizacao
+
+- **Lancamento grafico**: *Inserir no (Tela)* e *Inserir barra* usam o plano de construcao com snaps
+  (malha/eixos, extremidade, centro, perpendicular, ortogonal). `Tab` edita X/Y/Z/angulo (prefixo `@` =
+  relativo ao ponto inicial), `Enter` confirma, `Esc` sai. Barras novas usam o ultimo material/secao.
+- **Eixos de referencia** (aba *Ferramentas*): organizados por **niveis/pavimentos** (nome + altura Z), cada um com seus eixos X/Y nomeados, rotulos e snap. Da para criar niveis, copiar os eixos para outros niveis ou novas alturas, e navegar pelos niveis no rodape.
+- **Barra de exibicao** (rodape): grid, eixos, identificadores, eixos locais, nos, secoes extrudadas,
+  apoios, cargas, snap (menu por tipo), plano XY/XZ/YZ + nivel e tamanho da malha.
+- **Secoes extrudadas**: o dialogo *Nova secao* aceita um perfil (aco ou concreto), inclui o **catalogo de 173 perfis de aco laminados** (W, I, U, L, T) e calcula A, Iz, Iy e J.
+- **Cargas**: forca nodal, distribuida e **momento distribuido** em barras, com **casos de carga**
+  (opcao de peso proprio usando o peso especifico do material, kN/m3) e **combinacoes** lineares.
+  Cada caso e resolvido separadamente pela DLL e as combinacoes somam os resultados.
+- **.dat**: blocos novos e opcionais `[MATERIAL_PROPS]`, `[SECTION_GEOMETRY]`, `[LOAD_CASES]`,
+  `[COMBINATIONS]`, `[MEMBER_MOMENTS]`, `[AXES]`, `[VIEW_OPTIONS]` e coluna final de caso nas cargas.
+  Arquivos antigos continuam abrindo. O solver (`Structuradll`) ignora os blocos que nao conhece.
+- **Solver/DLL**: `structura_solve_v4` adiciona articulacoes de extremidade; `structura_solve_v3` adiciona giro e excentricidade da secao; `structura_solve_v2` adiciona momentos
+  distribuidos; `structura_solve` continua exportada. Recompile em `Structuradll` e copie `solver_dll.dll` para a raiz.
+- **Posicionamento da secao** (aba *Inicio* > *Propriedades* > *Posicionar secao*, ou o atalho no painel de propriedades da barra), modelado como no CYPE 3D:
+  - *Giro da secao* (graus, regra da mao direita em torno do eixo da barra; botoes -90/+90). As inercias principais
+    passam a atuar nos eixos girados (equivale a transformar Iy/Iz/Iyz por Mohr; o painel mostra Iy/Iz/Iyz nos eixos de referencia).
+  - *Ponto de referencia* (9 posicoes do retangulo envolvente: centro, 4 cantos, 4 meios de lado) = ponto da secao que fica
+    sobre o no, mais *deslocamento adicional* em largura (z) e altura (y). O centroide (eixo da barra) fica a
+    `deslocamento - ponto_de_referencia` do no, tratado no solver como braco rigido no/eixo (`K = T^T K_barra T`).
+    Esforcos e diagramas sao reportados no eixo da barra. Sem geometria parametrica so vale o deslocamento adicional.
+  - Persistido em `[MEMBER_PLACEMENT]` (`Member_ID giro_graus ponto_ref(0-8) desloc_z desloc_y`); desfazer/refazer e copia suportados.
+  - A CLI `solver_cli` aceita colunas opcionais em `[MEMBERS]`: `... giro [dy1 dz1 dy2 dz2]`.
+  - A janela flutuante (mesmo estilo do painel de eixos) mostra a secao girada com o no, o centroide e os 9 pontos de
+    referencia; clique num ponto para escolhe-lo e arraste a secao para deslocar (resolucao de 1 mm). Tem giro (slider,
+    campo e atalhos -90/+90/180), deslocamento adicional por extremidade, **articulacoes** (torcao e flexao em I e J,
+    com atalhos Continua / Articulada I / Articulada J / Bi-articulada) e o resultado (centroide em relacao ao no e inercias).
+    O painel de propriedades da barra mostra a miniatura da disposicao e o atalho para a janela. Edicoes seguidas
+    na mesma barra viram um unico passo de desfazer.
+  - Secoes assimetricas (ex.: cantoneiras) usam os eixos principais automaticamente (giro adicional + inercias principais).
+  - O `.dat` guarda tambem a extremidade J diferente e a mascara de liberacoes em `[MEMBER_PLACEMENT]`.
+- **Exemplo**: `Examples/galpao_3_andares.dat` (5 porticos, 2 vaos de 6 m, 3 andares de 4 m; pilares W 310 girados 90 graus com faces
+  externas alinhadas, vigas com topo da mesa no nivel do piso, contraventamentos em L biarticulados; casos PP/CP/SC/VT e 4 combinacoes;
+  sistema kN-m com E em kN/m2).
+- **Unidades**: o solver e coerente com as unidades dos dados. O aplicativo rotula cargas em kN, mas `E`/`G` sao pedidos em Pa e
+  nenhuma conversao e feita: use um sistema coerente (N-m-Pa ou kN-m-kN/m2).
+- O executavel aceita um `.dat` como argumento. Ver `NOTICE_OPENSA.md` sobre origem/licenca.
+- **Niveis na barra de exibicao**: lista de niveis para saltar direto a um pavimento, setas para navegar e o botao
+  *Mostrar todos os niveis* (plano XY), que exibe a malha e os eixos de todos os niveis ao mesmo tempo; o lancamento
+  usa o nivel sob o cursor.
+- **Copiar/Mover elementos** (aba Inicio, grupo Modelagem): selecione nos/barras, clique no ponto base e no destino
+  (snaps, `Tab` para digitar distancia, previa deslocada). Copiar repete ate `Esc` e leva apoios, cargas, momentos,
+  material, secao e ponto K; Mover tem desfazer (Ctrl+Z) e as barras conectadas acompanham os nos.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <optional>
 
 namespace Structura::Geometry {
@@ -28,6 +29,27 @@ struct LCS
     {
     }
 };
+
+/**
+ * @brief Gira o LCS em torno do eixo x' (regra da mao direita), como o giro de secao do solver:
+ *        y'' = cos*y' + sin*z',  z'' = -sin*y' + cos*z'.
+ */
+inline LCS rotatedAboutX(const LCS &lcs, double degrees)
+{
+    if (degrees == 0.0) {
+        return lcs;
+    }
+    constexpr double kPi = 3.14159265358979323846;
+    const double angle = degrees * kPi / 180.0;
+    const double c = std::cos(angle);
+    const double s = std::sin(angle);
+    LCS result = lcs;
+    for (int i = 0; i < 3; ++i) {
+        result.yPrime[i] = c * lcs.yPrime[i] + s * lcs.zPrime[i];
+        result.zPrime[i] = -s * lcs.yPrime[i] + c * lcs.zPrime[i];
+    }
+    return result;
+}
 
 /**
  * @brief Interface for computing local coordinate systems for bars

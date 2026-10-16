@@ -5,6 +5,7 @@
 #include <QVector3D>
 #include <QUuid>
 #include <QString>
+#include <functional>
 #include <optional>
 
 #include "app/ISceneEditGateway.h"
@@ -46,6 +47,8 @@ public:
         QVector<MemberLoad> *memberLoads {nullptr};
         NodalLoadPreset *lastNodalPreset {nullptr};
         DistributedLoadPreset *lastDistributedPreset {nullptr};
+        /// Amplia uma lista de barras com os demais membros dos grupos a que pertencem.
+        std::function<QVector<QUuid>(const QVector<QUuid> &)> expandIds;
     };
 
     explicit MainWindowPresenter(const Dependencies &deps, QObject *parent = nullptr);
@@ -86,6 +89,7 @@ public:
     void handleBarSectionEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &sectionId);
 
 private:
+    std::function<QVector<QUuid>(const QVector<QUuid> &)> m_expandIds;
     Structura::App::ISceneEditGateway *m_sceneController;
     Structura::SelectionModel *m_selectionModel;
     Structura::App::UndoRedoService *m_undoService;

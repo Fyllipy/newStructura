@@ -1,6 +1,7 @@
 #include "AssignBarPropertiesDialog.h"
 
 #include "DialogComboUtils.h"
+#include "ProfilePickerDialog.h"
 
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -14,23 +15,23 @@
 #include <QHash>
 
 AssignBarPropertiesDialog::AssignBarPropertiesDialog(const QVector<QPair<QUuid, QString>> &materials,
-                                                     const QVector<QPair<QUuid, QString>> &sections,
+                                                     const QVector<Structura::App::ProjectData::SectionInfo> &sections,
                                                      const std::vector<BarInfo> &bars,
                                                      const std::vector<NodeInfo> &nodes,
                                                      QWidget *parent)
     : QDialog(parent)
     , m_materialOptions(materials)
-    , m_sectionOptions(sections)
     , m_barList(new QListWidget(this))
     , m_materialCombo(new QComboBox(this))
-    , m_sectionCombo(new QComboBox(this))
+    , m_sectionPicker(new Structura::UI::SectionPickerButton(this))
 {
     setWindowTitle(tr("Atribuir propriedades"));
     setModal(true);
     resize(420, 360);
 
     Structura::UI::populateUuidCombo(m_materialCombo, m_materialOptions, tr("Sem material"));
-    Structura::UI::populateUuidCombo(m_sectionCombo, m_sectionOptions, tr("Sem secao"));
+    m_sectionPicker->setSections(sections);
+    m_sectionPicker->setManageAllowed(false);
 
     m_barList->setSelectionMode(QAbstractItemView::ExtendedSelection);
     QHash<QUuid, int> nodeLabels;
@@ -63,7 +64,7 @@ AssignBarPropertiesDialog::AssignBarPropertiesDialog(const QVector<QPair<QUuid, 
 
     auto *propertiesLayout = new QFormLayout();
     propertiesLayout->addRow(tr("Material"), m_materialCombo);
-    propertiesLayout->addRow(tr("Secao"), m_sectionCombo);
+    propertiesLayout->addRow(tr("Seção"), m_sectionPicker);
 
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->addLayout(listLayout, 1);
@@ -82,7 +83,7 @@ void AssignBarPropertiesDialog::setCurrentMaterial(const QUuid &id)
 
 void AssignBarPropertiesDialog::setCurrentSection(const QUuid &id)
 {
-    m_sectionCombo->setCurrentIndex(Structura::UI::indexForUuid(m_sectionOptions, id));
+    m_sectionPicker->setCurrent(id);
 }
 
 QUuid AssignBarPropertiesDialog::selectedMaterial() const
@@ -96,11 +97,7 @@ QUuid AssignBarPropertiesDialog::selectedMaterial() const
 
 QUuid AssignBarPropertiesDialog::selectedSection() const
 {
-    QVariant data = m_sectionCombo->currentData();
-    if (!data.isValid()) {
-        return {};
-    }
-    return data.toUuid();
+    return m_sectionPicker->current();
 }
 
 QList<int> AssignBarPropertiesDialog::selectedBarIndices() const

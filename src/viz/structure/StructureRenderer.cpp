@@ -42,11 +42,6 @@ void StructureRenderer::clear()
     m_points->Modified();
 }
 
-void StructureRenderer::beginUpdate()
-{
-    m_updating = true;
-}
-
 void StructureRenderer::endUpdate()
 {
     m_updating = false;
@@ -118,6 +113,16 @@ void StructureRenderer::clearHoveredBar()
 void StructureRenderer::setSelectedBars(const QSet<QUuid>& ids)
 {
     m_memberRenderer->setSelectedBars(ids);
+}
+
+void StructureRenderer::setNodeAppearance(const AppearanceMap& appearance)
+{
+    m_nodeRenderer->setAppearance(appearance);
+}
+
+void StructureRenderer::setBarAppearance(const AppearanceMap& appearance)
+{
+    m_memberRenderer->setAppearance(appearance);
 }
 
 vtkActor* StructureRenderer::getNodeActor() const

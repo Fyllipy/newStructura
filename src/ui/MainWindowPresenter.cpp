@@ -9,6 +9,7 @@ namespace Structura::UI {
 
 MainWindowPresenter::MainWindowPresenter(const Dependencies &deps, QObject *parent)
     : QObject(parent)
+    , m_expandIds(deps.expandIds)
     , m_sceneController(deps.sceneController)
     , m_selectionModel(deps.selectionModel)
     , m_undoService(deps.undoService)
@@ -114,8 +115,9 @@ void MainWindowPresenter::handleNodeCoordinateEdited(const QVector<QUuid> &ids, 
     m_undoService->pushMoveNodesCommand(m_sceneController, validIds, oldPositions, newPositions);
 }
 
-void MainWindowPresenter::handleBarMaterialEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &materialId)
+void MainWindowPresenter::handleBarMaterialEdited(const QVector<QUuid> &requestedIds, const std::optional<QUuid> &materialId)
 {
+    const QVector<QUuid> ids = m_expandIds ? m_expandIds(requestedIds) : requestedIds;
     if (!m_sceneController || !m_undoService || ids.isEmpty() || !materialId.has_value()) {
         return;
     }
@@ -155,8 +157,9 @@ void MainWindowPresenter::handleBarMaterialEdited(const QVector<QUuid> &ids, con
     }
 }
 
-void MainWindowPresenter::handleBarSectionEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &sectionId)
+void MainWindowPresenter::handleBarSectionEdited(const QVector<QUuid> &requestedIds, const std::optional<QUuid> &sectionId)
 {
+    const QVector<QUuid> ids = m_expandIds ? m_expandIds(requestedIds) : requestedIds;
     if (!m_sceneController || !m_undoService || ids.isEmpty() || !sectionId.has_value()) {
         return;
     }

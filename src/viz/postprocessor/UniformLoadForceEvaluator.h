@@ -48,6 +48,9 @@ private:
     double m_qx_local{0.0};
     double m_qy_local{0.0};
     double m_qz_local{0.0};
+    // Momentos distribuídos resultantes no sistema local (por unidade de comprimento)
+    double m_my_local{0.0};
+    double m_mz_local{0.0};
     bool   m_hasLoad{false};
 
     std::array<double, 3> m_xLocal{};

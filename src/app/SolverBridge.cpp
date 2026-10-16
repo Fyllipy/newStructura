@@ -19,6 +19,41 @@ using StructuraSolveFn = int (*) (
     double*, double*, double*, double*,
     int, char*);
 
+using StructuraSolveV2Fn = int (*) (
+    int, const int*, const double*, const double*,
+    int, const int*, const double*, const double*, const double*, const double*,
+    int, const int*, const double*, const double*, const double*, const int*,
+    int, const int*, const int*, const int*, const int*, const int*,
+    int, const int*, const double*,
+    int, const int*, const int*, const double*, const double*, const double*,
+    int, const int*, const int*, const double*, const double*, const double*,
+    double*, double*, double*, double*,
+    int, char*);
+
+using StructuraSolveV4Fn = int (*) (
+    int, const int*, const double*, const double*,
+    int, const int*, const double*, const double*, const double*, const double*,
+    int, const int*, const double*, const double*, const double*, const int*,
+    int, const int*, const int*, const int*, const int*, const int*,
+    int, const int*, const double*,
+    int, const int*, const int*, const double*, const double*, const double*,
+    int, const int*, const int*, const double*, const double*, const double*,
+    const double*, const double*, const int*,
+    double*, double*, double*, double*,
+    int, char*);
+
+using StructuraSolveV3Fn = int (*) (
+    int, const int*, const double*, const double*,
+    int, const int*, const double*, const double*, const double*, const double*,
+    int, const int*, const double*, const double*, const double*, const int*,
+    int, const int*, const int*, const int*, const int*, const int*,
+    int, const int*, const double*,
+    int, const int*, const int*, const double*, const double*, const double*,
+    int, const int*, const int*, const double*, const double*, const double*,
+    const double*, const double*,
+    double*, double*, double*, double*,
+    int, char*);
+
 [[nodiscard]] std::string errorFromLibrary(QLibrary &library)
 {
     const QString message = library.errorString();
@@ -49,11 +84,82 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         throw SolverBridgeError(errorFromLibrary(solverLibrary));
     }
 
+    auto *rawSymbolV4 = solverLibrary.resolve("structura_solve_v4");
+    auto *rawSymbolV3 = solverLibrary.resolve("structura_solve_v3");
+    auto *rawSymbolV2 = solverLibrary.resolve("structura_solve_v2");
     auto *rawSymbol = solverLibrary.resolve("structura_solve");
-    if (!rawSymbol) {
+    if (!rawSymbolV4 && !rawSymbolV3 && !rawSymbolV2 && !rawSymbol) {
         throw SolverBridgeError("Failed to resolve exported function structura_solve.");
     }
-    const auto solveFn = reinterpret_cast<StructuraSolveFn>(rawSymbol);
+    if (!rawSymbolV4 && !rawSymbolV3 && !rawSymbolV2 && !model.memberMoments.empty()) {
+        throw SolverBridgeError("A DLL do solver nao suporta momentos distribuidos em barras (structura_solve_v2 ausente).");
+    }
+    const bool needsPlacement = std::any_of(model.members.begin(), model.members.end(),
+                                            [](const MemberData &member) { return member.hasPlacement(); });
+    const bool needsReleases = std::any_of(model.members.begin(), model.members.end(),
+                                           [](const MemberData &member) { return member.hasReleases(); });
+    if (!rawSymbolV4 && needsReleases) {
+        throw SolverBridgeError("A DLL do solver nao suporta articulacoes de extremidade (structura_solve_v4 ausente). "
+                                "Recompile Structuradll e copie solver_dll.dll para a raiz.");
+    }
+    if (!rawSymbolV4 && !rawSymbolV3 && needsPlacement) {
+        throw SolverBridgeError("A DLL do solver nao suporta giro/excentricidade de secao (structura_solve_v3 ausente). "
+                                "Recompile Structuradll e copie solver_dll.dll para a raiz.");
+    }
+
+    using SetOptionsFn = void (*)(int, int, double);
+    auto setOptions = reinterpret_cast<SetOptionsFn>(solverLibrary.resolve("structura_set_options"));
+    if (model.secondOrder && !setOptions) {
+        throw SolverBridgeError("A DLL do solver nao suporta analise de segunda ordem (structura_set_options ausente). "
+                                "Recompile Structuradll e copie solver_dll.dll para a raiz.");
+    }
+    if (setOptions) {
+        setOptions(model.secondOrder ? 1 : 0, 0, 0.0);
+    }
+    using SetBucklingFn = void (*)(int);
+    auto setBuckling = reinterpret_cast<SetBucklingFn>(solverLibrary.resolve("structura_set_buckling"));
+    if (model.bucklingModes > 0 && !setBuckling) {
+        throw SolverBridgeError("A DLL do solver nao suporta flambagem elastica (structura_set_buckling ausente). "
+                                "Recompile Structuradll e copie solver_dll.dll para a raiz.");
+    }
+    if (setBuckling) {
+        setBuckling(model.secondOrder ? 0 : model.bucklingModes);
+    }
+    using SetModalFn = void (*)(int, int, const int *, const double *, int, const int *, const double *);
+    auto setModal = reinterpret_cast<SetModalFn>(solverLibrary.resolve("structura_set_modal"));
+    if (model.modalModes > 0 && !setModal) {
+        throw SolverBridgeError("A DLL do solver nao suporta analise modal (structura_set_modal ausente). "
+                                "Recompile Structuradll e copie solver_dll.dll para a raiz.");
+    }
+    if (setModal) {
+        std::vector<int> densityIds, massNodes;
+        std::vector<double> densities, masses;
+        for (const auto &material : model.materials) {
+            densityIds.push_back(material.id);
+            densities.push_back(material.density);
+        }
+        for (const auto &extra : model.extraMasses) {
+            massNodes.push_back(extra.first);
+            masses.push_back(extra.second);
+        }
+        setModal(model.secondOrder ? 0 : model.modalModes, static_cast<int>(densityIds.size()), densityIds.data(), densities.data(),
+                 static_cast<int>(massNodes.size()), massNodes.data(), masses.data());
+    }
+    std::vector<int> tensionOnlyIds;
+    for (const auto &member : model.members) {
+        if (member.tensionOnly) {
+            tensionOnlyIds.push_back(member.id);
+        }
+    }
+    using SetTensionOnlyFn = void (*)(int, const int *);
+    auto setTensionOnly = reinterpret_cast<SetTensionOnlyFn>(solverLibrary.resolve("structura_set_tension_only"));
+    if (!tensionOnlyIds.empty() && !setTensionOnly) {
+        throw SolverBridgeError("A DLL do solver nao suporta tirantes (structura_set_tension_only ausente). "
+                                "Recompile Structuradll e copie solver_dll.dll para a raiz.");
+    }
+    if (setTensionOnly) {
+        setTensionOnly(static_cast<int>(tensionOnlyIds.size()), tensionOnlyIds.empty() ? nullptr : tensionOnlyIds.data());
+    }
 
     std::vector<int> materialIds;
     std::vector<double> materialE;
@@ -110,6 +216,9 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
     std::vector<int> memberNodeJ;
     std::vector<int> memberMaterialId;
     std::vector<int> memberSectionId;
+    std::vector<double> memberSectionRotationDeg;
+    std::vector<double> memberOffsets4;
+    std::vector<int> memberReleases12;
     memberIds.reserve(model.members.size());
     memberNodeI.reserve(model.members.size());
     memberNodeJ.reserve(model.members.size());
@@ -121,6 +230,14 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         memberNodeJ.push_back(member.nodeJ);
         memberMaterialId.push_back(member.materialId);
         memberSectionId.push_back(member.sectionId);
+        memberSectionRotationDeg.push_back(member.sectionRotationDeg);
+        memberOffsets4.push_back(member.offsetY1);
+        memberOffsets4.push_back(member.offsetZ1);
+        memberOffsets4.push_back(member.offsetY2);
+        memberOffsets4.push_back(member.offsetZ2);
+        for (const int flag : member.releases) {
+            memberReleases12.push_back(flag);
+        }
     }
 
     std::vector<int> nodalLoadNodeIds;
@@ -152,6 +269,19 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         memberLoadQz.push_back(load.qz);
     }
 
+    std::vector<int> memberMomentMemberIds;
+    std::vector<int> memberMomentCoordSystem;
+    std::vector<double> memberMomentMx;
+    std::vector<double> memberMomentMy;
+    std::vector<double> memberMomentMz;
+    for (const auto &moment : model.memberMoments) {
+        memberMomentMemberIds.push_back(moment.memberId);
+        memberMomentCoordSystem.push_back(moment.coordSystem == MemberLoadCoordSystem::Global ? 1 : 0);
+        memberMomentMx.push_back(moment.mx);
+        memberMomentMy.push_back(moment.my);
+        memberMomentMz.push_back(moment.mz);
+    }
+
     std::vector<double> outNodeDisplacements6(model.nodes.size() * 6, 0.0);
     std::vector<double> outNodeReactions6(model.nodes.size() * 6, 0.0);
     std::vector<double> outMemberLocalForces12(model.members.size() * 12, 0.0);
@@ -159,7 +289,48 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
 
     std::vector<char> errorBuffer(2048, '\0');
 
-    const int returnCode = solveFn(
+    const int returnCode = rawSymbolV4
+        ? reinterpret_cast<StructuraSolveV4Fn>(rawSymbolV4)(
+        static_cast<int>(materialIds.size()), materialIds.data(), materialE.data(), materialG.data(),
+        static_cast<int>(sectionIds.size()), sectionIds.data(), sectionA.data(), sectionIz.data(), sectionIy.data(), sectionJ.data(),
+        static_cast<int>(nodeIds.size()), nodeIds.data(), nodeX.data(), nodeY.data(), nodeZ.data(), nodeRestraints6.data(),
+        static_cast<int>(memberIds.size()), memberIds.data(), memberNodeI.data(), memberNodeJ.data(), memberMaterialId.data(), memberSectionId.data(),
+        static_cast<int>(nodalLoadNodeIds.size()), nodalLoadNodeIds.data(), nodalLoadValues6.data(),
+        static_cast<int>(memberLoadMemberIds.size()), memberLoadMemberIds.data(), memberLoadCoordSystem.data(),
+        memberLoadQx.data(), memberLoadQy.data(), memberLoadQz.data(),
+        static_cast<int>(memberMomentMemberIds.size()), memberMomentMemberIds.data(), memberMomentCoordSystem.data(),
+        memberMomentMx.data(), memberMomentMy.data(), memberMomentMz.data(),
+        memberSectionRotationDeg.data(), memberOffsets4.data(), memberReleases12.data(),
+        outNodeDisplacements6.data(), outNodeReactions6.data(), outMemberLocalForces12.data(), outMemberAuxK3.data(),
+        static_cast<int>(errorBuffer.size()), errorBuffer.data())
+        : rawSymbolV3
+        ? reinterpret_cast<StructuraSolveV3Fn>(rawSymbolV3)(
+        static_cast<int>(materialIds.size()), materialIds.data(), materialE.data(), materialG.data(),
+        static_cast<int>(sectionIds.size()), sectionIds.data(), sectionA.data(), sectionIz.data(), sectionIy.data(), sectionJ.data(),
+        static_cast<int>(nodeIds.size()), nodeIds.data(), nodeX.data(), nodeY.data(), nodeZ.data(), nodeRestraints6.data(),
+        static_cast<int>(memberIds.size()), memberIds.data(), memberNodeI.data(), memberNodeJ.data(), memberMaterialId.data(), memberSectionId.data(),
+        static_cast<int>(nodalLoadNodeIds.size()), nodalLoadNodeIds.data(), nodalLoadValues6.data(),
+        static_cast<int>(memberLoadMemberIds.size()), memberLoadMemberIds.data(), memberLoadCoordSystem.data(),
+        memberLoadQx.data(), memberLoadQy.data(), memberLoadQz.data(),
+        static_cast<int>(memberMomentMemberIds.size()), memberMomentMemberIds.data(), memberMomentCoordSystem.data(),
+        memberMomentMx.data(), memberMomentMy.data(), memberMomentMz.data(),
+        memberSectionRotationDeg.data(), memberOffsets4.data(),
+        outNodeDisplacements6.data(), outNodeReactions6.data(), outMemberLocalForces12.data(), outMemberAuxK3.data(),
+        static_cast<int>(errorBuffer.size()), errorBuffer.data())
+        : rawSymbolV2
+        ? reinterpret_cast<StructuraSolveV2Fn>(rawSymbolV2)(
+        static_cast<int>(materialIds.size()), materialIds.data(), materialE.data(), materialG.data(),
+        static_cast<int>(sectionIds.size()), sectionIds.data(), sectionA.data(), sectionIz.data(), sectionIy.data(), sectionJ.data(),
+        static_cast<int>(nodeIds.size()), nodeIds.data(), nodeX.data(), nodeY.data(), nodeZ.data(), nodeRestraints6.data(),
+        static_cast<int>(memberIds.size()), memberIds.data(), memberNodeI.data(), memberNodeJ.data(), memberMaterialId.data(), memberSectionId.data(),
+        static_cast<int>(nodalLoadNodeIds.size()), nodalLoadNodeIds.data(), nodalLoadValues6.data(),
+        static_cast<int>(memberLoadMemberIds.size()), memberLoadMemberIds.data(), memberLoadCoordSystem.data(),
+        memberLoadQx.data(), memberLoadQy.data(), memberLoadQz.data(),
+        static_cast<int>(memberMomentMemberIds.size()), memberMomentMemberIds.data(), memberMomentCoordSystem.data(),
+        memberMomentMx.data(), memberMomentMy.data(), memberMomentMz.data(),
+        outNodeDisplacements6.data(), outNodeReactions6.data(), outMemberLocalForces12.data(), outMemberAuxK3.data(),
+        static_cast<int>(errorBuffer.size()), errorBuffer.data())
+        : reinterpret_cast<StructuraSolveFn>(rawSymbol)(
         static_cast<int>(materialIds.size()), materialIds.data(), materialE.data(), materialG.data(),
         static_cast<int>(sectionIds.size()), sectionIds.data(), sectionA.data(), sectionIz.data(), sectionIy.data(), sectionJ.data(),
         static_cast<int>(nodeIds.size()), nodeIds.data(), nodeX.data(), nodeY.data(), nodeZ.data(), nodeRestraints6.data(),
@@ -199,6 +370,40 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         }
         for (int j = 0; j < 3; ++j) {
             memberResult.auxK[static_cast<std::size_t>(j)] = outMemberAuxK3[i * 3 + static_cast<std::size_t>(j)];
+        }
+    }
+
+    if (model.bucklingModes > 0 && !model.secondOrder) {
+        using GetBucklingFn = int (*)(int, int, double *, double *);
+        auto getBuckling = reinterpret_cast<GetBucklingFn>(solverLibrary.resolve("structura_get_buckling"));
+        if (getBuckling) {
+            const int nodeCount = static_cast<int>(model.nodes.size());
+            std::vector<double> factors(static_cast<std::size_t>(model.bucklingModes));
+            std::vector<double> shapes(static_cast<std::size_t>(model.bucklingModes) * model.nodes.size() * 6U);
+            const int count = getBuckling(model.bucklingModes, nodeCount, factors.data(), shapes.data());
+            for (int m = 0; m < count; ++m) {
+                result.bucklingFactors.push_back(factors[static_cast<std::size_t>(m)]);
+                const auto begin = shapes.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(m) * model.nodes.size() * 6U);
+                result.bucklingModes.emplace_back(begin, begin + static_cast<std::ptrdiff_t>(model.nodes.size() * 6U));
+            }
+        }
+    }
+
+    if (model.modalModes > 0 && !model.secondOrder) {
+        using GetModalFn = int (*)(int, int, double *, double *, double *);
+        auto getModal = reinterpret_cast<GetModalFn>(solverLibrary.resolve("structura_get_modal"));
+        if (getModal) {
+            const int nodeCount = static_cast<int>(model.nodes.size());
+            std::vector<double> omega(static_cast<std::size_t>(model.modalModes));
+            std::vector<double> ratios(static_cast<std::size_t>(model.modalModes) * 3U);
+            std::vector<double> shapes(static_cast<std::size_t>(model.modalModes) * model.nodes.size() * 6U);
+            const int count = getModal(model.modalModes, nodeCount, omega.data(), ratios.data(), shapes.data());
+            for (int m = 0; m < count; ++m) {
+                result.modalOmega.push_back(omega[static_cast<std::size_t>(m)]);
+                result.modalMassRatio.push_back({ratios[static_cast<std::size_t>(m) * 3U], ratios[static_cast<std::size_t>(m) * 3U + 1U], ratios[static_cast<std::size_t>(m) * 3U + 2U]});
+                const auto begin = shapes.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(m) * model.nodes.size() * 6U);
+                result.modalShapes.emplace_back(begin, begin + static_cast<std::ptrdiff_t>(model.nodes.size() * 6U));
+            }
         }
     }
 

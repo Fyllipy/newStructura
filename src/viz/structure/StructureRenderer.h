@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QUuid>
+#include "viz/structure/ElementAppearance.h"
 #include <QSet>
 #include <QHash>
 #include <memory>
@@ -30,7 +31,6 @@ public:
     void clear();
 
     // Geometria
-    void beginUpdate();
     void endUpdate();
     
     void addNode(const QUuid& id, double x, double y, double z);
@@ -47,6 +47,10 @@ public:
     void setHoveredBar(const QUuid& id);
     void clearHoveredBar();
     void setSelectedBars(const QSet<QUuid>& ids);
+
+    // Aparencia (esmaecer/ocultar/cor)
+    void setNodeAppearance(const AppearanceMap& appearance);
+    void setBarAppearance(const AppearanceMap& appearance);
 
     // Getters para Pickers
     vtkActor* getNodeActor() const;

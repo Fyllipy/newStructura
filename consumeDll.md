@@ -51,6 +51,31 @@ Retorno:
 - `0`: sucesso
 - `!= 0`: erro (mensagem em `errorBuffer`)
 
+## Giro e excentricidade da secao (`structura_solve_v3`)
+
+`structura_solve_v3` e igual a `structura_solve_v2` e recebe, logo antes dos arrays de saida:
+
+- `const double* memberSectionRotationDeg` (`memberCount`): giro da secao em torno do eixo x local, em graus
+  (regra da mao direita: `y' = cos*y + sin*z`, `z' = -sin*y + cos*z`). Pode ser `nullptr` (= 0).
+- `const double* memberOffsets4` (`memberCount * 4`): `dy1, dz1, dy2, dz2` em metros = posicao do eixo da barra
+  (centroide) em relacao ao no I / no J, nos eixos locais **ja girados**. Pode ser `nullptr` (= 0).
+
+O solver monta `K_no = T^T * K_barra * T` com `T = T_offset * R` (`u_eixo = u_no + theta x (0, dy, dz)`); as forcas
+equivalentes de cargas distribuidas usam a mesma transformacao e os esforcos de saida (`outMemberLocalForces12`) sao
+do eixo da barra. Com giro diferente de zero, `outMemberAuxK3` devolve o eixo local `y` girado
+(`z = x cross aux`, `y = z cross x` reproduz os eixos).
+
+## Articulacoes de extremidade e graus de liberdade sem rigidez (`structura_solve_v4`)
+
+`structura_solve_v4` e igual a `structura_solve_v3` e recebe, apos `memberOffsets4`:
+
+- `const int* memberReleases12` (`memberCount * 12`): nao zero = grau de liberdade liberado, na ordem
+  `ux uy uz rx ry rz` no no I e depois no no J (eixos locais). Pode ser `nullptr`. Os graus liberados sao
+  condensados da rigidez e das cargas equivalentes da barra (ver `docs/FORMULACAO_MATEMATICA.md`, secao 9).
+
+Graus de liberdade nodais sem rigidez alguma (ex.: rotacao de um no onde todas as barras chegam articuladas)
+sao fixados automaticamente; se houver carga aplicada neles a analise falha com "Unstable structure".
+
 ## Convencao dos Arrays
 
 - `nodeRestraints6`: vetor achatado com `nodeCount * 6` inteiros (`1` restringido, `0` livre).

@@ -6,6 +6,8 @@
 #include <QSet>
 #include <QVector>
 #include <QVector3D>
+#include <QMatrix4x4>
+#include <QMap>
 
 #include <vtkNew.h>
 #include <vtkSmartPointer.h>
@@ -14,19 +16,30 @@
 #include <optional>
 #include <array>
 
+#include "viz/AreaPanelRenderer.h"
+#include "viz/ModeShapeRenderer.h"
+#include "viz/BarTypeRenderer.h"
 #include "core/model/Node.h"
 #include "core/model/Bar.h"
 #include "core/model/Material.h"
 #include "core/model/Section.h"
-#include "core/model/GridLine.h"
 #include "app/ISceneEditGateway.h"
 #include "app/ISceneModelGateway.h"
 #include "viz/postprocessor/SupportGlyphFactory.h"
-#include "viz/postprocessor/LoadGlyphFactory.h"
 #include "viz/structure/StructureRenderer.h"
+#include "viz/structure/ElementAppearance.h"
+namespace Structura::Construction {
+class ConstructionScene;
+}
+namespace Structura::Visualization {
+class LoadActionRenderer;
+class SolidMemberRenderer;
+}
+
 class QVTKOpenGLNativeWidget;
 class vtkGenericOpenGLRenderWindow;
 class vtkRenderer;
+class vtkRenderWindow;
 class vtkAxesActor;
 class vtkOrientationMarkerWidget;
 class vtkRenderWindowInteractor;
@@ -43,6 +56,12 @@ class vtkArrowSource;
 class vtkDoubleArray;
 class vtkBillboardTextActor3D;
 
+/// Rotulos de cargas: posicoes no mundo e textos formatados.
+struct LoadLabelData {
+    std::vector<std::array<double, 3>> positions;
+    std::vector<QString> texts;
+};
+
 class SceneController : public QObject,
                         public Structura::App::ISceneEditGateway,
                         public Structura::App::ISceneModelGateway
@@ -54,7 +73,6 @@ public:
 
     using Node = Structura::Model::Node;
     using Bar = Structura::Model::Bar;
-    using GridLine = Structura::Model::GridLine;
 
     struct NodalLoadVisual {
         QVector3D position;
@@ -62,11 +80,17 @@ public:
         QVector3D moment;
     };
 
-    struct MemberLoadVisual {
-        QVector3D position;
-        QVector3D force;
-        QVector3D barVector;
-        bool localSystem {false};
+    /// Uma carga uniforme (forca ou momento por comprimento) em uma barra.
+    struct MemberActionVisual {
+        QVector3D start;
+        QVector3D end;
+        QVector3D xAxis;  ///< Eixos locais da barra (mundo)
+        QVector3D yAxis;
+        QVector3D zAxis;
+        QVector3D values; ///< Componentes por eixo (kN/m ou kNm/m)
+        bool moment {false};
+        bool local {false};
+        bool selfWeight {false};
     };
 
     struct SupportVisual {
@@ -82,42 +106,85 @@ public:
 
     void initialize(QVTKOpenGLNativeWidget *vtkWidget);
 
+    // Plano de construcao (grid de referencia, eixos e snaps de lancamento)
+    [[nodiscard]] Structura::Construction::ConstructionScene *constructionScene() const { return m_construction.get(); }
+    [[nodiscard]] vtkRenderer *renderer() const;
+    [[nodiscard]] vtkRenderWindow *renderWindow() const;
+    /// Redesenha a cena (publico para controladores de lancamento).
+    void render() { requestRender(); }
+
+    // Visibilidade de elementos (barra de opcoes de exibicao)
+    void setNodesVisible(bool visible);
+    void setSupportsVisible(bool visible);
+    [[nodiscard]] bool nodesVisible() const { return m_showNodes; }
+    [[nodiscard]] bool supportsVisible() const { return m_showSupports; }
+
+signals:
+    /// Emitido (potencialmente muitas vezes) quando a camera muda.
+    void cameraChanged();
+    /// Emitido apos nos/barras mudarem e a geometria de construcao ser recalculada.
+    void geometryRefreshed();
+    /// Emitido quando as cargas sao redesenhadas (rotulos mudaram).
+    void loadLabelsChanged();
+
+public:
+    /// Matriz composta (projecao * visao) da camera atual, para projetar pontos do mundo.
+    [[nodiscard]] QMatrix4x4 compositeMatrix() const;
+
 public slots:
     QUuid addPoint(double x, double y, double z);
     QUuid addPointWithId(double x, double y, double z, int externalId);
     void clearAll();
     void resetCamera();
     void zoomExtents();
+    /// Centraliza a camera nas barras (mantem a direcao de visao), com margem em torno delas.
+    void focusOnBars(const QSet<QUuid> &barIds);
 
 public:
-    // Grid API
-    void createGrid(double dx, double dy, double dz, int nx, int ny, int nz);
-    bool hasGrid() const;
-    void snapToGrid(double &x, double &y, double &z) const;
-    void gridSpacing(double &dx, double &dy, double &dz) const;
-    void gridCounts(int &nx, int &ny, int &nz) const;
     // Picking API (screen to world)
     bool pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z) const;
     int viewportHeight() const;
     bool worldPointOnPlaneZ0(int displayX, int displayY, double &x, double &y, double &z) const;
     bool worldPointOnViewPlane(int displayX, int displayY, double &x, double &y, double &z) const;
 
-    // Grid lines manipulation
-    const QVector<GridLine> &gridLines() const { return m_gridLines; }
-    GridLine *findGridLine(const QUuid &id);
-    const GridLine *findGridLine(const QUuid &id) const;
-    QUuid addGridLine(GridLine::Axis axis, double coordinate1, double coordinate2);
-    bool removeGridLine(const QUuid &lineId);
-    QUuid pickGridLine(int displayX, int displayY) const;
-    void setHighlightedGridLine(const QUuid &lineId);
-    void clearHighlightedGridLine();
-    void showGridGhostLine(GridLine::Axis axis, double coordinate1, double coordinate2);
-    void hideGridGhostLine();
-    std::optional<QUuid> nearestGridLineId(GridLine::Axis axis, double coordinate1, double coordinate2) const;
 
     // Loads
     void setNodalLoadVisuals(const QVector<NodalLoadVisual> &visuals);
-    void setMemberLoadVisuals(const QVector<MemberLoadVisual> &visuals);
+    void setMemberActionVisuals(const QVector<MemberActionVisual> &visuals);
+    void setLoadVisibility(bool nodeForces, bool nodeMoments, bool memberForces, bool memberMoments);
+
+    /// Panos de cargas de area (superficie, setas de pressao e acao nas barras).
+    void setAreaPanels(const std::vector<Structura::Visualization::AreaPanelRenderer::Panel> &panels);
+    void setAreaPanelsVisible(bool visible);
+    /// Forma modal / deformada desenhada sobre o modelo (lista vazia remove).
+    /// Marcadores de rotulas, trelicas e tirantes (lista vazia remove).
+    void setBarTypeMarkers(const std::vector<Structura::Visualization::BarTypeRenderer::Marker> &markers);
+    void setModeShape(const std::vector<std::vector<std::array<double, 3>>> &lines);
+
+    /// Barra com secao extrudada (exibicao solida).
+    struct SolidMemberVisual {
+        QVector3D start;
+        QVector3D end;
+        QVector3D xAxis;
+        QVector3D yAxis;
+        QVector3D zAxis;
+        QString family;
+        QMap<QString, double> parameters;
+        bool mirrored {false};
+        bool hasColor {false};
+        unsigned char color[3] {180, 189, 199};
+        bool dimmed {false};
+    };
+    void setSolidMembers(const QVector<SolidMemberVisual> &members);
+
+    /// Esmaece/oculta/colore nos e barras (isolar nivel, ocultar, colorir por secao/material).
+    void setElementAppearance(const Structura::Visualization::AppearanceMap &nodes,
+                              const Structura::Visualization::AppearanceMap &bars);
+    /// Camera perpendicular ao plano cuja normal e o eixo `normalAxis` (0=X, 1=Y, 2=Z), centrada no nivel.
+    void lookAtPlane(int normalAxis, double level);
+    void setSolidsVisible(bool visible);
+    /// Rotulos (valores) das cargas para a camada de texto da viewport.
+    [[nodiscard]] LoadLabelData loadLabels() const;
 
     // Supports (restraints)
     void setSupportVisuals(const QVector<SupportVisual> &visuals);
@@ -126,6 +193,8 @@ public:
     void setShowBarLCS(bool show);
     bool isShowingBarLCS() const { return m_showBarLCS; }
     void updateBarLCSVisuals();
+    /// Giro da secao (graus) por ID externo de barra; usado nos eixos locais exibidos.
+    void setBarSectionRotations(const QHash<int, double> &rotationsByExternalId);
 
     // Nodes
     int nodeCount() const;
@@ -158,37 +227,18 @@ private:
     void updateBounds();
     int nodeIndex(const QUuid &id) const;
     int barIndex(const QUuid &id) const;
-    int gridLineIndex(const QUuid &id) const;
-    void applyNodeColor(const QUuid &id, const unsigned char color[3]);
-    void applyBarColor(int barIndex, const unsigned char color[3]);
-    void updateGridColors();
-    void initializeGridRendering();
-    void initializeGridGhostRendering();
     void initializeBarLcsRendering();
     void initializePickers();
     void clearNodes();
     void clearBars();
-    void clearGrid();
     void clearLoads();
     void clearSupports();
     void requestRender();
-    static void populateAxisCoordinates(QVector<double> &coords, double step, int count);
-    static bool nearlyEqual(double lhs, double rhs, double epsilon = kCoordTolerance);
 
-    struct LineEndpoints {
-        std::array<double, 3> start;
-        std::array<double, 3> end;
-    };
-    LineEndpoints makeLineEndpoints(GridLine::Axis axis, double coordinate1, double coordinate2) const;
-    void rebuildGridFromCoordinates();
-    bool insertCoordinate(QVector<double> &coords, double value) const;
-    bool removeCoordinate(QVector<double> &coords, double value);
-    static double nearestCoordinate(const QVector<double> &coords, double value);
-    static double computeMinSpacing(const QVector<double> &coords);
-    std::pair<double, double> minMaxAlongAxis(GridLine::Axis axis) const;
-    QString gridLineKey(GridLine::Axis axis, double coord1, double coord2) const;
     void updateLoadVisuals();
     void updateSupportVisuals();
+    void scheduleConstructionRefresh();
+    void refreshConstructionGeometry();
     void rebuildBarLCSVisuals();
 
     vtkNew<vtkGenericOpenGLRenderWindow> m_renderWindow;
@@ -196,44 +246,33 @@ private:
     vtkSmartPointer<vtkOrientationMarkerWidget> m_orientationMarker;
 
     std::unique_ptr<Structura::Visualization::StructureRenderer> m_structureRenderer;
+    std::unique_ptr<Structura::Construction::ConstructionScene> m_construction;
+    bool m_constructionRefreshPending {false};
+    bool m_showNodes {true};
+    bool m_showSupports {true};
 
-    // Grid state
-    vtkSmartPointer<vtkPolyData> m_gridData;
-    vtkSmartPointer<vtkPolyDataMapper> m_gridMapper;
-    vtkSmartPointer<vtkActor> m_gridActor;
-    vtkSmartPointer<vtkPoints> m_gridPoints;
-    vtkSmartPointer<vtkCellArray> m_gridCells;
-    vtkSmartPointer<vtkUnsignedCharArray> m_gridColors;
-    QVector<GridLine> m_gridLines;
-    QHash<QUuid, int> m_gridLineIndexById;
-    QHash<vtkIdType, int> m_gridCellToLineIndex;
-    QUuid m_highlightGridLineId;
 
-    vtkSmartPointer<vtkPolyData> m_gridGhostData;
-    vtkSmartPointer<vtkPoints> m_gridGhostPoints;
-    vtkSmartPointer<vtkCellArray> m_gridGhostCells;
-    vtkSmartPointer<vtkPolyDataMapper> m_gridGhostMapper;
-    vtkSmartPointer<vtkActor> m_gridGhostActor;
-    GridLine::Axis m_ghostAxis {GridLine::Axis::X};
 
-    double m_dx {0.0}, m_dy {0.0}, m_dz {0.0};
-    int m_nx {0}, m_ny {0}, m_nz {0};
-    QVector<double> m_xCoords;
-    QVector<double> m_yCoords;
-    QVector<double> m_zCoords;
 
     // Load visualization (Vector Glyphs)
     QVector<NodalLoadVisual> m_nodalLoadVisuals;
-    QVector<MemberLoadVisual> m_memberLoadVisuals;
+    QVector<MemberActionVisual> m_memberActionVisuals;
+    std::unique_ptr<Structura::Visualization::LoadActionRenderer> m_loadRenderer;
+    std::unique_ptr<Structura::Visualization::AreaPanelRenderer> m_areaPanelRenderer;
+    std::unique_ptr<Structura::Visualization::ModeShapeRenderer> m_modeShapeRenderer;
+    std::unique_ptr<Structura::Visualization::BarTypeRenderer> m_barTypeRenderer;
+    std::vector<Structura::Visualization::AreaPanelRenderer::Panel> m_areaPanels;
+    bool m_areaPanelsVisible {true};
+    std::unique_ptr<Structura::Visualization::SolidMemberRenderer> m_solidRenderer;
+    struct LoadVisibility {
+        bool nodeForces {true};
+        bool nodeMoments {true};
+        bool memberForces {true};
+        bool memberMoments {true};
+    } m_loadVisibility;
     
-    vtkSmartPointer<vtkPolyDataMapper> m_nodalLoadMapper;
-    vtkSmartPointer<vtkActor> m_nodalLoadActor;
     
-    vtkSmartPointer<vtkPolyDataMapper> m_distributedLoadMapper;
-    vtkSmartPointer<vtkActor> m_distributedLoadActor;
     
-    vtkSmartPointer<vtkPolyDataMapper> m_momentMapper;
-    vtkSmartPointer<vtkActor> m_momentActor;
 
     // Support visualization
     QVector<SupportVisual> m_supportVisuals;
@@ -243,6 +282,7 @@ private:
     
     // Bar LCS visualization
     bool m_showBarLCS {false};
+    QHash<int, double> m_barSectionRotations;
     vtkSmartPointer<vtkPolyData> m_lcsData;
     vtkSmartPointer<vtkPoints> m_lcsPoints;
     vtkSmartPointer<vtkCellArray> m_lcsCells;
@@ -265,8 +305,6 @@ private:
     QSet<QUuid> m_selectedNodeIds;
     QSet<QUuid> m_selectedBarIds;
     
-    unsigned char m_defaultGridColor[3] {140, 153, 173};
-    unsigned char m_highlightGridColor[3] {255, 198, 30};
 
     int m_nextNodeExternalId {1};
 };

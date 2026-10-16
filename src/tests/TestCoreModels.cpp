@@ -4,7 +4,6 @@
 #include "core/model/Bar.h"
 #include "core/model/Material.h"
 #include "core/model/Section.h"
-#include "core/model/GridLine.h"
 
 using namespace Structura::Model;
 
@@ -401,58 +400,6 @@ private slots:
     }
 };
 
-/**
- * @brief Unit tests for GridLine class
- */
-class TestGridLine : public QObject
-{
-    Q_OBJECT
-
-private slots:
-    void testDefaultConstructor()
-    {
-        GridLine line;
-        QVERIFY(!line.id().isNull());
-        QCOMPARE(line.axis(), GridLine::Axis::X);
-        QCOMPARE(line.offset(), 0.0);
-        QCOMPARE(line.index(), 0);
-        QVERIFY(!line.isHighlighted());
-        QVERIFY(!line.isGhost());
-    }
-
-    void testParameterizedConstructor()
-    {
-        QUuid id = QUuid::createUuid();
-        GridLine line(id, GridLine::Axis::Y, 5.0, 2, 0.0, 10.0);
-        
-        QCOMPARE(line.id(), id);
-        QCOMPARE(line.axis(), GridLine::Axis::Y);
-        QCOMPARE(line.offset(), 5.0);
-        QCOMPARE(line.index(), 2);
-        QCOMPARE(line.coordinate1(), 0.0);
-        QCOMPARE(line.coordinate2(), 10.0);
-    }
-
-    void testSetEndpoints()
-    {
-        GridLine line;
-        line.setEndpoints(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
-
-        assertVector3Components(line.startPoint(), 1.0, 2.0, 3.0);
-        assertVector3Components(line.endPoint(), 4.0, 5.0, 6.0);
-    }
-
-    void testHighlightAndGhost()
-    {
-        GridLine line;
-        line.setHighlighted(true);
-        line.setGhost(true);
-        
-        QVERIFY(line.isHighlighted());
-        QVERIFY(line.isGhost());
-    }
-};
-
 int main(int argc, char *argv[])
 {
     int status = 0;
@@ -471,9 +418,6 @@ int main(int argc, char *argv[])
 
     TestSection sectionTests;
     status |= QTest::qExec(&sectionTests, argc, argv);
-
-    TestGridLine gridLineTests;
-    status |= QTest::qExec(&gridLineTests, argc, argv);
 
     return status;
 }

@@ -122,8 +122,9 @@ bool DefaultLocalAxisProvider::areParallel(const std::array<double, 3> &a,
 std::array<double, 3> DefaultLocalAxisProvider::selectAuxiliaryVector(
     const std::array<double, 3> &xPrime) const
 {
+    // Mesma convencao do solver (Structuradll): Z global; barras verticais usam Y global.
     if (std::abs(xPrime[2]) > 1.0 - m_parallelEps) {
-        return {-1.0, 0.0, 0.0};
+        return {0.0, 1.0, 0.0};
     } else {
         return {0.0, 0.0, 1.0};
     }

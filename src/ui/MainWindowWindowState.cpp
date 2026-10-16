@@ -38,14 +38,6 @@ void MainWindow::changeEvent(QEvent *event)
     }
 }
 
-void MainWindow::onSnapToggled(bool)
-{
-    if (m_command == Command::InsertNode) {
-        setHoverInsertPoint(std::nullopt);
-        updateStatus();
-    }
-}
-
 void MainWindow::onShowBarLCSToggled(bool checked)
 {
     if (m_sceneController) {

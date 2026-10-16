@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QSet>
 #include <QVector3D>
+#include "viz/structure/ElementAppearance.h"
 
 #include <vtkSmartPointer.h>
 #include <vtkNew.h>
@@ -42,6 +43,9 @@ public:
     void clearHoveredNode();
     void setSelectedNodes(const QSet<QUuid>& ids);
 
+    /// Estado/cor por no (esmaecido, oculto, cor base).
+    void setAppearance(const AppearanceMap& appearance);
+
     // Visibility
     void setVisible(bool visible);
     bool isVisible() const;
@@ -55,6 +59,8 @@ private:
 
     vtkNew<vtkPolyData> m_pointCloud;
     vtkNew<vtkUnsignedCharArray> m_colors;
+    vtkNew<vtkUnsignedCharArray> m_mask;
+    AppearanceMap m_appearance;
     vtkNew<vtkDistanceToCamera> m_distanceFilter;
     vtkNew<vtkSphereSource> m_diskGlyph;
     vtkNew<vtkGlyph3DMapper> m_mapper;

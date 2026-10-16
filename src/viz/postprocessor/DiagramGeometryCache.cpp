@@ -9,18 +9,6 @@ void DiagramGeometryCache::invalidateAll()
     m_cache.clear();
 }
 
-void DiagramGeometryCache::invalidateElement(int elementId)
-{
-    auto it = m_cache.begin();
-    while (it != m_cache.end()) {
-        if (it->first.elementId == elementId) {
-            it = m_cache.erase(it);
-        } else {
-            ++it;
-        }
-    }
-}
-
 bool DiagramGeometryCache::has(const DiagramCacheKey& key) const
 {
     return m_cache.find(key) != m_cache.end();

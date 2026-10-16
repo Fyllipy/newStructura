@@ -19,6 +19,9 @@ NodeRenderer::NodeRenderer()
     m_colors->SetNumberOfComponents(3);
     m_colors->SetName("NodeColors");
     m_pointCloud->GetPointData()->SetScalars(m_colors);
+    m_mask->SetNumberOfComponents(1);
+    m_mask->SetName("NodeMask");
+    m_pointCloud->GetPointData()->AddArray(m_mask);
 
     // Filter to scale glyphs based on distance to camera, keeping screen size constant
     m_distanceFilter->SetInputData(m_pointCloud);
@@ -32,6 +35,8 @@ NodeRenderer::NodeRenderer()
     m_mapper->SetInputConnection(m_distanceFilter->GetOutputPort());
     m_mapper->SetSourceConnection(m_diskGlyph->GetOutputPort());
     m_mapper->SetScaleArray("DistanceToCamera");
+    m_mapper->SetMasking(true);
+    m_mapper->SetMaskArray("NodeMask");
     m_mapper->SetScaleModeToScaleByMagnitude();
     
     // Configura o mapper para usar as cores definidas nos scalars (m_colors)
@@ -71,6 +76,8 @@ void NodeRenderer::setPoints(vtkPoints* points)
 void NodeRenderer::clear()
 {
     m_colors->Reset();
+    m_mask->Reset();
+    m_appearance.clear();
     m_nodes.clear();
     m_nodeIndexById.clear();
     m_hoveredNode = QUuid();
@@ -90,8 +97,10 @@ void NodeRenderer::addNode(const QUuid& id, double /*x*/, double /*y*/, double /
     m_nodes.push_back(id);
     m_nodeIndexById[id] = idx;
     m_colors->InsertNextTypedTuple(COLOR_NORMAL);
+    m_mask->InsertNextValue(1);
 
     m_colors->Modified();
+    m_mask->Modified();
     m_pointCloud->Modified();
 }
 
@@ -123,6 +132,12 @@ void NodeRenderer::setSelectedNodes(const QSet<QUuid>& ids)
     rebuildColors();
 }
 
+void NodeRenderer::setAppearance(const AppearanceMap& appearance)
+{
+    m_appearance = appearance;
+    rebuildColors();
+}
+
 void NodeRenderer::setVisible(bool visible)
 {
     m_actor->SetVisibility(visible);
@@ -142,15 +157,29 @@ void NodeRenderer::rebuildColors()
 {
     for (int i = 0; i < static_cast<int>(m_nodes.size()); ++i) {
         const QUuid& id = m_nodes[i];
-        
+        const auto appearance = m_appearance.constFind(id);
+        const bool hidden = appearance != m_appearance.constEnd()
+            && appearance->state == ElementAppearance::State::Hidden;
+        m_mask->SetValue(i, hidden ? 0 : 1);
+
+        std::array<unsigned char, 3> base {{COLOR_NORMAL[0], COLOR_NORMAL[1], COLOR_NORMAL[2]}};
+        if (appearance != m_appearance.constEnd()) {
+            if (appearance->hasColor) {
+                base = appearance->color;
+            }
+            if (appearance->state == ElementAppearance::State::Dimmed) {
+                base = dimColor(base);
+            }
+        }
         if (m_selectedNodes.contains(id)) {
             m_colors->SetTypedTuple(i, COLOR_SELECTED);
         } else if (id == m_hoveredNode) {
             m_colors->SetTypedTuple(i, COLOR_HOVER);
         } else {
-            m_colors->SetTypedTuple(i, COLOR_NORMAL);
+            m_colors->SetTypedTuple(i, base.data());
         }
     }
+    m_mask->Modified();
     m_colors->Modified();
     m_pointCloud->Modified();
 }

@@ -1,11 +1,15 @@
 #include "DatModelIoService.h"
 
+#include <QUrl>
+
 #include "app/services/IdGeneratorService.h"
 
 #include <QDir>
 #include <QFile>
 #include <QRegularExpression>
 #include <QTextStream>
+
+#include <algorithm>
 
 namespace Structura::App::Services {
 
@@ -16,6 +20,7 @@ bool DatModelIoService::load(const QString &filePath,
                              QVector<NodeSupport> &supports,
                              QVector<NodalLoad> &nodalLoads,
                              QVector<MemberLoad> &memberLoads,
+                             ProjectExtras &extras,
                              QUuid &lastMaterialId,
                              QUuid &lastSectionId,
                              QString *errorMessage,
@@ -32,7 +37,7 @@ bool DatModelIoService::load(const QString &filePath,
     QTextStream stream(&file);
     stream.setLocale(QLocale::c());
 
-    enum class Section { None, Materials, Sections, Nodes, Members, NodalLoads, MemberLoads };
+    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults };
     Section current = Section::None;
 
     QVector<MaterialInfo> materialsTmp;
@@ -56,6 +61,29 @@ bool DatModelIoService::load(const QString &filePath,
     QVector<NodeSupport> supportsTmp;
     QVector<NodalLoad> nodalLoadsTmp;
     QVector<MemberLoad> memberLoadsTmp;
+    QVector<Structura::App::ProjectData::MemberMoment> memberMomentsTmp;
+    QVector<Structura::App::ProjectData::MemberPlacement> placementsTmp;
+    QHash<int, double> unitWeightByMaterial;
+    struct MaterialExtra {
+        QString name, library;
+        double fy {0.0}, fu {0.0};
+    };
+    QHash<int, MaterialExtra> materialExtras;
+    Structura::App::ProjectData::ReferenceAxes axesTmp;
+    QMap<QString, double> viewOptionsTmp;
+    Structura::App::ProjectData::DesignSettings designTmp;
+    QVector<Structura::App::ProjectData::BarGroup> groupsTmp;
+    QVector<Structura::App::ProjectData::AreaLoadPanel> areaLoadsTmp;
+    Structura::App::ProjectData::StoredResults resultsTmp;
+    auto decodeName = [](const QString &token) { return QUrl::fromPercentEncoding(token.toLatin1()); };
+    struct SectionGeometryRecord {
+        QString family;
+        bool mirrored {false};
+        QMap<QString, double> parameters;
+    };
+    QHash<int, SectionGeometryRecord> sectionGeometryTmp;
+    QVector<Structura::App::ProjectData::LoadCase> loadCasesTmp;
+    QVector<Structura::App::ProjectData::LoadCombination> combinationsTmp;
 
     int lineNumber = 0;
     QRegularExpression whitespace(QStringLiteral("\\s+"));
@@ -90,6 +118,38 @@ bool DatModelIoService::load(const QString &filePath,
         if (trimmed.startsWith(QLatin1Char('['))) {
             if (trimmed.compare(QStringLiteral("[MATERIALS]"), Qt::CaseInsensitive) == 0) {
                 current = Section::Materials;
+            } else if (trimmed.compare(QStringLiteral("[MATERIAL_PROPS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::MaterialProps;
+            } else if (trimmed.compare(QStringLiteral("[SECTION_GEOMETRY]"), Qt::CaseInsensitive) == 0) {
+                current = Section::SectionGeometry;
+            } else if (trimmed.compare(QStringLiteral("[LOAD_CASES]"), Qt::CaseInsensitive) == 0) {
+                current = Section::LoadCases;
+            } else if (trimmed.compare(QStringLiteral("[COMBINATIONS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Combinations;
+            } else if (trimmed.compare(QStringLiteral("[AXES]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Axes;
+            } else if (trimmed.compare(QStringLiteral("[VIEW_OPTIONS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::ViewOptions;
+            } else if (trimmed.compare(QStringLiteral("[MEMBER_MOMENTS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::MemberMoments;
+            } else if (trimmed.compare(QStringLiteral("[AREA_LOADS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::AreaLoads;
+            } else if (trimmed.compare(QStringLiteral("[ANALYSIS_RESULTS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::AnalysisResults;
+            } else if (trimmed.compare(QStringLiteral("[DESIGN_RESULTS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::DesignResults;
+            } else if (trimmed.compare(QStringLiteral("[BUCKLING_RESULTS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::BucklingResults;
+            } else if (trimmed.compare(QStringLiteral("[MODAL_RESULTS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::ModalResults;
+            } else if (trimmed.compare(QStringLiteral("[GROUPS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Groups;
+            } else if (trimmed.compare(QStringLiteral("[DESIGN_SETTINGS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::DesignSettings;
+            } else if (trimmed.compare(QStringLiteral("[MEMBER_DESIGN]"), Qt::CaseInsensitive) == 0) {
+                current = Section::MemberDesign;
+            } else if (trimmed.compare(QStringLiteral("[MEMBER_PLACEMENT]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Placements;
             } else if (trimmed.compare(QStringLiteral("[SECTIONS]"), Qt::CaseInsensitive) == 0) {
                 current = Section::Sections;
             } else if (trimmed.compare(QStringLiteral("[NODES]"), Qt::CaseInsensitive) == 0) {
@@ -145,6 +205,363 @@ bool DatModelIoService::load(const QString &filePath,
                 return false;
             }
             materialsTmp.append(mat);
+            break;
+        }
+        case Section::MaterialProps: {
+            if (parts.size() < 2) {
+                break;
+            }
+            const int materialId = toInt(parts[0], &ok);
+            if (!ok) {
+                break;
+            }
+            const double unitWeight = toDouble(parts[1], &ok);
+            if (ok) {
+                unitWeightByMaterial.insert(materialId, unitWeight);
+            }
+            if (parts.size() >= 3) {
+                MaterialExtra extra;
+                extra.name = parts[2] == QLatin1String("-") ? QString() : QString(parts[2]).replace(QLatin1Char('_'), QLatin1Char(' '));
+                if (parts.size() >= 4) {
+                    extra.library = parts[3] == QLatin1String("-") ? QString() : QString(parts[3]).replace(QLatin1Char('_'), QLatin1Char(' '));
+                }
+                if (parts.size() >= 6) {
+                    extra.fy = toDouble(parts[4], &ok);
+                    extra.fu = toDouble(parts[5], &ok);
+                }
+                materialExtras.insert(materialId, extra);
+            }
+            break;
+        }
+        case Section::SectionGeometry: {
+            if (parts.size() < 3) {
+                break;
+            }
+            const int sectionId = toInt(parts[0], &ok);
+            if (!ok) {
+                break;
+            }
+            SectionGeometryRecord record;
+            record.family = parts[1];
+            record.family.replace(QLatin1Char('_'), QLatin1Char(' '));
+            record.mirrored = parts[2].toInt() != 0;
+            for (int i = 3; i < parts.size(); ++i) {
+                const int separator = parts[i].indexOf(QLatin1Char('='));
+                if (separator <= 0) {
+                    continue;
+                }
+                bool valueOk = false;
+                const double value = parts[i].mid(separator + 1).toDouble(&valueOk);
+                if (valueOk) {
+                    record.parameters.insert(parts[i].left(separator), value);
+                }
+            }
+            sectionGeometryTmp.insert(sectionId, record);
+            break;
+        }
+        case Section::LoadCases: {
+            Structura::App::ProjectData::LoadCase loadCase;
+            loadCase.name = parts[0];
+            loadCase.abbreviation = parts.size() > 1 ? parts[1] : parts[0];
+            loadCase.selfWeight = parts.size() > 2 && parts[2].toInt() != 0;
+            loadCasesTmp.append(loadCase);
+            break;
+        }
+        case Section::Combinations: {
+            Structura::App::ProjectData::LoadCombination combination;
+            combination.name = parts[0];
+            for (int i = 1; i < parts.size(); ++i) {
+                const int separator = parts[i].lastIndexOf(QLatin1Char('='));
+                if (separator <= 0) {
+                    continue;
+                }
+                bool factorOk = false;
+                const double factor = parts[i].mid(separator + 1).toDouble(&factorOk);
+                if (factorOk) {
+                    combination.factors.append({parts[i].left(separator), factor});
+                }
+            }
+            combinationsTmp.append(combination);
+            break;
+        }
+        case Section::Axes: {
+            if (parts.size() < 3) {
+                break;
+            }
+            const QString direction = parts[0].toUpper();
+            const double value = toDouble(parts[2], &ok);
+            if (!ok) {
+                break;
+            }
+            auto currentLevel = [&axesTmp]() -> Structura::App::ProjectData::AxisLevel & {
+                if (axesTmp.levels.isEmpty()) {
+                    axesTmp.levels.append({QStringLiteral("N0"), 0.0, {}, {}});
+                }
+                return axesTmp.levels.last();
+            };
+            if (direction == QLatin1String("LEVEL")) {
+                // LEVEL nome elevacao: abre um novo plano de eixos.
+                axesTmp.levels.append({parts[1], value, {}, {}});
+            } else if (direction == QLatin1String("X")) {
+                currentLevel().x.append({parts[1].toUpper(), value});
+            } else if (direction == QLatin1String("Y")) {
+                currentLevel().y.append({parts[1].toUpper(), value});
+            } else if (direction == QLatin1String("Z")) {
+                // Formato antigo: eixo Z = nivel sem eixos proprios.
+                if (!axesTmp.levelAt(value)) {
+                    axesTmp.levels.append({parts[1].toUpper(), value, {}, {}});
+                }
+            }
+            break;
+        }
+        case Section::ViewOptions: {
+            if (parts.size() < 2) {
+                break;
+            }
+            const double value = toDouble(parts[1], &ok);
+            if (ok) {
+                viewOptionsTmp.insert(parts[0], value);
+            }
+            break;
+        }
+        case Section::AreaLoads: {
+            // id caso tipo pressao dx dy dz nPontos x y z ... nBarras b1 b2 ... descricao
+            if (parts.size() < 9) {
+                break;
+            }
+            Structura::App::ProjectData::AreaLoadPanel panel;
+            panel.id = toInt(parts[0], &ok);
+            if (!ok) {
+                break;
+            }
+            panel.loadCase = QString(parts[1]).replace(QLatin1Char('_'), QLatin1Char(' '));
+            panel.kind = parts[2];
+            panel.pressure = toDouble(parts[3], &ok);
+            panel.direction = {toDouble(parts[4], &ok), toDouble(parts[5], &ok), toDouble(parts[6], &ok)};
+            int cursor = 7;
+            const int pointCount = toInt(parts[cursor++], &ok);
+            for (int i = 0; i < pointCount && cursor + 2 < parts.size(); ++i, cursor += 3) {
+                panel.polygon.append({toDouble(parts[cursor], &ok), toDouble(parts[cursor + 1], &ok), toDouble(parts[cursor + 2], &ok)});
+            }
+            if (cursor < parts.size()) {
+                const int memberCount = toInt(parts[cursor++], &ok);
+                for (int i = 0; i < memberCount && cursor < parts.size(); ++i, ++cursor) {
+                    panel.members.append(toInt(parts[cursor], &ok));
+                }
+            }
+            areaLoadsTmp.append(panel);
+            break;
+        }
+        case Section::AnalysisResults: {
+            const QString key = parts[0].toUpper();
+            if (key == QLatin1String("FINGERPRINT") && parts.size() >= 2) {
+                resultsTmp.fingerprint = parts[1];
+            } else if (key == QLatin1String("RUN") && parts.size() >= 2) {
+                Structura::App::ProjectData::StoredRun run;
+                run.name = decodeName(parts[1]);
+                resultsTmp.runs.append(run);
+            } else if (key == QLatin1String("N") && parts.size() >= 14 && !resultsTmp.runs.isEmpty()) {
+                Structura::App::ProjectData::StoredNodeResult node;
+                node.nodeId = toInt(parts[1], &ok);
+                for (int i = 0; i < 6; ++i) {
+                    node.displacements[static_cast<std::size_t>(i)] = toDouble(parts[2 + i], &ok);
+                    node.reactions[static_cast<std::size_t>(i)] = toDouble(parts[8 + i], &ok);
+                }
+                resultsTmp.runs.last().nodes.append(node);
+            } else if (key == QLatin1String("M") && parts.size() >= 17 && !resultsTmp.runs.isEmpty()) {
+                Structura::App::ProjectData::StoredMemberResult member;
+                member.memberId = toInt(parts[1], &ok);
+                for (int i = 0; i < 12; ++i) {
+                    member.forces[static_cast<std::size_t>(i)] = toDouble(parts[2 + i], &ok);
+                }
+                for (int i = 0; i < 3; ++i) {
+                    member.auxK[static_cast<std::size_t>(i)] = toDouble(parts[14 + i], &ok);
+                }
+                resultsTmp.runs.last().members.append(member);
+            }
+            break;
+        }
+        case Section::DesignResults: {
+            if (parts.size() < 6) {
+                break;
+            }
+            Structura::App::ProjectData::StoredDesignResult d;
+            d.memberId = toInt(parts[0], &ok);
+            if (!ok) {
+                break;
+            }
+            d.section = decodeName(parts[1]);
+            d.eta = toDouble(parts[2], &ok);
+            d.check = decodeName(parts[3]);
+            d.combination = decodeName(parts[4]);
+            d.lengthM = toDouble(parts[5], &ok);
+            resultsTmp.design.append(d);
+            break;
+        }
+        case Section::BucklingResults: {
+            const QString key = parts[0].toUpper();
+            if (key == QLatin1String("COMBINATION") && parts.size() >= 2) {
+                resultsTmp.bucklingCombination = decodeName(parts[1]);
+            } else if (key == QLatin1String("FACTOR") && parts.size() >= 2) {
+                resultsTmp.bucklingFactors.append(toDouble(parts[1], &ok));
+            }
+            break;
+        }
+        case Section::ModalResults: {
+            const QString key = parts[0].toUpper();
+            if (key == QLatin1String("SOURCE") && parts.size() >= 2) {
+                resultsTmp.modalSource = decodeName(parts[1]);
+            } else if (key == QLatin1String("MODE") && parts.size() >= 5) {
+                resultsTmp.modalOmega.append(toDouble(parts[1], &ok));
+                resultsTmp.modalMassRatio.append({toDouble(parts[2], &ok), toDouble(parts[3], &ok), toDouble(parts[4], &ok)});
+            }
+            break;
+        }
+        case Section::Groups: {
+            if (parts.size() < 3) {
+                break;
+            }
+            Structura::App::ProjectData::BarGroup group;
+            group.id = toInt(parts[0], &ok);
+            if (!ok) {
+                break;
+            }
+            group.name = parts[1] == QLatin1String("-") ? QString() : QString(parts[1]).replace(QLatin1Char('_'), QLatin1Char(' '));
+            for (int i = 2; i < parts.size(); ++i) {
+                const int member = toInt(parts[i], &ok);
+                if (ok) {
+                    group.members.append(member);
+                }
+            }
+            groupsTmp.append(group);
+            break;
+        }
+        case Section::DesignSettings: {
+            if (parts.size() < 2) {
+                break;
+            }
+            const QString key = parts[0].toUpper();
+            const QString text = QStringList(parts.mid(1)).join(QLatin1Char(' '));
+            auto name = [&]() { return QString(text).replace(QLatin1Char('_'), QLatin1Char(' ')); };
+            if (key == QLatin1String("DEFAULT_STEEL")) {
+                designTmp.defaultSteel = name();
+            } else if (key == QLatin1String("RECT_TUBE_STANDARD")) {
+                designTmp.rectTubeStandard = text.toUpper();
+            } else if (key == QLatin1String("AMPLIFY_B1")) {
+                designTmp.amplifyB1 = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("SLENDERNESS")) {
+                designTmp.slendernessGoverns = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("SECOND_ORDER")) {
+                designTmp.secondOrder = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("STIFFNESS_REDUCTION")) {
+                designTmp.stiffnessReduction = toDouble(parts[1], &ok);
+            } else if (key == QLatin1String("AUTO_B2")) {
+                designTmp.autoB2 = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("RS")) {
+                designTmp.rs = toDouble(parts[1], &ok);
+            } else if (key == QLatin1String("SINGLE_STOREY")) {
+                designTmp.singleStorey = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("GROUP_BY_FAMILY")) {
+                designTmp.groupByFamily = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("TARGET_ETA")) {
+                designTmp.targetEta = toDouble(parts[1], &ok);
+            } else if (key == QLatin1String("COMBINATION")) {
+                designTmp.combinations.append(name());
+            } else if (key == QLatin1String("DEFAULTS") && parts.size() >= 10) {
+                auto &d = designTmp.defaults;
+                d.kx = toDouble(parts[1], &ok);
+                d.ky = toDouble(parts[2], &ok);
+                d.kz = toDouble(parts[3], &ok);
+                d.segments = std::max(1, toInt(parts[4], &ok));
+                d.lb = toDouble(parts[5], &ok);
+                d.braced = toInt(parts[6], &ok) != 0;
+                d.cbOne = toInt(parts[7], &ok) != 0;
+                d.b2 = toDouble(parts[8], &ok);
+                d.netAreaRatio = toDouble(parts[9], &ok);
+                if (parts.size() >= 13) {
+                    d.lx = toDouble(parts[10], &ok);
+                    d.ly = toDouble(parts[11], &ok);
+                    d.lz = toDouble(parts[12], &ok);
+                }
+            }
+            break;
+        }
+        case Section::MemberDesign: {
+            if (parts.size() < 11) {
+                break;
+            }
+            Structura::App::ProjectData::DesignMemberParams p;
+            p.memberId = toInt(parts[0], &ok);
+            if (!ok) {
+                break;
+            }
+            p.steel = parts[1] == QLatin1String("-") ? QString() : QString(parts[1]).replace(QLatin1Char('_'), QLatin1Char(' '));
+            p.kx = toDouble(parts[2], &ok);
+            p.ky = toDouble(parts[3], &ok);
+            p.kz = toDouble(parts[4], &ok);
+            p.segments = std::max(1, toInt(parts[5], &ok));
+            p.lb = toDouble(parts[6], &ok);
+            p.braced = toInt(parts[7], &ok) != 0;
+            p.cbOne = toInt(parts[8], &ok) != 0;
+            p.b2 = toDouble(parts[9], &ok);
+            p.netAreaRatio = toDouble(parts[10], &ok);
+            if (parts.size() >= 12) {
+                p.deflDenominator = toInt(parts[11], &ok);
+            }
+            if (parts.size() >= 15) {
+                p.lx = toDouble(parts[12], &ok);
+                p.ly = toDouble(parts[13], &ok);
+                p.lz = toDouble(parts[14], &ok);
+            }
+            designTmp.members.append(p);
+            break;
+        }
+        case Section::Placements: {
+            if (parts.size() < 5) {
+                break;
+            }
+            Structura::App::ProjectData::MemberPlacement placement;
+            placement.memberId = toInt(parts[0], &ok);
+            if (!ok) {
+                break;
+            }
+            placement.rotationDeg = toDouble(parts[1], &ok);
+            placement.reference = std::clamp(toInt(parts[2], &ok), 0, 8);
+            placement.offsetA = toDouble(parts[3], &ok);
+            placement.offsetB = toDouble(parts[4], &ok);
+            if (parts.size() >= 8) {
+                placement.endDiffers = toInt(parts[5], &ok) != 0;
+                placement.offsetA2 = toDouble(parts[6], &ok);
+                placement.offsetB2 = toDouble(parts[7], &ok);
+            }
+            if (parts.size() >= 9) {
+                placement.releaseMask = std::clamp(toInt(parts[8], &ok), 0, 4095);
+            }
+            if (parts.size() >= 10) {
+                placement.memberType = std::clamp(toInt(parts[9], &ok), 0, 2);
+            }
+            if (!placement.isDefault()) {
+                placementsTmp.append(placement);
+            }
+            break;
+        }
+        case Section::MemberMoments: {
+            if (parts.size() < 5) {
+                break;
+            }
+            Structura::App::ProjectData::MemberMoment moment;
+            moment.memberId = toInt(parts[0], &ok);
+            if (!ok) {
+                break;
+            }
+            moment.system = parts[1].toUpper();
+            moment.mx = toDouble(parts[2], &ok);
+            moment.my = toDouble(parts[3], &ok);
+            moment.mz = toDouble(parts[4], &ok);
+            if (parts.size() > 5) {
+                moment.loadCase = parts[5];
+            }
+            memberMomentsTmp.append(moment);
             break;
         }
         case Section::Sections: {
@@ -247,6 +664,9 @@ bool DatModelIoService::load(const QString &filePath,
             load.mx = toDouble(parts[4], &ok);
             load.my = toDouble(parts[5], &ok);
             load.mz = toDouble(parts[6], &ok);
+            if (parts.size() > 7) {
+                load.loadCase = parts[7];
+            }
             nodalLoadsTmp.append(load);
             break;
         }
@@ -263,6 +683,9 @@ bool DatModelIoService::load(const QString &filePath,
             load.qx = toDouble(parts[2], &ok);
             load.qy = toDouble(parts[3], &ok);
             load.qz = toDouble(parts[4], &ok);
+            if (parts.size() > 5) {
+                load.loadCase = parts[5];
+            }
             memberLoadsTmp.append(load);
             break;
         }
@@ -286,9 +709,66 @@ bool DatModelIoService::load(const QString &filePath,
 
     materials = materialsTmp;
     sections = sectionsTmp;
+    for (SectionInfo &sec : sections) {
+        const auto record = sectionGeometryTmp.constFind(sec.externalId);
+        if (record != sectionGeometryTmp.constEnd()) {
+            sec.family = record->family;
+            sec.mirrored = record->mirrored;
+            sec.geometry = record->parameters;
+        }
+    }
     supports = supportsTmp;
     nodalLoads = nodalLoadsTmp;
     memberLoads = memberLoadsTmp;
+    extras.memberMoments = memberMomentsTmp;
+    extras.placements = placementsTmp;
+    std::sort(axesTmp.levels.begin(), axesTmp.levels.end(),
+              [](const Structura::App::ProjectData::AxisLevel &a, const Structura::App::ProjectData::AxisLevel &b) {
+                  return a.elevation < b.elevation;
+              });
+    extras.axes = axesTmp;
+    extras.viewOptions = viewOptionsTmp;
+    extras.design = designTmp;
+    extras.groups = groupsTmp;
+    extras.areaLoads = areaLoadsTmp;
+    extras.results = resultsTmp;
+
+    // Projetos antigos nao tem casos: cria o caso padrao e atribui as cargas a ele.
+    extras.loadCases = loadCasesTmp;
+    extras.combinations = combinationsTmp;
+    if (extras.loadCases.isEmpty()) {
+        extras.loadCases.append({Structura::App::ProjectData::defaultLoadCaseName(),
+                                 Structura::App::ProjectData::defaultLoadCaseName(), false});
+    }
+    const QString fallbackCase = extras.loadCases.first().name;
+    for (auto &load : nodalLoads) {
+        if (load.loadCase.isEmpty()) {
+            load.loadCase = fallbackCase;
+        }
+    }
+    for (auto &load : memberLoads) {
+        if (load.loadCase.isEmpty()) {
+            load.loadCase = fallbackCase;
+        }
+    }
+    for (auto &moment : extras.memberMoments) {
+        if (moment.loadCase.isEmpty()) {
+            moment.loadCase = fallbackCase;
+        }
+    }
+
+    for (MaterialInfo &mat : materials) {
+        mat.unitWeight = unitWeightByMaterial.value(mat.externalId, 0.0);
+        const auto extraIt = materialExtras.constFind(mat.externalId);
+        if (extraIt != materialExtras.constEnd()) {
+            if (!extraIt->name.isEmpty()) {
+                mat.name = extraIt->name;
+            }
+            mat.library = extraIt->library;
+            mat.fy = extraIt->fy;
+            mat.fu = extraIt->fu;
+        }
+    }
 
     if (!materials.isEmpty()) {
         lastMaterialId = materials.first().uuid;
@@ -352,6 +832,7 @@ bool DatModelIoService::save(const QString &filePath,
                              const QVector<NodeSupport> &supports,
                              const QVector<NodalLoad> &nodalLoads,
                              const QVector<MemberLoad> &memberLoads,
+                             const ProjectExtras &extras,
                              QString *errorMessage) const
 {
     QFile file(filePath);
@@ -448,12 +929,49 @@ bool DatModelIoService::save(const QString &filePath,
     }
     stream << "\n";
 
+    bool anyUnitWeight = false;
+    for (const auto &mat : materialsSorted) {
+        anyUnitWeight = anyUnitWeight || mat.unitWeight != 0.0 || !mat.library.isEmpty() || mat.fy != 0.0;
+    }
+    if (anyUnitWeight) {
+        stream << "[MATERIAL_PROPS]\n";
+        stream << "# ID    UnitWeight (kN/m^3)  Nome  Biblioteca  fy(MPa)  fu(MPa)   ('-' = vazio, '_' = espaco)\n";
+        auto token = [](QString text) { return text.isEmpty() ? QStringLiteral("-") : text.replace(QLatin1Char(' '), QLatin1Char('_')); };
+        for (const auto &mat : materialsSorted) {
+            stream << QString::asprintf("%-8d %14.6e ", mat.externalId, mat.unitWeight) << token(mat.name) << " " << token(mat.library)
+                   << QString::asprintf(" %g %g\n", mat.fy, mat.fu);
+        }
+        stream << "\n";
+    }
+
     stream << "[SECTIONS]\n";
     stream << "# ID    A (m^2)     Iz (m^4)      Iy (m^4)      J (m^4)\n";
     for (const auto &sec : sectionsSorted) {
         stream << QString::asprintf("%-8d %14.6e %14.6e %14.6e %14.6e\n", sec.externalId, sec.area, sec.iz, sec.iy, sec.j);
     }
     stream << "\n";
+
+    bool anySectionGeometry = false;
+    for (const auto &sec : sectionsSorted) {
+        anySectionGeometry = anySectionGeometry || !sec.family.isEmpty();
+    }
+    if (anySectionGeometry) {
+        stream << "[SECTION_GEOMETRY]\n";
+        stream << "# ID    Familia(_ no lugar de espaco)  Espelhada(0/1)  parametro=valor (mm) ...\n";
+        for (const auto &sec : sectionsSorted) {
+            if (sec.family.isEmpty()) {
+                continue;
+            }
+            QString family = sec.family;
+            family.replace(QLatin1Char(' '), QLatin1Char('_'));
+            stream << QString::asprintf("%-8d %s %d", sec.externalId, family.toUtf8().constData(), sec.mirrored ? 1 : 0);
+            for (auto it = sec.geometry.constBegin(); it != sec.geometry.constEnd(); ++it) {
+                stream << ' ' << it.key() << QString::asprintf("=%g", it.value());
+            }
+            stream << "\n";
+        }
+        stream << "\n";
+    }
 
     stream << "[NODES]\n";
     stream << "# ID    X (m)    Y (m)    Z (m)    UX  UY  UZ  RX  RY  RZ\n";
@@ -495,23 +1013,224 @@ bool DatModelIoService::save(const QString &filePath,
     }
     stream << "\n";
 
+    const QString defaultCase = extras.loadCases.isEmpty() ? Structura::App::ProjectData::defaultLoadCaseName()
+                                                           : extras.loadCases.first().name;
+    auto caseToken = [&defaultCase](const QString &name) {
+        return (name.isEmpty() ? defaultCase : name).toLatin1();
+    };
+
+    if (!extras.loadCases.isEmpty()) {
+        stream << "[LOAD_CASES]\n";
+        stream << "# Nome  Sigla  PesoProprio(0/1)\n";
+        for (const auto &loadCase : extras.loadCases) {
+            stream << QString::asprintf("%-16s %-8s %d\n",
+                                        loadCase.name.toLatin1().constData(),
+                                        (loadCase.abbreviation.isEmpty() ? loadCase.name : loadCase.abbreviation).toLatin1().constData(),
+                                        loadCase.selfWeight ? 1 : 0);
+        }
+        stream << "\n";
+    }
+    if (!extras.combinations.isEmpty()) {
+        stream << "[COMBINATIONS]\n";
+        stream << "# Nome  caso=fator ...\n";
+        for (const auto &combination : extras.combinations) {
+            stream << combination.name;
+            for (const auto &term : combination.factors) {
+                stream << ' ' << term.first << QString::asprintf("=%g", term.second);
+            }
+            stream << "\n";
+        }
+        stream << "\n";
+    }
+
     stream << "[NODAL_LOADS]\n";
-    stream << "# Node_ID   Fx (N)    Fy (N)   Fz (N)   Mx (Nm)   My (Nm)   Mz (Nm)\n";
+    stream << "# Node_ID   Fx (N)    Fy (N)   Fz (N)   Mx (Nm)   My (Nm)   Mz (Nm)   Caso\n";
     for (const auto &load : nodalLoads) {
-        stream << QString::asprintf("%-8d %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f\n",
-                                    load.nodeId, load.fx, load.fy, load.fz, load.mx, load.my, load.mz);
+        stream << QString::asprintf("%-8d %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f %s\n",
+                                    load.nodeId, load.fx, load.fy, load.fz, load.mx, load.my, load.mz,
+                                    caseToken(load.loadCase).constData());
     }
     stream << "\n";
 
     stream << "[MEMBER_LOADS]\n";
-    stream << "# Formato: Member_ID  Sistema(Local/Global)  qx (N/m)  qy (N/m)  qz (N/m)\n";
+    stream << "# Formato: Member_ID  Sistema(Local/Global)  qx (N/m)  qy (N/m)  qz (N/m)  Caso\n";
     stream << "# Sistemas aceitos: LOCAL, GLOBAL (ou L/G)\n";
     for (const auto &load : memberLoads) {
         const QByteArray systemBytes = load.system.isEmpty() ? QByteArray("LOCAL") : load.system.toUpper().toLatin1();
-        stream << QString::asprintf("%-12d %-10s %12.6f %12.6f %12.6f\n",
+        stream << QString::asprintf("%-12d %-10s %12.6f %12.6f %12.6f %s\n",
                                     load.memberId,
                                     systemBytes.constData(),
-                                    load.qx, load.qy, load.qz);
+                                    load.qx, load.qy, load.qz,
+                                    caseToken(load.loadCase).constData());
+    }
+
+    if (!extras.memberMoments.isEmpty()) {
+        stream << "\n[MEMBER_MOMENTS]\n";
+        stream << "# Member_ID  Sistema(Local/Global)  mx (N*m/m)  my (N*m/m)  mz (N*m/m)  Caso\n";
+        for (const auto &moment : extras.memberMoments) {
+            const QByteArray systemBytes = moment.system.isEmpty() ? QByteArray("LOCAL") : moment.system.toUpper().toLatin1();
+            stream << QString::asprintf("%-12d %-10s %12.6f %12.6f %12.6f %s\n",
+                                        moment.memberId, systemBytes.constData(),
+                                        moment.mx, moment.my, moment.mz,
+                                        caseToken(moment.loadCase).constData());
+        }
+    }
+
+    if (!extras.placements.isEmpty()) {
+        stream << "\n[MEMBER_PLACEMENT]\n";
+        stream << "# Member_ID  Giro(graus)  Ponto_ref(0-8)  Desloc_z_I(m)  Desloc_y_I(m)  J_diferente(0/1)  Desloc_z_J(m)  Desloc_y_J(m)  Liberacoes(mascara: bit0-5 ux..rz em I, bit6-11 em J)  Tipo(0=normal,1=trelica,2=tirante)\n";
+        for (const auto &placement : extras.placements) {
+            if (placement.isDefault()) {
+                continue;
+            }
+            stream << QString::asprintf("%-12d %12.6f %6d %14.6f %14.6f %4d %14.6f %14.6f %6d %3d\n",
+                                        placement.memberId, placement.rotationDeg, placement.reference,
+                                        placement.offsetA, placement.offsetB, placement.endDiffers ? 1 : 0,
+                                        placement.offsetA2, placement.offsetB2, placement.releaseMask, placement.memberType);
+        }
+    }
+
+    if (!extras.axes.isEmpty()) {
+        stream << "\n[AXES]\n";
+        stream << "# LEVEL nome elevacao (m): abre um plano de eixos; X/Y rotulo coordenada (m) pertencem ao ultimo LEVEL\n";
+        for (const auto &level : extras.axes.levels) {
+            stream << QString::asprintf("LEVEL %s %12.3f\n", level.name.toLatin1().constData(), level.elevation);
+            for (const auto &entry : level.x) {
+                stream << QString::asprintf("X %-8s %12.3f\n", entry.label.toLatin1().constData(), entry.value);
+            }
+            for (const auto &entry : level.y) {
+                stream << QString::asprintf("Y %-8s %12.3f\n", entry.label.toLatin1().constData(), entry.value);
+            }
+        }
+    }
+
+    if (!extras.areaLoads.isEmpty()) {
+        stream << "\n[AREA_LOADS]\n";
+        stream << "# ID Caso('_'=espaco) Tipo(AREA/WIND) Pressao(kN/m2) dirX dirY dirZ nPontos x y z ... nBarras barras...\n";
+        for (const auto &panel : extras.areaLoads) {
+            stream << QString::asprintf("%-4d ", panel.id) << (panel.loadCase.isEmpty() ? QStringLiteral("-") : QString(panel.loadCase).replace(QLatin1Char(' '), QLatin1Char('_')))
+                   << ' ' << panel.kind
+                   << QString::asprintf(" %.6g %.6g %.6g %.6g %d", panel.pressure, panel.direction[0], panel.direction[1], panel.direction[2], static_cast<int>(panel.polygon.size()));
+            for (const auto &p : panel.polygon) {
+                stream << QString::asprintf(" %.6f %.6f %.6f", p[0], p[1], p[2]);
+            }
+            stream << ' ' << panel.members.size();
+            for (const int member : panel.members) {
+                stream << ' ' << member;
+            }
+            stream << "\n";
+        }
+    }
+
+    if (!extras.groups.isEmpty()) {
+        stream << "\n[GROUPS]\n";
+        stream << "# ID  Nome('-'=vazio, '_'=espaco)  barras...\n";
+        for (const auto &group : extras.groups) {
+            stream << QString::asprintf("%-6d ", group.id)
+                   << (group.name.isEmpty() ? QStringLiteral("-") : QString(group.name).replace(QLatin1Char(' '), QLatin1Char('_')));
+            for (const int member : group.members) {
+                stream << ' ' << member;
+            }
+            stream << "\n";
+        }
+    }
+
+    if (!extras.design.isDefault()) {
+        const auto &ds = extras.design;
+        auto token = [](QString text) { return text.isEmpty() ? QStringLiteral("-") : text.replace(QLatin1Char(' '), QLatin1Char('_')); };
+        stream << "\n[DESIGN_SETTINGS]\n";
+        stream << "# DEFAULT_STEEL nome | RECT_TUBE_STANDARD NBR14762/NBR8800 | AMPLIFY_B1 0/1 | SLENDERNESS 0/1 | COMBINATION nome\n";
+        stream << "# DEFAULTS kx ky kz trechos Lb(m) mesa_contida Cb=1 B2 An/Ag Lx Ly Lz (m; 0 = usa K.L)\n";
+        stream << "DEFAULT_STEEL " << token(ds.defaultSteel) << "\n";
+        stream << "RECT_TUBE_STANDARD " << ds.rectTubeStandard << "\n";
+        stream << "AMPLIFY_B1 " << (ds.amplifyB1 ? 1 : 0) << "\n";
+        stream << "SLENDERNESS " << (ds.slendernessGoverns ? 1 : 0) << "\n";
+        stream << "SECOND_ORDER " << (ds.secondOrder ? 1 : 0) << "\n";
+        stream << "STIFFNESS_REDUCTION " << ds.stiffnessReduction << "\n";
+        stream << "AUTO_B2 " << (ds.autoB2 ? 1 : 0) << "\n";
+        stream << "RS " << ds.rs << "\n";
+        stream << "SINGLE_STOREY " << (ds.singleStorey ? 1 : 0) << "\n";
+        stream << "GROUP_BY_FAMILY " << (ds.groupByFamily ? 1 : 0) << "\n";
+        stream << "TARGET_ETA " << ds.targetEta << "\n";
+        for (const QString &name : ds.combinations) {
+            stream << "COMBINATION " << token(name) << "\n";
+        }
+        stream << QString::asprintf("DEFAULTS %g %g %g %d %g %d %d %g %g %g %g %g\n", ds.defaults.kx, ds.defaults.ky, ds.defaults.kz,
+                                    ds.defaults.segments, ds.defaults.lb, ds.defaults.braced ? 1 : 0, ds.defaults.cbOne ? 1 : 0,
+                                    ds.defaults.b2, ds.defaults.netAreaRatio, ds.defaults.lx, ds.defaults.ly, ds.defaults.lz);
+        if (!ds.members.isEmpty()) {
+            stream << "\n[MEMBER_DESIGN]\n";
+            stream << "# Member_ID  Aco(-=padrao)  kx ky kz  trechos  Lb(m)  mesa_contida  Cb=1  B2  An/Ag  flecha_L/n(0=auto)  Lx Ly Lz (m; 0 = usa K.L)\n";
+            for (const auto &p : ds.members) {
+                stream << QString::asprintf("%-10d ", p.memberId) << token(p.steel)
+                       << QString::asprintf(" %g %g %g %d %g %d %d %g %g %d %g %g %g\n", p.kx, p.ky, p.kz, p.segments, p.lb,
+                                            p.braced ? 1 : 0, p.cbOne ? 1 : 0, p.b2, p.netAreaRatio, p.deflDenominator, p.lx, p.ly, p.lz);
+            }
+        }
+    }
+
+    const auto &results = extras.results;
+    auto encode = [](const QString &text) { return QString::fromLatin1(QUrl::toPercentEncoding(text.isEmpty() ? QStringLiteral("-") : text)); };
+    if (!results.runs.isEmpty()) {
+        stream << "\n[ANALYSIS_RESULTS]\n";
+        stream << "# FINGERPRINT: impressao digital do modelo analisado (resultados so sao restaurados se o modelo nao mudou)\n";
+        stream << "# RUN caso | N no ux uy uz rx ry rz Rux Ruy Ruz Rrx Rry Rrz | M barra f1..f12(locais I,J) k1 k2 k3\n";
+        stream << "FINGERPRINT " << results.fingerprint << "\n";
+        for (const auto &run : results.runs) {
+            stream << "RUN " << encode(run.name) << "\n";
+            for (const auto &n : run.nodes) {
+                stream << "N " << n.nodeId;
+                for (const double v : n.displacements) {
+                    stream << ' ' << QString::number(v, 'g', 12);
+                }
+                for (const double v : n.reactions) {
+                    stream << ' ' << QString::number(v, 'g', 12);
+                }
+                stream << "\n";
+            }
+            for (const auto &m : run.members) {
+                stream << "M " << m.memberId;
+                for (const double v : m.forces) {
+                    stream << ' ' << QString::number(v, 'g', 12);
+                }
+                for (const double v : m.auxK) {
+                    stream << ' ' << QString::number(v, 'g', 12);
+                }
+                stream << "\n";
+            }
+        }
+    }
+    if (!results.design.isEmpty()) {
+        stream << "\n[DESIGN_RESULTS]\n";
+        stream << "# Member_ID  Perfil  aproveitamento  verificacao_governante  combinacao  comprimento(m)\n";
+        for (const auto &d : results.design) {
+            stream << QString::asprintf("%-8d ", d.memberId) << encode(d.section) << ' ' << QString::number(d.eta, 'g', 8) << ' ' << encode(d.check)
+                   << ' ' << encode(d.combination) << ' ' << QString::number(d.lengthM, 'g', 8) << "\n";
+        }
+    }
+    if (!results.bucklingFactors.isEmpty()) {
+        stream << "\n[BUCKLING_RESULTS]\n";
+        stream << "COMBINATION " << encode(results.bucklingCombination) << "\n";
+        for (const double f : results.bucklingFactors) {
+            stream << "FACTOR " << QString::number(f, 'g', 10) << "\n";
+        }
+    }
+    if (!results.modalOmega.isEmpty()) {
+        stream << "\n[MODAL_RESULTS]\n";
+        stream << "# MODE omega(rad/s) massa_efetiva_X massa_efetiva_Y massa_efetiva_Z\n";
+        stream << "SOURCE " << encode(results.modalSource) << "\n";
+        for (int i = 0; i < results.modalOmega.size(); ++i) {
+            stream << "MODE " << QString::number(results.modalOmega[i], 'g', 10) << ' ' << QString::number(results.modalMassRatio[i][0], 'g', 8) << ' '
+                   << QString::number(results.modalMassRatio[i][1], 'g', 8) << ' ' << QString::number(results.modalMassRatio[i][2], 'g', 8) << "\n";
+        }
+    }
+
+    if (!extras.viewOptions.isEmpty()) {
+        stream << "\n[VIEW_OPTIONS]\n";
+        stream << "# Chave  Valor (booleanos: 0/1)\n";
+        for (auto it = extras.viewOptions.constBegin(); it != extras.viewOptions.constEnd(); ++it) {
+            stream << QString::asprintf("%-28s %g\n", it.key().toLatin1().constData(), it.value());
+        }
     }
 
     file.close();

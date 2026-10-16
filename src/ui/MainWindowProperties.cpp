@@ -1,7 +1,13 @@
 #include "MainWindow.h"
+#include "app/UndoRedoService.h"
+#include "AxesPanel.h"
+#include "SectionPlacementPanel.h"
+#include "ProfileLibrary.h"
+#include "ProfileManagerDialog.h"
 
 #include "MaterialDialog.h"
-#include "SectionDialog.h"
+#include "app/services/MaterialLibrary.h"
+#include "app/services/UserLibrary.h"
 #include "viz/SceneController.h"
 
 #include <QDialog>
@@ -10,6 +16,11 @@
 #include <QMessageBox>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QElapsedTimer>
+#include <QUndoCommand>
+#include <QUndoStack>
+#include <algorithm>
+#include <functional>
 #include <QVBoxLayout>
 
 namespace {
@@ -71,9 +82,241 @@ void MainWindow::ensurePropertiesPanel()
             this, &MainWindow::onBarMaterialEdited);
     connect(m_propertiesPanel, &PropertiesPanel::barSectionEdited,
             this, &MainWindow::onBarSectionEdited);
+    connect(m_propertiesPanel, &PropertiesPanel::barReportRequested, this, &MainWindow::onBarReport);
+    connect(m_propertiesPanel, &PropertiesPanel::placementEditorRequested, this, [this]() {
+        if (m_placementPanel && !m_placementPanel->isVisible()) {
+            onTogglePlacementPanel();
+        } else if (m_placementPanel) {
+            m_placementPanel->raise();
+        }
+    });
+    connect(m_propertiesPanel, &PropertiesPanel::manageProfilesRequested,
+            this, &MainWindow::onOpenProfileManager);
 
     m_propertiesPanel->setMaterialOptions(buildMaterialOptions());
-    m_propertiesPanel->setSectionOptions(buildSectionOptions());
+    m_propertiesPanel->setSections(m_sections);
+}
+
+namespace {
+
+/// Desfaz/refaz uma troca do conjunto de posicionamentos. Edicoes consecutivas sobre as mesmas barras
+/// (arrastar a secao, mexer no controle de giro) sao fundidas num unico passo de desfazer.
+class SetPlacementsCommand : public QUndoCommand
+{
+public:
+    using Placements = QVector<Structura::App::ProjectData::MemberPlacement>;
+    static constexpr int kId = 0x5043;   // "PC"
+    static constexpr qint64 kMergeWindowMs = 2500;
+
+    SetPlacementsCommand(std::function<void(const Placements &)> apply, Placements before, Placements after, QString key)
+        : QUndoCommand(QObject::tr("Posicionar seção"))
+        , m_apply(std::move(apply))
+        , m_before(std::move(before))
+        , m_after(std::move(after))
+        , m_key(std::move(key))
+    {
+        m_clock.start();
+    }
+
+    int id() const override { return kId; }
+
+    bool mergeWith(const QUndoCommand *other) override
+    {
+        const auto *next = dynamic_cast<const SetPlacementsCommand *>(other);
+        if (!next || next->m_key != m_key || m_clock.elapsed() > kMergeWindowMs) {
+            return false;
+        }
+        m_after = next->m_after;
+        m_clock.restart();
+        return true;
+    }
+
+    void redo() override { m_apply(m_after); }
+    void undo() override { m_apply(m_before); }
+
+private:
+    std::function<void(const Placements &)> m_apply;
+    Placements m_before;
+    Placements m_after;
+    QString m_key;
+    QElapsedTimer m_clock;
+};
+
+} // namespace
+
+void MainWindow::onBarPlacementEdited(const QVector<QUuid> &requestedIds,
+                                      const Structura::App::ProjectData::MemberPlacementPatch &patch)
+{
+    if (!m_sceneController || !m_undoService || requestedIds.isEmpty()) {
+        return;
+    }
+    const QVector<QUuid> ids = expandWithGroups(requestedIds);
+
+    using Placement = Structura::App::ProjectData::MemberPlacement;
+    QVector<Placement> updated = m_extras.placements;
+    QStringList keyParts;
+    bool changed = false;
+    for (const QUuid &id : ids) {
+        const auto *bar = m_sceneController->findBar(id);
+        if (!bar || bar->externalId() <= 0) {
+            continue;
+        }
+        keyParts << QString::number(bar->externalId());
+        int index = -1;
+        for (int i = 0; i < updated.size(); ++i) {
+            if (updated[i].memberId == bar->externalId()) {
+                index = i;
+                break;
+            }
+        }
+        Placement placement;
+        placement.memberId = bar->externalId();
+        if (index >= 0) {
+            placement = updated[index];
+        }
+        const Placement before = placement;
+        patch.applyTo(placement);
+        if (placement == before) {
+            continue;
+        }
+        changed = true;
+        if (index >= 0) {
+            if (placement.isDefault()) {
+                updated.removeAt(index);
+            } else {
+                updated[index] = placement;
+            }
+        } else if (!placement.isDefault()) {
+            updated.append(placement);
+        }
+    }
+    if (!changed) {
+        return;
+    }
+
+    keyParts.sort();
+    m_undoService->stack()->push(new SetPlacementsCommand(
+        [this](const QVector<Placement> &placements) {
+            m_extras.placements = placements;
+            syncPlacementVisuals();
+        },
+        m_extras.placements,
+        updated,
+        keyParts.join(QLatin1Char(','))));
+}
+
+void MainWindow::onTogglePlacementPanel()
+{
+    if (!m_placementPanel) {
+        return;
+    }
+    if (m_placementPanel->isVisible()) {
+        m_placementPanel->hide();
+        return;
+    }
+    if (m_axesPanel) {
+        m_axesPanel->hide();
+    }
+    m_placementPanel->show();
+    refreshPlacementPanel();
+    m_placementPanel->reposition();
+    m_placementPanel->raise();
+}
+
+void MainWindow::refreshPlacementPanel()
+{
+    if (!m_placementPanel || !m_placementPanel->isVisible() || !m_sceneController) {
+        return;
+    }
+    QHash<QUuid, const SectionInfo *> sectionsById;
+    for (const auto &section : m_sections) {
+        sectionsById.insert(section.uuid, &section);
+    }
+    QVector<Structura::UI::SectionPlacementPanel::Target> targets;
+    const QSet<QUuid> barIds = m_selectionModel ? m_selectionModel->selectedBars() : QSet<QUuid>();
+    // Ordem estavel: ID externo crescente (a primeira barra define os valores exibidos).
+    QVector<const SceneController::Bar *> bars;
+    for (const QUuid &id : barIds) {
+        if (const auto *bar = m_sceneController->findBar(id)) {
+            bars.append(bar);
+        }
+    }
+    std::sort(bars.begin(), bars.end(), [](const auto *a, const auto *b) { return a->externalId() < b->externalId(); });
+    for (const auto *bar : bars) {
+        Structura::UI::SectionPlacementPanel::Target target;
+        target.barId = bar->id();
+        target.externalId = bar->externalId();
+        target.placement.memberId = bar->externalId();
+        for (const auto &placement : m_extras.placements) {
+            if (placement.memberId == bar->externalId()) {
+                target.placement = placement;
+                break;
+            }
+        }
+        const auto sectionIt = sectionsById.constFind(bar->sectionId());
+        if (sectionIt != sectionsById.constEnd()) {
+            target.section = **sectionIt;
+            target.hasSection = true;
+        }
+        targets.append(target);
+    }
+    m_placementPanel->setTargets(targets);
+}
+
+void MainWindow::syncBarTypeMarkers()
+{
+    if (!m_sceneController) {
+        return;
+    }
+    using Structura::App::ProjectData::MemberRelease::kEndRy;
+    using Structura::App::ProjectData::MemberRelease::kEndRz;
+    using Structura::App::ProjectData::MemberRelease::kStartRy;
+    using Structura::App::ProjectData::MemberRelease::kStartRz;
+    QHash<int, Structura::App::ProjectData::MemberPlacement> byMember;
+    for (const auto &placement : m_extras.placements) {
+        if (placement.releaseMask != 0 || placement.memberType != 0) {
+            byMember.insert(placement.memberId, placement);
+        }
+    }
+    std::vector<Structura::Visualization::BarTypeRenderer::Marker> markers;
+    if (!byMember.isEmpty()) {
+        QHash<QUuid, std::array<double, 3>> position;
+        for (const auto &node : m_sceneController->nodeInfos()) {
+            position.insert(node.id, {node.x, node.y, node.z});
+        }
+        for (const auto &bar : m_sceneController->bars()) {
+            const auto it = byMember.constFind(bar.externalId);
+            if (it == byMember.constEnd() || m_hiddenBars.contains(bar.id) || !position.contains(bar.startNodeId) || !position.contains(bar.endNodeId)) {
+                continue;
+            }
+            Structura::Visualization::BarTypeRenderer::Marker marker;
+            marker.start = position.value(bar.startNodeId);
+            marker.end = position.value(bar.endNodeId);
+            marker.hingeStart = (it->releaseMask & (kStartRy | kStartRz)) != 0;
+            marker.hingeEnd = (it->releaseMask & (kEndRy | kEndRz)) != 0;
+            marker.kind = it->memberType;
+            markers.push_back(marker);
+        }
+    }
+    m_sceneController->setBarTypeMarkers(markers);
+}
+
+void MainWindow::syncPlacementVisuals()
+{
+    if (!m_sceneController) {
+        return;
+    }
+    QHash<int, double> rotations;
+    for (const auto &placement : m_extras.placements) {
+        if (placement.rotationDeg != 0.0) {
+            rotations.insert(placement.memberId, placement.rotationDeg);
+        }
+    }
+    m_sceneController->setBarSectionRotations(rotations);
+    syncSolidVisuals();
+    syncLoadVisuals();
+    syncBarTypeMarkers();
+    refreshPlacementPanel();
 }
 
 void MainWindow::refreshPropertiesPanel()
@@ -84,15 +327,16 @@ void MainWindow::refreshPropertiesPanel()
     }
 
     m_propertiesPanel->setMaterialOptions(buildMaterialOptions());
-    m_propertiesPanel->setSectionOptions(buildSectionOptions());
+    m_propertiesPanel->setSections(m_sections);
 
     const QSet<QUuid> nodeIds = m_selectionModel ? m_selectionModel->selectedNodes() : QSet<QUuid>();
     const QSet<QUuid> barIds = m_selectionModel ? m_selectionModel->selectedBars() : QSet<QUuid>();
 
     m_propertiesPanel->setNodeEntries(buildNodeEntries(nodeIds));
     m_propertiesPanel->setBarEntries(buildBarEntries(barIds));
-    updateGridInfoOnPanel();
     updateLoadActionsEnabled();
+    refreshLoadsPanel();
+    refreshPlacementPanel();
 }
 
 QVector<QPair<QUuid, QString>> MainWindow::buildMaterialOptions() const
@@ -101,14 +345,6 @@ QVector<QPair<QUuid, QString>> MainWindow::buildMaterialOptions() const
         m_materials,
         [](const MaterialInfo &mat) { return mat.uuid; },
         [](const MaterialInfo &mat) { return mat.name; });
-}
-
-QVector<QPair<QUuid, QString>> MainWindow::buildSectionOptions() const
-{
-    return mapToOptions(
-        m_sections,
-        [](const SectionInfo &sec) { return sec.uuid; },
-        [](const SectionInfo &sec) { return sec.name; });
 }
 
 std::vector<AssignBarPropertiesDialog::BarInfo> MainWindow::buildAssignDialogBarInfos() const
@@ -149,29 +385,14 @@ std::vector<QUuid> MainWindow::collectAssignDialogSelectionIds(const QList<int> 
     return barIds;
 }
 
-void MainWindow::updateGridInfoOnPanel()
-{
-    if (!m_propertiesPanel || !m_sceneController) {
-        return;
-    }
-    const bool hasGrid = m_sceneController->hasGrid();
-    double dx = 0.0;
-    double dy = 0.0;
-    double dz = 0.0;
-    int nx = 0;
-    int ny = 0;
-    int nz = 0;
-    if (hasGrid) {
-        m_sceneController->gridSpacing(dx, dy, dz);
-        m_sceneController->gridCounts(nx, ny, nz);
-    }
-    m_propertiesPanel->setGridInfo(hasGrid, dx, dy, dz, nx, ny, nz);
-    updateGridActionsEnabled();
-}
-
 void MainWindow::onCreateMaterial()
 {
-    MaterialDialog dialog(this);
+    StateGuard guard(this, tr("Novo material"));
+    bool pascal = false;
+    for (const auto &material : m_materials) {
+        pascal = pascal || material.youngModulus > 1e10;
+    }
+    MaterialDialog dialog(pascal, this);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -182,8 +403,33 @@ void MainWindow::onCreateMaterial()
     info.name = dialog.name();
     info.youngModulus = dialog.youngModulus();
     info.shearModulus = dialog.shearModulus();
+    info.unitWeight = dialog.unitWeight();
+    info.library = dialog.libraryName();
+    info.fy = dialog.fy();
+    info.fu = dialog.fu();
+    if (info.library.isEmpty() && info.fy > 0.0 && info.fu > 0.0) {
+        Structura::App::Services::MaterialLibrary::registerCustomSteel(dialog.name(), info.fy, info.fu, false);
+    }
     if (info.name.trimmed().isEmpty()) {
         info.name = tr("Material %1").arg(info.externalId);
+    }
+    if (dialog.saveToLibrary() && !info.name.isEmpty()) {
+        Structura::App::Services::MaterialLibrary::Entry entry;
+        entry.name = info.name;
+        entry.category = info.fy > 0.0 && info.fu > 0.0 ? Structura::App::Services::MaterialLibrary::Category::StructuralSteel
+                                                           : Structura::App::Services::MaterialLibrary::Category::Custom;
+        entry.fy = info.fy;
+        entry.fu = info.fu;
+        entry.eGPa = dialog.youngModulusGPa();
+        entry.gGPa = dialog.shearModulusGPa();
+        entry.unitWeight = info.unitWeight;
+        entry.user = true;
+        if (Structura::App::Services::UserLibrary::saveMaterial(entry)) {
+            Structura::App::Services::MaterialLibrary::setUserEntries(Structura::App::Services::UserLibrary::loadMaterials());
+            showStatusMessage(tr("Material \"%1\" salvo no banco de materiais do programa.").arg(info.name), 5000);
+        } else {
+            QMessageBox::warning(this, tr("Banco de materiais"), tr("Não foi possível gravar o banco de materiais em %1.").arg(Structura::App::Services::UserLibrary::directory()));
+        }
     }
     m_materials.append(info);
     m_lastMaterialId = info.uuid;
@@ -192,25 +438,10 @@ void MainWindow::onCreateMaterial()
 
 void MainWindow::onCreateSection()
 {
-    SectionDialog dialog(this);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    SectionInfo info;
-    info.uuid = QUuid::createUuid();
-    info.externalId = nextSectionExternalId();
-    info.name = dialog.name();
-    info.area = dialog.area();
-    info.iz = dialog.iz();
-    info.iy = dialog.iy();
-    info.j = dialog.j();
-    if (info.name.trimmed().isEmpty()) {
-        info.name = tr("Secao %1").arg(info.externalId);
-    }
-    m_sections.append(info);
-    m_lastSectionId = info.uuid;
-    refreshPropertiesPanel();
+    // A criacao de perfis acontece no gerenciador de perfis (painel "Novo perfil").
+    ensureProfileManager();
+    syncProfileManager();
+    m_profileManager->showCreatePage();
 }
 
 void MainWindow::onAssignProperties()
@@ -223,7 +454,7 @@ void MainWindow::onAssignProperties()
 
     const auto nodes = buildAssignDialogNodeInfos();
 
-    AssignBarPropertiesDialog dialog(buildMaterialOptions(), buildSectionOptions(), bars, nodes, this);
+    AssignBarPropertiesDialog dialog(buildMaterialOptions(), m_sections, bars, nodes, this);
     dialog.setCurrentMaterial(m_lastMaterialId);
     dialog.setCurrentSection(m_lastSectionId);
     if (dialog.exec() != QDialog::Accepted) {
@@ -236,9 +467,19 @@ void MainWindow::onAssignProperties()
     }
 
     const QUuid materialId = dialog.selectedMaterial();
-    const QUuid sectionId = dialog.selectedSection();
+    const QUuid sectionId = resolveSectionId(dialog.selectedSection());
 
     std::vector<QUuid> barIds = collectAssignDialogSelectionIds(selection, bars);
+    {
+        QVector<QUuid> requested;
+        for (const QUuid &id : barIds) {
+            requested.append(id);
+        }
+        barIds.clear();
+        for (const QUuid &id : expandWithGroups(requested)) {
+            barIds.push_back(id);
+        }
+    }
 
     if (!barIds.empty()) {
         m_sceneController->assignBarProperties(barIds,

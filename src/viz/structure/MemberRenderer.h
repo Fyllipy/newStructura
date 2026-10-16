@@ -2,6 +2,7 @@
 
 #include <QUuid>
 #include <QSet>
+#include "viz/structure/ElementAppearance.h"
 
 #include <vtkSmartPointer.h>
 #include <vtkNew.h>
@@ -33,6 +34,9 @@ public:
     void clearHoveredBar();
     void setSelectedBars(const QSet<QUuid>& ids);
 
+    /// Estado/cor por barra (esmaecida, oculta, cor base).
+    void setAppearance(const AppearanceMap& appearance);
+
     void setVisible(bool visible);
     bool isVisible() const;
 
@@ -50,6 +54,7 @@ private:
     
     QUuid m_hoveredBar;
     QSet<QUuid> m_selectedBars;
+    AppearanceMap m_appearance;
 
     // Design tokens (Cores modernas para barras)
     static constexpr unsigned char COLOR_NORMAL[3] = {148, 163, 184};   // Slate 400

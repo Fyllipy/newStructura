@@ -18,6 +18,7 @@ public:
     using NodeSupport = Structura::App::ProjectData::NodeSupport;
     using NodalLoad = Structura::App::ProjectData::NodalLoad;
     using MemberLoad = Structura::App::ProjectData::MemberLoad;
+    using ProjectExtras = Structura::App::ProjectData::ProjectExtras;
 
     bool load(const QString &filePath,
               Structura::App::ISceneModelGateway *sceneController,
@@ -26,6 +27,7 @@ public:
               QVector<NodeSupport> &supports,
               QVector<NodalLoad> &nodalLoads,
               QVector<MemberLoad> &memberLoads,
+              ProjectExtras &extras,
               QUuid &lastMaterialId,
               QUuid &lastSectionId,
               QString *errorMessage,
@@ -38,6 +40,7 @@ public:
               const QVector<NodeSupport> &supports,
               const QVector<NodalLoad> &nodalLoads,
               const QVector<MemberLoad> &memberLoads,
+              const ProjectExtras &extras,
               QString *errorMessage) const;
 };
 

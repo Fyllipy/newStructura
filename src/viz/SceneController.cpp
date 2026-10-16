@@ -1,6 +1,9 @@
 #include "viz/SceneController.h"
-#include "viz/LoadVisualization.h"
 #include "viz/LocalCoordinateSystem.h"
+#include "viz/construction/ConstructionScene.h"
+#include "viz/structure/SupportMeshBuilder.h"
+#include "viz/loads/LoadActionRenderer.h"
+#include "viz/structure/SolidMemberRenderer.h"
 
 #include <QVTKOpenGLNativeWidget.h>
 
@@ -27,6 +30,8 @@
 #include <vtkDoubleArray.h>
 #include <vtkDataObject.h>
 #include <vtkBillboardTextActor3D.h>
+#include <vtkCallbackCommand.h>
+#include <vtkMatrix4x4.h>
 #include <vtkTextProperty.h>
 #include <QVector3D>
 #include <QtGlobal>
@@ -42,64 +47,6 @@ constexpr double M_PI = 3.14159265358979323846;
 #endif
 }
 
-bool SceneController::nearlyEqual(double lhs, double rhs, double epsilon)
-{
-    return std::abs(lhs - rhs) <= epsilon;
-}
-
-void SceneController::populateAxisCoordinates(QVector<double> &coords, double step, int count)
-{
-    coords.clear();
-    if (count <= 0 || step <= 0.0) {
-        return;
-    }
-
-    coords.reserve(count);
-    for (int i = 0; i < count; ++i) {
-        coords.append(static_cast<double>(i) * step);
-    }
-}
-
-
-void SceneController::initializeGridRendering()
-{
-    m_gridData->SetPoints(m_gridPoints);
-    m_gridData->SetLines(m_gridCells);
-    m_gridColors->SetNumberOfComponents(3);
-    m_gridColors->SetName("GridColors");
-    m_gridData->GetCellData()->SetScalars(m_gridColors);
-    m_gridMapper->SetInputData(m_gridData);
-    m_gridMapper->ScalarVisibilityOn();
-    m_gridMapper->SetColorModeToDirectScalars();
-    m_gridMapper->SetScalarModeToUseCellData();
-    m_gridActor->SetMapper(m_gridMapper);
-
-    if (auto *property = m_gridActor->GetProperty()) {
-        property->SetColor(0.55, 0.60, 0.68);
-        property->SetOpacity(0.55);
-        property->SetLineWidth(1.0);
-    }
-
-    m_gridActor->PickableOn();
-    m_gridActor->SetVisibility(false);
-}
-
-void SceneController::initializeGridGhostRendering()
-{
-    m_gridGhostData->SetPoints(m_gridGhostPoints);
-    m_gridGhostData->SetLines(m_gridGhostCells);
-    m_gridGhostMapper->SetInputData(m_gridGhostData);
-    m_gridGhostActor->SetMapper(m_gridGhostMapper);
-
-    if (auto *property = m_gridGhostActor->GetProperty()) {
-        property->SetColor(0.98, 0.45, 0.15);
-        property->SetOpacity(0.35);
-        property->SetLineWidth(2.0);
-    }
-
-    m_gridGhostActor->PickableOff();
-    m_gridGhostActor->SetVisibility(false);
-}
 
 void SceneController::initializeBarLcsRendering()
 {
@@ -177,62 +124,11 @@ void SceneController::clearBars()
     // Mas clearBars isolado pode precisar de tratamento (TODO: se necessário)
 }
 
-void SceneController::clearGrid()
-{
-    m_gridLines.clear();
-    m_gridLineIndexById.clear();
-    m_gridCellToLineIndex.clear();
-    m_highlightGridLineId = QUuid();
-
-    m_dx = 0.0;
-    m_dy = 0.0;
-    m_dz = 0.0;
-    m_nx = 0;
-    m_ny = 0;
-    m_nz = 0;
-
-    m_xCoords.clear();
-    m_yCoords.clear();
-    m_zCoords.clear();
-
-    if (m_gridPoints) {
-        m_gridPoints->Reset();
-        m_gridPoints->Modified();
-    }
-    if (m_gridCells) {
-        m_gridCells->Reset();
-        m_gridCells->Modified();
-    }
-    if (m_gridColors) {
-        m_gridColors->Reset();
-        m_gridColors->SetNumberOfComponents(3);
-        m_gridColors->SetName("GridColors");
-        m_gridColors->Modified();
-    }
-
-    if (m_gridData) {
-        m_gridData->GetCellData()->SetScalars(m_gridColors);
-        m_gridData->Modified();
-    }
-
-    m_gridActor->SetVisibility(false);
-    hideGridGhostLine();
-}
-
 void SceneController::clearLoads()
 {
     m_nodalLoadVisuals.clear();
-    m_memberLoadVisuals.clear();
-
-    if (m_nodalLoadActor) {
-        m_nodalLoadActor->SetVisibility(false);
-    }
-    if (m_distributedLoadActor) {
-        m_distributedLoadActor->SetVisibility(false);
-    }
-    if (m_momentActor) {
-        m_momentActor->SetVisibility(false);
-    }
+    m_memberActionVisuals.clear();
+    updateLoadVisuals();
 }
 
 void SceneController::clearSupports()
@@ -248,24 +144,13 @@ void SceneController::clearSupports()
 SceneController::SceneController(QObject *parent)
     : QObject(parent)
     , m_orientationMarker(vtkSmartPointer<vtkOrientationMarkerWidget>::New())
-    , m_gridData(vtkSmartPointer<vtkPolyData>::New())
-    , m_gridMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
-    , m_gridActor(vtkSmartPointer<vtkActor>::New())
-    , m_gridPoints(vtkSmartPointer<vtkPoints>::New())
-    , m_gridCells(vtkSmartPointer<vtkCellArray>::New())
-    , m_gridColors(vtkSmartPointer<vtkUnsignedCharArray>::New())
-    , m_gridGhostData(vtkSmartPointer<vtkPolyData>::New())
-    , m_gridGhostPoints(vtkSmartPointer<vtkPoints>::New())
-    , m_gridGhostCells(vtkSmartPointer<vtkCellArray>::New())
-    , m_gridGhostMapper(vtkSmartPointer<vtkPolyDataMapper>::New())
-    , m_gridGhostActor(vtkSmartPointer<vtkActor>::New())
     , m_picker(vtkSmartPointer<vtkCellPicker>::New())
     , m_nodePicker(vtkSmartPointer<vtkPointPicker>::New())
     , m_barPicker(vtkSmartPointer<vtkCellPicker>::New())
     , m_structureRenderer(std::make_unique<Structura::Visualization::StructureRenderer>())
+    , m_construction(std::make_unique<Structura::Construction::ConstructionScene>())
 {
     // Initialize component renderers
-    initializeGridRendering();
     initializeBarLcsRendering();
     initializePickers();
 }
@@ -287,9 +172,18 @@ void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget)
     m_renderer->SetBackground(0.91, 0.94, 0.98);  // top
     m_renderer->SetBackground2(0.78, 0.85, 0.93); // bottom
     m_structureRenderer->addToRenderer(m_renderer);
-    m_renderer->AddActor(m_gridActor);
-    m_renderer->AddActor(m_gridGhostActor);
     m_renderer->AddActor(m_lcsActor);
+    m_construction->attach(m_renderer, [this]() { requestRender(); });
+
+    {
+        auto cameraObserver = vtkSmartPointer<vtkCallbackCommand>::New();
+        cameraObserver->SetClientData(this);
+        cameraObserver->SetCallback([](vtkObject *, unsigned long, void *clientData, void *) {
+            auto *self = static_cast<SceneController *>(clientData);
+            emit self->cameraChanged();
+        });
+        m_renderer->GetActiveCamera()->AddObserver(vtkCommand::ModifiedEvent, cameraObserver);
+    }
     
     m_renderer->ResetCamera();
 
@@ -361,525 +255,135 @@ void SceneController::zoomExtents()
     requestRender();
 }
 
+void SceneController::focusOnBars(const QSet<QUuid> &barIds)
+{
+    if (!m_renderer || barIds.isEmpty()) {
+        return;
+    }
+    QHash<QUuid, std::array<double, 3>> position;
+    for (const auto &node : nodeInfos()) {
+        position.insert(node.id, {node.x, node.y, node.z});
+    }
+    double bounds[6] = {1e300, -1e300, 1e300, -1e300, 1e300, -1e300};
+    bool any = false;
+    for (const auto &bar : bars()) {
+        if (!barIds.contains(bar.id)) {
+            continue;
+        }
+        for (const QUuid &nodeId : {bar.startNodeId, bar.endNodeId}) {
+            const auto it = position.constFind(nodeId);
+            if (it == position.constEnd()) {
+                continue;
+            }
+            for (int k = 0; k < 3; ++k) {
+                bounds[2 * k] = std::min(bounds[2 * k], (*it)[k]);
+                bounds[2 * k + 1] = std::max(bounds[2 * k + 1], (*it)[k]);
+            }
+            any = true;
+        }
+    }
+    if (!any) {
+        return;
+    }
+    // margem: 1,5x a maior dimensao em cada eixo (no minimo 1 m) para manter o contexto da estrutura
+    double size = 1.0;
+    for (int k = 0; k < 3; ++k) {
+        size = std::max(size, bounds[2 * k + 1] - bounds[2 * k]);
+    }
+    for (int k = 0; k < 3; ++k) {
+        bounds[2 * k] -= 1.5 * size;
+        bounds[2 * k + 1] += 1.5 * size;
+    }
+    m_renderer->ResetCamera(bounds);
+    requestRender();
+}
+
 void SceneController::updateBounds()
 {
+    scheduleConstructionRefresh();
 }
 
-void SceneController::createGrid(double dx, double dy, double dz, int nx, int ny, int nz)
+QMatrix4x4 SceneController::compositeMatrix() const
 {
-    clearGrid();
-
-    m_dx = dx;
-    m_dy = dy;
-    m_dz = dz;
-    m_nx = nx;
-    m_ny = ny;
-    m_nz = nz;
-
-    populateAxisCoordinates(m_xCoords, dx, nx);
-    populateAxisCoordinates(m_yCoords, dy, ny);
-    populateAxisCoordinates(m_zCoords, dz, nz);
-
-    rebuildGridFromCoordinates();
-    m_gridActor->SetVisibility(!m_gridLines.isEmpty());
-    requestRender();
-}
-
-bool SceneController::hasGrid() const
-{
-    return !m_xCoords.isEmpty() && !m_yCoords.isEmpty() && !m_zCoords.isEmpty();
-}
-
-void SceneController::snapToGrid(double &x, double &y, double &z) const
-{
-    if (!hasGrid()) return;
-    x = nearestCoordinate(m_xCoords, x);
-    y = nearestCoordinate(m_yCoords, y);
-    z = nearestCoordinate(m_zCoords, z);
-}
-
-void SceneController::gridSpacing(double &dx, double &dy, double &dz) const
-{
-    dx = computeMinSpacing(m_xCoords);
-    dy = computeMinSpacing(m_yCoords);
-    dz = computeMinSpacing(m_zCoords);
-}
-
-void SceneController::gridCounts(int &nx, int &ny, int &nz) const
-{
-    nx = m_xCoords.size();
-    ny = m_yCoords.size();
-    nz = m_zCoords.size();
-}
-
-bool SceneController::insertCoordinate(QVector<double> &coords, double value) const
-{
-    if (!std::isfinite(value)) {
-        return false;
+    QMatrix4x4 result;
+    if (!m_renderer) {
+        return result;
     }
-    for (double current : coords) {
-        if (nearlyEqual(current, value)) {
-            return false;
+    vtkMatrix4x4 *matrix = m_renderer->GetActiveCamera()->GetCompositeProjectionTransformMatrix(
+        m_renderer->GetTiledAspectRatio(), -1.0, 1.0);
+    float values[16];
+    for (int row = 0; row < 4; ++row) {
+        for (int column = 0; column < 4; ++column) {
+            values[row * 4 + column] = static_cast<float>(matrix->GetElement(row, column));
         }
     }
-    auto it = std::lower_bound(coords.begin(), coords.end(), value);
-    coords.insert(it, value);
-    return true;
+    return QMatrix4x4(values);
 }
 
-bool SceneController::removeCoordinate(QVector<double> &coords, double value)
+vtkRenderer *SceneController::renderer() const
 {
-    for (int i = 0; i < coords.size(); ++i) {
-        if (nearlyEqual(coords[i], value)) {
-            coords.removeAt(i);
-            return true;
-        }
-    }
-    return false;
+    return m_renderer.GetPointer();
 }
 
-double SceneController::nearestCoordinate(const QVector<double> &coords, double value)
+vtkRenderWindow *SceneController::renderWindow() const
 {
-    if (coords.isEmpty()) {
-        return value;
-    }
-    auto it = std::lower_bound(coords.begin(), coords.end(), value);
-    if (it == coords.begin()) {
-        return *it;
-    }
-    if (it == coords.end()) {
-        return coords.back();
-    }
-    double upper = *it;
-    double lower = *(it - 1);
-    return (std::abs(upper - value) < std::abs(value - lower)) ? upper : lower;
+    return m_renderWindow.GetPointer();
 }
 
-double SceneController::computeMinSpacing(const QVector<double> &coords)
+void SceneController::scheduleConstructionRefresh()
 {
-    if (coords.size() < 2) {
-        return 0.0;
-    }
-    double minSpacing = std::numeric_limits<double>::max();
-    for (int i = 1; i < coords.size(); ++i) {
-        const double diff = std::abs(coords[i] - coords[i - 1]);
-        if (diff < minSpacing) {
-            minSpacing = diff;
-        }
-    }
-    return (minSpacing == std::numeric_limits<double>::max()) ? 0.0 : minSpacing;
-}
-
-std::pair<double, double> SceneController::minMaxAlongAxis(GridLine::Axis axis) const
-{
-    const QVector<double> *source = nullptr;
-    switch (axis) {
-    case GridLine::Axis::X:
-        source = &m_xCoords;
-        break;
-    case GridLine::Axis::Y:
-        source = &m_yCoords;
-        break;
-    case GridLine::Axis::Z:
-        source = &m_zCoords;
-        break;
-    }
-    if (!source || source->isEmpty()) {
-        return {0.0, 0.0};
-    }
-    return {source->front(), source->back()};
-}
-
-QString SceneController::gridLineKey(GridLine::Axis axis, double coord1, double coord2) const
-{
-    return QStringLiteral("%1|%2|%3")
-        .arg(static_cast<int>(axis))
-        .arg(QString::number(coord1, 'f', 6))
-        .arg(QString::number(coord2, 'f', 6));
-}
-
-SceneController::GridLine *SceneController::findGridLine(const QUuid &id)
-{
-    const int idx = gridLineIndex(id);
-    if (idx < 0 || idx >= m_gridLines.size()) {
-        return nullptr;
-    }
-    return &m_gridLines[idx];
-}
-
-const SceneController::GridLine *SceneController::findGridLine(const QUuid &id) const
-{
-    return const_cast<SceneController *>(this)->findGridLine(id);
-}
-
-SceneController::LineEndpoints SceneController::makeLineEndpoints(GridLine::Axis axis,
-                                                                  double coordinate1,
-                                                                  double coordinate2) const
-{
-    LineEndpoints endpoints;
-    const auto [minX, maxX] = minMaxAlongAxis(GridLine::Axis::X);
-    const auto [minY, maxY] = minMaxAlongAxis(GridLine::Axis::Y);
-    const auto [minZ, maxZ] = minMaxAlongAxis(GridLine::Axis::Z);
-
-    switch (axis) {
-    case GridLine::Axis::X:
-        endpoints.start = { {minX, coordinate1, coordinate2} };
-        endpoints.end = { {maxX, coordinate1, coordinate2} };
-        break;
-    case GridLine::Axis::Y:
-        endpoints.start = { {coordinate1, minY, coordinate2} };
-        endpoints.end = { {coordinate1, maxY, coordinate2} };
-        break;
-    case GridLine::Axis::Z:
-        endpoints.start = { {coordinate1, coordinate2, minZ} };
-        endpoints.end = { {coordinate1, coordinate2, maxZ} };
-        break;
-    }
-    return endpoints;
-}
-
-void SceneController::rebuildGridFromCoordinates()
-{
-    if (!m_gridPoints || !m_gridCells || !m_gridColors) {
+    if (m_constructionRefreshPending) {
         return;
     }
-
-    m_gridPoints->Reset();
-    m_gridCells->Reset();
-    m_gridColors->Reset();
-    m_gridColors->SetNumberOfComponents(3);
-    m_gridColors->SetName("GridColors");
-    QHash<QString, GridLine> previous;
-    previous.reserve(m_gridLines.size());
-    for (const auto &line : m_gridLines) {
-        previous.insert(gridLineKey(line.axis(), line.coordinate1(), line.coordinate2()), line);
-    }
-
-    m_gridLines.clear();
-    m_gridLineIndexById.clear();
-    m_gridCellToLineIndex.clear();
-
-    auto appendLine = [&](GridLine::Axis axis, double coord1, double coord2) {
-        const QString key = gridLineKey(axis, coord1, coord2);
-        GridLine line;
-        if (previous.contains(key)) {
-            line = previous.value(key);
-        } else {
-            line = GridLine(QUuid::createUuid(), axis, coord1, static_cast<int>(m_gridLines.size()), coord1, coord2);
-        }
-        line.setAxis(axis);
-        line.setOffset(coord1);
-        line.setCoordinate1(coord1);
-        line.setCoordinate2(coord2);
-
-        const auto endpoints = makeLineEndpoints(axis, coord1, coord2);
-        line.setEndpoints(endpoints.start[0], endpoints.start[1], endpoints.start[2],
-                          endpoints.end[0], endpoints.end[1], endpoints.end[2]);
-        line.setIndex(static_cast<int>(m_gridLines.size()));
-
-        const auto &start = line.startPoint();
-        const auto &end = line.endPoint();
-        vtkIdType id0 = m_gridPoints->InsertNextPoint(start.x(), start.y(), start.z());
-        vtkIdType id1 = m_gridPoints->InsertNextPoint(end.x(), end.y(), end.z());
-        vtkIdType lineIds[2] = { id0, id1 };
-        vtkIdType cellId = m_gridCells->InsertNextCell(2, lineIds);
-
-        m_gridCellToLineIndex.insert(cellId, m_gridLines.size());
-        m_gridLineIndexById.insert(line.id(), m_gridLines.size());
-        const unsigned char *color = line.isHighlighted() ? m_highlightGridColor : m_defaultGridColor;
-        m_gridColors->InsertNextTypedTuple(color);
-        m_gridLines.append(line);
-    };
-
-    for (double y : m_yCoords) {
-        for (double z : m_zCoords) {
-            appendLine(GridLine::Axis::X, y, z);
-        }
-    }
-    for (double x : m_xCoords) {
-        for (double z : m_zCoords) {
-            appendLine(GridLine::Axis::Y, x, z);
-        }
-    }
-    for (double x : m_xCoords) {
-        for (double y : m_yCoords) {
-            appendLine(GridLine::Axis::Z, x, y);
-        }
-    }
-
-    if (!m_highlightGridLineId.isNull()) {
-        if (gridLineIndex(m_highlightGridLineId) < 0) {
-            m_highlightGridLineId = QUuid();
-        }
-    }
-
-    m_nx = m_xCoords.size();
-    m_ny = m_yCoords.size();
-    m_nz = m_zCoords.size();
-
-    m_gridPoints->Modified();
-    m_gridCells->Modified();
-    m_gridColors->Modified();
-    m_gridData->GetCellData()->SetScalars(m_gridColors);
-    m_gridData->Modified();
+    m_constructionRefreshPending = true;
+    QMetaObject::invokeMethod(this, [this]() {
+        m_constructionRefreshPending = false;
+        refreshConstructionGeometry();
+    }, Qt::QueuedConnection);
 }
 
-void SceneController::updateGridColors()
+void SceneController::refreshConstructionGeometry()
 {
-    if (!m_gridColors) {
+    if (!m_construction) {
         return;
     }
-    const vtkIdType tupleCount = m_gridColors->GetNumberOfTuples();
-    if (tupleCount != static_cast<vtkIdType>(m_gridLines.size())) {
-        rebuildGridFromCoordinates();
-        return;
+    std::vector<Structura::Construction::Vec3> nodes;
+    nodes.reserve(m_nodes.size());
+    for (const auto &node : m_nodes) {
+        nodes.push_back({node.x(), node.y(), node.z()});
     }
-    for (int i = 0; i < m_gridLines.size(); ++i) {
-        const GridLine &line = m_gridLines[i];
-        const unsigned char *color = line.isHighlighted() ? m_highlightGridColor : m_defaultGridColor;
-        m_gridColors->SetTypedTuple(i, color);
-    }
-    m_gridColors->Modified();
-    m_gridData->Modified();
-}
-
-QUuid SceneController::addGridLine(GridLine::Axis axis, double coordinate1, double coordinate2)
-{
-    if (!hasGrid()) {
-        return QUuid();
-    }
-
-    switch (axis) {
-    case GridLine::Axis::X:
-        insertCoordinate(m_yCoords, coordinate1);
-        insertCoordinate(m_zCoords, coordinate2);
-        break;
-    case GridLine::Axis::Y:
-        insertCoordinate(m_xCoords, coordinate1);
-        insertCoordinate(m_zCoords, coordinate2);
-        break;
-    case GridLine::Axis::Z:
-        insertCoordinate(m_xCoords, coordinate1);
-        insertCoordinate(m_yCoords, coordinate2);
-        break;
-    }
-
-    rebuildGridFromCoordinates();
-    m_gridActor->SetVisibility(!m_gridLines.isEmpty());
-    requestRender();
-
-    double canonicalCoord1 = coordinate1;
-    double canonicalCoord2 = coordinate2;
-    switch (axis) {
-    case GridLine::Axis::X:
-        canonicalCoord1 = nearestCoordinate(m_yCoords, coordinate1);
-        canonicalCoord2 = nearestCoordinate(m_zCoords, coordinate2);
-        break;
-    case GridLine::Axis::Y:
-        canonicalCoord1 = nearestCoordinate(m_xCoords, coordinate1);
-        canonicalCoord2 = nearestCoordinate(m_zCoords, coordinate2);
-        break;
-    case GridLine::Axis::Z:
-        canonicalCoord1 = nearestCoordinate(m_xCoords, coordinate1);
-        canonicalCoord2 = nearestCoordinate(m_yCoords, coordinate2);
-        break;
-    }
-
-    for (const auto &line : m_gridLines) {
-        if (line.axis() != axis) {
+    std::vector<Structura::Construction::Vec3> midpoints;
+    midpoints.reserve(m_bars.size());
+    for (const auto &bar : m_bars) {
+        const int startIndex = nodeIndex(bar.startNodeId());
+        const int endIndex = nodeIndex(bar.endNodeId());
+        if (startIndex < 0 || endIndex < 0) {
             continue;
         }
-        if (!nearlyEqual(line.coordinate1(), canonicalCoord1)) {
-            continue;
-        }
-        if (!nearlyEqual(line.coordinate2(), canonicalCoord2)) {
-            continue;
-        }
-        return line.id();
+        const auto &a = m_nodes[static_cast<std::size_t>(startIndex)];
+        const auto &b = m_nodes[static_cast<std::size_t>(endIndex)];
+        midpoints.push_back({(a.x() + b.x()) / 2.0, (a.y() + b.y()) / 2.0, (a.z() + b.z()) / 2.0});
     }
-    return QUuid();
+    m_construction->setSnapGeometry(std::move(nodes), std::move(midpoints));
+    emit geometryRefreshed();
 }
 
-bool SceneController::removeGridLine(const QUuid &lineId)
+void SceneController::setNodesVisible(bool visible)
 {
-    const int idx = gridLineIndex(lineId);
-    if (idx < 0 || idx >= m_gridLines.size()) {
-        return false;
-    }
-    const GridLine line = m_gridLines[idx];
-
-    bool removed = false;
-    switch (line.axis()) {
-    case GridLine::Axis::X:
-        removed = removeCoordinate(m_yCoords, line.coordinate1());
-        if (!removed) {
-            removed = removeCoordinate(m_zCoords, line.coordinate2());
-        }
-        break;
-    case GridLine::Axis::Y:
-        removed = removeCoordinate(m_xCoords, line.coordinate1());
-        if (!removed) {
-            removed = removeCoordinate(m_zCoords, line.coordinate2());
-        }
-        break;
-    case GridLine::Axis::Z:
-        removed = removeCoordinate(m_xCoords, line.coordinate1());
-        if (!removed) {
-            removed = removeCoordinate(m_yCoords, line.coordinate2());
-        }
-        break;
-    }
-
-    if (!removed) {
-        return false;
-    }
-
-    m_gridLineIndexById.remove(lineId);
-    if (m_highlightGridLineId == lineId) {
-        m_highlightGridLineId = QUuid();
-    }
-
-    rebuildGridFromCoordinates();
-    m_gridActor->SetVisibility(!m_gridLines.isEmpty());
-    requestRender();
-    return true;
-}
-
-QUuid SceneController::pickGridLine(int displayX, int displayY) const
-{
-    if (!m_renderer || !m_picker || m_gridLines.isEmpty()) {
-        return QUuid();
-    }
-
-    if (!m_picker->Pick(displayX, displayY, 0, m_renderer)) {
-        return QUuid();
-    }
-
-    vtkIdType cellId = m_picker->GetCellId();
-    if (cellId < 0) {
-        return QUuid();
-    }
-
-    if (m_picker->GetActor() != m_gridActor) {
-        return QUuid();
-    }
-
-    const auto it = m_gridCellToLineIndex.constFind(cellId);
-    if (it == m_gridCellToLineIndex.constEnd()) {
-        return QUuid();
-    }
-    const int idx = it.value();
-    if (idx < 0 || idx >= m_gridLines.size()) {
-        return QUuid();
-    }
-    return m_gridLines[idx].id();
-}
-
-void SceneController::setHighlightedGridLine(const QUuid &lineId)
-{
-    if (lineId == m_highlightGridLineId) {
-        return;
-    }
-
-    if (!m_highlightGridLineId.isNull()) {
-        if (auto *line = findGridLine(m_highlightGridLineId)) {
-            line->setHighlighted(false);
-        }
-    }
-
-    m_highlightGridLineId = lineId;
-    if (!lineId.isNull()) {
-        if (auto *line = findGridLine(lineId)) {
-            line->setHighlighted(true);
-        }
-    }
-
-    updateGridColors();
-    requestRender();
-}
-
-void SceneController::clearHighlightedGridLine()
-{
-    setHighlightedGridLine(QUuid());
-}
-
-void SceneController::showGridGhostLine(GridLine::Axis axis, double coordinate1, double coordinate2)
-{
-    if (!m_gridGhostPoints || !m_gridGhostCells) {
-        return;
-    }
-
-    m_ghostAxis = axis;
-    LineEndpoints endpoints = makeLineEndpoints(axis, coordinate1, coordinate2);
-
-    m_gridGhostPoints->Reset();
-    m_gridGhostCells->Reset();
-
-    vtkIdType id0 = m_gridGhostPoints->InsertNextPoint(endpoints.start.data());
-    vtkIdType id1 = m_gridGhostPoints->InsertNextPoint(endpoints.end.data());
-    vtkIdType lineIds[2] = { id0, id1 };
-    m_gridGhostCells->InsertNextCell(2, lineIds);
-
-    m_gridGhostPoints->Modified();
-    m_gridGhostCells->Modified();
-    m_gridGhostData->Modified();
-
-    if (!m_gridGhostActor->GetVisibility()) {
-        m_gridGhostActor->SetVisibility(true);
+    m_showNodes = visible;
+    if (m_structureRenderer && m_structureRenderer->getNodeActor()) {
+        m_structureRenderer->getNodeActor()->SetVisibility(visible ? 1 : 0);
     }
     requestRender();
 }
 
-void SceneController::hideGridGhostLine()
+void SceneController::setSupportsVisible(bool visible)
 {
-    if (!m_gridGhostActor) {
-        return;
+    m_showSupports = visible;
+    if (m_supportActor) {
+        m_supportActor->SetVisibility(visible && !m_supportVisuals.isEmpty() ? 1 : 0);
     }
-    if (m_gridGhostPoints) {
-        m_gridGhostPoints->Reset();
-        m_gridGhostPoints->Modified();
-    }
-    if (m_gridGhostCells) {
-        m_gridGhostCells->Reset();
-        m_gridGhostCells->Modified();
-    }
-    if (m_gridGhostData) {
-        m_gridGhostData->Modified();
-    }
-    if (m_gridGhostActor->GetVisibility()) {
-        m_gridGhostActor->SetVisibility(false);
-        requestRender();
-    }
-}
-
-std::optional<QUuid> SceneController::nearestGridLineId(GridLine::Axis axis,
-                                                        double coordinate1,
-                                                        double coordinate2) const
-{
-    if (m_gridLines.isEmpty()) {
-        return std::nullopt;
-    }
-
-    double bestDistance = std::numeric_limits<double>::max();
-    QUuid bestId;
-
-    for (const auto &line : m_gridLines) {
-        if (line.axis() != axis) {
-            continue;
-        }
-        const double d1 = line.coordinate1() - coordinate1;
-        const double d2 = line.coordinate2() - coordinate2;
-        const double distance = std::hypot(d1, d2);
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            bestId = line.id();
-        }
-    }
-
-    if (bestId.isNull()) {
-        return std::nullopt;
-    }
-    return bestId;
+    requestRender();
 }
 
 void SceneController::setNodalLoadVisuals(const QVector<NodalLoadVisual> &visuals)
@@ -889,97 +393,189 @@ void SceneController::setNodalLoadVisuals(const QVector<NodalLoadVisual> &visual
     requestRender();
 }
 
-void SceneController::setMemberLoadVisuals(const QVector<MemberLoadVisual> &visuals)
+void SceneController::setMemberActionVisuals(const QVector<MemberActionVisual> &visuals)
 {
-    m_memberLoadVisuals = visuals;
+    m_memberActionVisuals = visuals;
     updateLoadVisuals();
+    requestRender();
+}
+
+void SceneController::setLoadVisibility(bool nodeForces, bool nodeMoments, bool memberForces, bool memberMoments)
+{
+    m_loadVisibility = {nodeForces, nodeMoments, memberForces, memberMoments};
+    updateLoadVisuals();
+    requestRender();
+}
+
+void SceneController::setAreaPanels(const std::vector<Structura::Visualization::AreaPanelRenderer::Panel> &panels)
+{
+    m_areaPanels = panels;
+    setAreaPanelsVisible(m_areaPanelsVisible);
+}
+
+void SceneController::setBarTypeMarkers(const std::vector<Structura::Visualization::BarTypeRenderer::Marker> &markers)
+{
+    if (!m_barTypeRenderer) {
+        m_barTypeRenderer = std::make_unique<Structura::Visualization::BarTypeRenderer>();
+        m_barTypeRenderer->attach(m_renderer);
+    }
+    m_barTypeRenderer->render(markers, true);
+    requestRender();
+}
+
+void SceneController::setModeShape(const std::vector<std::vector<std::array<double, 3>>> &lines)
+{
+    if (!m_modeShapeRenderer) {
+        m_modeShapeRenderer = std::make_unique<Structura::Visualization::ModeShapeRenderer>();
+        m_modeShapeRenderer->attach(m_renderer);
+    }
+    m_modeShapeRenderer->render(lines, true);
+    requestRender();
+}
+
+void SceneController::setAreaPanelsVisible(bool visible)
+{
+    m_areaPanelsVisible = visible;
+    if (!m_areaPanelRenderer) {
+        m_areaPanelRenderer = std::make_unique<Structura::Visualization::AreaPanelRenderer>();
+        m_areaPanelRenderer->attach(m_renderer);
+    }
+    m_areaPanelRenderer->render(m_areaPanels, visible);
     requestRender();
 }
 
 void SceneController::updateLoadVisuals()
 {
-    using namespace Structura::Visualization;
-
-    // Inicialização sob demanda dos atores
-    if (!m_nodalLoadMapper && m_renderer) {
-        // Inicializar apenas os atores (os PolyDatas são gerados pelo factory)
-        m_nodalLoadMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        m_nodalLoadActor = vtkSmartPointer<vtkActor>::New();
-        m_nodalLoadActor->SetMapper(m_nodalLoadMapper);
-        m_nodalLoadActor->GetProperty()->SetColor(0.90, 0.15, 0.20);
-        m_nodalLoadActor->GetProperty()->LightingOff();
-        m_renderer->AddActor(m_nodalLoadActor);
-
-        m_distributedLoadMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        m_distributedLoadActor = vtkSmartPointer<vtkActor>::New();
-        m_distributedLoadActor->SetMapper(m_distributedLoadMapper);
-        m_distributedLoadActor->GetProperty()->SetColor(0.15, 0.58, 0.32);
-        m_distributedLoadActor->GetProperty()->LightingOff();
-        m_renderer->AddActor(m_distributedLoadActor);
-
-        m_momentMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        m_momentActor = vtkSmartPointer<vtkActor>::New();
-        m_momentActor->SetMapper(m_momentMapper);
-        m_momentActor->GetProperty()->SetColor(0.65, 0.20, 0.82);
-        m_momentActor->GetProperty()->SetLineWidth(2.5);
-        m_momentActor->GetProperty()->LightingOff();
-        m_renderer->AddActor(m_momentActor);
+    using Structura::Visualization::LoadActionRenderer;
+    if (!m_loadRenderer) {
+        m_loadRenderer = std::make_unique<LoadActionRenderer>();
+        m_loadRenderer->attach(m_renderer);
     }
 
-    // Preparar dados para as forças nodais e momentos
-    std::vector<LoadGlyphFactory::NodalLoadData> nodalLoads;
-    std::vector<LoadGlyphFactory::NodalMomentData> nodalMoments;
-    
-    for (const auto& visual : m_nodalLoadVisuals) {
-        if (visual.force.lengthSquared() > 1e-6f) {
-            LoadGlyphFactory::NodalLoadData nld;
-            nld.position = {visual.position.x(), visual.position.y(), visual.position.z()};
-            QVector3D dir = visual.force.normalized();
-            nld.direction = {dir.x(), dir.y(), dir.z()};
-            nld.magnitude = visual.force.length();
-            nld.arrowSize = 0.5;
-            nodalLoads.push_back(nld);
+    std::vector<LoadActionRenderer::NodeAction> nodes;
+    nodes.reserve(static_cast<std::size_t>(m_nodalLoadVisuals.size()));
+    for (const auto &visual : m_nodalLoadVisuals) {
+        LoadActionRenderer::NodeAction action;
+        action.position = {visual.position.x(), visual.position.y(), visual.position.z()};
+        action.force = {visual.force.x(), visual.force.y(), visual.force.z()};
+        action.moment = {visual.moment.x(), visual.moment.y(), visual.moment.z()};
+        nodes.push_back(action);
+    }
+
+    std::vector<LoadActionRenderer::MemberAction> members;
+    members.reserve(static_cast<std::size_t>(m_memberActionVisuals.size()));
+    auto toVec = [](const QVector3D &v) { return LoadActionRenderer::Vec3 {v.x(), v.y(), v.z()}; };
+    for (const auto &visual : m_memberActionVisuals) {
+        LoadActionRenderer::MemberAction action;
+        action.kind = visual.moment ? LoadActionRenderer::MemberKind::Moment : LoadActionRenderer::MemberKind::Force;
+        action.start = toVec(visual.start);
+        action.end = toVec(visual.end);
+        action.basis = {toVec(visual.xAxis), toVec(visual.yAxis), toVec(visual.zAxis)};
+        action.values = toVec(visual.values);
+        action.local = visual.local;
+        action.selfWeight = visual.selfWeight;
+        members.push_back(action);
+    }
+
+    LoadActionRenderer::Visibility visibility;
+    visibility.nodeForces = m_loadVisibility.nodeForces;
+    visibility.nodeMoments = m_loadVisibility.nodeMoments;
+    visibility.memberForces = m_loadVisibility.memberForces;
+    visibility.memberMoments = m_loadVisibility.memberMoments;
+    m_loadRenderer->render(nodes, members, visibility);
+    emit loadLabelsChanged();
+}
+
+void SceneController::setSolidMembers(const QVector<SolidMemberVisual> &members)
+{
+    using Structura::Visualization::SolidMemberRenderer;
+    if (!m_solidRenderer) {
+        m_solidRenderer = std::make_unique<SolidMemberRenderer>();
+        m_solidRenderer->attach(m_renderer);
+    }
+    auto toVec = [](const QVector3D &v) { return SolidMemberRenderer::Vec3 {v.x(), v.y(), v.z()}; };
+    std::vector<SolidMemberRenderer::Member> list;
+    list.reserve(static_cast<std::size_t>(members.size()));
+    for (const auto &visual : members) {
+        SolidMemberRenderer::Member member;
+        member.start = toVec(visual.start);
+        member.end = toVec(visual.end);
+        member.xAxis = toVec(visual.xAxis);
+        member.yAxis = toVec(visual.yAxis);
+        member.zAxis = toVec(visual.zAxis);
+        member.family = visual.family;
+        member.parameters = visual.parameters;
+        member.mirrored = visual.mirrored;
+        member.color = {{visual.color[0], visual.color[1], visual.color[2]}};
+        member.dimmed = visual.dimmed;
+        list.push_back(std::move(member));
+    }
+    m_solidRenderer->setMembers(list);
+    requestRender();
+}
+
+void SceneController::setElementAppearance(const Structura::Visualization::AppearanceMap &nodes,
+                                           const Structura::Visualization::AppearanceMap &bars)
+{
+    m_structureRenderer->setNodeAppearance(nodes);
+    m_structureRenderer->setBarAppearance(bars);
+    requestRender();
+}
+
+void SceneController::lookAtPlane(int normalAxis, double level)
+{
+    auto *camera = m_renderer->GetActiveCamera();
+    double focal[3];
+    camera->GetFocalPoint(focal);
+    if (!m_nodes.empty()) {
+        double bounds[6];
+        m_structureRenderer->getNodeActor()->GetBounds(bounds);
+        for (int i = 0; i < 3; ++i) {
+            focal[i] = 0.5 * (bounds[2 * i] + bounds[2 * i + 1]);
         }
-        if (visual.moment.lengthSquared() > 1e-6f) {
-            LoadGlyphFactory::NodalMomentData nmd;
-            nmd.position = {visual.position.x(), visual.position.y(), visual.position.z()};
-            QVector3D dir = visual.moment.normalized();
-            nmd.axis = {dir.x(), dir.y(), dir.z()};
-            nmd.magnitude = visual.moment.length();
-            nmd.radius = 0.4;
-            nodalMoments.push_back(nmd);
-        }
     }
+    focal[normalAxis] = level;
+    // Z: vista de cima (X para a direita); Y: vista frontal; X: vista lateral (Y para a direita).
+    double direction[3] = {0.0, 0.0, 0.0};
+    double up[3] = {0.0, 0.0, 1.0};
+    if (normalAxis == 2) {
+        direction[2] = 1.0;
+        up[1] = 1.0;
+        up[2] = 0.0;
+    } else if (normalAxis == 1) {
+        direction[1] = -1.0;
+    } else {
+        direction[0] = 1.0;
+    }
+    camera->SetFocalPoint(focal);
+    camera->SetPosition(focal[0] + direction[0], focal[1] + direction[1], focal[2] + direction[2]);
+    camera->SetViewUp(up);
+    m_renderer->ResetCamera();
+    emit cameraChanged();
+    requestRender();
+}
 
-    // Preparar dados para cargas distribuídas
-    std::vector<LoadGlyphFactory::DistributedLoadData> distLoads;
-    for (const auto& visual : m_memberLoadVisuals) {
-        const QVector3D barHalfVector = visual.barVector * 0.5f;
-        QVector3D startP = visual.position - barHalfVector;
-        QVector3D endP = visual.position + barHalfVector;
-        
-        LoadGlyphFactory::DistributedLoadData dld;
-        dld.node1 = {startP.x(), startP.y(), startP.z()};
-        dld.node2 = {endP.x(), endP.y(), endP.z()};
-        QVector3D dir = visual.force.normalized();
-        dld.loadDir = {dir.x(), dir.y(), dir.z()};
-        dld.magnitude = visual.force.length();
-        dld.arrowSize = 0.3;
-        distLoads.push_back(dld);
+void SceneController::setSolidsVisible(bool visible)
+{
+    using Structura::Visualization::SolidMemberRenderer;
+    if (!m_solidRenderer) {
+        m_solidRenderer = std::make_unique<SolidMemberRenderer>();
+        m_solidRenderer->attach(m_renderer);
     }
+    m_solidRenderer->setVisible(visible);
+    requestRender();
+}
 
-    if (m_nodalLoadMapper) {
-        m_nodalLoadMapper->SetInputData(LoadGlyphFactory::buildNodalLoads(nodalLoads));
-        m_nodalLoadActor->SetVisibility(!nodalLoads.empty());
+LoadLabelData SceneController::loadLabels() const
+{
+    LoadLabelData result;
+    if (!m_loadRenderer) {
+        return result;
     }
-    if (m_distributedLoadMapper) {
-        m_distributedLoadMapper->SetInputData(LoadGlyphFactory::buildDistributedLoads(distLoads));
-        m_distributedLoadActor->SetVisibility(!distLoads.empty());
-    }
-    if (m_momentMapper) {
-        m_momentMapper->SetInputData(LoadGlyphFactory::buildNodalMoments(nodalMoments));
-        m_momentActor->SetVisibility(!nodalMoments.empty());
-    }
+    const auto &labels = m_loadRenderer->labels();
+    result.positions = labels.positions;
+    result.texts = labels.texts;
+    return result;
 }
 
 bool SceneController::pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z) const
@@ -1225,6 +821,7 @@ QUuid SceneController::addBar(const QUuid &startNodeId,
     
     m_structureRenderer->addBar(barId, startNodeId, endNodeId);
 
+    scheduleConstructionRefresh();
     updateBarLCSVisuals();
     requestRender();
     return barId;
@@ -1257,6 +854,7 @@ void SceneController::assignBarProperties(const std::vector<QUuid> &barIds,
         }
     }
     if (changed) {
+        scheduleConstructionRefresh();
         requestRender();
     }
 }
@@ -1309,17 +907,18 @@ void SceneController::setBarExternalId(const QUuid &barId, int externalId)
         return;
     }
     bar->setExternalId(externalId);
+    scheduleConstructionRefresh();
 }
 
 void SceneController::clearAll()
 {
     clearNodes();
     clearBars();
-    clearGrid();
     clearLoads();
     clearSupports();
 
     rebuildBarLCSVisuals();
+    scheduleConstructionRefresh();
 
     if (m_renderer) {
         m_renderer->ResetCamera();
@@ -1343,28 +942,32 @@ void SceneController::updateSupportVisuals()
         m_supportMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         m_supportActor = vtkSmartPointer<vtkActor>::New();
         m_supportActor->SetMapper(m_supportMapper);
-        m_supportActor->GetProperty()->SetColor(0.15, 0.58, 0.32); // Greenish
-        m_supportActor->GetProperty()->LightingOff(); // Draw technical 2D flat
-        m_supportActor->GetProperty()->SetLineWidth(2.0);
+        // Cubo modular cinza com arestas escuras (representacao dos apoios).
+        m_supportActor->GetProperty()->SetColor(0xa8 / 255.0, 0xb0 / 255.0, 0xb9 / 255.0);
+        m_supportActor->GetProperty()->EdgeVisibilityOn();
+        m_supportActor->GetProperty()->SetEdgeColor(0x6e / 255.0, 0x77 / 255.0, 0x81 / 255.0);
+        m_supportActor->GetProperty()->SetLineWidth(1.5);
+        m_supportActor->PickableOff();
         
         m_renderer->AddActor(m_supportActor);
     }
 
-    std::vector<SupportGlyphFactory::SupportData> supports;
-    supports.reserve(m_supportVisuals.size());
+    std::vector<SupportMeshBuilder::Support> supports;
+    supports.reserve(static_cast<std::size_t>(m_supportVisuals.size()));
 
     for (const auto &visual : m_supportVisuals) {
-        SupportGlyphFactory::SupportData sd;
-        sd.position = {visual.position.x(), visual.position.y(), visual.position.z()};
-        for (int i=0; i<6; ++i) sd.restraints[i] = visual.restraints[i];
-        sd.glyphSize = 0.5;
-        supports.push_back(sd);
+        SupportMeshBuilder::Support support;
+        support.position = {visual.position.x(), visual.position.y(), visual.position.z()};
+        for (int i = 0; i < 6; ++i) {
+            support.restraints[static_cast<std::size_t>(i)] = visual.restraints[static_cast<std::size_t>(i)];
+        }
+        supports.push_back(support);
     }
 
     if (m_supportMapper) {
-        auto polyData = SupportGlyphFactory::build(supports);
+        auto polyData = SupportMeshBuilder::build(supports);
         m_supportMapper->SetInputData(polyData);
-        m_supportActor->SetVisibility(!supports.empty());
+        m_supportActor->SetVisibility(!supports.empty() && m_showSupports);
     }
 }
 
@@ -1393,18 +996,6 @@ int SceneController::barIndex(const QUuid &id) const
     return it.value();
 }
 
-int SceneController::gridLineIndex(const QUuid &id) const
-{
-    if (id.isNull()) {
-        return -1;
-    }
-    const auto it = m_gridLineIndexById.constFind(id);
-    if (it == m_gridLineIndexById.constEnd()) {
-        return -1;
-    }
-    return it.value();
-}
-
 void SceneController::setShowBarLCS(bool show)
 {
     m_showBarLCS = show;
@@ -1421,6 +1012,15 @@ void SceneController::updateBarLCSVisuals()
         rebuildBarLCSVisuals();
         requestRender();
     }
+}
+
+void SceneController::setBarSectionRotations(const QHash<int, double> &rotationsByExternalId)
+{
+    if (m_barSectionRotations == rotationsByExternalId) {
+        return;
+    }
+    m_barSectionRotations = rotationsByExternalId;
+    updateBarLCSVisuals();
 }
 
 void SceneController::rebuildBarLCSVisuals()
@@ -1476,7 +1076,8 @@ void SceneController::rebuildBarLCSVisuals()
         }
         
         try {
-            auto lcs = lcsProvider.computeLCS(pointA, pointB, kPointArray);
+            auto lcs = Structura::Geometry::rotatedAboutX(lcsProvider.computeLCS(pointA, pointB, kPointArray),
+                                                          m_barSectionRotations.value(bar.externalId(), 0.0));
             
             // Origin point (midpoint of bar)
             const auto &origin = lcs.origin;
