@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include <QToolButton>
+
 #include <QEvent>
 #include <QKeyEvent>
 #include <QLabel>
@@ -49,6 +51,19 @@ bool MainWindow::handleDefaultViewportEvent(QEvent *event)
         auto *me = static_cast<QMouseEvent *>(event);
         return handleDefaultViewportMouseRelease(me->button(), me->pos(), me->globalPosition().toPoint());
     }
+    case QEvent::MouseButtonDblClick: {
+        // duplo clique em um elemento selecionado: abre o painel de propriedades
+        auto *me = static_cast<QMouseEvent *>(event);
+        if (me->button() == Qt::LeftButton && m_selectionModel && m_propertiesToolButton
+            && (!m_selectionModel->selectedNodes().isEmpty() || !m_selectionModel->selectedBars().isEmpty())) {
+            if (!m_propertiesToolButton->isChecked()) {
+                m_propertiesToolButton->setChecked(true);
+            } else {
+                refreshPropertiesPanel();
+            }
+        }
+        return false;
+    }
     case QEvent::Leave:
         return handleDefaultViewportLeave();
     default:
@@ -64,8 +79,25 @@ bool MainWindow::handleViewportCommandEvent(QEvent *event)
     return handleDefaultViewportEvent(event);
 }
 
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    if (event->key() == Qt::Key_Escape && m_selectionModel && m_command == Command::None && !(m_placement && m_placement->active())
+        && (!m_selectionModel->selectedNodes().isEmpty() || !m_selectionModel->selectedBars().isEmpty())) {
+        m_selectionModel->clear();
+        event->accept();
+        return;
+    }
+    QMainWindow::keyPressEvent(event);
+}
+
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
+    if (obj == m_vtkWidget && event->type() == QEvent::KeyPress && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape && m_selectionModel
+        && m_command == Command::None && !(m_placement && m_placement->active())
+        && (!m_selectionModel->selectedNodes().isEmpty() || !m_selectionModel->selectedBars().isEmpty())) {
+        m_selectionModel->clear();
+        return true;
+    }
     if (obj == m_quickBar || obj == m_titleLabel || (obj && obj->property("dragRegion").toBool())) {
         const bool handled = handleWindowDragEvent(event);
         if (handled) {
@@ -75,6 +107,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 
     if (obj == m_vtkWidget && m_sceneController && event->type() == QEvent::Resize) {
         positionPlaneLabel();
+        positionViewCube();
         if (m_labelOverlay) {
             m_labelOverlay->resizeToParent();
             m_labelOverlay->sync(m_sceneController->compositeMatrix());

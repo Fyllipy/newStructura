@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <vtkActor.h>
+#include <vtkUnsignedCharArray.h>
 #include <vtkSmartPointer.h>
 
 class vtkRenderer;
@@ -45,6 +46,8 @@ public:
 
     void attach(vtkRenderer *renderer);
     void setMembers(const std::vector<Member> &members);
+    /// Destaca (cor de selecao) os solidos inteiros das barras marcadas; indices na mesma ordem de `setMembers`. So atualiza as cores.
+    void setSelected(const std::vector<bool> &selected);
     void setVisible(bool visible);
     [[nodiscard]] bool visible() const noexcept { return m_visible; }
 
@@ -64,6 +67,9 @@ private:
     vtkSmartPointer<vtkActor> m_edgeActor;
     std::map<QString, Geometry> m_cache;
     bool m_visible {false};
+    vtkSmartPointer<vtkUnsignedCharArray> m_colorArray;
+    std::vector<std::pair<vtkIdType, vtkIdType>> m_ranges;      ///< intervalo de vertices de cada barra
+    std::vector<std::array<unsigned char, 3>> m_baseColors;     ///< cor sem destaque
 };
 
 } // namespace Structura::Visualization

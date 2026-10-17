@@ -120,10 +120,11 @@ void ConstructionScene::render() const
     }
 }
 
-void ConstructionScene::setSnapGeometry(std::vector<Vec3> nodes, std::vector<Vec3> barMidpoints)
+void ConstructionScene::setSnapGeometry(std::vector<Vec3> nodes, std::vector<Vec3> barMidpoints, std::vector<std::pair<Vec3, Vec3>> barSegments)
 {
     m_nodes = std::move(nodes);
     m_barMidpoints = std::move(barMidpoints);
+    m_barSegments = std::move(barSegments);
     rebuild();
 }
 

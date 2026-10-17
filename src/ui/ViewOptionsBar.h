@@ -34,14 +34,16 @@ public:
     static const QString kLocalAxes;
     static const QString kNodes;
     static const QString kSupports;
+    static const QString kConstraints;
     static const QString kSolids;
+    static const QString kConnections;
     static const QString kAllLevels;
-    static const QString kIsolate;
     static const QString kPlaneOnly;
     static const QString kNodeForces;
     static const QString kNodeMoments;
     static const QString kBarForces;
     static const QString kBarMoments;
+    static const QString kHideLoadLabels;
     static const QString kAreaPanels;
     static const QString kSnap;
 

@@ -54,6 +54,8 @@ public:
     struct Labels {
         std::vector<Vec3> positions;
         std::vector<QString> texts;
+        std::vector<Vec3> colors;      ///< cor do desenho da carga a que o rotulo pertence
+        std::vector<double> weights;   ///< |valor|: prioridade do rotulo ao evitar poluicao
     };
 
     LoadActionRenderer() = default;

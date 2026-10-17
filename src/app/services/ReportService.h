@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/ProjectDataTypes.h"
+#include "app/services/ConnectionService.h"
 #include "app/services/DesignService.h"
 #include "app/services/StructuralChecks.h"
 #include "report/ReportModel.h"
@@ -76,6 +77,14 @@ public:
         QVector<StructuralChecks::StoryResult> storyResults;
         QStringList designWarnings;
         Structura::App::ProjectData::DesignSettings designSettings;
+        // ligacoes viga-apoio (opcional)
+        struct ConnectionEntry {
+            Structura::App::ProjectData::NodeConnection connection;
+            ConnectionService::Evaluation evaluation;
+            ConnectionService::Forces forces;
+            bool hasForces {false};
+        };
+        QVector<ConnectionEntry> connections;
     };
 
     enum class BarScope { All, Failing, Selected };
@@ -92,6 +101,7 @@ public:
         bool designSummary {true};
         bool designDetails {true};
         bool serviceChecks {true};
+        bool connections {true};
         bool sectionDrawings {true};
         bool showFormulas {true};         ///< false: so o resultado de cada verificacao (sem formulas)
         BarScope scope {BarScope::All};

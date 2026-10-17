@@ -27,9 +27,17 @@ struct Check {
     double resistance {0.0};  ///< resistencia de calculo
     std::string unit;         ///< "kN", "mm", ...
     bool minimumRule {false}; ///< true: regra de valor minimo (requisito: valor >= minimo); false: razao demanda/resistencia
+    bool rangeRule {false};   ///< faixa de validade/disposicao: razao 0 enquanto atendida, > 1 se violada (demand = valor, resistance = limite)
+    bool rangeLower {false};  ///< rangeRule com limite inferior (valor >= limite); senao limite superior (valor <= limite)
     std::vector<std::string> lines;   ///< memoria: formulas e valores substituidos
     double ratio() const
     {
+        if (rangeRule) {
+            if (rangeLower) {
+                return demand + 1e-9 >= resistance ? 0.0 : (demand > 0.0 ? resistance / demand : 1e9);
+            }
+            return demand <= resistance + 1e-9 ? 0.0 : (resistance > 0.0 ? demand / resistance : 1e9);
+        }
         if (minimumRule) {
             return demand > 0.0 ? resistance / demand : 0.0;   // resistance guarda o minimo exigido, demand o valor adotado
         }

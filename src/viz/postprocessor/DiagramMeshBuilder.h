@@ -3,90 +3,68 @@
 #include "PostProcessorDataTypes.h"
 #include "DiagramScaleManager.h"
 #include "DiagramGeometryCache.h"
-
+#include <vtkNew.h>
 #include <vtkSmartPointer.h>
-
 #include <array>
 #include <vector>
-
 class vtkPolyData;
-class vtkActor;
-class vtkRenderer;
+class vtkPoints;
+class vtkCellArray;
 
 namespace Structura::Visualization {
 
-class InternalForceEvaluator;
-
 /**
- * @brief Constrói malhas VTK para diagramas de esforços internos.
+ * @brief Constrói a geometria VTK dos diagramas de esforços internos.
  *
- * Para cada elemento:
- * 1. Amostra o avaliador adaptivamente (min 80 amostras ou 1/0.10 m).
- * 2. Armazena os valores brutos no cache.
- * 3. Constrói geometria VTK com offsets físicos (physicalOffset).
- * 4. Detecta cruzamentos de zero e insere vértice exato.
- * 5. Gera malha positiva e negativa separadas (superfícies trianguladas).
- * 6. Gera polyline de contorno independente.
- * 7. Aplica vtkPolyDataNormals para iluminação correta.
+ * Todas as barras acumulam nas mesmas quatro malhas (superfície positiva, negativa, contorno e hachura), de modo que
+ * o diagrama inteiro vira 4 atores — o custo de renderização não cresce com o número de barras.
+ * Sem filtro de normais (iluminação plana calculada pelo shader).
  *
- * NÃO usa vtkSmoothPolyDataFilter — a fidelidade matemática dos diagramas
- * é preservada. Qualidade visual é controlada apenas pela densidade de amostras.
- *
- * Para torção (Mt): gera faixa helicoidal com ângulo limitado a
- * VisualizationTheme::maxTwistAngleDeg por unidade normalizada.
+ * Amostragem: o esforço é polinomial de grau <= 2 ao longo da barra (cargas uniformes), então poucas amostras bastam;
+ * ver computeSampleCount().
  */
 class DiagramMeshBuilder {
 public:
-    struct ElementMesh {
-        vtkSmartPointer<vtkPolyData> positiveSurface; ///< Região positiva (azul)
-        vtkSmartPointer<vtkPolyData> negativeSurface; ///< Região negativa (vermelho)
-        vtkSmartPointer<vtkPolyData> outline;          ///< Contorno do diagrama
+    /// Acumulador compartilhado por todos os elementos.
+    class MeshAccumulator {
+    public:
+        MeshAccumulator();
+        [[nodiscard]] vtkSmartPointer<vtkPolyData> positive() const;
+        [[nodiscard]] vtkSmartPointer<vtkPolyData> negative() const;
+        [[nodiscard]] vtkSmartPointer<vtkPolyData> outline() const;
+        [[nodiscard]] vtkSmartPointer<vtkPolyData> hatch() const;
+
+    private:
+        friend class DiagramMeshBuilder;
+        vtkSmartPointer<vtkPoints> m_posPoints, m_negPoints, m_outPoints, m_hatchPoints;
+        vtkSmartPointer<vtkCellArray> m_posCells, m_negCells, m_outCells, m_hatchCells;
     };
 
     DiagramMeshBuilder() = default;
 
-    /**
-     * @brief Amostra o elemento e armazena no cache.
-     * Deve ser chamado antes de buildMesh.
-     */
+    /// Amostra o elemento e armazena no cache (nada é refeito se já estiver amostrado nesta revisão).
     void sampleElement(const BeamElementResults& element,
                        DiagramType type,
                        int analysisRevision,
                        DiagramGeometryCache& cache);
 
-    /**
-     * @brief Constrói a malha VTK a partir dos dados amostrados no cache.
-     * Pode ser chamado novamente com nova escala sem re-amostrar.
-     */
-    ElementMesh buildMesh(const SampledDiagram& sampled,
-                          const DiagramScaleManager& scale) const;
-
-    ElementMesh buildMesh(const SampledDiagram& sampled,
-                          const DiagramScaleManager& scale,
-                          DiagramType type) const;
+    /// Acrescenta a geometria do elemento ao acumulador (pode ser repetido com outra escala sem reamostrar).
+    void append(const SampledDiagram& sampled,
+                const DiagramScaleManager& scale,
+                DiagramType type,
+                bool withHatch,
+                MeshAccumulator& out) const;
 
 private:
-    // ── Geometria de diagramas comuns (N, Vy, Vz, My, Mz) ──────────────────
-    ElementMesh buildStandardMesh(const SampledDiagram& sampled,
-                                  const DiagramScaleManager& scale) const;
+    void appendStandard(const SampledDiagram& sampled, const DiagramScaleManager& scale, bool withHatch, MeshAccumulator& out) const;
+    void appendTorsion(const SampledDiagram& sampled, const DiagramScaleManager& scale, MeshAccumulator& out) const;
 
-    // ── Geometria de torção (Mt) ────────────────────────────────────────────
-    ElementMesh buildTorsionMesh(const SampledDiagram& sampled,
-                                 const DiagramScaleManager& scale) const;
-
-    // ── Helpers ─────────────────────────────────────────────────────────────
     static std::array<double, 3> addScaled(const std::array<double, 3>& base,
                                            const std::array<double, 3>& axis,
                                            double scale);
-
     static int computeSampleCount(double length);
-
-    /// Extrai o valor relevante de InternalForces conforme o tipo de diagrama.
     static double extractValue(const InternalForces& f, DiagramType type);
-
-    /// Determina o eixo perpendicular de deslocamento para cada tipo.
-    static const std::array<double, 3>& selectPerpAxis(
-        const BeamElementResults& el, DiagramType type);
+    static const std::array<double, 3>& selectPerpAxis(const BeamElementResults& el, DiagramType type);
 };
 
 } // namespace Structura::Visualization

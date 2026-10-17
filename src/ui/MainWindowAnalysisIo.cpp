@@ -17,9 +17,13 @@
 #include "AxesPanel.h"
 
 #include <QComboBox>
+#include "BusyProgress.h"
+#include "app/services/NotionalLoadService.h"
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QSlider>
+#include <QUndoStack>
+#include "app/UndoRedoService.h"
 #include <QStatusBar>
 
 #include <unordered_map>
@@ -283,22 +287,28 @@ void MainWindow::rebuildResultViews()
 {
     using Structura::App::Services::CombinationService;
     const auto cases = CombinationService::effectiveCases(m_extras);
-    const auto combinations = CombinationService::effectiveCombinations(m_extras);
+    auto combinations = CombinationService::effectiveCombinations(m_extras);
+    const bool withNotional = m_extras.design.notionalLoads;
+    if (withNotional) {
+        combinations = Structura::App::Services::NotionalLoadService::withVariants(combinations);
+    }
     m_resultViews.clear();
     for (const auto& combination : combinations) {
         ResultView view;
         view.name = combination.name;
         view.isCombination = true;
         std::vector<CombinationService::Term> terms;
+        bool missing = false;
         for (const auto& term : combination.factors) {
             const auto runIt = m_caseRuns.constFind(term.first);
             if (runIt == m_caseRuns.constEnd()) {
+                missing = missing || Structura::App::Services::NotionalLoadService::isNotionalKey(term.first);
                 continue;
             }
             terms.push_back({&runIt->result, term.second});
             view.terms.emplace_back(term.first, term.second);
         }
-        if (terms.empty()) {
+        if (terms.empty() || missing) {
             continue;
         }
         view.result = CombinationService::combine(terms);
@@ -352,11 +362,15 @@ bool MainWindow::executeAnalysis(QString *reportOut)
     // Cada caso de carga e resolvido separadamente (o solver e linear); as
     // combinacoes sao somas ponderadas dos resultados dos casos.
     const auto cases = CombinationService::effectiveCases(m_extras);
-    const auto combinations = CombinationService::effectiveCombinations(m_extras);
+    auto combinations = CombinationService::effectiveCombinations(m_extras);
+    if (m_extras.design.notionalLoads) {
+        combinations = Structura::App::Services::NotionalLoadService::withVariants(combinations);
+    }
 
     QMap<QString, CaseRun> runs;
     try {
-        Structura::App::SolverBridge solver;
+        // 1) montagem dos modelos (le a cena: na thread da interface)
+        QVector<QPair<QString, Structura::App::SolverBridge::ModelData>> built;
         for (const auto& loadCase : cases) {
             auto buildResult = analysisService.buildModel(m_sceneController,
                                                           m_materials,
@@ -373,43 +387,69 @@ bool MainWindow::executeAnalysis(QString *reportOut)
                                          .arg(buildResult.errors.join(QLatin1Char('\n'))));
                 return false;
             }
-            CaseRun run;
-            run.model = buildResult.model;
-            run.result = solver.solve(buildResult.model);
-            runs.insert(loadCase.name, std::move(run));
+            built.append({loadCase.name, std::move(buildResult.model)});
         }
-        // Segunda ordem: nao ha superposicao, entao cada combinacao e resolvida com suas cargas ponderadas.
-        if (m_extras.design.secondOrder) {
-            QMap<QString, Structura::App::SolverBridge::ModelData> caseModels;
-            for (auto it = runs.constBegin(); it != runs.constEnd(); ++it) {
-                caseModels.insert(it.key(), it->model);
-            }
-            for (const auto& combination : combinations) {
-                CaseRun run;
-                if (!buildSecondOrderModel(combination, caseModels, m_extras.design.stiffnessReduction, run.model)) {
-                    continue;
+        // forcas nocionais: casos auxiliares (X e Y) proporcionais as cargas gravitacionais de cada caso
+        if (m_extras.design.notionalLoads) {
+            const int original = static_cast<int>(built.size());
+            for (int i = 0; i < original; ++i) {
+                for (int axis = 0; axis < 2; ++axis) {
+                    built.append({Structura::App::Services::NotionalLoadService::key(axis, built[i].first),
+                                  Structura::App::Services::NotionalLoadService::notionalModel(built[i].second, axis, m_extras.design.notionalFactor)});
                 }
-                run.result = solver.solve(run.model);
-                runs.insert(QStringLiteral("COMB:") + combination.name, std::move(run));
             }
         }
+        // 2) solucao em segundo plano, com janela de progresso
+        const bool secondOrder = m_extras.design.secondOrder;
+        const double reduction = m_extras.design.stiffnessReduction;
+        const int totalSteps = static_cast<int>(built.size()) + (secondOrder ? static_cast<int>(combinations.size()) : 0);
+        runs = Structura::UI::runBusy(this, tr("Análise estrutural"), tr("Preparando o solver…"),
+                                      [&](Structura::UI::BusyProgress &progress) {
+            QMap<QString, CaseRun> out;
+            Structura::App::SolverBridge solver;
+            int step = 0;
+            for (auto &item : built) {
+                progress.report(step, totalSteps, tr("Caso de carga %1 de %2 — %3").arg(step + 1).arg(built.size()).arg(item.first));
+                CaseRun run;
+                run.model = item.second;
+                run.result = solver.solve(run.model);
+                out.insert(item.first, std::move(run));
+                ++step;
+            }
+            // Segunda ordem: nao ha superposicao, entao cada combinacao e resolvida com suas cargas ponderadas.
+            if (secondOrder) {
+                QMap<QString, Structura::App::SolverBridge::ModelData> caseModels;
+                for (auto it = out.constBegin(); it != out.constEnd(); ++it) {
+                    caseModels.insert(it.key(), it->model);
+                }
+                for (const auto& combination : combinations) {
+                    progress.report(step, totalSteps, tr("Segunda ordem — combinação %1").arg(combination.name));
+                    ++step;
+                    CaseRun run;
+                    if (!buildSecondOrderModel(combination, caseModels, reduction, run.model)) {
+                        continue;
+                    }
+                    run.result = solver.solve(run.model);
+                    out.insert(QStringLiteral("COMB:") + combination.name, std::move(run));
+                }
+            }
+            progress.report(totalSteps, totalSteps, tr("Concluindo…"));
+            return out;
+        });
     } catch (const Structura::App::SolverBridgeError &error) {
-        QMessageBox::critical(this,
-                              tr("Falha na analise estrutural"),
-                              tr("A DLL retornou erro:\n%1").arg(QString::fromStdString(error.what())));
+        reportActionableError(tr("Falha na análise estrutural"), QString::fromStdString(error.what()));
         return false;
     } catch (const std::exception &error) {
-        QMessageBox::critical(this,
-                              tr("Falha na analise estrutural"),
-                              tr("Erro inesperado:\n%1").arg(QString::fromStdString(error.what())));
+        reportActionableError(tr("Falha na análise estrutural"), QString::fromStdString(error.what()));
         return false;
     }
 
     m_caseRuns = runs;
+    markResultsCurrent();
     {
         std::vector<const Structura::App::SolverBridge::ModelData *> models;
         for (auto it = m_caseRuns.constBegin(); it != m_caseRuns.constEnd(); ++it) {
-            if (!it.key().startsWith(QLatin1String("COMB:"))) {
+            if (!it.key().startsWith(QLatin1String("COMB:")) && !Structura::App::Services::NotionalLoadService::isNotionalKey(it.key())) {
                 models.push_back(&it->model);
             }
         }
@@ -440,6 +480,12 @@ bool MainWindow::restoreStoredResults()
     using Structura::App::Services::ResultsPersistence;
     const auto &stored = m_extras.results;
     if (stored.runs.isEmpty() || !m_sceneController) {
+        return false;
+    }
+    if (m_extras.design.notionalLoads) {
+        // os casos nocionais nao sao gravados: refaz a analise para gerar as variantes das combinacoes
+        m_extras.results = {};
+        showStatusMessage(tr("Forças nocionais ativas: rode a análise novamente para gerar as combinações com forças nocionais."), 9000);
         return false;
     }
     AnalysisService analysis;
@@ -565,6 +611,7 @@ void MainWindow::resetModel()
     m_nodalLoads.clear();
     m_memberLoads.clear();
     m_extras = {};
+    m_currentFilePath.clear();
     m_caseRuns.clear();
     m_analysisFingerprint.clear();
     m_designEta.clear();
@@ -619,6 +666,7 @@ bool MainWindow::loadFromDat(const QString &filePath)
     if (m_sceneController && m_sceneController->constructionScene()) {
         m_sceneController->constructionScene()->setAxes(m_extras.axes);
     }
+    m_currentFilePath = filePath;
     applyViewOptionsFromExtras();
     rebuildCaseSelector();
     refreshGroupsPanel();
@@ -628,13 +676,24 @@ bool MainWindow::loadFromDat(const QString &filePath)
     syncPlacementVisuals();
     refreshPropertiesPanel();
     restoreStoredResults();
+    if (m_undoService) {
+        m_undoService->stack()->clear();
+    }
+    m_extraDirty = false;
+    if (!m_caseRuns.isEmpty()) {
+        markResultsCurrent();
+    }
+    updateWindowTitle();
+    updateStaleIndicator();
     updateStatus();
     return true;
 }
 
-bool MainWindow::saveToDat(const QString &filePath)
+bool MainWindow::saveToDat(const QString &filePath, bool remember)
 {
-    m_projectName = QFileInfo(filePath).completeBaseName();
+    if (remember) {
+        m_projectName = QFileInfo(filePath).completeBaseName();
+    }
     storeViewOptionsInExtras();
     collectResultsForSave();
 
@@ -653,5 +712,14 @@ bool MainWindow::saveToDat(const QString &filePath)
         return false;
     }
 
+    if (remember) {
+        m_currentFilePath = filePath;
+        if (m_undoService) {
+            m_undoService->stack()->setClean();
+        }
+        m_extraDirty = false;
+        removeRecoveryFiles();
+        updateWindowTitle();
+    }
     return true;
 }

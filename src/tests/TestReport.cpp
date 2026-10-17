@@ -1,6 +1,11 @@
 #include "report/FormulaText.h"
 #include "app/services/DesignService.h"
 #include "app/services/ReportService.h"
+#include "app/services/ConnectionService.h"
+#include "app/services/SheetBuilder.h"
+#include "drawing/SheetPainter.h"
+#include <QPageSize>
+#include <QPdfWriter>
 #include "design/BarDesign.h"
 #include "report/DocxWriter.h"
 #include "report/ReportHtml.h"
@@ -23,6 +28,109 @@ class TestReport : public QObject
 {
     Q_OBJECT
 private slots:
+    void sheetsRenderToPdfAndDetails()
+    {
+        using Structura::App::Services::SheetBuilder;
+        SheetBuilder::Input in;
+        in.nodes = {{1, 0, 0, 0}, {2, 0, 0, 4}, {3, 8, 0, 4}, {4, 8, 0, 0}};
+        auto bar = [](int id, int a, int b, const char *section) {
+            SheetBuilder::Bar x;
+            x.id = id;
+            x.nodeI = a;
+            x.nodeJ = b;
+            x.section = QString::fromLatin1(section);
+            x.massPerMeter = 38.7;
+            return x;
+        };
+        in.bars = {bar(1, 1, 2, "W 310 x 38.7"), bar(2, 2, 3, "W 360 x 44.6"), bar(3, 3, 4, "W 310 x 38.7")};
+        in.info.project = QStringLiteral("Projeto de teste");
+        SheetBuilder::ConnectionDetail detail;
+        using NC = Structura::App::ProjectData::NodeConnection;
+        for (const auto type : {NC::kShearTab, NC::kDoubleAngle, NC::kGusset, NC::kSplice, NC::kBasePlate, NC::kTubular}) {
+            SheetBuilder::ConnectionDetail d;
+            Structura::App::Services::ConnectionService::BeamInfo beam;
+            beam.depth = 360;
+            beam.bf = 171;
+            beam.tf = 9.8;
+            beam.tw = 7.8;
+            beam.area = 5700;
+            beam.family = QStringLiteral("L Laminado");
+            beam.geometry = {{"b", 64.0}, {"t", 6.35}};
+            if (type == NC::kTubular) {
+                beam.geometry = {{"D", 168.3}, {"t", 6.0}};
+                QVector<Structura::App::Services::ConnectionService::BraceInfo> braces(2);
+                braces[0].d = 88.9; braces[0].t = 4.0; braces[0].angleDeg = 45.0;
+                braces[1].d = 88.9; braces[1].t = 4.0; braces[1].angleDeg = 45.0; braces[1].sameSideAsFirst = true;
+                d.connection = Structura::App::Services::ConnectionService::makeTubular(beam, braces);
+            } else {
+                d.connection = Structura::App::Services::ConnectionService::makeDefault(type, beam, 250.0, 400.0);
+            }
+            d.connection.id = in.connections.size() + 1;
+            d.connection.nodeId = 2;
+            d.connection.memberId = 2;
+            d.beamSection = QStringLiteral("W 360 x 44.6");
+            d.beamDepthMm = 352;
+            d.beamFlangeMm = 9.8;
+            d.hasForces = true;
+            d.shearKN = 80;
+            in.connections.append(d);
+        }
+        SheetBuilder::Options options;
+        options.paper = SheetBuilder::Paper::A3;
+        const auto sheets = SheetBuilder::build(in, options);
+        int details = 0;
+        for (const auto &sheet : sheets) {
+            if (sheet.name.rfind("Ligação", 0) == 0 || sheet.name.rfind("Liga", 0) == 0) {
+                ++details;
+                QVERIFY(sheet.entities.size() > 40);
+            }
+        }
+        QCOMPARE(details, 6);
+        const QString path = QDir::temp().filePath(QStringLiteral("structura_sheets_test.pdf"));
+        QFile::remove(path);
+        {
+            QPdfWriter writer(path);
+            writer.setResolution(150);
+            writer.setPageSize(QPageSize(QSizeF(420, 297), QPageSize::Millimeter));
+            writer.setPageMargins(QMarginsF(0, 0, 0, 0));
+            QPainter painter(&writer);
+            for (std::size_t i = 0; i < sheets.size(); ++i) {
+                if (i > 0) {
+                    writer.newPage();
+                }
+                Structura::Drawing::paintSheet(painter, sheets[i], 150.0 / 25.4);
+            }
+        }
+        QVERIFY(QFileInfo(path).size() > 5000);
+        QFile::remove(path);
+        // STRUCTURA_DUMP_SHEETS=<pasta>: grava PNG de cada prancha para inspecao visual
+        const QString dump = qEnvironmentVariable("STRUCTURA_DUMP_SHEETS");
+        if (!dump.isEmpty()) {
+            QDir().mkpath(dump);
+            for (std::size_t i = 0; i < sheets.size(); ++i) {
+                QImage page(420 * 4, 297 * 4, QImage::Format_ARGB32);
+                page.fill(Qt::white);
+                QPainter p(&page);
+                Structura::Drawing::paintSheet(p, sheets[i], 4.0);
+                p.end();
+                page.save(QDir(dump).filePath(QStringLiteral("sheet_%1.png").arg(i)));
+            }
+        }
+        // imagem de uma prancha (nao totalmente branca)
+        QImage image(420 * 2, 297 * 2, QImage::Format_ARGB32);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        Structura::Drawing::paintSheet(painter, sheets.front(), 2.0);
+        painter.end();
+        QVERIFY(image.pixelColor(100, 100) != QColor(0, 0, 0, 0));
+        int dark = 0;
+        for (int y = 0; y < image.height(); y += 3) {
+            for (int x = 0; x < image.width(); x += 3) {
+                dark += image.pixelColor(x, y).lightness() < 128 ? 1 : 0;
+            }
+        }
+        QVERIFY(dark > 200);
+    }
     void expressionConversion()
     {
         QCOMPARE(QString::fromStdString(expressionToLatex("chi Aef fy / 1.10")), QStringLiteral("\\chi\\,A_{\\mathrm{ef}}\\,f_{y}"

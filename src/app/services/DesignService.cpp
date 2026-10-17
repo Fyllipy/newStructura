@@ -1,5 +1,8 @@
 #include "DesignService.h"
 
+#include <atomic>
+#include <thread>
+
 #include "app/services/MaterialLibrary.h"
 #include "app/services/SectionPlacementService.h"
 #include "viz/postprocessor/UniformLoadForceEvaluator.h"
@@ -7,6 +10,7 @@
 #include "viz/structure/SectionShapes.h"
 
 #include <QMap>
+#include <QRegularExpression>
 
 #include <algorithm>
 #include <cmath>
@@ -51,10 +55,9 @@ QVector<DesignService::SteelOption> DesignService::steelGrades()
 
 std::optional<DesignService::SteelOption> DesignService::findSteel(const QString &name)
 {
-    for (const auto &s : steelGrades()) {
-        if (s.name.compare(name, Qt::CaseInsensitive) == 0) {
-            return s;
-        }
+    // busca direta (evita montar a lista inteira de acos a cada verificacao de barra)
+    if (const auto *entry = MaterialLibrary::find(name); entry && entry->isSteel()) {
+        return SteelOption {entry->name, entry->fy, entry->fu, entry->coldFormed()};
     }
     return std::nullopt;
 }
@@ -322,7 +325,10 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
     if (!settings.combinations.isEmpty()) {
         std::vector<Structura::Design::ComboEffects> filtered;
         for (const auto &c : in.combos) {
-            if (settings.combinations.contains(QString::fromStdString(c.name))) {
+            QString name = QString::fromStdString(c.name);
+            // variantes com forcas nocionais ("ELU1 +NX") seguem a selecao da combinacao de origem
+            static const QRegularExpression variant(QStringLiteral(" [+-]N[XY]$"));
+            if (settings.combinations.contains(name) || settings.combinations.contains(name.remove(variant))) {
                 filtered.push_back(c);
             }
         }
@@ -335,19 +341,56 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
 
 QVector<DesignService::MemberVerdict> DesignService::verifyAll(const QVector<MemberEffects> &effects,
                                                                const std::vector<MemberRef> &members,
-                                                               const DesignSettings &settings, double lengthFactorToMm)
+                                                               const DesignSettings &settings, double lengthFactorToMm,
+                                                               const std::function<void(int, int)> &progress)
 {
     QMap<int, const MemberEffects *> index;
     for (const auto &e : effects) {
         index.insert(e.memberId, &e);
     }
-    QVector<MemberVerdict> verdicts;
+    struct Job {
+        const MemberEffects *effects;
+        const SectionInfo *section;
+        int memberId;
+    };
+    std::vector<Job> jobs;
     for (const MemberRef &ref : members) {
         const auto it = index.constFind(ref.memberId);
         if (it == index.constEnd() || !ref.section) {
             continue;
         }
-        verdicts.append(verifyMember(**it, *ref.section, settings.paramsFor(ref.memberId), settings, lengthFactorToMm));
+        jobs.push_back({*it, ref.section, ref.memberId});
+    }
+    std::vector<MemberVerdict> results(jobs.size());
+    std::atomic<int> next {0}, done {0};
+    const int total = static_cast<int>(jobs.size());
+    auto worker = [&]() {
+        for (;;) {
+            const int i = next.fetch_add(1);
+            if (i >= total) {
+                break;
+            }
+            const Job &job = jobs[static_cast<std::size_t>(i)];
+            results[static_cast<std::size_t>(i)] = verifyMember(*job.effects, *job.section, settings.paramsFor(job.memberId), settings, lengthFactorToMm);
+            const int finished = done.fetch_add(1) + 1;
+            if (progress && (finished % 8 == 0 || finished == total)) {
+                progress(finished, total);
+            }
+        }
+    };
+    const unsigned workers = total < 16 ? 1u : std::min(8u, std::max(1u, std::thread::hardware_concurrency()));
+    std::vector<std::thread> pool;
+    for (unsigned w = 1; w < workers; ++w) {
+        pool.emplace_back(worker);
+    }
+    worker();
+    for (auto &t : pool) {
+        t.join();
+    }
+    QVector<MemberVerdict> verdicts;
+    verdicts.reserve(total);
+    for (auto &r : results) {
+        verdicts.append(std::move(r));
     }
     return verdicts;
 }

@@ -344,6 +344,8 @@ struct DesignSettings {
     bool autoB2 {true};                 ///< Calcula B2 por andar (Anexo C) nas analises de 1a ordem
     double rs {0.85};                   ///< Rs do Anexo C (0,85 em porticos, 1,0 nos demais casos)
     bool singleStorey {false};          ///< Galpao/edificacao de um pavimento (limite de topo H/300; senao H/400)
+    bool notionalLoads {false};         ///< Forcas nocionais (NBR 8800, 4.9.7.2): variantes das combinacoes ultimas com 0,3% das cargas gravitacionais
+    double notionalFactor {0.003};
     bool groupByFamily {false};         ///< Dimensionamento automatico: mesma familia recebe o mesmo perfil (senao agrupa por perfil atual)
     double targetEta {1.0};             ///< Aproveitamento alvo do dimensionamento automatico
     QStringList combinations;   ///< Combinacoes ultimas consideradas; vazio = todas as que nao comecam por "ELS"
@@ -364,7 +366,7 @@ struct DesignSettings {
     [[nodiscard]] bool isDefault() const
     {
         return members.isEmpty() && defaultSteel == QLatin1String("MR250") && rectTubeStandard == QLatin1String("NBR14762")
-            && amplifyB1 && slendernessGoverns && !secondOrder && stiffnessReduction == 0.8 && autoB2 && rs == 0.85 && !singleStorey && !groupByFamily && targetEta == 1.0
+            && amplifyB1 && slendernessGoverns && !secondOrder && stiffnessReduction == 0.8 && autoB2 && rs == 0.85 && !singleStorey && !notionalLoads && notionalFactor == 0.003 && !groupByFamily && targetEta == 1.0
             && combinations.isEmpty() && defaults == DesignMemberParams {};
     }
 };
@@ -430,6 +432,85 @@ struct StoredResults {
     }
 };
 
+/// Ligacao viga-apoio associada a um no do modelo (chapa de cisalhamento ou cantoneira dupla).
+struct NodeConnection {
+    static constexpr int kShearTab = 0;
+    static constexpr int kDoubleAngle = 1;
+    static constexpr int kGusset = 2;      ///< chapa de no de trelica/contraventamento
+    static constexpr int kSplice = 3;      ///< emenda de viga parafusada
+    static constexpr int kBasePlate = 4;   ///< base de pilar com chumbadores
+    static constexpr int kTubular = 5;     ///< ligacao soldada de trelica tubular
+
+    int id {0};
+    int nodeId {0};            ///< id externo do no
+    int memberId {0};          ///< viga ligada (id externo)
+    bool atEnd {false};        ///< true = extremidade final (J) da viga neste no
+    int type {kShearTab};
+    QString grade;             ///< parafuso (nome em Connections::boltGrades)
+    QMap<QString, double> values;   ///< geometria e acos (chaves definidas em ConnectionService)
+    // ultimo resultado (apenas informativo; recalculado ao verificar)
+    double eta {0.0};
+    QString governing;
+    bool verified {false};
+};
+
+/// Carimbo das pranchas: campos editaveis, tabela de revisoes e titulos personalizados das pranchas.
+struct TitleBlockSettings {
+    struct Revision {
+        QString rev;
+        QString date;
+        QString description;
+        QString author;
+    };
+
+    QString company;
+    QString client;
+    QString site;          ///< obra / local
+    QString project;
+    QString author;        ///< responsavel tecnico
+    QString registration;  ///< CREA / CAU
+    QString drafter;       ///< desenhista
+    QString checker;       ///< verificador
+    QString date;
+    QString revision {QStringLiteral("0")};
+    QString drawingPrefix; ///< prefixo do numero das pranchas (ex.: EST)
+    QString notes;         ///< notas gerais (rodape esquerdo das pranchas)
+    QVector<Revision> revisions;
+    QMap<QString, QString> sheetTitles;   ///< id da vista -> titulo personalizado
+
+    [[nodiscard]] bool isDefault() const
+    {
+        return company.isEmpty() && client.isEmpty() && site.isEmpty() && project.isEmpty() && author.isEmpty() && registration.isEmpty()
+            && drafter.isEmpty() && checker.isEmpty() && date.isEmpty() && revision == QLatin1String("0") && drawingPrefix.isEmpty()
+            && notes.isEmpty() && revisions.isEmpty() && sheetTitles.isEmpty();
+    }
+};
+
+/// Vista 3D salva para as pranchas (desenho em linhas): angulos ou camera explicita (posicao em m).
+struct SavedView3D {
+    QString name;
+    bool perspective {false};
+    double azimuthDeg {35.0};     ///< 0 = vista frontal (olho em -Y); cresce para o lado de +X
+    double elevationDeg {25.0};
+    double fovDeg {30.0};
+    bool explicitCamera {false};  ///< usa posicao / alvo / cima abaixo (camera do modelo no momento da captura)
+    std::array<double, 3> position {0.0, 0.0, 0.0};
+    std::array<double, 3> target {0.0, 0.0, 0.0};
+    std::array<double, 3> up {0.0, 0.0, 1.0};
+};
+
+/// Folha de desenho montada pelo usuario: varias vistas, cada uma com escala e (opcionalmente) posicao propria.
+struct SheetLayoutDef {
+    struct Placement {
+        QString viewId;
+        double scale {0.0};      ///< denominador da escala; 0 = automatica
+        bool manual {false};     ///< true: usa o retangulo abaixo (fracoes da area util, origem no canto superior esquerdo)
+        double x {0.0}, y {0.0}, w {0.5}, h {0.5};
+    };
+    QString name;
+    QVector<Placement> views;
+};
+
 struct ProjectExtras {
     QVector<MemberMoment> memberMoments;
     QVector<MemberPlacement> placements; ///< So barras com posicionamento nao padrao.
@@ -443,6 +524,12 @@ struct ProjectExtras {
     QVector<BarGroup> groups;
     QVector<AreaLoadPanel> areaLoads;
     StoredResults results;
+    QVector<NodeConnection> connections;
+    TitleBlockSettings titleBlock;
+    QVector<SavedView3D> views3d;
+    QVector<SheetLayoutDef> sheetLayouts;   ///< folhas compostas das pranchas
+    QMap<int, QMap<QString, double>> compositeBeams;   ///< entradas da viga mista por barra (id externo)
+    QMap<QString, double> deckSlab;                    ///< entradas da laje mista (steel deck)
 };
 
 struct NodalLoadPreset {

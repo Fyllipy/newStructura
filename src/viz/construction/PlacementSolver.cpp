@@ -244,6 +244,47 @@ std::optional<PlacementTarget> PlacementSolver::snapPosition(const QPointF &poin
         }
     }
 
+    if (m_barSnap) {
+        // Ao longo da barra: o ponto mais proximo do cursor na tela. Leva uma pequena penalidade para que
+        // nos, centros e pontos da malha proximos continuem prevalecendo.
+        constexpr double kBarBias = 6.0;
+        for (const auto &segment : m_scene->barSegments()) {
+            const auto sa = projection.project(segment.first);
+            const auto sb = projection.project(segment.second);
+            if (!sa || !sb) {
+                continue;
+            }
+            const double ex = sb->x() - sa->x(), ey = sb->y() - sa->y();
+            const double len2 = ex * ex + ey * ey;
+            if (len2 < 1e-9) {
+                continue;
+            }
+            double t = ((pointer.x() - sa->x()) * ex + (pointer.y() - sa->y()) * ey) / len2;
+            t = std::clamp(t, 0.0, 1.0);
+            const double cx = sa->x() + t * ex - pointer.x(), cy = sa->y() + t * ey - pointer.y();
+            if (std::sqrt(cx * cx + cy * cy) > kSnapTolerancePixels * 2.0) {
+                continue;
+            }
+            // refina em 3D (a perspectiva distorce o parametro da projecao)
+            auto at = [&](double u) {
+                return Vec3 {segment.first[0] + u * (segment.second[0] - segment.first[0]),
+                             segment.first[1] + u * (segment.second[1] - segment.first[1]),
+                             segment.first[2] + u * (segment.second[2] - segment.first[2])};
+            };
+            auto cost = [&](double u) {
+                const auto screen = projection.project(at(u));
+                return screen ? screenDistance(*screen) : 1e9;
+            };
+            double lo = std::max(0.0, t - 0.25), hi = std::min(1.0, t + 0.25);
+            for (int i = 0; i < 24; ++i) {
+                const double m1 = lo + (hi - lo) / 3.0, m2 = hi - (hi - lo) / 3.0;
+                (cost(m1) < cost(m2)) ? hi = m2 : lo = m1;
+            }
+            const double u = 0.5 * (lo + hi);
+            candidates.push_back({cost(u) + kBarBias, 2, SnapKind::OnBar, at(u)});
+        }
+    }
+
     const Candidate *chosen = nullptr;
     for (const Candidate &candidate : candidates) {
         if (candidate.distance > kSnapTolerancePixels) {

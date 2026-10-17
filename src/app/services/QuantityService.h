@@ -36,7 +36,18 @@ public:
         QVector<int> bars;
     };
 
+    /// Peca de ligacao agregada (chapas, cantoneiras, parafusos, solda).
+    struct ConnectionRow {
+        QString description;
+        int quantity {0};
+        double massEach {0.0};     ///< kg
+        double totalMass {0.0};
+        double weldLength {0.0};   ///< mm (soma; so para solda)
+    };
+
     struct Summary {
+        QVector<ConnectionRow> connections;
+        double connectionMass {0.0};
         QVector<Row> rows;
         double totalLength {0.0};
         double totalMass {0.0};
@@ -48,6 +59,9 @@ public:
     static Summary compute(const QVector<Bar> &bars,
                            const QVector<Structura::App::ProjectData::SectionInfo> &sections,
                            const QVector<Structura::App::ProjectData::MaterialInfo> &materials);
+
+    /// Soma uma peca de ligacao (mesma descricao e massa unitaria = mesma linha).
+    static void addConnectionPart(Summary &summary, const QString &description, int quantity, double massEach, double weldLength);
 
     /// CSV (separador ';', decimal ',') pronto para planilha.
     static QString toCsv(const Summary &summary);

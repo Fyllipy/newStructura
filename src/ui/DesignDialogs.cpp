@@ -202,6 +202,13 @@ DesignSettingsDialog::DesignSettingsDialog(const DesignSettings &settings, const
     analysisForm->addRow(m_autoB2);
     analysisForm->addRow(tr("Rs (Anexo C)"), m_rs);
     analysisForm->addRow(m_singleStorey);
+    m_notional = new QCheckBox(tr("Forças nocionais (NBR 8800, 4.9.7.2): 0,3% das cargas gravitacionais, em X e Y"));
+    m_notional->setChecked(settings.notionalLoads);
+    m_notional->setToolTip(tr("Cada combinação última gera quatro variantes (±X, ±Y) com forças horizontais nodais proporcionais às cargas verticais "
+                              "da combinação, para considerar imperfeições geométricas. Requer refazer a análise."));
+    m_notionalFactor = spin(0.0005, 0.02, settings.notionalFactor, 4, 0.0005);
+    analysisForm->addRow(m_notional);
+    analysisForm->addRow(tr("Fator das forças nocionais"), m_notionalFactor);
     root->addWidget(analysis);
 
     auto *automatic = new QGroupBox(tr("Dimensionamento automático"));
@@ -265,6 +272,8 @@ DesignSettings DesignSettingsDialog::settings() const
     s.autoB2 = m_autoB2->isChecked();
     s.rs = m_rs->value();
     s.singleStorey = m_singleStorey->isChecked();
+    s.notionalLoads = m_notional->isChecked();
+    s.notionalFactor = m_notionalFactor->value();
     s.groupByFamily = m_groupByFamily->isChecked();
     s.targetEta = m_target->value();
     s.defaults = read(m_defaults);

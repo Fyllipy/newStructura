@@ -27,6 +27,7 @@
 #include "app/ISceneModelGateway.h"
 #include "viz/postprocessor/SupportGlyphFactory.h"
 #include "viz/structure/StructureRenderer.h"
+#include "viz/structure/ConnectionRenderer.h"
 #include "viz/structure/ElementAppearance.h"
 namespace Structura::Construction {
 class ConstructionScene;
@@ -60,6 +61,8 @@ class vtkBillboardTextActor3D;
 struct LoadLabelData {
     std::vector<std::array<double, 3>> positions;
     std::vector<QString> texts;
+    std::vector<std::array<double, 3>> colors;   ///< cor (0..1) do desenho da carga
+    std::vector<double> weights;                 ///< |valor| (prioridade do rotulo)
 };
 
 class SceneController : public QObject,
@@ -116,6 +119,7 @@ public:
     // Visibilidade de elementos (barra de opcoes de exibicao)
     void setNodesVisible(bool visible);
     void setSupportsVisible(bool visible);
+    void setConstraintsVisible(bool visible);
     [[nodiscard]] bool nodesVisible() const { return m_showNodes; }
     [[nodiscard]] bool supportsVisible() const { return m_showSupports; }
 
@@ -159,10 +163,13 @@ public:
     /// Forma modal / deformada desenhada sobre o modelo (lista vazia remove).
     /// Marcadores de rotulas, trelicas e tirantes (lista vazia remove).
     void setBarTypeMarkers(const std::vector<Structura::Visualization::BarTypeRenderer::Marker> &markers);
+    /// Camera atual (posicao, alvo, cima em m; abertura vertical em graus; paralela?). false sem janela de visualizacao.
+    bool cameraState(double position[3], double target[3], double up[3], double &viewAngleDeg, bool &parallel) const;
     void setModeShape(const std::vector<std::vector<std::array<double, 3>>> &lines);
 
     /// Barra com secao extrudada (exibicao solida).
     struct SolidMemberVisual {
+        QUuid barId;   ///< barra de origem (para destacar o solido ao selecionar)
         QVector3D start;
         QVector3D end;
         QVector3D xAxis;
@@ -182,7 +189,19 @@ public:
                               const Structura::Visualization::AppearanceMap &bars);
     /// Camera perpendicular ao plano cuja normal e o eixo `normalAxis` (0=X, 1=Y, 2=Z), centrada no nivel.
     void lookAtPlane(int normalAxis, double level);
+    /// Projecao da camera: paralela (isometrica/ortografica, padrao) ou em perspectiva. Mantem o enquadramento atual.
+    void setPerspective(bool perspective);
+    [[nodiscard]] bool isPerspective() const;
+    /// Camera olhando o modelo a partir da direcao (dx,dy,dz) do olho em relacao ao centro, com o vetor "para cima" dado.
+    void lookFromDirection(double dx, double dy, double dz, double ux, double uy, double uz);
+    /// Restaura uma camera salva (posicao, alvo, cima, abertura em graus; paralela = projecao ortografica).
+    void setCameraState(const double position[3], const double target[3], const double up[3], double viewAngleDeg, bool parallel);
     void setSolidsVisible(bool visible);
+    /// Sólidos esquemáticos das ligações (chapas, parafusos, soldas) já em coordenadas do modelo.
+    void setConnectionMesh(const Structura::Visualization::ConnectionRenderer::Mesh &mesh);
+    void setConnectionsVisible(bool visible);
+    /// Marca um no (esfera translucida) para o usuario identificar de qual no se trata; sem posicao, remove a marca.
+    void setNodeHighlight(const std::optional<QVector3D> &position);
     /// Rotulos (valores) das cargas para a camada de texto da viewport.
     [[nodiscard]] LoadLabelData loadLabels() const;
 
@@ -209,6 +228,24 @@ public:
     bool updateNodePosition(const QUuid &nodeId, double x, double y, double z);
     bool updateNodePositions(const QVector<QUuid> &nodeIds, const QVector<QVector3D> &positions);
 
+    /// Copia da topologia (ids internos e externos preservados) para excluir/dividir/desfazer.
+    struct GeometrySnapshot {
+        struct N {
+            QUuid id;
+            int externalId {0};
+            double x {0.0}, y {0.0}, z {0.0};
+        };
+        struct B {
+            QUuid id, start, end, material, section;
+            int externalId {0};
+        };
+        std::vector<N> nodes;
+        std::vector<B> bars;
+    };
+    [[nodiscard]] GeometrySnapshot captureGeometry() const;
+    /// Substitui toda a topologia (nos e barras) pela copia, mantendo os mesmos ids.
+    void restoreGeometry(const GeometrySnapshot &geometry);
+
     // Bars
     QUuid addBar(const QUuid &startNodeId,
                  const QUuid &endNodeId,
@@ -222,6 +259,7 @@ public:
     const Bar *findBar(const QUuid &id) const;
     Bar *findBar(const QUuid &id);
     void setSelectedBars(const QSet<QUuid> &barIds);
+    void applySolidSelection();
 
 private:
     void updateBounds();
@@ -248,6 +286,7 @@ private:
     std::unique_ptr<Structura::Visualization::StructureRenderer> m_structureRenderer;
     std::unique_ptr<Structura::Construction::ConstructionScene> m_construction;
     bool m_constructionRefreshPending {false};
+    bool m_renderPending {false};
     bool m_showNodes {true};
     bool m_showSupports {true};
 
@@ -264,6 +303,8 @@ private:
     std::vector<Structura::Visualization::AreaPanelRenderer::Panel> m_areaPanels;
     bool m_areaPanelsVisible {true};
     std::unique_ptr<Structura::Visualization::SolidMemberRenderer> m_solidRenderer;
+    std::unique_ptr<Structura::Visualization::ConnectionRenderer> m_connectionRenderer;
+    vtkSmartPointer<vtkActor> m_nodeHighlight;
     struct LoadVisibility {
         bool nodeForces {true};
         bool nodeMoments {true};
@@ -279,6 +320,9 @@ private:
     vtkSmartPointer<vtkPolyData> m_supportData;
     vtkSmartPointer<vtkPolyDataMapper> m_supportMapper;
     vtkSmartPointer<vtkActor> m_supportActor;
+    vtkSmartPointer<vtkPolyDataMapper> m_constraintMapper;
+    vtkSmartPointer<vtkActor> m_constraintActor;
+    bool m_showConstraints {true};
     
     // Bar LCS visualization
     bool m_showBarLCS {false};
@@ -304,6 +348,8 @@ private:
     QUuid m_highlightNodeId;
     QSet<QUuid> m_selectedNodeIds;
     QSet<QUuid> m_selectedBarIds;
+    QVector<QUuid> m_solidBarIds;   ///< barra de cada solido, na ordem de setSolidMembers
+    QSet<QUuid> m_solidSelection;
     
 
     int m_nextNodeExternalId {1};

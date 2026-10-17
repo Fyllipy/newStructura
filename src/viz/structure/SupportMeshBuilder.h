@@ -30,6 +30,12 @@ public:
         Restraints restraints {};
     };
 
+    /// Apoio = restringe o deslocamento vertical (Z); as demais combinacoes de restricoes sao restricoes nodais.
+    [[nodiscard]] static bool isSupport(const Restraints &restraints);
+    /// Simbolos de apoio (engaste, articulado, movel) na unidade de tamanho `unit` (m).
+    static vtkSmartPointer<vtkPolyData> buildSupports(const std::vector<Support> &supports, double unit);
+    /// Simbolos de restricao nodal (barras com batentes por translacao e aneis por rotacao).
+    static vtkSmartPointer<vtkPolyData> buildConstraints(const std::vector<Support> &supports, double unit);
     /// Constroi a malha de um conjunto de apoios; vazio se nenhum restringe algo.
     static vtkSmartPointer<vtkPolyData> build(const std::vector<Support> &supports);
 };

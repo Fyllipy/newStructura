@@ -133,6 +133,17 @@ set(APP_SOURCES
     src/design/DesignSection.cpp
     src/design/Connections.h
     src/design/Connections.cpp
+    src/design/ShearConnections.h
+    src/design/ShearConnections.cpp
+    src/design/ConnectionHelpers.h
+    src/design/TrussConnections.h
+    src/design/TrussConnections.cpp
+    src/design/BasePlate.h
+    src/design/BasePlate.cpp
+    src/design/TubularJoints.h
+    src/design/TubularJoints.cpp
+    src/design/CompositeFloor.h
+    src/design/CompositeFloor.cpp
     src/design/Nbr8800.h
     src/design/Nbr8800.cpp
     src/design/Nbr14762.h
@@ -183,6 +194,7 @@ set(UI_SOURCES
     src/ui/MainWindowPlacement.cpp
     src/ui/MainWindowViewOptions.cpp
     src/ui/MainWindowEditing.cpp
+    src/ui/MainWindowTopology.cpp
     src/ui/MainWindowProfiles.cpp
     src/ui/MainWindowDesign.cpp
     src/ui/MainWindowGroups.cpp
@@ -196,18 +208,77 @@ set(UI_SOURCES
     src/ui/MainWindowConnections.cpp
     src/ui/ConnectionDialog.h
     src/ui/ConnectionDialog.cpp
+    src/ui/NodeConnectionsDialog.h
+    src/ui/NodeConnectionsDialog.cpp
     src/ui/MainWindowModal.cpp
     src/ui/ModalDialog.h
+    src/ui/DynamicsDialog.h
+    src/ui/DynamicsDialog.cpp
+    src/ui/LineChartWidget.h
+    src/ui/LineChartWidget.cpp
+    src/ui/MainWindowDynamics.cpp
+    src/ui/MainWindowSession.cpp
+    src/ui/MainWindowErrors.cpp
+    src/ui/ConnectionPreview.h
+    src/ui/ConnectionPreview.cpp
+    src/ui/CompositeDialog.h
+    src/ui/CompositeDialog.cpp
+    src/ui/MainWindowComposite.cpp
+    src/ui/BusyProgress.h
+    src/ui/BusyProgress.cpp
+    src/ui/MainWindowCompare.cpp
+    src/ui/CompareResultsDialog.h
+    src/ui/CompareResultsDialog.cpp
+    src/ui/MainWindowViews.cpp
+    src/ui/ViewCubeWidget.h
+    src/ui/ViewCubeWidget.cpp
+    src/ui/SplitBarDialog.h
+    src/ui/SplitBarDialog.cpp
+    src/ui/MainWindowDiagramProbe.cpp
     src/ui/ModalDialog.cpp
     src/app/services/ModalService.h
     src/app/services/ModalService.cpp
+    src/app/services/DynamicsService.h
+    src/app/services/DynamicsService.cpp
+    src/app/services/WindDynamicsService.h
+    src/app/services/WindDynamicsService.cpp
+    src/app/services/TrussGenerator.h
+    src/app/services/TrussGenerator.cpp
+    src/ui/NewProjectWizard.h
+    src/ui/NewProjectWizard.cpp
+    src/ui/TrussDialog.h
+    src/ui/TrussDialog.cpp
+    src/app/services/ConnectionSolids.h
+    src/app/services/ConnectionSolids.cpp
+    src/viz/structure/ConnectionRenderer.h
+    src/viz/structure/ConnectionRenderer.cpp
+    src/app/services/NotionalLoadService.h
+    src/app/services/NotionalLoadService.cpp
     src/ui/MainWindowDocs.cpp
+    src/ui/MainWindowDrawings.cpp
+    src/ui/DrawingDialog.h
+    src/ui/DrawingDialog.cpp
+    src/ui/TitleBlockDialog.h
+    src/ui/TitleBlockDialog.cpp
+    src/ui/View3DDialog.h
+    src/ui/View3DDialog.cpp
     src/ui/QuantityDialog.h
     src/ui/QuantityDialog.cpp
     src/app/services/QuantityService.h
     src/app/services/QuantityService.cpp
     src/app/services/ResultsPersistence.h
     src/app/services/ResultsPersistence.cpp
+    src/app/services/ConnectionService.h
+    src/app/services/ConnectionService.cpp
+    src/app/services/SheetBuilder.h
+    src/app/services/SheetBuilder.cpp
+    src/app/services/SheetBuilderInternal.h
+    src/app/services/ConnectionDrawing.cpp
+    src/drawing/DrawingModel.h
+    src/drawing/SheetPainter.h
+    src/drawing/SheetPainter.cpp
+    src/drawing/HiddenLine.h
+    src/drawing/HiddenLine.cpp
     src/app/services/DxfExporter.h
     src/app/services/DxfExporter.cpp
     src/ui/MainWindowBuckling.cpp
@@ -335,8 +406,10 @@ vtk_module_autoinit(
 
 # --- Executable ---
 
-add_executable(StructuraRibbon3D
+# WIN32: executavel de interface grafica (nao abre terminal); o ponto de entrada main() e mantido pelo Qt6::EntryPoint
+add_executable(StructuraRibbon3D WIN32
     src/main.cpp
+    $<$<BOOL:${WIN32}>:app.rc>
 )
 
 target_link_libraries(StructuraRibbon3D

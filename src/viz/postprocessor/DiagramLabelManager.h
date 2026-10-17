@@ -4,6 +4,8 @@
 
 #include <QString>
 #include <vtkSmartPointer.h>
+#include <array>
+#include <string>
 #include <vector>
 
 class vtkRenderer;
@@ -33,6 +35,14 @@ public:
      */
     void update(const ExtremaResult& extrema, const QString& unit = QString());
 
+    struct Label {
+        std::array<double, 3> position {};
+        std::string text;
+        int kind {2};   ///< 0 = maximo (azul), 1 = minimo (vermelho), 2 = neutro
+    };
+    /// Substitui os labels pelos fornecidos.
+    void setLabels(const std::vector<Label> &labels);
+
     /// Remove todos os labels da cena.
     void clearAll();
 
@@ -40,7 +50,7 @@ private:
     vtkSmartPointer<vtkBillboardTextActor3D> createLabel(
         const std::array<double, 3>& position,
         const std::string& text,
-        bool isMax) const;
+        int kind) const;
 
     void addToRenderer(vtkSmartPointer<vtkBillboardTextActor3D> actor);
     void removeFromRenderer(vtkSmartPointer<vtkBillboardTextActor3D> actor);

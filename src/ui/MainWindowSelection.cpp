@@ -10,7 +10,9 @@
 #include <QHash>
 #include <QMatrix4x4>
 #include <QMenu>
-#include <QRubberBand>
+#include <QPainter>
+#include <QVector4D>
+#include <QWidget>
 #include <QTimer>
 #include <QStatusBar>
 #include <QVTKOpenGLNativeWidget.h>
@@ -21,6 +23,43 @@
 namespace {
 
 constexpr double kLevelTolerance = 1e-6;
+
+/// Retangulo de selecao como nos programas de CAD: janela (esquerda -> direita) azul e continua; cruzamento (direita -> esquerda) verde e tracejado.
+class SelectionBand final : public QWidget
+{
+public:
+    explicit SelectionBand(QWidget *parent)
+        : QWidget(parent)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+    }
+    void setCrossing(bool crossing)
+    {
+        if (m_crossing != crossing) {
+            m_crossing = crossing;
+            update();
+        }
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        const QColor base = m_crossing ? QColor(46, 160, 67) : QColor(30, 110, 220);
+        QColor fill = base;
+        fill.setAlpha(m_crossing ? 38 : 48);
+        painter.fillRect(rect(), fill);
+        QPen pen(base);
+        pen.setWidth(1);
+        pen.setStyle(m_crossing ? Qt::DashLine : Qt::SolidLine);
+        painter.setPen(pen);
+        painter.drawRect(rect().adjusted(0, 0, -1, -1));
+    }
+
+private:
+    bool m_crossing {false};
+};
 
 /// Algoritmo de Cohen-Sutherland: o segmento (em pixels) intersecta o retangulo?
 bool segmentIntersectsRect(QPointF a, QPointF b, const QRectF &r)
@@ -116,6 +155,7 @@ bool MainWindow::handleDefaultViewportMousePress(Qt::MouseButton button, Qt::Key
 bool MainWindow::handleDefaultViewportMouseMove(const QPoint &widgetPos)
 {
     updateHighlightedNodeAtWidgetPos(widgetPos);
+    scheduleDiagramProbe(widgetPos);
 
     if (m_press.right && (widgetPos - m_press.rightPos).manhattanLength() > 4) {
         m_press.rightMoved = true;
@@ -124,13 +164,14 @@ bool MainWindow::handleDefaultViewportMouseMove(const QPoint &widgetPos)
         if (!m_press.dragging && (widgetPos - m_press.pos).manhattanLength() > 4) {
             m_press.dragging = true;
             if (!m_rubberBand) {
-                m_rubberBand = new QRubberBand(QRubberBand::Rectangle, m_vtkWidget);
-                m_rubberBand->setAttribute(Qt::WA_TransparentForMouseEvents);
+                m_rubberBand = new SelectionBand(m_vtkWidget);
             }
             m_rubberBand->show();
+            m_rubberBand->raise();
         }
         if (m_press.dragging && m_rubberBand) {
             m_rubberBand->setGeometry(QRect(m_press.pos, widgetPos).normalized());
+            static_cast<SelectionBand *>(m_rubberBand)->setCrossing(widgetPos.x() < m_press.pos.x());
         }
     }
     return false;
@@ -203,49 +244,57 @@ void MainWindow::selectInRect(const QRect &rect, bool crossing, Qt::KeyboardModi
     const QMatrix4x4 matrix = m_sceneController->compositeMatrix();
     const double width = m_vtkWidget->width();
     const double height = m_vtkWidget->height();
-    auto project = [&](double x, double y, double z, QPointF &out) {
-        const QVector4D clip = matrix * QVector4D(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), 1.0f);
-        if (clip.w() <= 1e-9f) {
-            return false;
-        }
-        const double nx = clip.x() / clip.w();
-        const double ny = clip.y() / clip.w();
-        const double nz = clip.z() / clip.w();
-        if (std::abs(nz) > 1.0) {
-            return false;
-        }
-        out = QPointF((nx + 1.0) * width / 2.0, (1.0 - ny) * height / 2.0);
-        return true;
+    auto clipOf = [&](double x, double y, double z) {
+        return matrix * QVector4D(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), 1.0f);
     };
+    auto toScreen = [&](const QVector4D &clip) {
+        return QPointF((clip.x() / clip.w() + 1.0) * width / 2.0, (1.0 - clip.y() / clip.w()) * height / 2.0);
+    };
+    constexpr float kNear = 1e-4f;
 
     QHash<QUuid, Structura::App::SceneNodeInfo> nodes;
-    QHash<QUuid, QPointF> screen;
-    QHash<QUuid, bool> visible;
+    QHash<QUuid, QVector4D> clip;
     QVector<QUuid> pickedNodes;
     const QRectF area(rect);
     for (const auto &node : m_sceneController->nodeInfos()) {
         nodes.insert(node.id, node);
-        QPointF p;
-        const bool ok = project(node.x, node.y, node.z, p);
-        visible.insert(node.id, ok);
-        screen.insert(node.id, p);
-        if (ok && area.contains(p) && nodePassesFilter(node)) {
+        const QVector4D c = clipOf(node.x, node.y, node.z);
+        clip.insert(node.id, c);
+        if (c.w() > kNear && std::abs(c.z() / c.w()) <= 1.0 && area.contains(toScreen(c)) && nodePassesFilter(node)) {
             pickedNodes.append(node.id);
         }
     }
 
+    // Janela: a barra inteira (os dois nos) dentro do retangulo. Cruzamento: qualquer parte da barra dentro ou tocando
+    // (o segmento e recortado no plano proximo, entao barras parcialmente atras da camera tambem contam).
+    const QRectF touch = area.adjusted(-1.5, -1.5, 1.5, 1.5);
     QVector<QUuid> pickedBars;
     for (const auto &bar : m_sceneController->bars()) {
         if (!barPassesFilter(bar, nodes)) {
             continue;
         }
-        if (!visible.value(bar.startNodeId) || !visible.value(bar.endNodeId)) {
+        QVector4D c0 = clip.value(bar.startNodeId), c1 = clip.value(bar.endNodeId);
+        const bool in0 = c0.w() > kNear, in1 = c1.w() > kNear;
+        if (!crossing) {
+            if (!in0 || !in1) {
+                continue;
+            }
+            if (area.contains(toScreen(c0)) && area.contains(toScreen(c1))) {
+                pickedBars.append(bar.id);
+            }
             continue;
         }
-        const QPointF a = screen.value(bar.startNodeId);
-        const QPointF b = screen.value(bar.endNodeId);
-        const bool inside = area.contains(a) && area.contains(b);
-        if (inside || (crossing && segmentIntersectsRect(a, b, area))) {
+        if (!in0 && !in1) {
+            continue;
+        }
+        if (!in0) {
+            const float t = (kNear - c0.w()) / (c1.w() - c0.w());
+            c0 = c0 + (c1 - c0) * t;
+        } else if (!in1) {
+            const float t = (kNear - c1.w()) / (c0.w() - c1.w());
+            c1 = c1 + (c0 - c1) * t;
+        }
+        if (segmentIntersectsRect(toScreen(c0), toScreen(c1), touch)) {
             pickedBars.append(bar.id);
         }
     }
@@ -395,6 +444,7 @@ void MainWindow::showViewportContextMenu(const QPoint &widgetPos, const QPoint &
     add(tr("Copia em serie..."), hasSelection, &MainWindow::onSerialCopy);
     add(tr("Rotacionar"), hasSelection, &MainWindow::onRotateElements);
     add(tr("Espelhar"), hasSelection, &MainWindow::onMirrorElements);
+    add(tr("Excluir"), hasSelection, &MainWindow::onDeleteSelected);
     menu.addSeparator();
     add(tr("Ocultar selecionados"), hasSelection, &MainWindow::onHideSelected);
     add(tr("Isolar selecionados"), hasSelection, &MainWindow::onIsolateSelected);

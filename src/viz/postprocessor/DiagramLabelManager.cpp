@@ -20,7 +20,7 @@ void DiagramLabelManager::initialize(vtkRenderer* renderer)
 vtkSmartPointer<vtkBillboardTextActor3D> DiagramLabelManager::createLabel(
     const std::array<double, 3>& position,
     const std::string& text,
-    bool isMax) const
+    int kind) const
 {
     vtkNew<vtkBillboardTextActor3D> actor;
     actor->SetInput(text.c_str());
@@ -28,7 +28,7 @@ vtkSmartPointer<vtkBillboardTextActor3D> DiagramLabelManager::createLabel(
 
     auto* prop = actor->GetTextProperty();
     prop->SetFontFamilyToArial();
-    prop->SetFontSize(12);
+    prop->SetFontSize(13);
     prop->BoldOn();
 
     // Texto branco sobre fundo escuro semi-transparente
@@ -37,7 +37,12 @@ vtkSmartPointer<vtkBillboardTextActor3D> DiagramLabelManager::createLabel(
     prop->SetBackgroundOpacity(0.82);
     prop->FrameOn();
     prop->SetFrameWidth(1);
-    prop->SetFrameColor(isMax ? 0.18 : 0.86, isMax ? 0.43 : 0.20, isMax ? 1.0 : 0.20);
+    const bool isMax = kind == 0;
+    if (kind == 2) {
+        prop->SetFrameColor(0.55, 0.60, 0.68);
+    } else {
+        prop->SetFrameColor(isMax ? 0.18 : 0.86, isMax ? 0.43 : 0.20, isMax ? 1.0 : 0.20);
+    }
 
     return vtkSmartPointer<vtkBillboardTextActor3D>(actor);
 }
@@ -65,7 +70,7 @@ void DiagramLabelManager::update(const ExtremaResult& extrema, const QString& un
     // Label MAX (azul-branco)
     for (const auto& pt : extrema.maxima) {
         const std::string text = "MAX: " + formatValue(pt.value);
-        auto label = createLabel(pt.worldPosition, text, true);
+        auto label = createLabel(pt.worldPosition, text, 0);
         addToRenderer(label);
         m_labels.push_back(label);
     }
@@ -73,7 +78,20 @@ void DiagramLabelManager::update(const ExtremaResult& extrema, const QString& un
     // Label MIN (vermelho-branco)
     for (const auto& pt : extrema.minima) {
         const std::string text = "MIN: " + formatValue(pt.value);
-        auto label = createLabel(pt.worldPosition, text, false);
+        auto label = createLabel(pt.worldPosition, text, 1);
+        addToRenderer(label);
+        m_labels.push_back(label);
+    }
+}
+
+void DiagramLabelManager::setLabels(const std::vector<Label> &labels)
+{
+    clearAll();
+    if (!m_renderer) {
+        return;
+    }
+    for (const auto &spec : labels) {
+        auto label = createLabel(spec.position, spec.text, spec.kind);
         addToRenderer(label);
         m_labels.push_back(label);
     }

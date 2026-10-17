@@ -65,6 +65,8 @@ private:
     QCheckBox *m_autoB2 {nullptr};
     QDoubleSpinBox *m_rs {nullptr};
     QCheckBox *m_singleStorey {nullptr};
+    QCheckBox *m_notional {nullptr};
+    QDoubleSpinBox *m_notionalFactor {nullptr};
     QCheckBox *m_groupByFamily {nullptr};
     QDoubleSpinBox *m_target {nullptr};
     QListWidget *m_combinations {nullptr};

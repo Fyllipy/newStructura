@@ -128,6 +128,9 @@ void MainWindow::setupPlacement()
     m_placement->onDisplacement = [this](Structura::UI::PlacementController::Mode mode,
                                          const Structura::UI::PlacementController::Vec3 &from,
                                          const Structura::UI::PlacementController::Vec3 &to) {
+        if (mode == Structura::UI::PlacementController::Mode::Measure) {
+            return applyMeasure(from, to);
+        }
         if (mode == Structura::UI::PlacementController::Mode::Mirror) {
             return applyMirror(from, to);
         }
@@ -140,7 +143,10 @@ void MainWindow::setupPlacement()
         return ok;
     };
 
-    m_placement->onSinglePoint = [this](Structura::UI::PlacementController::Mode, const Structura::UI::PlacementController::Vec3 &point) {
+    m_placement->onSinglePoint = [this](Structura::UI::PlacementController::Mode mode, const Structura::UI::PlacementController::Vec3 &point) {
+        if (mode == Structura::UI::PlacementController::Mode::Node) {
+            return applyInsertNode(point);
+        }
         return applyRotation(point);
     };
 
@@ -158,4 +164,5 @@ void MainWindow::setupPlacement()
 
     updateAxisLabels();
     setupViewOptions();
+    setupViewCube();
 }

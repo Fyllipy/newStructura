@@ -104,6 +104,21 @@ QuantityService::Summary QuantityService::compute(const QVector<Bar> &bars,
     return summary;
 }
 
+void QuantityService::addConnectionPart(Summary &summary, const QString &description, int quantity, double massEach, double weldLength)
+{
+    for (auto &row : summary.connections) {
+        if (row.description == description) {
+            row.quantity += quantity;
+            row.totalMass += quantity * massEach;
+            row.weldLength += weldLength * quantity;
+            summary.connectionMass += quantity * massEach;
+            return;
+        }
+    }
+    summary.connections.append({description, quantity, massEach, quantity * massEach, weldLength * quantity});
+    summary.connectionMass += quantity * massEach;
+}
+
 QString QuantityService::toCsv(const Summary &summary)
 {
     QString out = QStringLiteral("Perfil;Familia;Material;Qtd;Comprimento total (m);Massa linear (kg/m);Massa total (kg);Area de pintura (m2)\r\n");
@@ -114,6 +129,13 @@ QString QuantityService::toCsv(const Summary &summary)
                    .arg(num(r.totalLength, 2), num(r.massPerMeter, 2), num(r.totalMass, 1), num(r.paintArea, 1));
     }
     out += QStringLiteral("TOTAL;;;%1;%2;;%3;%4\r\n").arg(summary.barCount).arg(num(summary.totalLength, 2), num(summary.totalMass, 1), num(summary.totalPaintArea, 1));
+    if (!summary.connections.isEmpty()) {
+        out += QStringLiteral("\r\nLIGACOES;Descricao;;Qtd;Massa unitaria (kg);;Massa total (kg);Solda (mm)\r\n");
+        for (const auto &c : summary.connections) {
+            out += QStringLiteral("LIGACOES;%1;;%2;%3;;%4;%5\r\n").arg(c.description).arg(c.quantity).arg(num(c.massEach, 2), num(c.totalMass, 1), num(c.weldLength, 0));
+        }
+        out += QStringLiteral("LIGACOES TOTAL;;;;;;%1;\r\n").arg(num(summary.connectionMass, 1));
+    }
     return out;
 }
 

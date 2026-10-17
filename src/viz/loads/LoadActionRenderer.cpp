@@ -288,6 +288,8 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                     batches.addSegments(color, 2.0, pts, segments);
                     m_labels.positions.push_back(sub(tailEnd, mul(loadDirection, kLabelClearance)));
                     m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kN/m"));
+                    m_labels.colors.push_back(color);
+                    m_labels.weights.push_back(std::abs(value));
                     continue;
                 }
 
@@ -303,6 +305,8 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                                                       : mul(forceDirection, -valueSign);
                 m_labels.positions.push_back(add(mul(add(topStart, topEnd), 0.5), mul(outward, kLabelClearance)));
                 m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kN/m"));
+                m_labels.colors.push_back(color);
+                m_labels.weights.push_back(std::abs(value));
             }
         }
     }
@@ -326,6 +330,8 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                 batches.addSegments(nodeColor, 3.0, {lineStart, node.position, armA, armB}, {{0, 1}, {2, 1}, {3, 1}});
                 m_labels.positions.push_back(sub(lineStart, mul(direction, kLabelClearance)));
                 m_labels.texts.push_back(formatNumber(force) + QStringLiteral(" kN"));
+                m_labels.colors.push_back(nodeColor);
+                m_labels.weights.push_back(std::abs(force));
             }
         }
     }
@@ -355,6 +361,8 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                 }
                 m_labels.positions.push_back(add(centers[centers.size() / 2], mul(plane[1], kMomentRadius * 1.35)));
                 m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kNm/m"));
+                m_labels.colors.push_back(momentColor);
+                m_labels.weights.push_back(std::abs(value));
             }
         }
     }
@@ -372,6 +380,8 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                 addMomentSymbol(batches, nodeColor, node.position, plane[0], plane[1], plane[2], value, kMomentRadius);
                 m_labels.positions.push_back(add(node.position, mul(plane[1], kMomentRadius * 1.35)));
                 m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kNm"));
+                m_labels.colors.push_back(nodeColor);
+                m_labels.weights.push_back(std::abs(value));
             }
         }
     }

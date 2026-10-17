@@ -95,10 +95,49 @@ MainWindow::MainWindow(QWidget *parent)
     m_insertBarAction->setIcon(Structura::UI::svgIcon(QStringLiteral("bar-insert.svg"), QColor(QStringLiteral("#1e232b")), 64));
     connect(m_insertBarAction, &QAction::triggered, this, &MainWindow::onInsertBar);
 
+    m_insertNodeAction = new QAction(tr("Inserir\nnó"), this);
+    m_insertNodeAction->setIcon(Structura::UI::svgIcon(QStringLiteral("node-insert.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_insertNodeAction->setToolTip(tr("Insere um nó com snap ao longo das barras: ao colocar o nó sobre uma barra, ela é dividida nesse ponto"));
+    connect(m_insertNodeAction, &QAction::triggered, this, &MainWindow::onInsertNode);
+
+    m_measureAction = new QAction(tr("Medir"), this);
+    m_measureAction->setIcon(Structura::UI::svgIcon(QStringLiteral("measure.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_measureAction->setToolTip(tr("Mede a distância entre dois pontos (com snap em nós, centros e ao longo das barras): distância, deltas e inclinação"));
+    connect(m_measureAction, &QAction::triggered, this, &MainWindow::onMeasure);
+
+    m_splitBarsAction = new QAction(tr("Dividir\nbarras"), this);
+    m_splitBarsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("split-bar.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_splitBarsAction->setToolTip(tr("Divide as barras selecionadas em N partes iguais, a cada X metros ou em distâncias informadas"));
+    m_splitBarsAction->setEnabled(false);
+    connect(m_splitBarsAction, &QAction::triggered, this, &MainWindow::onSplitBars);
+
+    m_generateTrussAction = new QAction(tr("Gerar\ntreliça"), this);
+    m_generateTrussAction->setIcon(Structura::UI::svgIcon(QStringLiteral("truss.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_generateTrussAction->setToolTip(tr("Gera uma treliça plana (Pratt, Howe, Warren, Fink, K; banzos paralelos, duas águas, uma água, arco ou tesoura) a partir de um ponto inicial"));
+    connect(m_generateTrussAction, &QAction::triggered, this, &MainWindow::onGenerateTruss);
+
+    m_deleteElementsAction = new QAction(tr("Excluir\nelementos"), this);
+    m_deleteElementsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("trash.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_deleteElementsAction->setToolTip(tr("Exclui os nós e barras selecionados (Delete). Barras ligadas a um nó excluído também são removidas"));
+    m_deleteElementsAction->setShortcut(Qt::Key_Delete);
+    m_deleteElementsAction->setEnabled(false);
+    connect(m_deleteElementsAction, &QAction::triggered, this, &MainWindow::onDeleteSelected);
+
     m_openModelAction = new QAction(tr("Abrir .dat"), this);
     m_openModelAction->setIcon(QIcon(QStringLiteral(":/icons/open.png")));
     m_openModelAction->setShortcut(QKeySequence::Open);
     connect(m_openModelAction, &QAction::triggered, this, &MainWindow::onOpenModel);
+
+    m_newModelAction = new QAction(tr("Novo"), this);
+    m_newModelAction->setShortcut(QKeySequence::New);
+    connect(m_newModelAction, &QAction::triggered, this, &MainWindow::onNewModel);
+
+    m_saveAsModelAction = new QAction(tr("Salvar como…"), this);
+    m_saveAsModelAction->setShortcut(QKeySequence::SaveAs);
+    connect(m_saveAsModelAction, &QAction::triggered, this, &MainWindow::onSaveModelAs);
+
+    m_aboutAction = new QAction(tr("Sobre"), this);
+    connect(m_aboutAction, &QAction::triggered, this, &MainWindow::onAbout);
 
     m_saveModelAction = new QAction(tr("Salvar .dat"), this);
     m_saveModelAction->setIcon(QIcon(QStringLiteral(":/icons/save.png")));
@@ -156,6 +195,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_bucklingAction->setIcon(Structura::UI::svgIcon(QStringLiteral("buckling.svg"), QColor(QStringLiteral("#1e232b")), 64));
     m_bucklingAction->setToolTip(tr("Fatores críticos de carga e modos de flambagem elástica linear de uma combinação"));
     connect(m_bucklingAction, &QAction::triggered, this, &MainWindow::onBucklingAnalysis);
+    m_dynamicsAction = new QAction(tr("Dinamica"), this);
+    m_dynamicsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("dynamics.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_dynamicsAction->setToolTip(tr("Espectro de resposta (SRSS/CQC), vibração de pisos (NBR 8800, Anexo I) e resposta no tempo"));
+    connect(m_dynamicsAction, &QAction::triggered, this, &MainWindow::onDynamics);
     m_modalAction = new QAction(tr("Analise\nmodal"), this);
     m_modalAction->setIcon(Structura::UI::svgIcon(QStringLiteral("modal.svg"), QColor(QStringLiteral("#1e232b")), 64));
     m_modalAction->setToolTip(tr("Frequências naturais, períodos, participação de massa e formas modais"));
@@ -172,6 +215,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_exportDxfAction->setIcon(Structura::UI::svgIcon(QStringLiteral("dxf.svg"), QColor(QStringLiteral("#1e232b")), 64));
     m_exportDxfAction->setToolTip(tr("Exporta os eixos das barras em DXF (3D, planta ou elevações), uma camada por perfil"));
     connect(m_exportDxfAction, &QAction::triggered, this, &MainWindow::onExportDxf);
+    m_sheetsAction = new QAction(tr("Pranchas"), this);
+    m_sheetsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("sheets.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_sheetsAction->setToolTip(tr("Gera plantas, elevações com cotas, lista de barras e detalhes de ligações; exporta PDF e DXF"));
+    connect(m_sheetsAction, &QAction::triggered, this, &MainWindow::onGenerateDrawings);
 
     m_applyRestraintsAction = new QAction(tr("Restricoes\nnodais"), this);
     m_applyRestraintsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("restraint.svg"), QColor(QStringLiteral("#1e232b")), 64));
@@ -215,6 +262,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     addAction(m_openModelAction);
     addAction(m_saveModelAction);
+    addAction(m_saveAsModelAction);
+    addAction(m_deleteElementsAction);
+    addAction(m_newModelAction);
     addAction(m_runAnalysisAction);
 
     m_quickBar = createQuickAccessBar();
@@ -270,6 +320,7 @@ MainWindow::MainWindow(QWidget *parent)
                 updateLoadActionsEnabled();
                 updateEditActionsEnabled();
             });
+    setupSessionServices();
     connect(m_undoService->stack(), &QUndoStack::indexChanged, this, [this](int) {
         refreshPropertiesPanel();
         syncLoadVisuals();
@@ -436,7 +487,7 @@ QVector<PropertiesPanel::NodeEntry> MainWindow::buildNodeEntries(const QSet<QUui
 
 QVector<PropertiesPanel::BarEntry> MainWindow::buildBarEntries(const QSet<QUuid> &barIds) const
 {
-    return Structura::UI::PropertiesPanelEntryBuilder::buildBarEntries(m_sceneController,
+    auto entries = Structura::UI::PropertiesPanelEntryBuilder::buildBarEntries(m_sceneController,
                                                                         barIds,
                                                                         m_materials,
                                                                         m_sections,
@@ -444,6 +495,41 @@ QVector<PropertiesPanel::BarEntry> MainWindow::buildBarEntries(const QSet<QUuid>
                                                                         tr("Sem material"),
                                                                         tr("Sem secao"),
                                                                         m_extras.placements);
+    if (entries.size() == 1) {
+        auto &entry = entries.first();
+        const int id = entry.externalId;
+        auto fmt = [](double v) { return QString::number(v, 'g', 5); };
+        QStringList lines;
+        auto caseName = [this](const QString &name) { return name.isEmpty() ? Structura::App::ProjectData::defaultLoadCaseName() : name; };
+        for (const auto &c : m_extras.loadCases) {
+            if (c.selfWeight) {
+                lines << tr("<b>%1</b>: peso próprio").arg(c.name.toHtmlEscaped());
+            }
+        }
+        for (const auto &l : m_memberLoads) {
+            if (l.memberId == id) {
+                lines << tr("<b>%1</b>: q (%2) = [%3; %4; %5] kN/m").arg(caseName(l.loadCase).toHtmlEscaped(), l.system.isEmpty() ? tr("global") : l.system.toLower(), fmt(l.qx), fmt(l.qy), fmt(l.qz));
+            }
+        }
+        for (const auto &m : m_extras.memberMoments) {
+            if (m.memberId == id) {
+                lines << tr("<b>%1</b>: momento (%2) = [%3; %4; %5] kN·m/m").arg(caseName(m.loadCase).toHtmlEscaped(), m.system.isEmpty() ? tr("global") : m.system.toLower(), fmt(m.mx), fmt(m.my), fmt(m.mz));
+            }
+        }
+        for (const auto &p : m_extras.areaLoads) {
+            if (p.members.contains(id)) {
+                lines << tr("<b>%1</b>: %2 de %3 kN/m² (%4)").arg(caseName(p.loadCase).toHtmlEscaped(), p.kind == QLatin1String("WIND") ? tr("vento") : tr("carga de área"), fmt(p.pressure), p.description.toHtmlEscaped());
+            }
+        }
+        const bool anyNodal = false;
+        Q_UNUSED(anyNodal)
+        if (!lines.isEmpty()) {
+            entry.loadDetails = tr("<b>Carregamentos atuantes:</b><br>") + lines.join(QStringLiteral("<br>"));
+        } else {
+            entry.loadDetails = tr("<i>Nenhum carregamento aplicado diretamente nesta barra.</i>");
+        }
+    }
+    return entries;
 }
 
 void MainWindow::setHoverInsertPoint(const std::optional<QVector3D> &point)
@@ -504,7 +590,8 @@ void MainWindow::setCommand(Command command)
     const bool wasBarMode = (m_command == Command::InsertBarFirst || m_command == Command::InsertBarSecond);
     const bool willBeBarMode = (command == Command::InsertBarFirst || command == Command::InsertBarSecond);
     const bool willBeEditMode = (command == Command::CopyElements || command == Command::MoveElements
-                                 || command == Command::RotateElements || command == Command::MirrorElements);
+                                 || command == Command::RotateElements || command == Command::MirrorElements
+                                 || command == Command::InsertNode || command == Command::Measure);
 
     if (wasBarMode && !willBeBarMode) {
         m_sceneController->clearHighlightedNode();
@@ -512,6 +599,9 @@ void MainWindow::setCommand(Command command)
     }
 
     m_command = command;
+    if (m_measureCard && command != Command::Measure) {
+        m_measureCard->hide();
+    }
 
     if (m_placement) {
         if (willBeBarMode) {
@@ -524,6 +614,10 @@ void MainWindow::setCommand(Command command)
             m_placement->start(Structura::UI::PlacementController::Mode::Rotate);
         } else if (command == Command::MirrorElements) {
             m_placement->start(Structura::UI::PlacementController::Mode::Mirror);
+        } else if (command == Command::InsertNode) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Node);
+        } else if (command == Command::Measure) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Measure);
         } else {
             m_placement->stop();
         }

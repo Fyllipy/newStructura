@@ -10,6 +10,7 @@
 bool MainWindow::handleDefaultViewportLeave()
 {
     m_sceneController->clearHighlightedNode();
+    updateDiagramProbe(QPoint(-1000, -1000));
     return false;
 }
 

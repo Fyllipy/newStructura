@@ -1,3 +1,5 @@
+#include "ui/BusyProgress.h"
+#include "ui/ConnectionPreview.h"
 #include "ui/ProfileBrowser.h"
 #include "ui/ProfileEditorWidget.h"
 #include "ui/ProfileLibrary.h"
@@ -16,6 +18,8 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTest>
+#include <QThread>
+#include <QTimer>
 
 using namespace Structura::UI;
 using Category = ProfileLibrary::Category;
@@ -34,6 +38,59 @@ private:
     }
 
 private slots:
+    void connectionExamplesDrawSomethingForEveryType()
+    {
+        const QString dir = qEnvironmentVariable("STRUCTURA_PREVIEW_DIR");
+        for (int type = 0; type <= 5; ++type) {
+            const QPixmap pixmap = Structura::UI::ConnectionPreview::example(type, QSize(300, 200));
+            QVERIFY(!pixmap.isNull());
+            const QImage image = pixmap.toImage();
+            int different = 0;
+            for (int y = 0; y < image.height(); y += 4) {
+                for (int x = 0; x < image.width(); x += 4) {
+                    different += image.pixelColor(x, y) != image.pixelColor(0, 0) ? 1 : 0;
+                }
+            }
+            QVERIFY2(different > 40, qPrintable(QString::number(type)));
+            if (!dir.isEmpty()) {
+                pixmap.save(QStringLiteral("%1/conn%2.png").arg(dir).arg(type));
+            }
+        }
+    }
+
+    void busyRunsJobInBackgroundAndPropagates()
+    {
+        using Structura::UI::runBusy;
+        QWidget owner;
+        owner.show();
+        // valor devolvido e progresso informado
+        const int value = runBusy(&owner, QStringLiteral("Teste"), QStringLiteral("detalhe"), [](Structura::UI::BusyProgress &progress) {
+            progress.report(1, 2, QStringLiteral("metade"));
+            return 42;
+        });
+        QCOMPARE(value, 42);
+        QVERIFY(!Structura::UI::isBusy());
+        // tarefa longa: a janela aparece e a interface continua processando eventos
+        int ticks = 0;
+        QTimer timer;
+        QObject::connect(&timer, &QTimer::timeout, [&ticks]() { ++ticks; });
+        timer.start(10);
+        runBusy(&owner, QStringLiteral("Teste longo"), QString(), []() { QThread::msleep(500); });
+        QVERIFY(ticks > 5);
+        // excecoes voltam para a thread da interface
+        bool caught = false;
+        try {
+            runBusy(&owner, QStringLiteral("Falha"), QString(), []() -> int { throw std::runtime_error("erro de teste"); });
+        } catch (const std::runtime_error &error) {
+            caught = QString::fromUtf8(error.what()) == QLatin1String("erro de teste");
+        }
+        QVERIFY(caught);
+        QVERIFY(!Structura::UI::isBusy());
+        // chamada aninhada executa direto
+        const int nested = runBusy(&owner, QStringLiteral("Externo"), QString(), []() { return 1; });
+        QCOMPARE(nested, 1);
+    }
+
     void categoriesSeparateRolledAndColdFormed()
     {
         QCOMPARE(ProfileLibrary::categoryOf(QStringLiteral("W Laminado")), Category::Laminado);

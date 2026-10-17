@@ -21,7 +21,7 @@ namespace Structura::UI {
 class SnapMarkerWidget : public QWidget
 {
 public:
-    enum class Kind { Grid, Endpoint, Center };
+    enum class Kind { Grid, Endpoint, Center, OnBar };
 
     explicit SnapMarkerWidget(QWidget *parent);
 
@@ -79,7 +79,10 @@ public:
     void setGroup(const QString &kind,
                   const std::vector<std::array<double, 3>> &positions,
                   const QVector<QString> &labels,
-                  bool visible);
+                  bool visible,
+                  const std::vector<QColor> &colors = {},
+                  const std::vector<double> &weights = {},
+                  bool declutter = false);
     void setGroupVisible(const QString &kind, bool visible);
     void clearAll();
 
@@ -97,6 +100,9 @@ private:
         std::vector<QPointF> screen;
         std::vector<bool> onScreen;
         bool visible {true};
+        std::vector<QColor> colors;     ///< vazio = cor padrao
+        std::vector<double> weights;    ///< prioridade (maior primeiro) quando `declutter`
+        bool declutter {false};         ///< evita sobreposicao e repeticao de rotulos iguais proximos
     };
 
     QHash<QString, Group> m_groups;

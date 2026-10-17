@@ -22,8 +22,9 @@ struct VisualizationTheme {
     static constexpr double negColorB = 50.0  / 255.0;
 
     static constexpr double diagramOpacity  = 0.65; ///< Transparência do preenchimento
-    static constexpr double outlineWidth    = 2.0;  ///< Espessura do contorno em px
-    static constexpr double outlineOpacity  = 0.90; ///< Opacidade do contorno
+    static constexpr double outlineWidth    = 2.5;  ///< Espessura do contorno em px
+    static constexpr double outlineOpacity  = 0.95; ///< Opacidade do contorno
+    static constexpr double hatchOpacity    = 0.40; ///< Opacidade da hachura
 
     // ── Iluminação — visual técnico, sem brilho excessivo ─────────────────
     static constexpr double ambient  = 0.40;
@@ -31,8 +32,9 @@ struct VisualizationTheme {
     static constexpr double specular = 0.05;
 
     // ── Amostragem ─────────────────────────────────────────────────────────
-    static constexpr int    minSamples      = 80;   ///< Mínimo de amostras por elemento
-    static constexpr double samplesPerMeter = 10.0; ///< 1 amostra a cada 0.10 m
+    static constexpr int    minSamples      = 24;   ///< Mínimo de amostras por elemento
+    static constexpr int    maxSamples      = 120;  ///< Máximo de amostras por elemento
+    static constexpr double samplesPerMeter = 6.0;  ///< amostras por metro (esforços são polinômios de grau <= 2)
 
     // ── Torção ─────────────────────────────────────────────────────────────
     /// Ângulo máximo de torção da faixa helicoidal em graus.

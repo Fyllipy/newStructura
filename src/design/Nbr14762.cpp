@@ -630,16 +630,26 @@ struct DistortionalResult {
 DistortionalResult distortionalFactor(const DesignSection &s, const ThinWalled &tw, double E, bool bending, Axis axis, bool posCompressed)
 {
     DistortionalResult r;
-    if (tw.pathNodes.size() < 2) {
-        return r;
-    }
     FiniteStripModel m;
     m.E = E;
     m.nu = kNu;
-    m.nodes = tw.pathNodes;
-    for (std::size_t i = 0; i + 1 < m.nodes.size(); ++i) {
-        m.strips.push_back({static_cast<int>(i), static_cast<int>(i + 1)});
-        m.thickness.push_back(tw.t);
+    if (tw.closed && s.kind == SectionKind::RectTube) {
+        const double w = s.bf - tw.t, h = s.d - tw.t;
+        m.nodes = {{-w / 2.0, h / 2.0}, {w / 2.0, h / 2.0}, {w / 2.0, -h / 2.0}, {-w / 2.0, -h / 2.0}};
+        for (int i = 0; i < 4; ++i) {
+            m.strips.push_back({i, (i + 1) % 4});
+            m.thickness.push_back(tw.t);
+        }
+    } else {
+        if (tw.pathNodes.size() < 2) {
+            r.note = "secao sem linha media definida para a analise de faixas finitas.";
+            return r;
+        }
+        m.nodes = tw.pathNodes;
+        for (std::size_t i = 0; i + 1 < m.nodes.size(); ++i) {
+            m.strips.push_back({static_cast<int>(i), static_cast<int>(i + 1)});
+            m.thickness.push_back(tw.t);
+        }
     }
     const bool alongB = (axis == Axis::X);
     const double extPos = alongB ? s.g.bMax : s.g.aMax;
@@ -661,7 +671,8 @@ DistortionalResult distortionalFactor(const DesignSection &s, const ThinWalled &
     minLen = std::max(minLen, 0.2 * s.t * 5.0);
     const std::vector<FiniteStripMinimum> minima = finiteStripMinima(m, std::max(5.0, tw.t * 3.0), std::max(3000.0, 30.0 * maxDim), 70);
     if (minima.size() < 2) {
-        r.note = "A analise de estabilidade elastica nao apresentou minimo distorcional (modo local/global apenas).";
+        r.note = tw.closed ? "secao fechada: a curva de assinatura so tem o modo local (nao ha modo distorcional)."
+                          : "a curva de assinatura (analise de faixas finitas) so apresenta o modo local e o global: nao ha modo distorcional.";
         return r;
     }
     // segundo minimo: modo distorcional (comprimento de meia-onda maior que o do modo local)
@@ -744,6 +755,12 @@ double asymmetricCubic(double nex, double ney, double nez, double x0, double y0,
         (f(mid) < 0.0 ? lo : hi) = mid;
     }
     return 0.5 * (lo + hi);
+}
+
+bool isColdFormed(SectionKind kind)
+{
+    return kind == SectionKind::ColdChannel || kind == SectionKind::ColdLippedChannel || kind == SectionKind::ColdZ || kind == SectionKind::ColdAngle
+        || kind == SectionKind::ColdHat || kind == SectionKind::RectTube;
 }
 
 bool isMonoSymmetricX(const DesignSection &s) { return s.kind == SectionKind::ColdChannel || s.kind == SectionKind::ColdLippedChannel; }
@@ -891,7 +908,7 @@ CompressionData compression(const DesignSection &s, const SteelGrade &steel, con
     c.lines.push_back(fmt("Nc,Rd (flambagem global e local, 9.7.2) = chi Aef fy / %.2f = %s", o.gammaCompression, kn(ncRdGlobal).c_str()));
 
     // Flambagem distorcional (9.7.3)
-    if (o.checkDistortional && (s.kind == SectionKind::ColdLippedChannel || s.kind == SectionKind::ColdHat)) {
+    if (o.checkDistortional && isColdFormed(s.kind)) {
         bool dispensed = false;
         if (s.kind == SectionKind::ColdLippedChannel) {
             const double table = interpolateTable(kTable11, s.bf / s.d, s.d / s.t);
@@ -1042,9 +1059,9 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
     }
 
     // 9.8.2.3: flambagem distorcional
-    if (o.checkDistortional && (s.kind == SectionKind::ColdLippedChannel || s.kind == SectionKind::ColdHat) && major) {
+    if (o.checkDistortional && isColdFormed(s.kind)) {
         bool dispensed = false;
-        if (s.kind == SectionKind::ColdLippedChannel) {
+        if (s.kind == SectionKind::ColdLippedChannel && major) {
             const double table = interpolateTable(kTable14, s.bf / s.d, s.d / s.t);
             if (s.lip / s.d >= table) {
                 dispensed = true;
@@ -1054,7 +1071,7 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
         if (!dispensed) {
             const DistortionalResult dr = distortionalFactor(s, tw, E, true, axis, posCompressed);
             if (dr.available) {
-                const double w = posCompressed ? s.g.WxTop : s.g.WxBottom;
+                const double w = major ? (posCompressed ? s.g.WxTop : s.g.WxBottom) : (posCompressed ? s.g.WyRight : s.g.WyLeft);
                 const double mdist = dr.factor * w;
                 const double lambdaD = std::sqrt(w * fy / mdist);
                 const double chiD = chiDistortionalFlexure(lambdaD);

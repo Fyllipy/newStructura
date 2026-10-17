@@ -19,6 +19,7 @@
 #include <QMap>
 #include <vector>
 #include "app/SolverBridge.h"
+#include "viz/SceneController.h"
 #include "app/services/ReportService.h"
 #include "app/services/ModelCheckService.h"
 #include <optional>
@@ -40,7 +41,7 @@ class QTabWidget;
 class QToolButton;
 class QVTKOpenGLNativeWidget;
 class SceneController;
-namespace Structura::UI { class ProfileManagerDialog; class LoadsPanel; class DesignPanel; class GroupsPanel; }
+namespace Structura::UI { class ProfileManagerDialog; class LoadsPanel; class DesignPanel; class GroupsPanel; class ViewCubeWidget; }
 struct DesignRunData;
 class QDockWidget;
 class QCheckBox;
@@ -84,6 +85,7 @@ public:
 
     /// Abre um modelo .dat (usado tambem ao iniciar com um arquivo como argumento).
     bool openModelFile(const QString &filePath) { return loadFromDat(filePath); }
+    void offerRecovery();
 
 private slots:
     void onResetCamera();
@@ -96,11 +98,13 @@ private slots:
     void onBucklingAnalysis();
     void onModalAnalysis();
     void onCheckConnections();
+    void onOpenConnectionCalculator();
     void onShowQuantities();
     void rebuildResultViews();
     bool restoreStoredResults();
     void collectResultsForSave();
     void onExportDxf();
+    void onGenerateDrawings();
     void onApplyRestraints();
     void onCopyElements();
     void onMoveElements();
@@ -115,6 +119,36 @@ private slots:
     void onAssignProperties();
     void onOpenModel();
     void onSaveModel();
+    void onSaveModelAs();
+    void onDynamics();
+    void onCompositeFloor();
+    void onGenerateTruss();
+    bool newFromTemplateDialog();
+    void syncConnectionVisuals();
+    QString friendlySolverMessage(const QString &raw) const;
+    void reportActionableError(const QString &title, const QString &raw);
+    bool isModelDirty() const;
+    void markModified();
+    void updateWindowTitle();
+    quint64 quickFingerprint() const;
+    void markResultsCurrent();
+    void updateStaleIndicator();
+    void setupSessionServices();
+    bool maybeSave();
+    void removeRecoveryFiles();
+    void autosaveNow();
+    void updateDiagramProbe(const QPoint &widgetPos);
+    void scheduleDiagramProbe(const QPoint &widgetPos);
+    void updateDiagramInfo();
+    void updateModelHover(const QPoint &widgetPos);
+    void onDiagramLabelModeChanged(int index);
+    void onDiagramHatchToggled(bool on);
+    bool computeModal(const QString &source, int modes, Structura::App::SolverBridge::ModelData &model,
+                      Structura::App::SolverBridge::Result &result, bool *includeMaterialMass, QString *error);
+    void onDeleteSelected();
+    void onInsertNode();
+    void onNewModel();
+    void onAbout();
     void onRunStructuralAnalysis();
     bool executeAnalysis(QString *report = nullptr);
     void onDesignSettings();
@@ -124,6 +158,7 @@ private slots:
     void focusMember(int memberId);
     void showDesignResults(bool optimized);
     bool buildDesignRun(DesignRunData &run);
+    QString designCacheKey() const;
     QVector<QUuid> expandWithGroups(const QVector<QUuid> &ids) const;
     void onCreateGroup();
     void onToggleGroupsPanel();
@@ -208,7 +243,9 @@ private:
         CopyElements,
         MoveElements,
         RotateElements,
-        MirrorElements
+        MirrorElements,
+        InsertNode,
+        Measure
     };
 
     void createRibbon();
@@ -216,6 +253,8 @@ private:
     QToolButton *createToolButton(QAction *action);
     bool eventFilter(QObject *obj, QEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
     bool handleWindowDragEvent(QEvent *event);
     bool handleViewportCommandEvent(QEvent *event);
     bool handleDefaultViewportEvent(QEvent *event);
@@ -254,6 +293,8 @@ private:
     void setupPlacement();
     void setupViewOptions();
     void applyViewOption(const QString &key, bool on);
+    bool diagramsShowing() const;
+    void applyLoadVisibility();
     void applyViewOptionsFromExtras();
     void storeViewOptionsInExtras();
     void refreshElementLabels();
@@ -265,6 +306,22 @@ private:
     bool applyDisplacement(bool copy, const std::array<double, 3> &from, const std::array<double, 3> &to);
     bool applyTransform(bool copy, const std::function<std::array<double, 3>(const std::array<double, 3> &)> &map);
     bool applyRotation(const std::array<double, 3> &pivot);
+    bool applyInsertNode(const std::array<double, 3> &point);
+    void onSplitBars();
+    void onCompareResults();
+    void setupViewCube();
+    void positionViewCube();
+    void saveCurrentView();
+    void applySavedView(int index);
+    void deleteSavedView(int index);
+    void onMeasure();
+    bool applyMeasure(const std::array<double, 3> &from, const std::array<double, 3> &to);
+    struct SplitPlan {
+        std::size_t barIndex {0};
+        std::vector<std::pair<double, QUuid>> cuts;   ///< (fracao do comprimento, no)
+    };
+    void splitCore(SceneController::GeometrySnapshot &after, ModelState &state, const std::vector<SplitPlan> &plan);
+    void applyTopology(const SceneController::GeometrySnapshot &geometry, const ModelState &state);
     bool applyMirror(const std::array<double, 3> &a, const std::array<double, 3> &b);
     void showResultView(int index);
     QStringList loadCaseNames() const;
@@ -329,19 +386,33 @@ private:
     QAction *m_loadCasesAction {nullptr};
     QAction *m_genCombinationsAction {nullptr};
     QAction *m_bucklingAction {nullptr};
+    QAction *m_dynamicsAction {nullptr};
     QAction *m_modalAction {nullptr};
     QAction *m_connectionsAction {nullptr};
+    QAction *m_compositeAction {nullptr};
     QAction *m_quantitiesAction {nullptr};
     QAction *m_exportDxfAction {nullptr};
+    QAction *m_sheetsAction {nullptr};
     QAction *m_applyRestraintsAction;
     QAction *m_resetCameraAction;
     QAction *m_zoomExtentsAction;
     QAction *m_insertBarAction;
+    QAction *m_insertNodeAction {nullptr};
+    QAction *m_splitBarsAction {nullptr};
+    QAction *m_generateTrussAction {nullptr};
+    QAction *m_compareAction {nullptr};
+    QAction *m_measureAction {nullptr};
+    class QLabel *m_measureCard {nullptr};
+    Structura::UI::ViewCubeWidget *m_viewCube {nullptr};
+    QAction *m_deleteElementsAction {nullptr};
     QAction *m_createMaterialAction;
     QAction *m_createSectionAction;
     QAction *m_assignPropertiesAction;
     QAction *m_openModelAction;
     QAction *m_saveModelAction;
+    QAction *m_saveAsModelAction;
+    QAction *m_newModelAction;
+    QAction *m_aboutAction;
     QAction *m_runAnalysisAction;
     QAction *m_undoAction;
     QAction *m_redoAction;
@@ -416,7 +487,7 @@ private:
         QPoint rightPos;
         Qt::KeyboardModifiers mods;
     } m_press;
-    class QRubberBand *m_rubberBand {nullptr};
+    QWidget *m_rubberBand {nullptr};   ///< retangulo de selecao (janela azul / cruzamento verde tracejado)
     class QFrame *m_legend {nullptr};
     QSet<QUuid> m_hiddenNodes;
     QSet<QUuid> m_hiddenBars;
@@ -446,10 +517,17 @@ private:
     QString datDialogInitialDirectory() const;
     void showDatStatusMessage(const QString &prefix, const QString &filePath);
     bool loadFromDat(const QString &filePath);
-    bool saveToDat(const QString &filePath);
+    bool saveToDat(const QString &filePath, bool remember = true);
     void resetModel();
 
     QString m_lastDatDirectory;
+    bool m_extraDirty {false};              ///< alteracoes fora da pilha de desfazer (carimbo, vistas...)
+    std::shared_ptr<DesignRunData> m_designCache;   ///< esforcos de projeto da ultima analise (reutilizados)
+    QString m_designCacheKey;
+    quint64 m_resultsFingerprint {0};       ///< modelo no momento da ultima analise
+    class QLabel *m_staleLabel {nullptr};
+    class QTimer *m_autosaveTimer {nullptr};
+    QString m_currentFilePath;   ///< .dat aberto/salvo (vazio = modelo ainda sem arquivo)
     bool m_draggingWindow { false };
     QPoint m_dragOffset;
     std::optional<QVector3D> m_hoverInsertPoint;
@@ -465,5 +543,14 @@ private:
     // Controles da footer bar
     QComboBox *m_diagramCombo{nullptr};       ///< N / Vy / Vz / Mt / My / Mz
     QSlider   *m_diagramScaleSlider{nullptr}; ///< 1..100 → 0.1..5.0
+    QComboBox *m_diagramLabelCombo{nullptr};
+    class QTimer *m_diagramScaleTimer{nullptr};
+    class QTimer *m_probeTimer{nullptr};
+    QPoint m_probePos;
+    double m_pendingDiagramScale{1.0};
+    class QCheckBox *m_diagramHatchCheck{nullptr};
+    class QLabel *m_probeCard{nullptr};
+    class QLabel *m_probeDot{nullptr};
+    class QLabel *m_diagramInfo{nullptr};
     QComboBox *m_scaleModeCombo{nullptr};     ///< Global / Caso Atual / Selecionados
 };

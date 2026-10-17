@@ -2,8 +2,16 @@
 
 #include "app/ISceneModelGateway.h"
 #include "app/SolverBridge.h"
+#include "app/services/SheetBuilder.h"
+#include "drawing/HiddenLine.h"
+#include "drawing/SheetPainter.h"
+#include "viz/structure/SectionShapes.h"
+
+#include "app/services/ConnectionService.h"
 #include "app/services/ResultsPersistence.h"
 #include "app/services/ModalService.h"
+#include "app/services/DynamicsService.h"
+#include "app/services/NotionalLoadService.h"
 #include "app/services/DxfExporter.h"
 #include "app/services/QuantityService.h"
 #include "app/services/BucklingService.h"
@@ -821,6 +829,112 @@ private slots:
         QVERIFY(dxf.endsWith(QStringLiteral("EOF\r\n")));
         QVERIFY(dxf.contains(QStringLiteral("11\r\n3.000000")) && dxf.contains(QStringLiteral("21\r\n4.000000")));   // x, z projetados
     }
+    void dynamicsMatchesSingleDofReference()
+    {
+        using Structura::App::Services::DynamicsService;
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+        }
+        // balanco horizontal com massa de 100 kN no extremo: k = 3EI/L3, m = P/g
+        const double E = 2.0e8, I = 1.0e-4, A = 0.01, L = 4.0, P = 100.0;
+        SolverBridge::ModelData model;
+        model.materials.push_back({1, E, 8.0e7});
+        model.sections.push_back({1, A, I, I, 1e-5});
+        const int segments = 8;
+        for (int i = 0; i <= segments; ++i) {
+            SolverBridge::NodeData node;
+            node.id = i + 1;
+            node.x = L * i / segments;
+            if (i == 0) {
+                node.restraints = {{1, 1, 1, 1, 1, 1}};
+            }
+            model.nodes.push_back(node);
+        }
+        for (int i = 0; i < segments; ++i) {
+            model.members.push_back(SolverBridge::MemberData {i + 1, i + 1, i + 2, 1, 1});
+        }
+        SolverBridge::NodalLoadData weight;
+        weight.nodeId = segments + 1;
+        weight.values = {{0.0, 0.0, -P, 0.0, 0.0, 0.0}};
+        model.nodalLoads.push_back(weight);
+        const double k = 3.0 * E * I / (L * L * L);
+        const double m = P / 9.80665;
+        const double omega = std::sqrt(k / m);
+        try {
+            const auto modal = Structura::App::Services::ModalService::run(model, 3, false);
+            DynamicsService::Basis basis;
+            basis.model = &model;
+            basis.modal = &modal;
+            basis.mass = DynamicsService::nodalMasses(model, false);
+            QVERIFY(std::abs(modal.modalOmega[0] - omega) / omega < 0.03);
+            // espectro plano de 0,5 g: cortante basal = massa efetiva x Sa (~ m x 0,5 g)
+            DynamicsService::SpectrumOptions options;
+            options.spectrum.points = {{0.0, 0.5}, {10.0, 0.5}};
+            options.directions = {{false, false, true}};
+            const auto spectrum = DynamicsService::responseSpectrum(basis, options);
+            QVERIFY2(spectrum.warning.isEmpty() || spectrum.baseShear[2] > 0.0, qPrintable(spectrum.warning));
+            QVERIFY(std::abs(spectrum.baseShear[2] - 0.5 * P) / (0.5 * P) < 0.03);
+            QVERIFY(std::abs(spectrum.reactions[0][2] - 0.5 * P) / (0.5 * P) < 0.04);
+            QVERIFY(!spectrum.members.empty());
+            // piso: frequencia e massa modal do modo vertical
+            DynamicsService::FloorInput floor;
+            floor.mode = DynamicsService::firstVerticalMode(basis);
+            const auto vib = DynamicsService::floorVibration(basis, floor);
+            QVERIFY(vib.ok);
+            QVERIFY(std::abs(vib.frequency - omega / (2.0 * 3.14159265358979)) / vib.frequency < 0.03);
+            QVERIFY(std::abs(vib.modalMass - m * 1000.0) / (m * 1000.0) < 0.03);
+            QCOMPARE(vib.controlNode, segments + 1);
+            QVERIFY(vib.peak > 0.0 && vib.limitPeak > 0.0);
+            // harmonica na ressonancia: amplitude estacionaria F / (2 zeta k)
+            DynamicsService::TimeInput time;
+            time.amplitude = 1.0;
+            time.frequency = modal.modalOmega[0] / (2.0 * 3.14159265358979);
+            time.duration = 30.0;
+            time.damping = 0.05;
+            time.loadNode = segments + 1;
+            time.responseNode = segments + 1;
+            time.modeCount = 3;
+            const auto history = DynamicsService::timeHistory(basis, time);
+            QVERIFY(history.ok);
+            const double expected = 1.0 / (2.0 * 0.05 * k);
+            QVERIFY(std::abs(history.peakDisplacement - expected) / expected < 0.06);
+            QVERIFY(std::abs(history.staticDisplacement - 1.0 / k) / (1.0 / k) < 0.04);
+        } catch (const std::exception &e) {
+            QFAIL(e.what());
+        }
+    }
+
+    void notionalLoadsAreProportionalToGravityAndExpandCombinations()
+    {
+        using Structura::App::Services::NotionalLoadService;
+        SolverBridge::ModelData model;
+        model.nodes.push_back({1, 0, 0, 0});
+        model.nodes.push_back({2, 0, 0, 3});
+        SolverBridge::NodalLoadData gravity;
+        gravity.nodeId = 2;
+        gravity.values = {{5.0, 0.0, -200.0, 0.0, 0.0, 0.0}};
+        model.nodalLoads.push_back(gravity);
+        const auto x = NotionalLoadService::notionalModel(model, 0, 0.003);
+        QCOMPARE(static_cast<int>(x.nodalLoads.size()), 1);
+        QVERIFY(std::abs(x.nodalLoads[0].values[0] - 0.6) < 1e-9);   // 0,3 % de 200 kN
+        QCOMPARE(x.nodalLoads[0].values[1], 0.0);
+        QCOMPARE(x.nodalLoads[0].values[2], 0.0);
+        const auto y = NotionalLoadService::notionalModel(model, 1, 0.003);
+        QVERIFY(std::abs(y.nodalLoads[0].values[1] - 0.6) < 1e-9);
+        QVector<ProjectData::LoadCombination> combos;
+        combos.append({QStringLiteral("ELU1"), {{QStringLiteral("PP"), 1.25}, {QStringLiteral("SC"), 1.5}}});
+        combos.append({QStringLiteral("ELS1"), {{QStringLiteral("PP"), 1.0}}});
+        const auto all = NotionalLoadService::withVariants(combos);
+        QCOMPARE(all.size(), 2 + 4);   // so a combinacao ultima ganha variantes
+        QCOMPARE(all[2].name, QStringLiteral("ELU1 +NX"));
+        QCOMPARE(all[3].name, QStringLiteral("ELU1 -NX"));
+        QCOMPARE(all[2].factors.size(), 4);
+        QCOMPARE(all[2].factors[2].first, NotionalLoadService::key(0, QStringLiteral("PP")));
+        QVERIFY(std::abs(all[3].factors[2].second + 1.25) < 1e-12);
+        QVERIFY(NotionalLoadService::isNotionalKey(all[2].factors[3].first));
+    }
+
     void modalMatchesCantileverFrequency()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
@@ -959,6 +1073,626 @@ private slots:
         const QString fp1 = Structura::App::Services::ResultsPersistence::fingerprint({&model}, false, 0.8);
         model.nodes.front().x = 1.0;
         QVERIFY(fp1 != Structura::App::Services::ResultsPersistence::fingerprint({&model}, false, 0.8));
+    }
+    void nodeConnectionsEvaluateAndPersist()
+    {
+        using Structura::App::Services::ConnectionService;
+        ConnectionService::BeamInfo beam;
+        beam.name = QStringLiteral("W 310 x 32.7");
+        beam.depth = 313;
+        beam.tw = 6.6;
+        auto connection = ConnectionService::makeDefault(ProjectData::NodeConnection::kShearTab, beam, 250.0, 400.0);
+        connection.id = 1;
+        connection.nodeId = 7;
+        connection.memberId = 12;
+        connection.atEnd = true;
+        ConnectionService::Forces forces;
+        forces.shear = 80000.0;
+        forces.axial = 10000.0;
+        QVERIFY(ConnectionService::propose(connection, forces));
+        const auto evaluation = ConnectionService::evaluate(connection, forces);
+        QVERIFY(evaluation.maxRatio <= 1.0 + 1e-9);
+        QVERIFY(!evaluation.parts.empty());
+        QVERIFY(!evaluation.governing.isEmpty());
+        QVERIFY(!ConnectionService::describe(connection).isEmpty());
+        // mais esforco -> mais razao com a mesma geometria
+        forces.shear = 400000.0;
+        QVERIFY(ConnectionService::evaluate(connection, forces).maxRatio > evaluation.maxRatio);
+        connection.eta = evaluation.maxRatio;
+        connection.verified = true;
+        connection.governing = evaluation.governing;
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString first = dir.filePath(QStringLiteral("c1.dat"));
+        QFile file(first);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        file.write(kSample);
+        file.close();
+        DatModelIoService service;
+        MemoryGateway gateway;
+        Loaded loaded;
+        QVERIFY(load(service, gateway, first, loaded));
+        loaded.extras.connections.append(connection);
+        auto angle = ConnectionService::makeDefault(ProjectData::NodeConnection::kDoubleAngle, beam, 250.0, 400.0);
+        angle.id = 2;
+        angle.nodeId = 8;
+        angle.memberId = 13;
+        loaded.extras.connections.append(angle);
+        const QString second = dir.filePath(QStringLiteral("c2.dat"));
+        QString error;
+        QVERIFY(service.save(second, &gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, &error));
+        MemoryGateway gateway2;
+        Loaded again;
+        QVERIFY(load(service, gateway2, second, again));
+        QCOMPARE(again.extras.connections.size(), 2);
+        const auto &c = again.extras.connections.first();
+        QCOMPARE(c.nodeId, 7);
+        QCOMPARE(c.memberId, 12);
+        QVERIFY(c.atEnd);
+        QCOMPARE(c.type, ProjectData::NodeConnection::kShearTab);
+        QCOMPARE(c.grade, connection.grade);
+        QVERIFY(c.verified);
+        QVERIFY(std::abs(c.eta - connection.eta) < 1e-6);
+        QCOMPARE(c.governing, connection.governing);
+        QCOMPARE(c.values.value(QStringLiteral("plateT")), connection.values.value(QStringLiteral("plateT")));
+        QCOMPARE(again.extras.connections.at(1).type, ProjectData::NodeConnection::kDoubleAngle);
+    }
+    void newConnectionTypesEvaluateProposeAndPersist()
+    {
+        using Structura::App::Services::ConnectionService;
+        using NC = ProjectData::NodeConnection;
+        ConnectionService::BeamInfo member;
+        member.name = QStringLiteral("W 310 x 32.7");
+        member.family = QStringLiteral("W Laminado");
+        member.depth = 313;
+        member.bf = 102;
+        member.tw = 6.6;
+        member.tf = 10.8;
+        member.area = 4190;
+        member.fy = 345;
+        member.fu = 450;
+        QVector<NC> list;
+        // chapa de no
+        {
+            ConnectionService::BeamInfo diagonal = member;
+            diagonal.family = QStringLiteral("L Laminado");
+            diagonal.geometry = {{"b", 64.0}, {"t", 6.35}};
+            diagonal.area = 770;
+            auto c = ConnectionService::makeDefault(NC::kGusset, diagonal, 250.0, 400.0);
+            QCOMPARE(static_cast<int>(c.values.value(QStringLiteral("bars"))), 2);
+            QVERIFY(std::abs(c.values.value(QStringLiteral("ec")) - 18.34) < 0.05);
+            ConnectionService::Forces f;
+            f.tension = 150000.0;
+            f.compression = 100000.0;
+            QVERIFY(ConnectionService::propose(c, f));
+            const auto e = ConnectionService::evaluate(c, f);
+            QVERIFY(e.maxRatio <= 1.0 + 1e-9);
+            QVERIFY(!e.parts.empty());
+            c.id = 1;
+            list.append(c);
+        }
+        // emenda: a combinacao mais desfavoravel governa
+        {
+            auto c = ConnectionService::makeDefault(NC::kSplice, member, 250.0, 400.0);
+            ConnectionService::Forces f;
+            ConnectionService::ForceCase light, heavy;
+            light.name = QStringLiteral("ELU1");
+            light.moment = 10.0e6;
+            light.shear = 20000.0;
+            heavy.name = QStringLiteral("ELU2");
+            heavy.moment = 45.0e6;
+            heavy.shear = 60000.0;
+            f.cases = {light, heavy};
+            QVERIFY(ConnectionService::propose(c, f));
+            const auto e = ConnectionService::evaluate(c, f);
+            QVERIFY(e.maxRatio <= 1.0 + 1e-9);
+            ConnectionService::Forces onlyLight, onlyHeavy;
+            onlyLight.cases = {light};
+            onlyHeavy.cases = {heavy};
+            QVERIFY(std::abs(e.maxRatio - std::max(ConnectionService::evaluate(c, onlyLight).maxRatio, ConnectionService::evaluate(c, onlyHeavy).maxRatio)) < 1e-12);
+            QVERIFY(ConnectionService::evaluate(c, onlyHeavy).maxRatio >= ConnectionService::evaluate(c, onlyLight).maxRatio);
+            QVERIFY(!e.governingCase.isEmpty());
+            c.id = 2;
+            list.append(c);
+        }
+        // base de pilar
+        {
+            auto c = ConnectionService::makeDefault(NC::kBasePlate, member, 250.0, 400.0);
+            ConnectionService::Forces f;
+            ConnectionService::ForceCase combo;
+            combo.name = QStringLiteral("ELU1");
+            combo.axial = -250000.0;
+            combo.moment = 20.0e6;
+            combo.shear = 25000.0;
+            f.cases = {combo};
+            QVERIFY(ConnectionService::propose(c, f));
+            QVERIFY(ConnectionService::evaluate(c, f).maxRatio <= 1.0 + 1e-9);
+            c.id = 3;
+            list.append(c);
+        }
+        // ligacao tubular: sem proposta automatica; razao cresce com a forca
+        {
+            ConnectionService::BeamInfo chord = member;
+            chord.geometry = {{"D", 168.3}, {"t", 6.0}};
+            QVector<ConnectionService::BraceInfo> braces(2);
+            braces[0].d = 88.9; braces[0].t = 4.0; braces[0].angleDeg = 45.0; braces[0].fy = 345.0;
+            braces[1].d = 88.9; braces[1].t = 4.0; braces[1].angleDeg = 45.0; braces[1].fy = 345.0;
+            auto c = ConnectionService::makeTubular(chord, braces);
+            QCOMPARE(c.type, static_cast<int>(NC::kTubular));
+            QVERIFY(!ConnectionService::hasProposal(NC::kTubular));
+            ConnectionService::Forces f;
+            ConnectionService::ForceCase combo;
+            combo.name = QStringLiteral("ELU1");
+            combo.axial = -100000.0;
+            combo.braceAxial = {80000.0, 80000.0};
+            f.cases = {combo};
+            const auto e1 = ConnectionService::evaluate(c, f);
+            f.cases[0].braceAxial = {160000.0, 160000.0};
+            QVERIFY(ConnectionService::evaluate(c, f).maxRatio > e1.maxRatio);
+            c.id = 4;
+            list.append(c);
+        }
+        // persistencia dos novos tipos
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString first = dir.filePath(QStringLiteral("n1.dat"));
+        QFile file(first);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        file.write(kSample);
+        file.close();
+        DatModelIoService service;
+        MemoryGateway gateway;
+        Loaded loaded;
+        QVERIFY(load(service, gateway, first, loaded));
+        for (auto &c : list) {
+            c.nodeId = 1;
+            c.memberId = c.id;
+            loaded.extras.connections.append(c);
+        }
+        const QString second = dir.filePath(QStringLiteral("n2.dat"));
+        QString error;
+        QVERIFY(service.save(second, &gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, &error));
+        MemoryGateway gateway2;
+        Loaded again;
+        QVERIFY(load(service, gateway2, second, again));
+        QCOMPARE(again.extras.connections.size(), 4);
+        for (int i = 0; i < 4; ++i) {
+            QCOMPARE(again.extras.connections.at(i).type, list.at(i).type);
+            QCOMPARE(again.extras.connections.at(i).values.size(), list.at(i).values.size());
+        }
+        QCOMPARE(again.extras.connections.at(3).values.value(QStringLiteral("kindT")), list.at(3).values.value(QStringLiteral("kindT")));
+    }
+    void sheetLayoutsPersistAndManualPlacementApplies()
+    {
+        using NC = ProjectData::SheetLayoutDef;
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString first = dir.filePath(QStringLiteral("s1.dat"));
+        QFile file(first);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        file.write(kSample);
+        file.close();
+        DatModelIoService service;
+        MemoryGateway gateway;
+        Loaded loaded;
+        QVERIFY(load(service, gateway, first, loaded));
+        NC layout;
+        layout.name = QStringLiteral("Planta e elevação / A");
+        layout.views.append({QStringLiteral("plan-proj"), 100.0, false, 0.0, 0.0, 0.5, 0.5});
+        layout.views.append({QStringLiteral("elev-xz-0"), 50.0, true, 0.1, 0.55, 0.6, 0.4});
+        loaded.extras.sheetLayouts.append(layout);
+        const QString second = dir.filePath(QStringLiteral("s2.dat"));
+        QString error;
+        QVERIFY(service.save(second, &gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, &error));
+        MemoryGateway gateway2;
+        Loaded again;
+        QVERIFY(load(service, gateway2, second, again));
+        QCOMPARE(again.extras.sheetLayouts.size(), 1);
+        const auto &back = again.extras.sheetLayouts.first();
+        QCOMPARE(back.name, layout.name);
+        QCOMPARE(back.views.size(), 2);
+        QCOMPARE(back.views.at(1).viewId, QStringLiteral("elev-xz-0"));
+        QVERIFY(back.views.at(1).manual && !back.views.at(0).manual);
+        QCOMPARE(back.views.at(1).scale, 50.0);
+        QVERIFY(std::abs(back.views.at(1).y - 0.55) < 1e-6 && std::abs(back.views.at(1).w - 0.6) < 1e-6);
+    }
+
+    void sheetsBuildMarksListAndExports()
+    {
+        using Structura::App::Services::SheetBuilder;
+        SheetBuilder::Input in;
+        // portico plano no plano y = 0: dois pilares e uma viga; mais um segundo portico em y = 6
+        for (int f = 0; f < 2; ++f) {
+            const double y = 6.0 * f;
+            in.nodes.append({f * 10 + 1, 0, y, 0});
+            in.nodes.append({f * 10 + 2, 0, y, 4});
+            in.nodes.append({f * 10 + 3, 8, y, 4});
+            in.nodes.append({f * 10 + 4, 8, y, 0});
+        }
+        auto bar = [&](int id, int a, int b, const char *section, int type = 0) {
+            SheetBuilder::Bar x;
+            x.id = id;
+            x.nodeI = a;
+            x.nodeJ = b;
+            x.section = QString::fromLatin1(section);
+            x.memberType = type;
+            x.massPerMeter = 40.0;
+            x.widthMm = 150.0;
+            x.depthMm = 300.0;
+            x.flangeMm = 10.0;
+            x.webMm = 6.0;
+            x.iShape = true;
+            return x;
+        };
+        for (int f = 0; f < 2; ++f) {
+            in.bars.append(bar(f * 10 + 1, f * 10 + 1, f * 10 + 2, "W 310 x 38.7"));
+            in.bars.append(bar(f * 10 + 2, f * 10 + 2, f * 10 + 3, "W 360 x 44.6"));
+            in.bars.append(bar(f * 10 + 3, f * 10 + 3, f * 10 + 4, "W 310 x 38.7"));
+        }
+        in.bars.append(bar(31, 2, 12, "W 250 x 25.3"));   // viga em Y
+        in.bars.append(bar(32, 2, 4, "L 76 x 7.3", 2));    // tirante diagonal (no plano y = 0)
+        in.info.project = QStringLiteral("Teste");
+        const auto marks = SheetBuilder::assignMarks(in);
+        QCOMPARE(marks.value(1), QStringLiteral("P1"));
+        QCOMPARE(marks.value(1), marks.value(3));      // mesmo perfil e comprimento
+        QCOMPARE(marks.value(1), marks.value(11));
+        QVERIFY(marks.value(2).startsWith(QLatin1Char('V')));
+        QCOMPARE(marks.value(2), marks.value(12));
+        QVERIFY(marks.value(32).startsWith(QLatin1Char('T')));
+        QVector<SheetBuilder::MarkRow> rows;
+        SheetBuilder::assignMarks(in, &rows);
+        int pillars = 0;
+        for (const auto &r : rows) {
+            if (r.mark == QLatin1String("P1")) {
+                pillars = r.count;
+            }
+        }
+        QCOMPARE(pillars, 4);
+
+        const auto views = SheetBuilder::availableViews(in);
+        bool plan = false, elev = false, list = false;
+        for (const auto &v : views) {
+            plan = plan || v.kind == SheetBuilder::ViewKind::PlanProjection;
+            elev = elev || v.kind == SheetBuilder::ViewKind::ElevationXZ;
+            list = list || v.kind == SheetBuilder::ViewKind::BarList;
+        }
+        QVERIFY(plan && elev && list);
+        SheetBuilder::Options options;
+        options.views = QSet<QString>();   // padrao
+        const auto sheets = SheetBuilder::build(in, options);
+        QVERIFY(sheets.size() >= 3);
+        bool sawFolha = false, sawMark = false, sawDim = false;
+        for (const auto &sheet : sheets) {
+            QCOMPARE(sheet.width, 420.0);
+            for (const auto &entity : sheet.entities) {
+                if (const auto *t = std::get_if<Structura::Drawing::Text>(&entity)) {
+                    sawFolha = sawFolha || t->text.find(" / " + std::to_string(sheets.size())) != std::string::npos;
+                    sawMark = sawMark || t->text.rfind("P1", 0) == 0;
+                    sawDim = sawDim || t->text == "8000";
+                }
+            }
+        }
+        QVERIFY(sawFolha);
+        QVERIFY(sawMark);
+        QVERIFY(sawDim);   // cota entre os pilares (8 m)
+        // cota entre faces: 8000 - 2 x 75 (mesa de 150 mm dos pilares, ao longo de X)
+        bool sawFace = false, sawFaceLayer = false;
+        for (const auto &sheet : sheets) {
+            for (std::size_t i = 0; i < sheet.layers.size(); ++i) {
+                sawFaceLayer = sawFaceLayer || sheet.layers[i].name == "COTAS_FACES";
+            }
+            for (const auto &entity : sheet.entities) {
+                if (const auto *t = std::get_if<Structura::Drawing::Text>(&entity)) {
+                    sawFace = sawFace || t->text == "7850";
+                }
+            }
+        }
+        QVERIFY(sawFace && sawFaceLayer);
+        // folha composta: duas vistas, cada uma com a sua escala
+        {
+            QString planId, elevId;
+            for (const auto &v : views) {
+                if (v.kind == SheetBuilder::ViewKind::PlanProjection && planId.isEmpty()) {
+                    planId = v.id;
+                }
+                if (v.kind == SheetBuilder::ViewKind::ElevationXZ && elevId.isEmpty()) {
+                    elevId = v.id;
+                }
+            }
+            SheetBuilder::Options composed;
+            composed.views.insert(QStringLiteral("__none__"));
+            SheetBuilder::SheetLayout layout;
+            layout.name = QStringLiteral("Composta");
+            layout.views.append({planId, 100.0});
+            layout.views.append({elevId, 50.0});
+            composed.customSheets.append(layout);
+            const auto one = SheetBuilder::build(in, composed);
+            QCOMPARE(static_cast<int>(one.size()), 1);
+            QCOMPARE(one.front().name, std::string("Composta"));
+            bool s100 = false, s50 = false, indicated = false;
+            for (const auto &entity : one.front().entities) {
+                if (const auto *t = std::get_if<Structura::Drawing::Text>(&entity)) {
+                    s100 = s100 || t->text == "ESC. 1:100";
+                    s50 = s50 || t->text == "ESC. 1:50";
+                    indicated = indicated || t->text == "INDICADA";
+                }
+            }
+            QVERIFY(s100 && s50 && indicated);
+        }
+        // modo "linha de eixo": nenhuma cota entre faces desenhada como contorno; contorno gera polilinhas fechadas de barras
+        SheetBuilder::Options outlineOff;
+        outlineOff.profiles = SheetBuilder::ProfileDetail::Axis;
+        outlineOff.faceDimensions = false;
+        const auto axisSheets = SheetBuilder::build(in, outlineOff);
+        auto closedPolylines = [](const std::vector<Structura::Drawing::Sheet> &list) {
+            int n = 0;
+            for (const auto &sheet : list) {
+                for (const auto &entity : sheet.entities) {
+                    if (const auto *p = std::get_if<Structura::Drawing::Polyline>(&entity)) {
+                        n += p->closed && !p->filled && p->points.size() == 4 ? 1 : 0;
+                    }
+                }
+            }
+            return n;
+        };
+        QVERIFY(closedPolylines(sheets) > closedPolylines(axisSheets));
+        const QString dxf = Structura::Drawing::sheetToDxf(sheets.front());
+        QVERIFY(dxf.contains(QStringLiteral("LINE")) && dxf.endsWith(QStringLiteral("EOF\r\n")));
+    }
+    void titleBlockPersistsAndRendersInSheets()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString first = dir.filePath(QStringLiteral("t1.dat"));
+        QFile file(first);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        file.write(kSample);
+        file.close();
+        DatModelIoService service;
+        MemoryGateway gateway;
+        Loaded loaded;
+        QVERIFY(load(service, gateway, first, loaded));
+        auto &tb = loaded.extras.titleBlock;
+        tb.company = QStringLiteral("Estruturas Ltda");
+        tb.client = QStringLiteral("Cliente S/A");
+        tb.site = QStringLiteral("Galpão 3 – São Paulo");
+        tb.project = QStringLiteral("Projeto 123");
+        tb.author = QStringLiteral("Eng. Fulano");
+        tb.registration = QStringLiteral("CREA 12345");
+        tb.revision = QStringLiteral("B");
+        tb.drawingPrefix = QStringLiteral("EST");
+        tb.notes = QStringLiteral("1. Aço MR250.\n2. Cotas em mm.");
+        tb.revisions = {{QStringLiteral("A"), QStringLiteral("01/01/2026"), QStringLiteral("Emissão inicial"), QStringLiteral("FS")},
+                        {QStringLiteral("B"), QStringLiteral("10/02/2026"), QStringLiteral("Ajuste de perfis"), QStringLiteral("FS")}};
+        tb.sheetTitles.insert(QStringLiteral("plan-all"), QStringLiteral("Locação geral"));
+        const QString second = dir.filePath(QStringLiteral("t2.dat"));
+        QString error;
+        QVERIFY(service.save(second, &gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, &error));
+        MemoryGateway gateway2;
+        Loaded again;
+        QVERIFY(load(service, gateway2, second, again));
+        const auto &r = again.extras.titleBlock;
+        QCOMPARE(r.company, tb.company);
+        QCOMPARE(r.site, tb.site);
+        QCOMPARE(r.registration, tb.registration);
+        QCOMPARE(r.revision, QStringLiteral("B"));
+        QCOMPARE(r.drawingPrefix, QStringLiteral("EST"));
+        QCOMPARE(r.notes, tb.notes);
+        QCOMPARE(r.revisions.size(), 2);
+        QCOMPARE(r.revisions.at(1).description, QStringLiteral("Ajuste de perfis"));
+        QCOMPARE(r.sheetTitles.value(QStringLiteral("plan-all")), QStringLiteral("Locação geral"));
+
+        // o carimbo aparece nas pranchas (nº do desenho com prefixo, titulo personalizado, revisoes)
+        using Structura::App::Services::SheetBuilder;
+        SheetBuilder::Input in;
+        in.nodes = {{1, 0, 0, 0}, {2, 0, 0, 4}, {3, 8, 0, 4}, {4, 8, 0, 0}};
+        for (int i = 0; i < 3; ++i) {
+            SheetBuilder::Bar b;
+            b.id = i + 1;
+            b.nodeI = i + 1;
+            b.nodeJ = i + 2;
+            b.section = QStringLiteral("W 310 x 38.7");
+            b.massPerMeter = 38.7;
+            in.bars.append(b);
+        }
+        in.info = r;
+        const auto views = SheetBuilder::availableViews(in);
+        QCOMPARE(views.first().title, QStringLiteral("Locação geral"));
+        const auto sheets = SheetBuilder::build(in, {});
+        QVERIFY(!sheets.empty());
+        bool number = false, rev = false, notes = false, title = false;
+        for (const auto &entity : sheets.front().entities) {
+            if (const auto *t = std::get_if<Structura::Drawing::Text>(&entity)) {
+                number = number || t->text == "EST-01";
+                rev = rev || t->text.find("Ajuste de perfis") != std::string::npos;
+                notes = notes || t->text == "2. Cotas em mm.";
+                title = title || t->text.find("Locação geral") != std::string::npos;
+            }
+        }
+        QVERIFY(number && rev && notes && title);
+        const auto preview = SheetBuilder::previewTitleBlock(r);
+        QVERIFY(preview.entities.size() > 30);
+    }
+    void sheetOutlineFollowsSectionEccentricity()
+    {
+        using Structura::App::Services::SheetBuilder;
+        auto build = [](double offsetY) {
+            SheetBuilder::Input in;
+            in.nodes = {{1, 0, 0, 0}, {2, 0, 0, 4}, {3, 8, 0, 4}, {4, 8, 0, 0}};
+            for (int i = 0; i < 3; ++i) {
+                SheetBuilder::Bar b;
+                b.id = i + 1;
+                b.nodeI = i + 1;
+                b.nodeJ = i + 2;
+                b.section = QStringLiteral("S");
+                b.widthMm = 150;
+                b.depthMm = 300;
+                if (i == 1) {   // viga: centroide deslocado para cima (eixo local y vertical) em ambas as extremidades
+                    b.offsetIy = offsetY;
+                    b.offsetJy = offsetY;
+                }
+                in.bars.append(b);
+            }
+            SheetBuilder::Options options;
+            options.scaleDenominator = 100.0;
+            options.dimensions = false;
+            options.barLabels = false;
+            options.faceDimensions = false;
+            options.views = {QStringLiteral("elev-xz-0")};
+            return SheetBuilder::build(in, options);
+        };
+        auto bandMinusAxis = [](const std::vector<Structura::Drawing::Sheet> &sheets) {
+            const auto &sheet = sheets.front();
+            // cota de papel do nivel z = 4000 (linha de eixo horizontal mais alta) e centro da faixa da viga (maior comprimento horizontal)
+            double axisY = -1e300, bandY = 0.0, bandLength = 0.0;
+            for (const auto &entity : sheet.entities) {
+                if (const auto *line = std::get_if<Structura::Drawing::Line>(&entity)) {
+                    if (sheet.layers[static_cast<std::size_t>(line->layer)].name == "EIXOS" && std::abs(line->a.y - line->b.y) < 1e-9) {
+                        axisY = std::max(axisY, line->a.y);
+                    }
+                } else if (const auto *poly = std::get_if<Structura::Drawing::Polyline>(&entity)) {
+                    if (poly->closed && poly->points.size() == 4 && sheet.layers[static_cast<std::size_t>(poly->layer)].name == "VIGAS") {
+                        const double w = std::abs(poly->points[1].x - poly->points[0].x);
+                        if (w > bandLength) {
+                            bandLength = w;
+                            bandY = (poly->points[0].y + poly->points[2].y) / 2.0;
+                        }
+                    }
+                }
+            }
+            return bandY - axisY;
+        };
+        const double centred = bandMinusAxis(build(0.0));
+        const double raised = bandMinusAxis(build(100.0));
+        QVERIFY(std::abs(centred) < 1e-6);
+        QVERIFY(std::abs(raised - 1.0) < 1e-6);   // 100 mm na escala 1:100 = 1 mm de papel
+    }
+    void hiddenLinesAndSheetDetails()
+    {
+        using namespace Structura::Drawing;
+        // face quadrada na frente e uma aresta atras que a atravessa: so as pontas aparecem
+        Camera3D camera = cameraFromAngles(0.0, 0.0, {0, 0, 0}, 1000.0);   // olho em -Y, olhando para +Y
+        std::vector<Triangle3D> faces = {{{-10, 0, -10}, {10, 0, -10}, {10, 0, 10}}, {{-10, 0, -10}, {10, 0, 10}, {-10, 0, 10}}};
+        std::vector<Edge3D> edges = {{{-20, 50, 0}, {20, 50, 0}, 7}};
+        const auto result = computeHiddenLines(camera, faces, edges, false, 2000);
+        QVERIFY(result.ok);
+        double visible = 0.0;
+        for (const auto &seg : result.segments) {
+            QCOMPARE(seg.tag, 7);
+            visible += std::abs(seg.x1 - seg.x0);
+        }
+        QVERIFY(std::abs(visible - 20.0) < 1.0);   // [-20,-10] e [10,20]
+        const auto withHidden = computeHiddenLines(camera, faces, edges, true, 2000);
+        double hidden = 0.0;
+        for (const auto &seg : withHidden.segments) {
+            hidden += seg.hidden ? std::abs(seg.x1 - seg.x0) : 0.0;
+        }
+        QVERIFY(std::abs(hidden - 20.0) < 1.0);
+        // triangulacao de poligono nao convexo (L): area preservada
+        const std::vector<std::array<double, 2>> poly = {{0, 0}, {2, 0}, {2, 1}, {1, 1}, {1, 2}, {0, 2}};
+        const auto idx = triangulatePolygon(poly);
+        QCOMPARE(static_cast<int>(idx.size()), 12);
+        double area = 0.0;
+        for (std::size_t i = 0; i + 2 < idx.size(); i += 3) {
+            const auto &a = poly[static_cast<std::size_t>(idx[i])], &b = poly[static_cast<std::size_t>(idx[i + 1])], &c = poly[static_cast<std::size_t>(idx[i + 2])];
+            area += std::abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2.0;
+        }
+        QVERIFY(std::abs(area - 3.0) < 1e-9);
+
+        using Structura::App::Services::SheetBuilder;
+        // perfil formado a frio com dobras: aparecem linhas de detalhe nas elevacoes; vista 3D gera linhas
+        if (Structura::Visualization::SectionShapes::findFamily(QStringLiteral("C Formado")) == nullptr) {
+            QSKIP("familia C Formado indisponivel");
+        }
+        SheetBuilder::Input in;
+        in.nodes = {{1, 0, 0, 0}, {2, 0, 0, 4}, {3, 8, 0, 4}, {4, 8, 0, 0}};
+        for (int i = 0; i < 3; ++i) {
+            SheetBuilder::Bar b;
+            b.id = i + 1;
+            b.nodeI = i + 1;
+            b.nodeJ = i + 2;
+            b.section = QStringLiteral("Ue 200x75x25");
+            b.family = QStringLiteral("C Formado");
+            b.geometry = {{"d", 200}, {"bf", 75}, {"c", 25}, {"t", 3.0}};
+            b.widthMm = 75;
+            b.depthMm = 200;
+            b.massPerMeter = 9.0;
+            in.bars.append(b);
+        }
+        SheetBuilder::Options options;
+        options.scaleDenominator = 10.0;   // escala grande: faixa larga o bastante para as linhas de dobra
+        options.dimensions = false;
+        options.faceDimensions = false;
+        options.barLabels = false;
+        options.views = {QStringLiteral("elev-xz-0")};
+        auto countLayer = [](const std::vector<Structura::Drawing::Sheet> &sheets, const char *name) {
+            int n = 0;
+            for (const auto &sheet : sheets) {
+                for (const auto &entity : sheet.entities) {
+                    if (const auto *line = std::get_if<Structura::Drawing::Line>(&entity)) {
+                        n += sheet.layers[static_cast<std::size_t>(line->layer)].name == name ? 1 : 0;
+                    }
+                }
+            }
+            return n;
+        };
+        options.profiles = SheetBuilder::ProfileDetail::OutlineWithFlanges;
+        QVERIFY(countLayer(SheetBuilder::build(in, options), "DETALHES_PERFIL") >= 6);   // dobras (alma-mesa e mesa-enrijecedor) nas tres barras
+        options.profiles = SheetBuilder::ProfileDetail::Outline;
+        QCOMPARE(countLayer(SheetBuilder::build(in, options), "DETALHES_PERFIL"), 0);
+
+        // cor e espessura das linhas
+        {
+            auto weightOf = [](const std::vector<Structura::Drawing::Sheet> &sheets, const char *layer) {
+                for (const auto &layerDef : sheets.front().layers) {
+                    if (layerDef.name == layer) {
+                        return layerDef.weight;
+                    }
+                }
+                return -1.0;
+            };
+            options.coloredLines = true;
+            options.lineWeightScale = 1.0;
+            const auto normal = SheetBuilder::build(in, options);
+            QVERIFY(weightOf(normal, "VIGAS") > 0.0 && weightOf(normal, "VIGAS") <= 0.25);   // contorno em espessura normal de desenho
+            options.lineWeightScale = 1.5;
+            options.coloredLines = false;
+            const auto thick = SheetBuilder::build(in, options);
+            QVERIFY(std::abs(weightOf(thick, "VIGAS") - 1.5 * weightOf(normal, "VIGAS")) < 1e-9);
+            for (const auto &layerDef : thick.front().layers) {
+                QCOMPARE(layerDef.rgb[0] + layerDef.rgb[1] + layerDef.rgb[2], 0);
+            }
+            options.coloredLines = true;
+            options.lineWeightScale = 1.0;
+        }
+        // vista 3D padrao
+        SheetBuilder::Options o3;
+        o3.views = {QStringLiteral("view3d-default")};
+        o3.barLabels = false;
+        const auto sheets3 = SheetBuilder::build(in, o3);
+        QCOMPARE(static_cast<int>(sheets3.size()), 1);
+        int lines3 = 0;
+        for (const auto &entity : sheets3.front().entities) {
+            lines3 += std::holds_alternative<Structura::Drawing::Line>(entity) ? 1 : 0;
+        }
+        QVERIFY(lines3 > 30);
+        o3.hiddenLines3D = true;
+        const int hiddenLines = countLayer(SheetBuilder::build(in, o3), "OCULTO");
+        QVERIFY(hiddenLines > 0);
+        // camera explicita em perspectiva
+        Structura::App::ProjectData::SavedView3D saved;
+        saved.name = QStringLiteral("persp");
+        saved.explicitCamera = true;
+        saved.perspective = true;
+        saved.position = {14.0, -12.0, 9.0};
+        saved.target = {4.0, 0.0, 2.0};
+        in.views3d = {saved};
+        o3.views = {QStringLiteral("view3d-0")};
+        o3.hiddenLines3D = false;
+        const auto persp = SheetBuilder::build(in, o3);
+        QCOMPARE(static_cast<int>(persp.size()), 1);
+        QVERIFY(persp.front().entities.size() > 40);
     }
     void solverEndReleaseGivesProppedCantilever()
     {

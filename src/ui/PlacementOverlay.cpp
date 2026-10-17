@@ -88,6 +88,12 @@ void SnapMarkerWidget::paintEvent(QPaintEvent *)
             painter.drawPolygon(diamond);
         });
         break;
+    case Kind::OnBar:
+        draw([&]() {
+            painter.drawLine(QPointF(5, 19), QPointF(19, 5));
+            painter.drawEllipse(QPointF(12, 12), 3.6, 3.6);
+        });
+        break;
     }
 }
 
@@ -259,7 +265,10 @@ void ViewportLabelOverlay::resizeToParent()
 void ViewportLabelOverlay::setGroup(const QString &kind,
                                     const std::vector<std::array<double, 3>> &positions,
                                     const QVector<QString> &labels,
-                                    bool visible)
+                                    bool visible,
+                                    const std::vector<QColor> &colors,
+                                    const std::vector<double> &weights,
+                                    bool declutter)
 {
     Group group;
     group.positions = positions;
@@ -267,6 +276,9 @@ void ViewportLabelOverlay::setGroup(const QString &kind,
     group.screen.assign(positions.size(), QPointF());
     group.onScreen.assign(positions.size(), false);
     group.visible = visible;
+    group.colors = colors;
+    group.weights = weights;
+    group.declutter = declutter;
     m_groups.insert(kind, std::move(group));
 }
 
@@ -315,26 +327,88 @@ void ViewportLabelOverlay::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
+    painter.setRenderHint(QPainter::Antialiasing, true);
     QFont font = painter.font();
     font.setPixelSize(11);
     font.setBold(true);
     painter.setFont(font);
-    painter.setPen(QColor(QStringLiteral("#24292f")));
     const QFontMetricsF metrics(font);
+    const QColor defaultColor(QStringLiteral("#24292f"));
     for (auto it = m_groups.constBegin(); it != m_groups.constEnd(); ++it) {
         const Group &group = it.value();
         if (!group.visible) {
             continue;
         }
-        for (std::size_t i = 0; i < group.positions.size() && static_cast<int>(i) < group.labels.size(); ++i) {
-            if (!group.onScreen[i]) {
-                continue;
+        const std::size_t count = std::min(group.positions.size(), static_cast<std::size_t>(group.labels.size()));
+        if (!group.declutter) {
+            painter.setPen(defaultColor);
+            for (std::size_t i = 0; i < count; ++i) {
+                if (!group.onScreen[i]) {
+                    continue;
+                }
+                const QString &text = group.labels[static_cast<int>(i)];
+                const QSizeF size(metrics.horizontalAdvance(text), metrics.height());
+                painter.drawText(QPointF(group.screen[i].x() - size.width() / 2.0, group.screen[i].y() + metrics.ascent() - size.height() / 2.0), text);
             }
+            continue;
+        }
+        // Rotulos de carga: nenhum e ocultado. Em ordem de valor (maior primeiro) cada etiqueta procura o lugar livre mais
+        // proximo da sua ancora (deslocando-se na vertical) e, se foi afastada, ganha uma linha de chamada ate a ancora.
+        std::vector<std::size_t> order;
+        for (std::size_t i = 0; i < count; ++i) {
+            if (group.onScreen[i]) {
+                order.push_back(i);
+            }
+        }
+        std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+            const double wa = a < group.weights.size() ? group.weights[a] : 0.0;
+            const double wb = b < group.weights.size() ? group.weights[b] : 0.0;
+            return wa > wb;
+        });
+        std::vector<QRectF> placed;
+        constexpr int kMaxLabels = 600;
+        constexpr int kMaxSteps = 14;
+        if (static_cast<int>(order.size()) > kMaxLabels) {
+            order.resize(kMaxLabels);
+        }
+        for (const std::size_t i : order) {
             const QString &text = group.labels[static_cast<int>(i)];
-            const QSizeF size(metrics.horizontalAdvance(text), metrics.height());
-            painter.drawText(QPointF(group.screen[i].x() - size.width() / 2.0,
-                                     group.screen[i].y() + metrics.ascent() - size.height() / 2.0),
-                             text);
+            const QSizeF size(metrics.horizontalAdvance(text) + 10.0, metrics.height() + 4.0);
+            const QPointF anchor = group.screen[i];
+            QRectF rect(anchor.x() - size.width() / 2.0, anchor.y() - size.height() / 2.0, size.width(), size.height());
+            auto free = [&](const QRectF &candidate) {
+                for (const QRectF &other : placed) {
+                    if (other.adjusted(-2, -1, 2, 1).intersects(candidate)) {
+                        return false;
+                    }
+                }
+                return true;
+            };
+            if (!free(rect)) {
+                const double step = size.height() + 2.0;
+                bool found = false;
+                for (int k = 1; k <= kMaxSteps && !found; ++k) {
+                    for (const double sign : {-1.0, 1.0}) {
+                        const QRectF candidate = rect.translated(0.0, sign * k * step);
+                        if (free(candidate)) {
+                            rect = candidate;
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            placed.push_back(rect);
+            const QColor color = i < group.colors.size() ? group.colors[i] : defaultColor;
+            if (std::abs(rect.center().y() - anchor.y()) > size.height() * 0.6) {
+                painter.setPen(QPen(color, 1.0, Qt::DotLine));
+                painter.drawLine(anchor, QPointF(rect.center().x(), rect.center().y() + (anchor.y() > rect.center().y() ? size.height() / 2.0 : -size.height() / 2.0)));
+            }
+            painter.setPen(QPen(color, 1.2));
+            painter.setBrush(QColor(255, 255, 255, 225));
+            painter.drawRoundedRect(rect, 4, 4);
+            painter.setPen(color.darker(115));
+            painter.drawText(rect, Qt::AlignCenter, text);
         }
     }
 }

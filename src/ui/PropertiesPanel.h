@@ -59,6 +59,7 @@ public:
         bool hasSection {false};
         int releaseMask {0};
         int memberType {0};
+        QString loadDetails;   ///< cargas atuantes (texto formatado, uma linha por carga)
     };
 
     explicit PropertiesPanel(QWidget *parent = nullptr);
@@ -107,6 +108,7 @@ private:
     QLabel *m_barNodesLabel {nullptr};
     QLabel *m_barLengthLabel {nullptr};
     QLabel *m_barDistributedLoadsLabel {nullptr};
+    QLabel *m_barLoadDetailsLabel {nullptr};
     QComboBox *m_materialCombo {nullptr};
     Structura::UI::SectionPickerButton *m_sectionPicker {nullptr};
     Structura::UI::SectionPlacementWidget *m_placementPreview {nullptr};

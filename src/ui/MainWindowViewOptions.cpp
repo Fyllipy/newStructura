@@ -5,10 +5,13 @@
 #include "PlacementController.h"
 #include "PlacementOverlay.h"
 #include "ViewOptionsBar.h"
+#include "viz/postprocessor/PostProcessorRenderer.h"
 #include "viz/SceneController.h"
 #include "viz/construction/ConstructionScene.h"
 
 #include "app/services/CombinationService.h"
+#include "app/services/ConnectionSolids.h"
+#include "app/services/DesignService.h"
 #include "app/services/SectionPlacementService.h"
 #include "viz/LocalCoordinateSystem.h"
 #include <QHash>
@@ -26,8 +29,8 @@ const QStringList &toggleKeys()
 {
     static const QStringList keys = {
         Bar::kGrid, Bar::kReferenceAxes, Bar::kNodeLabels, Bar::kBarLabels, Bar::kLocalAxes,
-        Bar::kNodes, Bar::kSolids, Bar::kAllLevels, Bar::kSupports, Bar::kNodeForces, Bar::kNodeMoments,
-        Bar::kBarForces, Bar::kBarMoments, Bar::kAreaPanels, Bar::kSnap, Bar::kPlaneOnly,
+        Bar::kNodes, Bar::kSolids, Bar::kConnections, Bar::kConstraints, Bar::kAllLevels, Bar::kSupports, Bar::kNodeForces, Bar::kNodeMoments,
+        Bar::kBarForces, Bar::kBarMoments, Bar::kHideLoadLabels, Bar::kAreaPanels, Bar::kSnap, Bar::kPlaneOnly,
     };
     return keys;
 }
@@ -90,6 +93,70 @@ void MainWindow::rebuildResultViewSelector()
     m_viewOptionsBar->setResultViews(names, 0);
 }
 
+void MainWindow::syncConnectionVisuals()
+{
+    using Structura::App::Services::ConnectionSolids;
+    if (!m_sceneController || !m_viewOptionsBar || !m_viewOptionsBar->isChecked(Bar::kConnections)) {
+        return;
+    }
+    QHash<QUuid, std::array<double, 3>> positionById;
+    for (const auto &node : m_sceneController->nodeInfos()) {
+        positionById.insert(node.id, {node.x, node.y, node.z});
+    }
+    const double lengthFactor = Structura::App::Services::DesignService::unitFactors(m_materials).second;
+    Structura::Geometry::DefaultLocalAxisProvider axisProvider;
+    ConnectionSolids::Mesh mesh;
+    const auto allBars = m_sceneController->bars();
+    for (const auto &connection : m_extras.connections) {
+        const SceneController::BarInfo *bar = nullptr;
+        for (const auto &candidate : allBars) {
+            if (candidate.externalId == connection.memberId) {
+                bar = &candidate;
+                break;
+            }
+        }
+        if (!bar) {
+            continue;
+        }
+        const auto start = positionById.constFind(bar->startNodeId);
+        const auto end = positionById.constFind(bar->endNodeId);
+        if (start == positionById.constEnd() || end == positionById.constEnd()) {
+            continue;
+        }
+        std::optional<std::array<double, 3>> kPoint;
+        if (const auto *model = m_sceneController->findBar(bar->id)) {
+            if (model->hasKPoint()) {
+                const auto &k = *model->kPoint();
+                kPoint = std::array<double, 3> {k.x(), k.y(), k.z()};
+            }
+        }
+        Structura::App::ProjectData::MemberPlacement placement;
+        for (const auto &candidate : m_extras.placements) {
+            if (candidate.memberId == bar->externalId) {
+                placement = candidate;
+                break;
+            }
+        }
+        const auto lcs = Structura::Geometry::rotatedAboutX(axisProvider.computeLCS(*start, *end, kPoint), placement.rotationDeg);
+        ConnectionSolids::Frame frame;
+        const double sign = connection.atEnd ? -1.0 : 1.0;   // s aponta do no para dentro da barra
+        frame.origin = connection.atEnd ? *end : *start;
+        for (std::size_t i = 0; i < 3; ++i) {
+            frame.s[i] = sign * lcs.xPrime[i];
+            frame.t[i] = lcs.yPrime[i];
+            frame.u[i] = lcs.zPrime[i];
+        }
+        frame.scale = 1.0 / lengthFactor;
+        ConnectionSolids::append(mesh, ConnectionSolids::build(connection), frame, connection.verified ? std::max(connection.eta, 1e-6) : 0.0);
+    }
+    Structura::Visualization::ConnectionRenderer::Mesh out;
+    out.points = std::move(mesh.points);
+    out.normals = std::move(mesh.normals);
+    out.colors = std::move(mesh.colors);
+    out.triangles = std::move(mesh.triangles);
+    m_sceneController->setConnectionMesh(out);
+}
+
 void MainWindow::syncSolidVisuals()
 {
     if (!m_sceneController || !m_viewOptionsBar || !m_viewOptionsBar->isChecked(Bar::kSolids)) {
@@ -144,6 +211,7 @@ void MainWindow::syncSolidVisuals()
         const QVector3D axisShift = toVector(lcs.yPrime) * static_cast<float>(offset.dy)
             + toVector(lcs.zPrime) * static_cast<float>(offset.dz);
         SceneController::SolidMemberVisual visual;
+        visual.barId = bar.id;
         visual.start = toVector(*start) + axisShift;
         visual.end = toVector(*end) + axisShift;
         visual.xAxis = toVector(lcs.xPrime);
@@ -246,6 +314,8 @@ void MainWindow::applyViewOption(const QString &key, bool on)
         }
     } else if (key == Bar::kNodes) {
         m_sceneController->setNodesVisible(on);
+    } else if (key == Bar::kConstraints) {
+        m_sceneController->setConstraintsVisible(on);
     } else if (key == Bar::kSupports) {
         m_sceneController->setSupportsVisible(on);
     } else if (key == Bar::kAllLevels) {
@@ -253,19 +323,21 @@ void MainWindow::applyViewOption(const QString &key, bool on)
         if (m_placement) {
             m_placement->scheduleRefresh();
         }
-    } else if (key == Bar::kIsolate || key == Bar::kPlaneOnly) {
+    } else if (key == Bar::kHideLoadLabels) {
+        applyLoadVisibility();
+    } else if (key == Bar::kPlaneOnly) {
         applyAppearance();
+    } else if (key == Bar::kConnections) {
+        m_sceneController->setConnectionsVisible(on);
+        syncConnectionVisuals();
     } else if (key == Bar::kSolids) {
         m_sceneController->setSolidsVisible(on);
         syncSolidVisuals();
     } else if (key == Bar::kNodeForces || key == Bar::kNodeMoments
                || key == Bar::kBarForces || key == Bar::kBarMoments) {
-        m_sceneController->setLoadVisibility(m_viewOptionsBar->isChecked(Bar::kNodeForces),
-                                             m_viewOptionsBar->isChecked(Bar::kNodeMoments),
-                                             m_viewOptionsBar->isChecked(Bar::kBarForces),
-                                             m_viewOptionsBar->isChecked(Bar::kBarMoments));
+        applyLoadVisibility();
     } else if (key == Bar::kAreaPanels) {
-        m_sceneController->setAreaPanelsVisible(on);
+        applyLoadVisibility();
     } else if (key == Bar::kSnap) {
         construction->snap().enabled = on;
         if (m_placement) {
@@ -287,6 +359,9 @@ void MainWindow::storeViewOptionsInExtras()
         m_extras.viewOptions.insert(key, m_viewOptionsBar->isSnapTypeChecked(key) ? 1.0 : 0.0);
     }
     m_extras.viewOptions.insert(kGridSpacingKey, m_viewOptionsBar->gridSpacing());
+    if (m_sceneController) {
+        m_extras.viewOptions.insert(QStringLiteral("camera_perspective"), m_sceneController->isPerspective() ? 1.0 : 0.0);
+    }
 }
 
 void MainWindow::applyViewOptionsFromExtras()
@@ -309,6 +384,10 @@ void MainWindow::applyViewOptionsFromExtras()
             m_viewOptionsBar->setSnapTypeChecked(key, on);
             emit m_viewOptionsBar->snapTypeToggled(key, on);
         }
+    }
+    if (m_sceneController) {
+        // padrao: isometrica (paralela); arquivos antigos sem a chave tambem abrem em isometrica
+        m_sceneController->setPerspective(options.value(QStringLiteral("camera_perspective"), 0.0) != 0.0);
     }
     if (options.contains(kGridSpacingKey) && construction) {
         const double spacing = options.value(kGridSpacingKey);
@@ -443,6 +522,7 @@ void MainWindow::setupViewOptions()
 
     connect(m_sceneController, &SceneController::geometryRefreshed, this, &MainWindow::refreshElementLabels);
     connect(m_sceneController, &SceneController::geometryRefreshed, this, &MainWindow::syncSolidVisuals);
+    connect(m_sceneController, &SceneController::geometryRefreshed, this, &MainWindow::syncConnectionVisuals);
     connect(m_sceneController, &SceneController::loadLabelsChanged, this, [this]() {
         const auto labels = m_sceneController->loadLabels();
         QVector<QString> texts;
@@ -450,7 +530,12 @@ void MainWindow::setupViewOptions()
         for (const QString &text : labels.texts) {
             texts.append(text);
         }
-        m_labelOverlay->setGroup(QStringLiteral("action"), labels.positions, texts, true);
+        std::vector<QColor> colors;
+        colors.reserve(labels.colors.size());
+        for (const auto &c : labels.colors) {
+            colors.emplace_back(QColor::fromRgbF(c[0], c[1], c[2]));
+        }
+        m_labelOverlay->setGroup(QStringLiteral("action"), labels.positions, texts, !diagramsShowing() && !m_viewOptionsBar->isChecked(Bar::kHideLoadLabels), colors, labels.weights, true);
         m_labelOverlay->sync(m_sceneController->compositeMatrix());
     });
 
@@ -466,4 +551,28 @@ void MainWindow::setupViewOptions()
     }
     rebuildCaseSelector();
     refreshElementLabels();
+}
+
+bool MainWindow::diagramsShowing() const
+{
+    return m_postProcessor && m_postProcessor->isActive() && m_postProcessor->currentDiagram() != Structura::Visualization::DiagramType::None;
+}
+
+/// Carregamentos (setas, paineis e valores) ficam ocultos enquanto um diagrama de esforcos esta na tela, para nao poluir a leitura.
+void MainWindow::applyLoadVisibility()
+{
+    using Bar = Structura::UI::ViewOptionsBar;
+    if (!m_sceneController || !m_viewOptionsBar) {
+        return;
+    }
+    const bool hide = diagramsShowing();
+    const bool nodeForces = !hide && m_viewOptionsBar->isChecked(Bar::kNodeForces);
+    const bool nodeMoments = !hide && m_viewOptionsBar->isChecked(Bar::kNodeMoments);
+    const bool barForces = !hide && m_viewOptionsBar->isChecked(Bar::kBarForces);
+    const bool barMoments = !hide && m_viewOptionsBar->isChecked(Bar::kBarMoments);
+    m_sceneController->setLoadVisibility(nodeForces, nodeMoments, barForces, barMoments);
+    m_sceneController->setAreaPanelsVisible(!hide && m_viewOptionsBar->isChecked(Bar::kAreaPanels));
+    if (m_labelOverlay) {
+        m_labelOverlay->setGroupVisible(QStringLiteral("action"), !hide && !m_viewOptionsBar->isChecked(Bar::kHideLoadLabels) && (nodeForces || nodeMoments || barForces || barMoments));
+    }
 }

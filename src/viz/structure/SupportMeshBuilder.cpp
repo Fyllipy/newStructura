@@ -612,7 +612,140 @@ void addSupportMesh(Mesh &mesh, const Node &n)
     }
 }
 
+/// Apoio (restringe o deslocamento vertical Z): simbolos classicos abaixo do no, `u` = unidade de tamanho (m).
+///   engaste: placa com aletas; articulado: piramide sobre placa; movel: piramide sobre placa e rolos (ou esferas).
+void addSupportSymbol(Mesh &mesh, const Vec &p, const std::array<bool, 6> &r, double u)
+{
+    const bool tx = r[0], ty = r[1];
+    const int rotations = (r[3] ? 1 : 0) + (r[4] ? 1 : 0) + (r[5] ? 1 : 0);
+    if (tx && ty && rotations == 3) {
+        addCube(mesh, p[0], p[1], p[2] - 0.1 * u, 1.6 * u, 1.6 * u, 0.2 * u);
+        for (int i = -2; i <= 2; ++i) {
+            addCube(mesh, p[0] + i * 0.35 * u, p[1], p[2] - 0.2 * u - 0.18 * u, 0.07 * u, 1.4 * u, 0.36 * u);
+        }
+        return;
+    }
+    const double baseZ = p[2] - 0.9 * u;
+    const double h = 0.45 * u;
+    addPyramid(mesh, {Vec {p[0] - h, p[1] - h, baseZ}, Vec {p[0] + h, p[1] - h, baseZ}, Vec {p[0] + h, p[1] + h, baseZ}, Vec {p[0] - h, p[1] + h, baseZ}, Vec {p[0], p[1], p[2]}});
+    addCube(mesh, p[0], p[1], baseZ - 0.05 * u, 1.4 * u, 1.4 * u, 0.1 * u);
+    // rotacoes restringidas (semi-engaste): blocos ao lado do apoio
+    if (r[3]) {
+        addCube(mesh, p[0] + 0.62 * u, p[1], baseZ + 0.12 * u, 0.2 * u, 0.5 * u, 0.24 * u);
+    }
+    if (r[4]) {
+        addCube(mesh, p[0], p[1] + 0.62 * u, baseZ + 0.12 * u, 0.5 * u, 0.2 * u, 0.24 * u);
+    }
+    if (r[5]) {
+        addCube(mesh, p[0] - 0.62 * u, p[1], baseZ + 0.12 * u, 0.2 * u, 0.5 * u, 0.24 * u);
+    }
+    const bool freeX = !tx, freeY = !ty;
+    if (!freeX && !freeY) {
+        return;
+    }
+    const double rollerZ = baseZ - 0.1 * u - 0.14 * u;
+    if (freeX && freeY) {
+        for (const double ox : {-0.4, 0.4}) {
+            for (const double oy : {-0.4, 0.4}) {
+                addSphere(mesh, p[0] + ox * u, p[1] + oy * u, rollerZ, 0.14 * u, 14, 10);
+            }
+        }
+    } else {
+        const Vec axis = freeX ? Vec {0.0, 1.0, 0.0} : Vec {1.0, 0.0, 0.0};
+        for (const double offset : {-0.4, 0.0, 0.4}) {
+            addCylinder(mesh, p[0] + (freeX ? offset * u : 0.0), p[1] + (freeX ? 0.0 : offset * u), rollerZ, axis, 0.14 * u, 1.2 * u);
+        }
+    }
+    addCube(mesh, p[0], p[1], rollerZ - 0.14 * u - 0.03 * u, 1.6 * u, 1.6 * u, 0.06 * u);
+}
+
+/// Restricao nodal (translacao ou rotacao restringida sem ser apoio): uma barra com batentes por translacao e um anel por rotacao.
+void addConstraintSymbol(Mesh &mesh, const Vec &p, const std::array<bool, 6> &r, double u)
+{
+    const Vec axes[3] = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+    for (int a = 0; a < 3; ++a) {
+        if (!r[static_cast<std::size_t>(a)]) {
+            continue;
+        }
+        addCylinder(mesh, p[0], p[1], p[2], axes[a], 0.04 * u, 1.1 * u);
+        for (const double side : {-0.55, 0.55}) {
+            addCube(mesh, p[0] + axes[a][0] * side * u, p[1] + axes[a][1] * side * u, p[2] + axes[a][2] * side * u,
+                    a == 0 ? 0.07 * u : 0.3 * u, a == 1 ? 0.07 * u : 0.3 * u, a == 2 ? 0.07 * u : 0.3 * u);
+        }
+    }
+    for (int a = 0; a < 3; ++a) {
+        if (!r[static_cast<std::size_t>(3 + a)]) {
+            continue;
+        }
+        const Vec n = axes[a];
+        const Vec e1 = a == 0 ? Vec {0.0, 1.0, 0.0} : (a == 1 ? Vec {0.0, 0.0, 1.0} : Vec {1.0, 0.0, 0.0});
+        const Vec e2 {n[1] * e1[2] - n[2] * e1[1], n[2] * e1[0] - n[0] * e1[2], n[0] * e1[1] - n[1] * e1[0]};
+        const double radius = 0.4 * u;
+        constexpr int kSegments = 16;
+        for (int i = 0; i < kSegments; ++i) {
+            const double t0 = 2.0 * kPi * i / kSegments, t1 = 2.0 * kPi * (i + 1) / kSegments, tm = 0.5 * (t0 + t1);
+            auto at = [&](double t) { return Vec {radius * (std::cos(t) * e1[0] + std::sin(t) * e2[0]), radius * (std::cos(t) * e1[1] + std::sin(t) * e2[1]), radius * (std::cos(t) * e1[2] + std::sin(t) * e2[2])}; };
+            const Vec a0 = at(t0), a1 = at(t1), am = at(tm);
+            const Vec tangent {a1[0] - a0[0], a1[1] - a0[1], a1[2] - a0[2]};
+            const double chord = std::sqrt(tangent[0] * tangent[0] + tangent[1] * tangent[1] + tangent[2] * tangent[2]);
+            addCylinder(mesh, p[0] + am[0], p[1] + am[1], p[2] + am[2], tangent, 0.03 * u, chord * 1.05);
+        }
+        const Vec marker {radius * e1[0], radius * e1[1], radius * e1[2]};
+        addCube(mesh, p[0] + marker[0], p[1] + marker[1], p[2] + marker[2], 0.14 * u, 0.14 * u, 0.14 * u);
+    }
+}
+
+vtkSmartPointer<vtkPolyData> toPolyData(const Mesh &mesh)
+{
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    points->SetDataTypeToDouble();
+    points->SetNumberOfPoints(mesh.pointCount());
+    for (int i = 0; i < mesh.pointCount(); ++i) {
+        const Vec &p = mesh.points()[static_cast<std::size_t>(i)];
+        points->SetPoint(i, p[0], p[1], p[2]);
+    }
+    auto polys = vtkSmartPointer<vtkCellArray>::New();
+    for (const auto &face : mesh.faces()) {
+        polys->InsertNextCell(static_cast<vtkIdType>(face.size()));
+        for (const int index : face) {
+            polys->InsertCellPoint(index);
+        }
+    }
+    auto data = vtkSmartPointer<vtkPolyData>::New();
+    data->SetPoints(points);
+    data->SetPolys(polys);
+    return data;
+}
+
 } // namespace
+
+bool SupportMeshBuilder::isSupport(const Restraints &r)
+{
+    return r[2];
+}
+
+vtkSmartPointer<vtkPolyData> SupportMeshBuilder::buildSupports(const std::vector<Support> &supports, double unit)
+{
+    Mesh mesh;
+    for (const Support &support : supports) {
+        if (isSupport(support.restraints)) {
+            addSupportSymbol(mesh, support.position, support.restraints, unit);
+        }
+    }
+    return toPolyData(mesh);
+}
+
+vtkSmartPointer<vtkPolyData> SupportMeshBuilder::buildConstraints(const std::vector<Support> &supports, double unit)
+{
+    Mesh mesh;
+    for (const Support &support : supports) {
+        const auto &r = support.restraints;
+        if (!isSupport(r) && (r[0] || r[1] || r[3] || r[4] || r[5])) {
+            addConstraintSymbol(mesh, support.position, r, unit);
+        }
+    }
+    return toPolyData(mesh);
+}
 
 vtkSmartPointer<vtkPolyData> SupportMeshBuilder::build(const std::vector<Support> &supports)
 {

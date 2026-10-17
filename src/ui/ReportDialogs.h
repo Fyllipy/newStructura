@@ -43,6 +43,7 @@ private:
     QCheckBox *m_materials {nullptr};
     QCheckBox *m_geometry {nullptr};
     QCheckBox *m_loads {nullptr};
+    QCheckBox *m_connections {nullptr};
     QCheckBox *m_results {nullptr};
     QCheckBox *m_designSummary {nullptr};
     QCheckBox *m_designDetails {nullptr};

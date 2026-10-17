@@ -208,6 +208,28 @@ void SolidMemberRenderer::setMembers(const std::vector<Member> &members)
     rebuildActors(members);
 }
 
+void SolidMemberRenderer::setSelected(const std::vector<bool> &selected)
+{
+    if (!m_colorArray) {
+        return;
+    }
+    constexpr std::array<unsigned char, 3> kSelected {{245, 158, 11}};   // mesma cor do destaque do eixo da barra
+    for (std::size_t i = 0; i < m_ranges.size(); ++i) {
+        const auto [first, last] = m_ranges[i];
+        if (last <= first) {
+            continue;
+        }
+        const auto &color = i < selected.size() && selected[i] ? kSelected : m_baseColors[i];
+        for (vtkIdType v = first; v < last; ++v) {
+            m_colorArray->SetTuple3(v, color[0], color[1], color[2]);
+        }
+    }
+    m_colorArray->Modified();
+    if (m_faceActor && m_faceActor->GetMapper()) {
+        m_faceActor->GetMapper()->Modified();
+    }
+}
+
 void SolidMemberRenderer::rebuildActors(const std::vector<Member> &members)
 {
     auto points = vtkSmartPointer<vtkPoints>::New();
@@ -224,7 +246,11 @@ void SolidMemberRenderer::rebuildActors(const std::vector<Member> &members)
     edgePoints->SetDataTypeToDouble();
     auto edgeLines = vtkSmartPointer<vtkCellArray>::New();
 
+    m_ranges.assign(members.size(), {0, 0});
+    m_baseColors.assign(members.size(), {{180, 189, 199}});
+    std::size_t memberIndex = static_cast<std::size_t>(-1);
     for (const Member &member : members) {
+        ++memberIndex;
         const Geometry *geometry = geometryFor(member);
         if (!geometry) {
             continue;
@@ -330,7 +356,10 @@ void SolidMemberRenderer::rebuildActors(const std::vector<Member> &members)
         for (vtkIdType i = static_cast<vtkIdType>(pointsBefore); i < points->GetNumberOfPoints(); ++i) {
             colors->InsertNextTuple3(memberColor[0], memberColor[1], memberColor[2]);
         }
+        m_ranges[memberIndex] = {static_cast<vtkIdType>(pointsBefore), points->GetNumberOfPoints()};
+        m_baseColors[memberIndex] = memberColor;
     }
+    m_colorArray = colors;
 
     auto faces = vtkSmartPointer<vtkPolyData>::New();
     faces->SetPoints(points);

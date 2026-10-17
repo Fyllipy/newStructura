@@ -2,8 +2,17 @@
 #include "app/services/AreaLoadService.h"
 #include "app/services/DesignService.h"
 #include "app/services/StructuralChecks.h"
+#include "app/services/ConnectionService.h"
+#include "app/services/ConnectionSolids.h"
+#include "app/services/TrussGenerator.h"
+#include "app/services/WindDynamicsService.h"
 #include "design/BarDesign.h"
+#include "design/CompositeFloor.h"
 #include "design/Connections.h"
+#include "design/BasePlate.h"
+#include "design/ShearConnections.h"
+#include "design/TrussConnections.h"
+#include "design/TubularJoints.h"
 #include "design/DesignSection.h"
 #include "design/Nbr14762.h"
 #include "design/Nbr8800.h"
@@ -42,6 +51,261 @@ class TestDesign : public QObject
 {
     Q_OBJECT
 private slots:
+    void trussGeneratorProducesStableConnectedGeometry()
+    {
+        using Structura::App::Services::TrussGenerator;
+        TrussGenerator::Params p;
+        p.span = 12.0;
+        p.height = 2.0;
+        p.panels = 6;
+        // Pratt e Howe de banzos paralelos: 2n+2 nos e 4n+1 barras = 2 nos - 3 (isostatica)
+        for (const auto web : {TrussGenerator::Web::Pratt, TrussGenerator::Web::Howe}) {
+            p.web = web;
+            const auto r = TrussGenerator::generate(p);
+            QCOMPARE(static_cast<int>(r.nodes.size()), 14);
+            QCOMPARE(static_cast<int>(r.bars.size()), 25);
+        }
+        // Warren: n+1 nos embaixo, n em cima
+        p.web = TrussGenerator::Web::Warren;
+        auto warren = TrussGenerator::generate(p);
+        QCOMPARE(static_cast<int>(warren.nodes.size()), 13);
+        QCOMPARE(static_cast<int>(warren.bars.size()), 23);
+        // todas as combinacoes: sem barras de comprimento nulo, sem duplicatas, todos os nos usados e conectados
+        for (int profile = 0; profile <= 4; ++profile) {
+            for (int web = 0; web <= 5; ++web) {
+                p.profile = static_cast<TrussGenerator::Profile>(profile);
+                p.web = static_cast<TrussGenerator::Web>(web);
+                p.endHeight = 0.5;
+                const auto r = TrussGenerator::generate(p);
+                const QString label = QStringLiteral("%1/%2").arg(profile).arg(web);
+                QVERIFY2(!r.bars.empty(), qPrintable(label));
+                std::vector<int> parent(r.nodes.size());
+                for (std::size_t i = 0; i < parent.size(); ++i) {
+                    parent[i] = static_cast<int>(i);
+                }
+                std::function<int(int)> find = [&](int x) { return parent[static_cast<std::size_t>(x)] == x ? x : parent[static_cast<std::size_t>(x)] = find(parent[static_cast<std::size_t>(x)]); };
+                std::set<std::pair<int, int>> seen;
+                for (const auto &b : r.bars) {
+                    QVERIFY2(b.a != b.b, qPrintable(label));
+                    const auto &na = r.nodes[static_cast<std::size_t>(b.a)], &nb = r.nodes[static_cast<std::size_t>(b.b)];
+                    QVERIFY2(std::hypot(na[0] - nb[0], na[1] - nb[1]) > 1e-6, qPrintable(label));
+                    QVERIFY2(seen.insert({std::min(b.a, b.b), std::max(b.a, b.b)}).second, qPrintable(label));
+                    parent[static_cast<std::size_t>(find(b.a))] = find(b.b);
+                }
+                for (std::size_t i = 0; i < r.nodes.size(); ++i) {
+                    QVERIFY2(find(static_cast<int>(i)) == find(0), qPrintable(label + QStringLiteral(" no solto")));
+                }
+                // estabilidade minima: barras >= 2 nos - 3
+                QVERIFY2(static_cast<int>(r.bars.size()) >= 2 * static_cast<int>(r.nodes.size()) - 3, qPrintable(label + QStringLiteral(" mecanismo")));
+            }
+        }
+    }
+
+    void connectionSolidsBuildForEveryTypeAndFollowTheFrame()
+    {
+        using namespace Structura::App;
+        using Services::ConnectionService;
+        using Services::ConnectionSolids;
+        ConnectionService::BeamInfo beam;
+        beam.depth = 310.0;
+        beam.bf = 165.0;
+        beam.tf = 9.7;
+        beam.tw = 5.8;
+        beam.area = 4000.0;
+        beam.fy = 345.0;
+        beam.fu = 450.0;
+        for (int type = 0; type <= 4; ++type) {
+            const auto connection = ConnectionService::makeDefault(type, beam, 250.0, 400.0);
+            const auto prims = ConnectionSolids::build(connection);
+            QVERIFY2(!prims.empty(), qPrintable(QString::number(type)));
+            ConnectionSolids::Frame frame;
+            frame.origin = {10.0, 20.0, 30.0};
+            frame.s = {0, 0, 1};   // s para cima
+            frame.t = {1, 0, 0};
+            frame.u = {0, 1, 0};
+            frame.scale = 0.001;
+            ConnectionSolids::Mesh mesh;
+            ConnectionSolids::append(mesh, prims, frame, 0.5);
+            QVERIFY(!mesh.triangles.empty());
+            QCOMPARE(mesh.points.size(), mesh.normals.size());
+            QCOMPARE(mesh.points.size(), mesh.colors.size());
+            for (const auto &t : mesh.triangles) {
+                for (const int id : t) {
+                    QVERIFY(id >= 0 && static_cast<std::size_t>(id) < mesh.points.size());
+                }
+            }
+            // tudo fica perto da origem (ligacoes tem poucos metros de extensao)
+            for (const auto &p : mesh.points) {
+                QVERIFY(std::abs(p[0] - 10.0f) < 3.0f && std::abs(p[1] - 20.0f) < 3.0f && std::abs(p[2] - 30.0f) < 3.0f);
+            }
+        }
+        // chapa de cisalhamento: o apoio fica em s <= 0 e a chapa em s >= 0 (z >= 30 com este referencial)
+        const auto tab = ConnectionSolids::build(ConnectionService::makeDefault(0, beam, 250.0, 400.0));
+        double maxS = 0.0;
+        for (const auto &p : tab) {
+            if (p.kind == ConnectionSolids::Kind::Prism) {
+                for (const auto &v : p.polygon) {
+                    maxS = std::max(maxS, v[0]);
+                }
+            }
+        }
+        QVERIFY(maxS > 60.0);
+        // a cor da chapa segue a utilizacao
+        QVERIFY(ConnectionSolids::color(ConnectionSolids::Role::Plate, 0.5) != ConnectionSolids::color(ConnectionSolids::Role::Plate, 1.2));
+    }
+
+    void dynamicWindDiscreteModelMatchesHandCalculation()
+    {
+        using namespace Structura::App;
+        using Services::WindDynamicsService;
+        SolverBridge::ModelData model;
+        SolverBridge::Result modal;
+        std::vector<double> mass;
+        std::vector<double> shape;
+        for (int i = 0; i <= 3; ++i) {
+            SolverBridge::NodeData node;
+            node.id = i + 1;
+            node.z = 3.0 * i;
+            model.nodes.push_back(node);
+            mass.push_back(i == 0 ? 0.0 : 10.0);
+            for (int d = 0; d < 6; ++d) {
+                shape.push_back(d == 0 ? i / 3.0 : 0.0);
+            }
+        }
+        modal.modalOmega = {2.0 * 3.14159265358979 * 0.5};
+        modal.modalShapes = {shape};
+        Services::DynamicsService::Basis basis;
+        basis.model = &model;
+        basis.modal = &modal;
+        basis.mass = mass;
+        WindDynamicsService::Input in;
+        in.v0 = 30.0;
+        in.width = 10.0;
+        in.drag = 1.2;
+        in.xi = 1.5;
+        const auto r = WindDynamicsService::compute(basis, in);
+        QVERIFY2(r.ok, qPrintable(r.message));
+        const double vp = 0.69 * 30.0, q0 = 0.613 * vp * vp / 1000.0;
+        QVERIFY(std::abs(r.q0 - q0) < 1e-12);
+        double mean = 0.0, num = 0.0, den = 0.0;
+        for (int i = 1; i <= 3; ++i) {
+            const double z = 3.0 * i, x = i / 3.0;
+            mean += q0 * 1.0 * 1.2 * 30.0 * std::pow(z / 10.0, 0.30);
+            num += 1.2 * std::pow(z / 10.0, 0.15) * x;
+            den += x * x;
+        }
+        const double fh = q0 * 30.0 * num / den * 1.5;
+        QVERIFY(std::abs(r.baseShearMean - mean) / mean < 1e-9);
+        QVERIFY(std::abs(r.fh - fh) / fh < 1e-9);
+        // flutuante: F_H psi_i x_i (psi = 1 em todos os niveis)
+        QVERIFY(std::abs(r.baseShearFluctuating - fh * (1.0 / 3.0 + 2.0 / 3.0 + 1.0)) / fh < 1e-9);
+        // a soma das forcas nodais na direcao X e o cortante total; a transversal e 1/3
+        double sumX = 0.0, sumY = 0.0;
+        for (std::size_t i = 0; i < r.along.size(); ++i) {
+            sumX += r.along[i][0];
+            sumY += r.cross[i][1];
+        }
+        QVERIFY(std::abs(sumX - (r.baseShearMean + r.baseShearFluctuating)) < 1e-9);
+        QVERIFY(std::abs(sumY - sumX / 3.0) < 1e-9);
+    }
+
+    void compositeBeamMatchesHandCalculation()
+    {
+        using namespace Structura::Design::Composite;
+        BeamInput in;
+        in.steel.d = 355.0;
+        in.steel.bf = 171.0;
+        in.steel.tf = 11.6;
+        in.steel.tw = 7.2;
+        in.steel.area = 6480.0;
+        in.steel.inertia = 141.0e6;
+        in.steel.fy = 345.0;
+        in.concrete.fck = 25.0;
+        in.slab.kind = SlabKind::Solid;
+        in.slab.tc = 100.0;
+        in.span = 8000.0;
+        in.leftSpacing = in.rightSpacing = 3000.0;
+        in.shored = true;
+        in.studs.diameter = 19.0;
+        in.studs.fu = 415.0;
+        in.studs.spacing = 125.0;
+        BeamDemand dm;
+        dm.msd = 400.0e6;
+        dm.vsd = 150.0e3;
+        const auto r = checkBeam(in, dm);
+        QVERIFY(r.ok);
+        QVERIFY(std::abs(r.bEff - 2000.0) < 1e-9);
+        QVERIFY(std::abs(r.ecs - 24150.0) < 5.0);
+        // Q_Rd = min(88,1; 70,6) kN: ruptura do conector governa
+        QVERIFY(std::abs(r.qRd - 70.6e3) / 70.6e3 < 0.01);
+        QCOMPARE(r.connectorsHalfSpan, 32);
+        // interacao completa com LN na laje: Mrd = Aa fyd (d/2 + tc - a/2)
+        const double fyd = 345.0 / 1.1, tMax = 6480.0 * fyd;
+        const double a = tMax / (0.85 * 25.0 / 1.4 * 2000.0);
+        const double expected = tMax * (355.0 / 2.0 + 100.0 - a / 2.0);
+        QVERIFY(std::abs(r.mRd - expected) / expected < 1e-6);
+        QVERIFY(std::abs(r.interaction - 1.0) < 1e-9);
+        // menos conectores: interacao parcial reduz o momento resistente
+        in.studs.spacing = 400.0;
+        const auto partial = checkBeam(in, dm);
+        QVERIFY(partial.interaction < 1.0);
+        QVERIFY(partial.mRd < r.mRd);
+        QVERIFY(partial.mRd > 0.5 * r.mRd);
+        // o espacamento proposto atende o grau minimo e o momento
+        in.studs.spacing = 125.0;
+        const double proposed = proposeSpacing(in, dm);
+        QVERIFY(proposed >= 125.0);
+        in.studs.spacing = proposed;
+        const auto check = checkBeam(in, dm);
+        for (const auto &c : check.checks) {
+            if (c.name.find("Momento") == 0 || c.name.find("Grau") == 0) {
+                QVERIFY2(c.ratio() <= 1.0 + 1e-9, c.name.c_str());
+            }
+        }
+        // forma de aco perpendicular reduz Rg*Rp (dois conectores por nervura)
+        BeamInput deck = in;
+        deck.slab.kind = SlabKind::DeckPerpendicular;
+        deck.slab.hF = 75.0;
+        deck.slab.bF = 120.0;
+        deck.slab.tc = 70.0;
+        deck.studs.perRib = 2;
+        deck.studs.emh = 60.0;
+        deck.shored = false;
+        const auto d = checkBeam(deck, dm);
+        QVERIFY(std::abs(d.rg - 0.85) < 1e-12);
+        QVERIFY(std::abs(d.rp - 0.75) < 1e-12);
+        QVERIFY(d.qRd <= r.qRd);
+    }
+
+    void deckSlabMomentMatchesHandCalculation()
+    {
+        using namespace Structura::Design::Composite;
+        DeckInput deck;   // forma de 75 mm, 1100 mm2/m, e = 40 mm
+        DeckLoads loads;
+        const auto r = checkDeck(deck, loads);
+        QVERIFY(r.ok);
+        const double fyd = 345.0 / 1.1, npa = 1100.0 * fyd;
+        const double a = npa / (0.85 * 1.0 * (25.0 / 1.4) * 1000.0);
+        const double expected = npa * (145.0 - 40.0 - 0.5 * a);
+        QVERIFY(a <= deck.tc);
+        QVERIFY(std::abs(r.mRdPositive - expected) / expected < 1e-6);
+        QVERIFY(r.vlRd > 0.0 && r.vvRd > 0.0);
+        QVERIFY(r.inertiaEffective > deck.ie);
+        // mais carga so piora a verificacao
+        DeckLoads heavy = loads;
+        heavy.variable = 12.0;
+        auto ratioOf = [](const DeckResult &d, const char *prefix) {
+            for (const auto &c : d.checks) {
+                if (c.name.find(prefix) == 0) {
+                    return c.ratio();
+                }
+            }
+            return -1.0;
+        };
+        QVERIFY(ratioOf(checkDeck(deck, heavy), "Momento fletor positivo") > ratioOf(r, "Momento fletor positivo"));
+        QVERIFY(ratioOf(checkDeck(deck, heavy), "Cisalhamento longitudinal") > ratioOf(r, "Cisalhamento longitudinal"));
+    }
+
     void connectionsBoltsAndWelds()
     {
         namespace C = Structura::Design::Connections;
@@ -119,6 +383,330 @@ private slots:
         const double kBased = Structura::Design::designBar(in).maxRatio;
         QVERIFY(std::abs(kBased - braced) < 1e-9);
     }
+    void gussetPlateConnection()
+    {
+        namespace C = Structura::Design::Connections;
+        auto find = [](const std::vector<C::Check> &checks, const char *name) {
+            for (const auto &c : checks) {
+                if (c.name.find(name) != std::string::npos) {
+                    return c;
+                }
+            }
+            return C::Check {};
+        };
+        C::GussetInput in;
+        in.grade = C::boltGrades()[2];
+        in.db = 20.0;
+        in.rows = 3;
+        in.lines = 1;
+        in.pitch = 70.0;
+        in.bars = 2;
+        in.barArea = 770.0;          // L 64 x 6,35
+        in.barLegThickness = 6.35;
+        in.barEccentricity = 18.0;
+        in.bar = {250.0, 400.0};
+        in.gusset = {250.0, 400.0};
+        in.support = {250.0, 400.0};
+        in.gussetThickness = 9.5;
+        in.gussetWidth = 200.0;
+        in.tension = 120000.0;
+        in.compression = 90000.0;
+        const auto checks = C::checkGusset(in);
+        // largura de Whitmore: 2 L tan30 com L = 2 x 70
+        QVERIFY(std::abs(C::whitmoreWidth(in) - 2.0 * 140.0 * std::tan(30.0 * 3.14159265358979 / 180.0)) < 1e-9);
+        const double lw = C::whitmoreWidth(in);
+        QVERIFY(std::abs(find(checks, "tracao na secao de Whitmore").resistance - std::min(lw * 9.5 * 250.0 / 1.10, std::min(lw - 24.0, 0.85 * lw) * 9.5 * 400.0 / 1.35) / 1000.0) < 1e-6);
+        QVERIFY(find(checks, "compressao na secao de Whitmore").resistance > 0.0);
+        QVERIFY(find(checks, "compressao na secao de Whitmore").resistance < lw * 9.5 * 250.0 / 1.10 / 1000.0 + 1e-9);
+        QVERIFY(find(checks, "Diagonal: cisalhamento de bloco").resistance > 0.0);
+        // Ct = 1 - 18/140
+        QVERIFY(find(checks, "Diagonal: tracao").lines[0].find("0.871") != std::string::npos);
+        // mais carga -> proposta; carga absurda -> sem proposta
+        C::GussetInput base = in;
+        base.tension = 250000.0;
+        base.compression = 200000.0;
+        base.barArea = 1900.0;
+        const auto proposal = C::proposeGusset(base);
+        QVERIFY(proposal.found);
+        QVERIFY(C::worstRatio(C::checkGusset(proposal.input)) <= 1.0 + 1e-9);
+        base.tension = 5.0e7;
+        QVERIFY(!C::proposeGusset(base).found);
+        QVERIFY(C::partsGusset(in).size() >= 3);
+    }
+    void beamSplice()
+    {
+        namespace C = Structura::Design::Connections;
+        C::SpliceInput in;
+        in.grade = C::boltGrades()[2];
+        in.db = 20.0;
+        in.beamDepth = 310.0;
+        in.flangeWidth = 165.0;
+        in.flangeThickness = 9.7;
+        in.webThickness = 5.8;
+        in.beamArea = 4000.0;
+        in.beam = {345.0, 450.0};
+        in.plates = {345.0, 450.0};
+        in.moment = 60.0e6;          // 60 kN.m
+        in.shear = 80000.0;
+        const auto checks = C::checkSplice(in);
+        auto find = [&](const char *name) {
+            for (const auto &c : checks) {
+                if (c.name.find(name) != std::string::npos) {
+                    return c;
+                }
+            }
+            return C::Check {};
+        };
+        QVERIFY(find("Cisalhamento do parafuso (mesa)").demand > 0.0);
+        QVERIFY(find("Talas de mesa: tracao").demand > 0.0);
+        QVERIFY(find("Talas de alma: cisalhamento").resistance > 0.0);
+        QVERIFY(find("Talas de alma: flexao").demand > 0.0);
+        const C::SpliceProposal proposal = C::proposeSplice(in);
+        QVERIFY(proposal.found);
+        QVERIFY(C::worstRatio(C::checkSplice(proposal.input)) <= 1.0 + 1e-9);
+        QVERIFY(!C::partsSplice(proposal.input).empty());
+        C::SpliceInput heavy = in;
+        heavy.moment = 150.0e6;
+        const C::SpliceProposal heavyProposal = C::proposeSplice(heavy);
+        if (heavyProposal.found) {
+            double lightMass = 0, heavyMass = 0;
+            for (const auto &p : C::partsSplice(proposal.input)) lightMass += p.totalMass();
+            for (const auto &p : C::partsSplice(heavyProposal.input)) heavyMass += p.totalMass();
+            QVERIFY(heavyMass >= lightMass);
+        }
+    }
+    void basePlateNbr8800()
+    {
+        namespace C = Structura::Design::Connections;
+        C::BasePlateInput in;
+        in.d = 310.0;
+        in.bf = 165.0;
+        in.tw = 5.8;
+        in.tf = 9.7;
+        in.column = {345.0, 450.0};
+        in.plate = {250.0, 400.0};
+        in.anchorDiameter = 25.0;
+        in.anchors = 4;
+        in.plateThickness = 25.0;
+        in.fck = 25.0;
+        // geometria pela Tabela 18: a1 = 50, a2 = 100
+        const auto g = C::basePlateGeometry(in);
+        QVERIFY(std::abs(g.lx - (310.0 + 4 * 50.0)) < 1e-9);
+        QVERIFY(std::abs(g.ly - ((0.5 * 4 - 1) * 100.0 + 2 * 50.0)) < 1e-9);
+        QVERIFY(std::abs(g.m - (g.lx - 0.95 * 310.0) / 2.0) < 1e-9);
+        QVERIFY(g.sigmaCRd <= 1.7 * 25.0 / 1.4 + 1e-9);
+        std::vector<C::Check> checks;
+        auto find = [&](const char *name) {
+            for (const auto &c : checks) {
+                if (c.name.find(name) != std::string::npos) {
+                    return c;
+                }
+            }
+            return C::Check {};
+        };
+        // compressao centrada: C1
+        in.axial = -600000.0;
+        checks = C::checkBasePlate(in);
+        QVERIFY(find("Caso de calculo").lines[1].find("Caso C1") != std::string::npos);
+        QVERIFY(find("tp,min").demand > 0.0);
+        QVERIFY(std::abs(find("Pressao de contato do concreto").demand - 600000.0 / (g.lx * g.ly)) < 1e-9);
+        // grande excentricidade: tracao nos chumbadores (C3)
+        in.axial = -100000.0;
+        in.moment = 150.0e6;
+        checks = C::checkBasePlate(in);
+        QVERIFY(find("Caso de calculo").lines[1].find("Caso C3") != std::string::npos);
+        QVERIFY(find("Chumbador: diametro minimo").demand > 0.0);
+        // tracao pura: T1
+        in.axial = 80000.0;
+        in.moment = 0.0;
+        checks = C::checkBasePlate(in);
+        QVERIFY(find("Caso de calculo").lines[1].find("Caso T1") != std::string::npos);
+        const double ft = 80000.0 / 4.0;
+        QVERIFY(std::abs(find("Chumbador: diametro minimo").demand - std::sqrt(4.0 * ft / (0.75 * 3.14159265358979 * 400.0 / 1.35))) < 1e-9);
+        // proposta
+        C::BasePlateInput base = in;
+        base.axial = -400000.0;
+        base.moment = 40.0e6;
+        base.shear = 40000.0;
+        const C::BasePlateProposal proposal = C::proposeBasePlate(base);
+        QVERIFY(proposal.found);
+        QVERIFY(C::worstRatio(C::checkBasePlate(proposal.input)) <= 1.0 + 1e-9);
+        QVERIFY(!C::partsBasePlate(proposal.input).empty());
+        QVERIFY(C::anchorFor(26.0).db >= 26.0);
+    }
+    void tubularJointsCidect()
+    {
+        namespace C = Structura::Design::Connections;
+        auto find = [](const std::vector<C::Check> &checks, const char *name) {
+            for (const auto &c : checks) {
+                if (c.name.find(name) != std::string::npos) {
+                    return c;
+                }
+            }
+            return C::Check {};
+        };
+        // junta T: eq. 4.5 e Qf
+        C::TubularJointInput t;
+        t.kind = C::TubularJointInput::TY;
+        t.d0 = 168.3; t.t0 = 6.0; t.fy0 = 355; t.fu0 = 510;
+        t.d1 = 88.9; t.t1 = 4.0; t.fy1 = 355; t.theta1 = 90.0; t.n1 = 50000.0;
+        const double beta = 88.9 / 168.3, gamma = 168.3 / 12.0;
+        const double qu = 2.6 * (1 + 6.8 * beta * beta) * std::pow(gamma, 0.2);
+        const auto checks = C::checkTubularJoint(t);
+        const double plain = find(checks, "Plastificacao da face do banzo").resistance;
+        QVERIFY(std::abs(plain - qu * 355.0 * 36.0 / 1000.0) < 1e-6);
+        // compressao no banzo reduz a resistencia (Qf < 1)
+        const double npl = 3.14159265358979 / 4.0 * (168.3 * 168.3 - 156.3 * 156.3) * 355.0;
+        t.chordAxial = -0.5 * npl;
+        const double reduced = find(C::checkTubularJoint(t), "Plastificacao da face do banzo").resistance;
+        QVERIFY(std::abs(reduced / plain - std::pow(1.0 - 0.5, 0.45 - 0.25 * beta)) < 1e-6);
+        // tracao no banzo: C1 = 0,2
+        t.chordAxial = 0.5 * npl;
+        QVERIFY(std::abs(find(C::checkTubularJoint(t), "Plastificacao da face do banzo").resistance / plain - std::pow(0.5, 0.2)) < 1e-6);
+        // K com afastamento
+        C::TubularJointInput k;
+        k.kind = C::TubularJointInput::KGap;
+        k.d0 = 219.1; k.t0 = 7.1; k.fy0 = 355; k.fu0 = 510;
+        k.d1 = 139.7; k.t1 = 4.5; k.theta1 = 38.7; k.n1 = 200000.0;
+        k.d2 = 88.9; k.t2 = 3.6; k.theta2 = 50.8; k.n2 = 150000.0;
+        k.gap = 21.3;
+        const auto kc = C::checkTubularJoint(k);
+        const double b1 = 139.7 / 219.1, g0 = 219.1 / 14.2;
+        const double quK = 1.65 * (1 + 8 * std::pow(b1, 1.6)) * std::pow(g0, 0.3) * (1 + 1.0 / (1.2 + std::pow(21.3 / 7.1, 0.8)));
+        QVERIFY(std::abs(find(kc, "Plastificacao da face do banzo (diagonal 1)").resistance
+                         - quK * 355.0 * 7.1 * 7.1 / std::sin(38.7 * 3.14159265358979 / 180.0) / 1000.0) < 1e-6);
+        QVERIFY(find(kc, "Afastamento").ok());
+        k.gap = 5.0;   // menor que t1 + t2
+        QVERIFY(!find(C::checkTubularJoint(k), "Afastamento").ok());
+        // K com sobreposicao
+        C::TubularJointInput o = k;
+        o.kind = C::TubularJointInput::KOverlap;
+        o.overlap = 50.0;
+        const auto oc = C::checkTubularJoint(o);
+        QVERIFY(find(oc, "Escoamento local da diagonal sobreposta").resistance > 0.0);
+        QVERIFY(find(oc, "Diagonal coberta").resistance > 0.0);
+        // chapa transversal em T
+        C::TubularJointInput p;
+        p.kind = C::TubularJointInput::TY;
+        p.braceKind = C::TubularJointInput::TransversePlate;
+        p.d0 = 168.3; p.t0 = 6.0; p.d1 = 80.0; p.t1 = 12.5; p.theta1 = 90.0; p.n1 = 60000.0;
+        const auto pc = C::checkTubularJoint(p);
+        const double bp = 80.0 / 168.3;
+        QVERIFY(std::abs(find(pc, "Plastificacao da face do banzo").resistance - 2.2 * (1 + 6.8 * bp * bp) * std::pow(gamma, 0.2) * 355.0 * 36.0 / 1000.0) < 1e-6);
+        QVERIFY(!C::partsTubularJoint(k).empty());
+    }
+    void shearTabAndDoubleAngleChecks()
+    {
+        namespace C = Structura::Design::Connections;
+        C::ShearTabInput in;
+        in.grade = C::boltGrades()[2];
+        in.db = 20.0;
+        in.rows = 3;
+        in.pitch = 70.0;
+        in.edgeV = 35.0;
+        in.edgeH = 35.0;
+        in.boltLineToWeld = 60.0;
+        in.plateThickness = 9.5;
+        in.webThickness = 6.0;
+        in.weldLeg = 6.0;
+        in.shear = 100000.0;   // 100 kN
+        auto find = [](const std::vector<C::Check> &checks, const char *name) {
+            for (const auto &c : checks) {
+                if (c.name.find(name) != std::string::npos) {
+                    return c;
+                }
+            }
+            return C::Check {};
+        };
+        const auto checks = C::checkShearTab(in);
+        QVERIFY(std::abs(C::plateHeight(in) - 210.0) < 1e-9);
+        QVERIFY(std::abs(find(checks, "Chapa - escoamento").resistance - 0.6 * 9.5 * 210.0 * 250.0 / 1.10 / 1000.0) < 1e-6);
+        QVERIFY(std::abs(find(checks, "Chapa - ruptura").resistance - 0.6 * 9.5 * (210.0 - 3 * 24.0) * 400.0 / 1.35 / 1000.0) < 1e-6);
+        QVERIFY(std::abs(find(checks, "Chapa - flexao").resistance - 9.5 * 210.0 * 210.0 * 250.0 / (4.0 * 1.10) / 1e6) < 1e-6);
+        QVERIFY(std::abs(find(checks, "Chapa - flexao").demand - 6.0) < 1e-9);   // 100 kN x 60 mm
+        const double fv = 100000.0 / 420.0, fn = 6e6 / (210.0 * 210.0 / 3.0);
+        QVERIFY(std::abs(find(checks, "Solda de filete").demand - std::hypot(fv, fn)) < 1e-6);
+        QVERIFY(find(checks, "Solda de filete").ok());
+        QVERIFY(find(checks, "alma da viga").resistance > 0.0);
+        // excentricidade aumenta a solicitacao do parafuso mais afastado
+        C::ShearTabInput concentric = in;
+        concentric.boltLineToWeld = 0.0;
+        QVERIFY(find(C::checkShearTab(concentric), "Cisalhamento").demand < find(checks, "Cisalhamento").demand);
+        // proposta: atende para 120 kN, nao para 5000 kN
+        C::ShearTabInput base = in;
+        base.shear = 120000.0;
+        const auto proposal = C::proposeShearTab(base);
+        QVERIFY(proposal.found);
+        QVERIFY(proposal.maxRatio <= 1.0 + 1e-9);
+        QVERIFY(C::worstRatio(C::checkShearTab(proposal.input)) <= 1.0 + 1e-9);
+        base.shear = 5.0e6;
+        QVERIFY(!C::proposeShearTab(base).found);
+        QVERIFY(!C::partsShearTab(in).empty());
+
+        C::DoubleAngleInput da;
+        da.grade = C::boltGrades()[2];
+        da.db = 20.0;
+        da.rows = 3;
+        da.shear = 150000.0;
+        da.axial = 20000.0;
+        const auto dchecks = C::checkDoubleAngle(da);
+        // corte duplo: Rd por plano vezes dois planos na verificacao (demanda por plano e metade)
+        QVERIFY(find(dchecks, "lado da alma").ok() || !find(dchecks, "lado da alma").ok());
+        QVERIFY(!find(dchecks, "lado do apoio").name.empty());
+        QVERIFY(!find(dchecks, "Tracao").name.empty());   // N > 0: tracao nos parafusos do apoio
+        const auto dp = C::proposeDoubleAngle(da);
+        QVERIFY(dp.found);
+        QVERIFY(C::worstRatio(C::checkDoubleAngle(dp.input)) <= 1.0 + 1e-9);
+        QCOMPARE(static_cast<int>(C::partsDoubleAngle(dp.input).size()), 3);
+    }
+    void distortionalBucklingCoversEveryColdFormedSection()
+    {
+        SteelGrade zar {"ZAR 345", 345, 430, 200000, 77000, true};
+        const std::vector<std::pair<QString, QMap<QString, double>>> families = {
+            {QStringLiteral("C Formado"), {{"d", 200}, {"bf", 75}, {"c", 20}, {"t", 2.65}}},
+            {QStringLiteral("U Formado"), {{"d", 150}, {"bf", 60}, {"t", 3.0}}},
+            {QStringLiteral("Z Formado"), {{"d", 150}, {"bf", 60}, {"t", 3.0}}},
+            {QStringLiteral("L Formado"), {{"d", 100}, {"bf", 100}, {"t", 3.0}}},
+            {QStringLiteral("Cartola Formado"), {{"d", 100}, {"bf", 80}, {"c", 30}, {"t", 2.0}}},
+            {QStringLiteral("Tubular Retangular"), {{"b", 100}, {"h", 60}, {"t", 3.0}}}};
+        auto mentions = [](const std::vector<std::string> &lines) {
+            for (const auto &line : lines) {
+                if (line.find("istorcional") != std::string::npos) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        int analysed = 0;
+        for (const auto &family : families) {
+            if (!SectionShapes::findFamily(family.first)) {
+                continue;
+            }
+            const DesignSection s = make(family.first, family.second);
+            if (!s.supported() || s.standard != Standard::NBR14762) {
+                continue;
+            }
+            ++analysed;
+            Nbr14762::Options o;
+            const auto c = Nbr14762::compression(s, zar, {3000, 3000, 3000}, o);
+            QVERIFY2(c.NcRd > 0, qPrintable(family.first));
+            QVERIFY2(mentions(c.lines), qPrintable(family.first));   // verificacao feita (valor ou nota) para todos os perfis
+            for (const Axis axis : {Axis::X, Axis::Y}) {
+                for (const bool top : {true, false}) {
+                    const auto f = Nbr14762::flexure(s, zar, axis, top, 0.0, 1.0, o);
+                    QVERIFY2(f.MRd > 0, qPrintable(family.first));
+                    QVERIFY2(mentions(f.lines), qPrintable(family.first + (axis == Axis::X ? QStringLiteral(" X") : QStringLiteral(" Y"))));
+                }
+            }
+        }
+        QVERIFY(analysed >= 4);
+        // enrijecedor curto reduz o momento resistente em relacao a um enrijecedor adequado
+        const DesignSection weak = make(QStringLiteral("C Formado"), {{"d", 200}, {"bf", 100}, {"c", 8}, {"t", 1.5}});
+        const DesignSection strong = make(QStringLiteral("C Formado"), {{"d", 200}, {"bf", 100}, {"c", 25}, {"t", 1.5}});
+        Nbr14762::Options o;
+        QVERIFY(Nbr14762::flexure(weak, zar, Axis::X, true, 0.0, 1.0, o).MRd <= Nbr14762::flexure(strong, zar, Axis::X, true, 0.0, 1.0, o).MRd * 1.0001);
+    }
+
     void wSectionGrossProperties()
     {
         const DesignSection s = make("W Laminado", {{"d", 300}, {"bf", 150}, {"tw", 8}, {"tf", 12}});

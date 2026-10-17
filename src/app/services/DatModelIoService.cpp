@@ -37,7 +37,7 @@ bool DatModelIoService::load(const QString &filePath,
     QTextStream stream(&file);
     stream.setLocale(QLocale::c());
 
-    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults };
+    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor };
     Section current = Section::None;
 
     QVector<MaterialInfo> materialsTmp;
@@ -75,6 +75,12 @@ bool DatModelIoService::load(const QString &filePath,
     QVector<Structura::App::ProjectData::BarGroup> groupsTmp;
     QVector<Structura::App::ProjectData::AreaLoadPanel> areaLoadsTmp;
     Structura::App::ProjectData::StoredResults resultsTmp;
+    QVector<Structura::App::ProjectData::NodeConnection> connectionsTmp;
+    Structura::App::ProjectData::TitleBlockSettings titleBlockTmp;
+    QVector<Structura::App::ProjectData::SavedView3D> views3dTmp;
+    QVector<Structura::App::ProjectData::SheetLayoutDef> sheetLayoutsTmp;
+    QMap<int, QMap<QString, double>> compositeBeamsTmp;
+    QMap<QString, double> deckSlabTmp;
     auto decodeName = [](const QString &token) { return QUrl::fromPercentEncoding(token.toLatin1()); };
     struct SectionGeometryRecord {
         QString family;
@@ -134,6 +140,16 @@ bool DatModelIoService::load(const QString &filePath,
                 current = Section::MemberMoments;
             } else if (trimmed.compare(QStringLiteral("[AREA_LOADS]"), Qt::CaseInsensitive) == 0) {
                 current = Section::AreaLoads;
+            } else if (trimmed.compare(QStringLiteral("[VIEWS_3D]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Views3D;
+            } else if (trimmed.compare(QStringLiteral("[COMPOSITE_FLOOR]"), Qt::CaseInsensitive) == 0) {
+                current = Section::CompositeFloor;
+            } else if (trimmed.compare(QStringLiteral("[SHEET_LAYOUTS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::SheetLayouts;
+            } else if (trimmed.compare(QStringLiteral("[TITLE_BLOCK]"), Qt::CaseInsensitive) == 0) {
+                current = Section::TitleBlock;
+            } else if (trimmed.compare(QStringLiteral("[CONNECTIONS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Connections;
             } else if (trimmed.compare(QStringLiteral("[ANALYSIS_RESULTS]"), Qt::CaseInsensitive) == 0) {
                 current = Section::AnalysisResults;
             } else if (trimmed.compare(QStringLiteral("[DESIGN_RESULTS]"), Qt::CaseInsensitive) == 0) {
@@ -381,6 +397,105 @@ bool DatModelIoService::load(const QString &filePath,
             }
             break;
         }
+        case Section::Views3D: {
+            if (parts.size() < 14) {
+                break;
+            }
+            Structura::App::ProjectData::SavedView3D v;
+            v.name = parts[0] == QLatin1String("-") ? QString() : decodeName(parts[0]);
+            v.perspective = toInt(parts[1], &ok) != 0;
+            v.azimuthDeg = toDouble(parts[2], &ok);
+            v.elevationDeg = toDouble(parts[3], &ok);
+            v.fovDeg = toDouble(parts[4], &ok);
+            v.explicitCamera = toInt(parts[5], &ok) != 0;
+            for (int i = 0; i < 3; ++i) {
+                v.position[static_cast<std::size_t>(i)] = toDouble(parts[6 + i], &ok);
+            }
+            for (int i = 0; i < 3; ++i) {
+                v.target[static_cast<std::size_t>(i)] = toDouble(parts[9 + i], &ok);
+            }
+            if (parts.size() >= 15) {
+                for (int i = 0; i < 3; ++i) {
+                    v.up[static_cast<std::size_t>(i)] = toDouble(parts[12 + i], &ok);
+                }
+            }
+            views3dTmp.append(v);
+            break;
+        }
+        case Section::CompositeFloor: {
+            const QString key = parts[0].toUpper();
+            if (key == QLatin1String("BEAM") && parts.size() >= 4) {
+                compositeBeamsTmp[toInt(parts[1], &ok)].insert(parts[2], toDouble(parts[3], &ok));
+            } else if (key == QLatin1String("DECK") && parts.size() >= 3) {
+                deckSlabTmp.insert(parts[1], toDouble(parts[2], &ok));
+            }
+            break;
+        }
+        case Section::SheetLayouts: {
+            const QString key = parts[0].toUpper();
+            if (key == QLatin1String("LAYOUT")) {
+                Structura::App::ProjectData::SheetLayoutDef layout;
+                layout.name = parts.size() > 1 && parts[1] != QLatin1String("-") ? decodeName(parts[1]) : QString();
+                sheetLayoutsTmp.append(layout);
+            } else if (key == QLatin1String("VIEW") && parts.size() >= 8 && !sheetLayoutsTmp.isEmpty()) {
+                Structura::App::ProjectData::SheetLayoutDef::Placement p;
+                p.viewId = decodeName(parts[1]);
+                p.scale = toDouble(parts[2], &ok);
+                p.manual = toInt(parts[3], &ok) != 0;
+                p.x = toDouble(parts[4], &ok);
+                p.y = toDouble(parts[5], &ok);
+                p.w = toDouble(parts[6], &ok);
+                p.h = toDouble(parts[7], &ok);
+                sheetLayoutsTmp.last().views.append(p);
+            }
+            break;
+        }
+        case Section::TitleBlock: {
+            const QString key = parts[0].toUpper();
+            auto text = [&](int index) { return parts.size() > index && parts[index] != QLatin1String("-") ? decodeName(parts[index]) : QString(); };
+            auto &tb = titleBlockTmp;
+            if (key == QLatin1String("COMPANY")) tb.company = text(1);
+            else if (key == QLatin1String("CLIENT")) tb.client = text(1);
+            else if (key == QLatin1String("SITE")) tb.site = text(1);
+            else if (key == QLatin1String("PROJECT")) tb.project = text(1);
+            else if (key == QLatin1String("AUTHOR")) tb.author = text(1);
+            else if (key == QLatin1String("REGISTRATION")) tb.registration = text(1);
+            else if (key == QLatin1String("DRAFTER")) tb.drafter = text(1);
+            else if (key == QLatin1String("CHECKER")) tb.checker = text(1);
+            else if (key == QLatin1String("DATE")) tb.date = text(1);
+            else if (key == QLatin1String("REVISION")) tb.revision = text(1);
+            else if (key == QLatin1String("PREFIX")) tb.drawingPrefix = text(1);
+            else if (key == QLatin1String("NOTES")) tb.notes = text(1);
+            else if (key == QLatin1String("REV") && parts.size() >= 5) tb.revisions.append({text(1), text(2), text(3), text(4)});
+            else if (key == QLatin1String("SHEET") && parts.size() >= 3) tb.sheetTitles.insert(text(1), text(2));
+            break;
+        }
+        case Section::Connections: {
+            if (parts.size() < 9) {
+                break;
+            }
+            Structura::App::ProjectData::NodeConnection c;
+            c.id = toInt(parts[0], &ok);
+            if (!ok) {
+                break;
+            }
+            c.type = toInt(parts[1], &ok);
+            c.nodeId = toInt(parts[2], &ok);
+            c.memberId = toInt(parts[3], &ok);
+            c.atEnd = toInt(parts[4], &ok) != 0;
+            c.eta = toDouble(parts[5], &ok);
+            c.verified = toInt(parts[6], &ok) != 0;
+            c.grade = decodeName(parts[7]);
+            c.governing = parts[8] == QLatin1String("-") ? QString() : decodeName(parts[8]);
+            for (int i = 9; i < parts.size(); ++i) {
+                const int eq = parts[i].indexOf(QLatin1Char('='));
+                if (eq > 0) {
+                    c.values.insert(parts[i].left(eq), toDouble(parts[i].mid(eq + 1), &ok));
+                }
+            }
+            connectionsTmp.append(c);
+            break;
+        }
         case Section::DesignResults: {
             if (parts.size() < 6) {
                 break;
@@ -461,6 +576,10 @@ bool DatModelIoService::load(const QString &filePath,
                 designTmp.rs = toDouble(parts[1], &ok);
             } else if (key == QLatin1String("SINGLE_STOREY")) {
                 designTmp.singleStorey = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("NOTIONAL_LOADS")) {
+                designTmp.notionalLoads = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("NOTIONAL_FACTOR")) {
+                designTmp.notionalFactor = toDouble(parts[1], &ok);
             } else if (key == QLatin1String("GROUP_BY_FAMILY")) {
                 designTmp.groupByFamily = toInt(parts[1], &ok) != 0;
             } else if (key == QLatin1String("TARGET_ETA")) {
@@ -732,6 +851,12 @@ bool DatModelIoService::load(const QString &filePath,
     extras.groups = groupsTmp;
     extras.areaLoads = areaLoadsTmp;
     extras.results = resultsTmp;
+    extras.connections = connectionsTmp;
+    extras.titleBlock = titleBlockTmp;
+    extras.views3d = views3dTmp;
+    extras.sheetLayouts = sheetLayoutsTmp;
+    extras.compositeBeams = compositeBeamsTmp;
+    extras.deckSlab = deckSlabTmp;
 
     // Projetos antigos nao tem casos: cria o caso padrao e atribui as cargas a ele.
     extras.loadCases = loadCasesTmp;
@@ -1150,6 +1275,8 @@ bool DatModelIoService::save(const QString &filePath,
         stream << "AUTO_B2 " << (ds.autoB2 ? 1 : 0) << "\n";
         stream << "RS " << ds.rs << "\n";
         stream << "SINGLE_STOREY " << (ds.singleStorey ? 1 : 0) << "\n";
+        stream << "NOTIONAL_LOADS " << (ds.notionalLoads ? 1 : 0) << "\n";
+        stream << "NOTIONAL_FACTOR " << ds.notionalFactor << "\n";
         stream << "GROUP_BY_FAMILY " << (ds.groupByFamily ? 1 : 0) << "\n";
         stream << "TARGET_ETA " << ds.targetEta << "\n";
         for (const QString &name : ds.combinations) {
@@ -1169,6 +1296,71 @@ bool DatModelIoService::save(const QString &filePath,
         }
     }
 
+    if (!extras.views3d.isEmpty()) {
+        stream << "\n[VIEWS_3D]\n";
+        stream << "# nome perspectiva(0/1) azimute elevacao fov camera_explicita(0/1) pos(x y z, m) alvo(x y z) cima(x y z)\n";
+        for (const auto &v : extras.views3d) {
+            stream << QString::fromLatin1(QUrl::toPercentEncoding(v.name.isEmpty() ? QStringLiteral("-") : v.name)) << ' ' << (v.perspective ? 1 : 0) << ' ' << QString::number(v.azimuthDeg, 'g', 8)
+                   << ' ' << QString::number(v.elevationDeg, 'g', 8) << ' ' << QString::number(v.fovDeg, 'g', 8) << ' ' << (v.explicitCamera ? 1 : 0);
+            for (const auto &arr : {v.position, v.target, v.up}) {
+                for (const double c : arr) {
+                    stream << ' ' << QString::number(c, 'g', 10);
+                }
+            }
+            stream << "\n";
+        }
+    }
+    if (!extras.compositeBeams.isEmpty() || !extras.deckSlab.isEmpty()) {
+        stream << "\n[COMPOSITE_FLOOR]\n";
+        stream << "# BEAM id_da_barra chave valor  |  DECK chave valor (entradas das verificacoes de viga mista e laje mista)\n";
+        for (auto it = extras.compositeBeams.constBegin(); it != extras.compositeBeams.constEnd(); ++it) {
+            for (auto v = it.value().constBegin(); v != it.value().constEnd(); ++v) {
+                stream << "BEAM " << it.key() << ' ' << v.key() << ' ' << QString::number(v.value(), 'g', 10) << "\n";
+            }
+        }
+        for (auto v = extras.deckSlab.constBegin(); v != extras.deckSlab.constEnd(); ++v) {
+            stream << "DECK " << v.key() << ' ' << QString::number(v.value(), 'g', 10) << "\n";
+        }
+    }
+    if (!extras.sheetLayouts.isEmpty()) {
+        stream << "\n[SHEET_LAYOUTS]\n";
+        stream << "# LAYOUT nome  |  VIEW id_da_vista escala(0=auto) manual(0/1) x y largura altura (fracoes da area util)\n";
+        for (const auto &layout : extras.sheetLayouts) {
+            stream << "LAYOUT " << QString::fromLatin1(QUrl::toPercentEncoding(layout.name.isEmpty() ? QStringLiteral("-") : layout.name)) << "\n";
+            for (const auto &p : layout.views) {
+                stream << "VIEW " << QString::fromLatin1(QUrl::toPercentEncoding(p.viewId)) << ' ' << QString::number(p.scale, 'g', 8) << ' ' << (p.manual ? 1 : 0) << ' '
+                       << QString::number(p.x, 'g', 6) << ' ' << QString::number(p.y, 'g', 6) << ' ' << QString::number(p.w, 'g', 6) << ' ' << QString::number(p.h, 'g', 6) << "\n";
+            }
+        }
+    }
+    if (!extras.titleBlock.isDefault()) {
+        const auto &tb = extras.titleBlock;
+        auto enc = [](const QString &text) { return QString::fromLatin1(QUrl::toPercentEncoding(text.isEmpty() ? QStringLiteral("-") : text)); };
+        stream << "\n[TITLE_BLOCK]\n";
+        stream << "# carimbo das pranchas (valores codificados; - = vazio)\n";
+        stream << "COMPANY " << enc(tb.company) << "\nCLIENT " << enc(tb.client) << "\nSITE " << enc(tb.site) << "\nPROJECT " << enc(tb.project) << "\n";
+        stream << "AUTHOR " << enc(tb.author) << "\nREGISTRATION " << enc(tb.registration) << "\nDRAFTER " << enc(tb.drafter) << "\nCHECKER " << enc(tb.checker) << "\n";
+        stream << "DATE " << enc(tb.date) << "\nREVISION " << enc(tb.revision) << "\nPREFIX " << enc(tb.drawingPrefix) << "\nNOTES " << enc(tb.notes) << "\n";
+        for (const auto &r : tb.revisions) {
+            stream << "REV " << enc(r.rev) << ' ' << enc(r.date) << ' ' << enc(r.description) << ' ' << enc(r.author) << "\n";
+        }
+        for (auto it = tb.sheetTitles.constBegin(); it != tb.sheetTitles.constEnd(); ++it) {
+            stream << "SHEET " << enc(it.key()) << ' ' << enc(it.value()) << "\n";
+        }
+    }
+    if (!extras.connections.isEmpty()) {
+        stream << "\n[CONNECTIONS]\n";
+        stream << "# ID tipo(0=chapa de cisalhamento,1=cantoneira dupla) no viga extremidade_final(0/1) aproveitamento verificada(0/1) parafuso governante chave=valor...\n";
+        for (const auto &c : extras.connections) {
+            stream << c.id << ' ' << c.type << ' ' << c.nodeId << ' ' << c.memberId << ' ' << (c.atEnd ? 1 : 0) << ' ' << QString::number(c.eta, 'g', 8) << ' '
+                   << (c.verified ? 1 : 0) << ' ' << QString::fromLatin1(QUrl::toPercentEncoding(c.grade.isEmpty() ? QStringLiteral("-") : c.grade)) << ' '
+                   << (c.governing.isEmpty() ? QStringLiteral("-") : QString::fromLatin1(QUrl::toPercentEncoding(c.governing)));
+            for (auto it = c.values.constBegin(); it != c.values.constEnd(); ++it) {
+                stream << ' ' << it.key() << '=' << QString::number(it.value(), 'g', 10);
+            }
+            stream << "\n";
+        }
+    }
     const auto &results = extras.results;
     auto encode = [](const QString &text) { return QString::fromLatin1(QUrl::toPercentEncoding(text.isEmpty() ? QStringLiteral("-") : text)); };
     if (!results.runs.isEmpty()) {

@@ -4,6 +4,7 @@
 #include "viz/structure/SupportMeshBuilder.h"
 #include "viz/loads/LoadActionRenderer.h"
 #include "viz/structure/SolidMemberRenderer.h"
+#include <vtkSphereSource.h>
 
 #include <QVTKOpenGLNativeWidget.h>
 
@@ -98,9 +99,17 @@ void SceneController::initializePickers()
 
 void SceneController::requestRender()
 {
-    if (auto *renderWindow = m_renderWindow.GetPointer()) {
-        renderWindow->Render();
+    // Pedidos de renderizacao feitos em sequencia (criar barras, trocar aparencia, mover nos...) viram um unico Render().
+    if (m_renderPending) {
+        return;
     }
+    m_renderPending = true;
+    QMetaObject::invokeMethod(this, [this]() {
+        m_renderPending = false;
+        if (auto *renderWindow = m_renderWindow.GetPointer()) {
+            renderWindow->Render();
+        }
+    }, Qt::QueuedConnection);
 }
 
 void SceneController::clearNodes()
@@ -164,6 +173,7 @@ void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget)
     }
 
     vtkWidget->setRenderWindow(m_renderWindow);
+    m_renderer->GetActiveCamera()->ParallelProjectionOn();   // isometrica (paralela) e o padrao; a perspectiva e opcional
     m_renderWindow->LineSmoothingOn();
     
     m_renderWindow->AddRenderer(m_renderer);
@@ -204,6 +214,18 @@ void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget)
 
         // Custom interactor: rotate with right button
         vtkSmartPointer<CustomInteractorStyle> style = vtkSmartPointer<CustomInteractorStyle>::New();
+        // sem geometria sob o cursor, o giro usa o centro do modelo
+        style->setFallbackPivot([this](double *pivot) {
+            if (m_nodes.empty() || !m_structureRenderer) {
+                return false;
+            }
+            double bounds[6];
+            m_structureRenderer->getNodeActor()->GetBounds(bounds);
+            for (int i = 0; i < 3; ++i) {
+                pivot[i] = 0.5 * (bounds[2 * i] + bounds[2 * i + 1]);
+            }
+            return true;
+        });
         interactor->SetInteractorStyle(style);
     }
 
@@ -364,7 +386,19 @@ void SceneController::refreshConstructionGeometry()
         const auto &b = m_nodes[static_cast<std::size_t>(endIndex)];
         midpoints.push_back({(a.x() + b.x()) / 2.0, (a.y() + b.y()) / 2.0, (a.z() + b.z()) / 2.0});
     }
-    m_construction->setSnapGeometry(std::move(nodes), std::move(midpoints));
+    std::vector<std::pair<Structura::Construction::Vec3, Structura::Construction::Vec3>> segments;
+    segments.reserve(m_bars.size());
+    for (const auto &bar : m_bars) {
+        const int startIndex = nodeIndex(bar.startNodeId());
+        const int endIndex = nodeIndex(bar.endNodeId());
+        if (startIndex < 0 || endIndex < 0) {
+            continue;
+        }
+        const auto &a = m_nodes[static_cast<std::size_t>(startIndex)];
+        const auto &b = m_nodes[static_cast<std::size_t>(endIndex)];
+        segments.push_back({{a.x(), a.y(), a.z()}, {b.x(), b.y(), b.z()}});
+    }
+    m_construction->setSnapGeometry(std::move(nodes), std::move(midpoints), std::move(segments));
     emit geometryRefreshed();
 }
 
@@ -411,6 +445,23 @@ void SceneController::setAreaPanels(const std::vector<Structura::Visualization::
 {
     m_areaPanels = panels;
     setAreaPanelsVisible(m_areaPanelsVisible);
+}
+
+bool SceneController::cameraState(double position[3], double target[3], double up[3], double &viewAngleDeg, bool &parallel) const
+{
+    if (!m_renderer) {
+        return false;
+    }
+    auto *camera = m_renderer->GetActiveCamera();
+    if (!camera) {
+        return false;
+    }
+    camera->GetPosition(position);
+    camera->GetFocalPoint(target);
+    camera->GetViewUp(up);
+    viewAngleDeg = camera->GetViewAngle();
+    parallel = camera->GetParallelProjection() != 0;
+    return true;
 }
 
 void SceneController::setBarTypeMarkers(const std::vector<Structura::Visualization::BarTypeRenderer::Marker> &markers)
@@ -510,7 +561,12 @@ void SceneController::setSolidMembers(const QVector<SolidMemberVisual> &members)
         member.dimmed = visual.dimmed;
         list.push_back(std::move(member));
     }
+    m_solidBarIds.clear();
+    for (const auto &visual : members) {
+        m_solidBarIds.append(visual.barId);
+    }
     m_solidRenderer->setMembers(list);
+    applySolidSelection();
     requestRender();
 }
 
@@ -519,6 +575,74 @@ void SceneController::setElementAppearance(const Structura::Visualization::Appea
 {
     m_structureRenderer->setNodeAppearance(nodes);
     m_structureRenderer->setBarAppearance(bars);
+    requestRender();
+}
+
+void SceneController::lookFromDirection(double dx, double dy, double dz, double ux, double uy, double uz)
+{
+    auto *camera = m_renderer->GetActiveCamera();
+    double focal[3];
+    camera->GetFocalPoint(focal);
+    if (!m_nodes.empty()) {
+        double bounds[6];
+        m_structureRenderer->getNodeActor()->GetBounds(bounds);
+        for (int i = 0; i < 3; ++i) {
+            focal[i] = 0.5 * (bounds[2 * i] + bounds[2 * i + 1]);
+        }
+    }
+    const double norm = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (norm < 1e-12) {
+        return;
+    }
+    camera->SetFocalPoint(focal);
+    camera->SetPosition(focal[0] + dx / norm, focal[1] + dy / norm, focal[2] + dz / norm);
+    camera->SetViewUp(ux, uy, uz);
+    m_renderer->ResetCamera();
+    emit cameraChanged();
+    requestRender();
+}
+
+void SceneController::setCameraState(const double position[3], const double target[3], const double up[3], double viewAngleDeg, bool parallel)
+{
+    auto *camera = m_renderer->GetActiveCamera();
+    camera->SetPosition(position[0], position[1], position[2]);
+    camera->SetFocalPoint(target[0], target[1], target[2]);
+    camera->SetViewUp(up[0], up[1], up[2]);
+    camera->SetViewAngle(viewAngleDeg);
+    camera->SetParallelProjection(parallel ? 1 : 0);
+    m_renderer->ResetCameraClippingRange();
+    emit cameraChanged();
+    requestRender();
+}
+
+bool SceneController::isPerspective() const
+{
+    return m_renderer && m_renderer->GetActiveCamera() && m_renderer->GetActiveCamera()->GetParallelProjection() == 0;
+}
+
+void SceneController::setPerspective(bool perspective)
+{
+    auto *camera = m_renderer->GetActiveCamera();
+    if (!camera || perspective == isPerspective()) {
+        return;
+    }
+    constexpr double kPi = 3.14159265358979323846;
+    const double halfAngle = 0.5 * camera->GetViewAngle() * kPi / 180.0;
+    if (!perspective) {
+        // perspectiva -> paralela: a escala paralela reproduz a largura visivel no plano do alvo
+        camera->SetParallelScale(camera->GetDistance() * std::tan(halfAngle));
+        camera->ParallelProjectionOn();
+    } else {
+        // paralela -> perspectiva: afasta a camera ate a distancia que enquadra a mesma altura
+        double focal[3], dop[3];
+        camera->GetFocalPoint(focal);
+        camera->GetDirectionOfProjection(dop);
+        const double distance = camera->GetParallelScale() / std::max(1e-6, std::tan(halfAngle));
+        camera->ParallelProjectionOff();
+        camera->SetPosition(focal[0] - dop[0] * distance, focal[1] - dop[1] * distance, focal[2] - dop[2] * distance);
+    }
+    m_renderer->ResetCameraClippingRange();
+    emit cameraChanged();
     requestRender();
 }
 
@@ -566,6 +690,65 @@ void SceneController::setSolidsVisible(bool visible)
     requestRender();
 }
 
+void SceneController::setConnectionMesh(const Structura::Visualization::ConnectionRenderer::Mesh &mesh)
+{
+    if (!m_connectionRenderer) {
+        m_connectionRenderer = std::make_unique<Structura::Visualization::ConnectionRenderer>();
+        m_connectionRenderer->attach(m_renderer);
+    }
+    m_connectionRenderer->setMesh(mesh);
+    requestRender();
+}
+
+void SceneController::setNodeHighlight(const std::optional<QVector3D> &position)
+{
+    if (!m_nodeHighlight) {
+        auto sphere = vtkSmartPointer<vtkSphereSource>::New();
+        sphere->SetThetaResolution(28);
+        sphere->SetPhiResolution(20);
+        sphere->SetRadius(1.0);
+        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputConnection(sphere->GetOutputPort());
+        m_nodeHighlight = vtkSmartPointer<vtkActor>::New();
+        m_nodeHighlight->SetMapper(mapper);
+        m_nodeHighlight->PickableOff();
+        m_nodeHighlight->GetProperty()->SetColor(1.0, 0.55, 0.0);
+        m_nodeHighlight->GetProperty()->SetOpacity(0.55);
+        m_nodeHighlight->GetProperty()->SetAmbient(0.8);
+        m_renderer->AddActor(m_nodeHighlight);
+    }
+    if (!position) {
+        m_nodeHighlight->SetVisibility(0);
+        requestRender();
+        return;
+    }
+    // raio proporcional ao tamanho do modelo
+    double lo[3] = {1e18, 1e18, 1e18}, hi[3] = {-1e18, -1e18, -1e18};
+    for (const auto &node : nodeInfos()) {
+        const double p[3] = {node.x, node.y, node.z};
+        for (int i = 0; i < 3; ++i) {
+            lo[i] = std::min(lo[i], p[i]);
+            hi[i] = std::max(hi[i], p[i]);
+        }
+    }
+    const double diagonal = std::sqrt((hi[0] - lo[0]) * (hi[0] - lo[0]) + (hi[1] - lo[1]) * (hi[1] - lo[1]) + (hi[2] - lo[2]) * (hi[2] - lo[2]));
+    const double radius = std::max(0.08, 0.025 * diagonal);
+    m_nodeHighlight->SetPosition(position->x(), position->y(), position->z());
+    m_nodeHighlight->SetScale(radius);
+    m_nodeHighlight->SetVisibility(1);
+    requestRender();
+}
+
+void SceneController::setConnectionsVisible(bool visible)
+{
+    if (!m_connectionRenderer) {
+        m_connectionRenderer = std::make_unique<Structura::Visualization::ConnectionRenderer>();
+        m_connectionRenderer->attach(m_renderer);
+    }
+    m_connectionRenderer->setVisible(visible);
+    requestRender();
+}
+
 LoadLabelData SceneController::loadLabels() const
 {
     LoadLabelData result;
@@ -575,6 +758,8 @@ LoadLabelData SceneController::loadLabels() const
     const auto &labels = m_loadRenderer->labels();
     result.positions = labels.positions;
     result.texts = labels.texts;
+    result.colors = labels.colors;
+    result.weights = labels.weights;
     return result;
 }
 
@@ -897,7 +1082,21 @@ SceneController::Bar *SceneController::findBar(const QUuid &id)
 void SceneController::setSelectedBars(const QSet<QUuid> &barIds)
 {
     m_structureRenderer->setSelectedBars(barIds);
+    m_solidSelection = barIds;
+    applySolidSelection();
     requestRender();
+}
+
+void SceneController::applySolidSelection()
+{
+    if (!m_solidRenderer) {
+        return;
+    }
+    std::vector<bool> selected(static_cast<std::size_t>(m_solidBarIds.size()), false);
+    for (int i = 0; i < m_solidBarIds.size(); ++i) {
+        selected[static_cast<std::size_t>(i)] = m_solidSelection.contains(m_solidBarIds[i]);
+    }
+    m_solidRenderer->setSelected(selected);
 }
 
 void SceneController::setBarExternalId(const QUuid &barId, int externalId)
@@ -908,6 +1107,52 @@ void SceneController::setBarExternalId(const QUuid &barId, int externalId)
     }
     bar->setExternalId(externalId);
     scheduleConstructionRefresh();
+}
+
+SceneController::GeometrySnapshot SceneController::captureGeometry() const
+{
+    GeometrySnapshot g;
+    g.nodes.reserve(m_nodes.size());
+    for (const auto &node : m_nodes) {
+        g.nodes.push_back({node.id(), node.externalId(), node.x(), node.y(), node.z()});
+    }
+    g.bars.reserve(m_bars.size());
+    for (const auto &bar : m_bars) {
+        g.bars.push_back({bar.id(), bar.startNodeId(), bar.endNodeId(), bar.materialId(), bar.sectionId(), bar.externalId()});
+    }
+    return g;
+}
+
+void SceneController::restoreGeometry(const GeometrySnapshot &g)
+{
+    m_structureRenderer->clear();
+    m_nodes.clear();
+    m_nodeIndexById.clear();
+    m_bars.clear();
+    m_barIndexById.clear();
+    m_highlightNodeId = QUuid();
+    m_selectedNodeIds.clear();
+    m_selectedBarIds.clear();
+    for (const auto &n : g.nodes) {
+        m_nodes.push_back(Node(n.id, n.externalId, n.x, n.y, n.z));
+        m_nodeIndexById.insert(n.id, static_cast<int>(m_nodes.size()) - 1);
+        m_structureRenderer->addNode(n.id, n.x, n.y, n.z);
+        m_nextNodeExternalId = std::max(m_nextNodeExternalId, n.externalId + 1);
+    }
+    for (const auto &b : g.bars) {
+        if (nodeIndex(b.start) < 0 || nodeIndex(b.end) < 0) {
+            continue;
+        }
+        Bar bar(b.id, b.start, b.end, b.material, b.section);
+        bar.setExternalId(b.externalId);
+        m_bars.push_back(bar);
+        m_barIndexById.insert(b.id, static_cast<int>(m_bars.size()) - 1);
+        m_structureRenderer->addBar(b.id, b.start, b.end);
+    }
+    updateBounds();
+    scheduleConstructionRefresh();
+    updateBarLCSVisuals();
+    requestRender();
 }
 
 void SceneController::clearAll()
@@ -942,35 +1187,64 @@ void SceneController::updateSupportVisuals()
         m_supportMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         m_supportActor = vtkSmartPointer<vtkActor>::New();
         m_supportActor->SetMapper(m_supportMapper);
-        // Cubo modular cinza com arestas escuras (representacao dos apoios).
+        // apoios: cinza com arestas escuras
         m_supportActor->GetProperty()->SetColor(0xa8 / 255.0, 0xb0 / 255.0, 0xb9 / 255.0);
         m_supportActor->GetProperty()->EdgeVisibilityOn();
         m_supportActor->GetProperty()->SetEdgeColor(0x6e / 255.0, 0x77 / 255.0, 0x81 / 255.0);
         m_supportActor->GetProperty()->SetLineWidth(1.5);
         m_supportActor->PickableOff();
-        
         m_renderer->AddActor(m_supportActor);
+
+        // restricoes nodais: laranja, para nao se confundirem com apoios
+        m_constraintMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        m_constraintActor = vtkSmartPointer<vtkActor>::New();
+        m_constraintActor->SetMapper(m_constraintMapper);
+        m_constraintActor->GetProperty()->SetColor(0.93, 0.52, 0.12);
+        m_constraintActor->GetProperty()->EdgeVisibilityOn();
+        m_constraintActor->GetProperty()->SetEdgeColor(0.55, 0.28, 0.04);
+        m_constraintActor->GetProperty()->SetLineWidth(1.0);
+        m_constraintActor->PickableOff();
+        m_renderer->AddActor(m_constraintActor);
     }
 
-    std::vector<SupportMeshBuilder::Support> supports;
-    supports.reserve(static_cast<std::size_t>(m_supportVisuals.size()));
-
+    std::vector<SupportMeshBuilder::Support> all, supports, constraints;
+    all.reserve(static_cast<std::size_t>(m_supportVisuals.size()));
     for (const auto &visual : m_supportVisuals) {
         SupportMeshBuilder::Support support;
         support.position = {visual.position.x(), visual.position.y(), visual.position.z()};
         for (int i = 0; i < 6; ++i) {
             support.restraints[static_cast<std::size_t>(i)] = visual.restraints[static_cast<std::size_t>(i)];
         }
-        supports.push_back(support);
+        (SupportMeshBuilder::isSupport(support.restraints) ? supports : constraints).push_back(support);
     }
-
+    // tamanho dos simbolos proporcional ao modelo (minimo de 0,30 m)
+    double unit = SupportMeshBuilder::kSupportSize;
+    if (!m_nodes.empty()) {
+        double lo[3] = {1e18, 1e18, 1e18}, hi[3] = {-1e18, -1e18, -1e18};
+        for (const auto &node : m_nodes) {
+            const double p[3] = {node.x(), node.y(), node.z()};
+            for (int i = 0; i < 3; ++i) {
+                lo[i] = std::min(lo[i], p[i]);
+                hi[i] = std::max(hi[i], p[i]);
+            }
+        }
+        const double diagonal = std::sqrt((hi[0] - lo[0]) * (hi[0] - lo[0]) + (hi[1] - lo[1]) * (hi[1] - lo[1]) + (hi[2] - lo[2]) * (hi[2] - lo[2]));
+        unit = std::max(unit, 0.02 * diagonal);
+    }
     if (m_supportMapper) {
-        auto polyData = SupportMeshBuilder::build(supports);
-        m_supportMapper->SetInputData(polyData);
+        m_supportMapper->SetInputData(SupportMeshBuilder::buildSupports(supports, unit));
         m_supportActor->SetVisibility(!supports.empty() && m_showSupports);
+        m_constraintMapper->SetInputData(SupportMeshBuilder::buildConstraints(constraints, unit));
+        m_constraintActor->SetVisibility(!constraints.empty() && m_showConstraints);
     }
 }
 
+void SceneController::setConstraintsVisible(bool visible)
+{
+    m_showConstraints = visible;
+    updateSupportVisuals();
+    requestRender();
+}
 
 int SceneController::nodeIndex(const QUuid &id) const
 {

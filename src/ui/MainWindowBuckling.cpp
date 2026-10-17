@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "BucklingDialog.h"
+#include "BusyProgress.h"
 #include "app/services/AnalysisService.h"
 #include "app/services/BucklingService.h"
 #include "app/services/CombinationService.h"
@@ -66,7 +67,8 @@ void MainWindow::onBucklingAnalysis()
         }
         try {
             shared->model = CombinationService::mergeModels(terms);
-            shared->result = BucklingService::run(shared->model, modes);
+            shared->result = Structura::UI::runBusy(this, tr("Flambagem elástica"), tr("Extraindo %1 modos de flambagem…").arg(modes),
+                                                    [&]() { return BucklingService::run(shared->model, modes); });
         } catch (const std::exception &error) {
             dialog->setError(QString::fromStdString(error.what()));
             return;

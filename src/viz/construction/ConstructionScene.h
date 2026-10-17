@@ -51,11 +51,12 @@ public:
 
     // ── Modelo ───────────────────────────────────────────────────────────
     /// Posicoes dos nos e pontos medios das barras (alvos de snap).
-    void setSnapGeometry(std::vector<Vec3> nodes, std::vector<Vec3> barMidpoints);
+    void setSnapGeometry(std::vector<Vec3> nodes, std::vector<Vec3> barMidpoints, std::vector<std::pair<Vec3, Vec3>> barSegments = {});
     void setAxes(const ReferenceAxes &axes);
     [[nodiscard]] const ReferenceAxes &axes() const noexcept { return m_axes; }
     [[nodiscard]] const std::vector<Vec3> &nodePositions() const noexcept { return m_nodes; }
     [[nodiscard]] const std::vector<Vec3> &barMidpoints() const noexcept { return m_barMidpoints; }
+    [[nodiscard]] const std::vector<std::pair<Vec3, Vec3>> &barSegments() const noexcept { return m_barSegments; }
 
     // ── Plano de referencia ──────────────────────────────────────────────
     [[nodiscard]] PlaneMode planeMode() const noexcept { return m_mode; }
@@ -136,6 +137,7 @@ private:
 
     std::vector<Vec3> m_nodes;
     std::vector<Vec3> m_barMidpoints;
+    std::vector<std::pair<Vec3, Vec3>> m_barSegments;
     ReferenceAxes m_axes;
     PlaneMode m_mode {PlaneMode::XY};
     double m_level {0.0};

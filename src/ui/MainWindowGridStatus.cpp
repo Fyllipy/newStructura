@@ -9,6 +9,8 @@
 #include <QComboBox>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QCheckBox>
+#include <QTimer>
 #include <QLabel>
 #include <QSlider>
 #include <QStatusBar>
@@ -101,6 +103,12 @@ void MainWindow::setupFooterBar()
     m_statusLabel->setMinimumWidth(300);
     footerLayout->addWidget(m_statusLabel, 1);
 
+    m_staleLabel = new QLabel(tr("⚠ Resultados desatualizados — rode a análise (F5)"), m_footerBar);
+    m_staleLabel->setStyleSheet("color: #8a4b00; background: #ffe9c2; border: 1px solid #e0a64a; border-radius: 4px; padding: 1px 8px; font-weight: 600;");
+    m_staleLabel->setToolTip(tr("O modelo mudou desde a última análise: diagramas e resultados não correspondem mais ao modelo atual."));
+    m_staleLabel->hide();
+    footerLayout->addWidget(m_staleLabel);
+
     // ── Controles de diagrama (pós-processamento) ────────────────────────
     auto *separatorDiagram = new QFrame(m_footerBar);
     separatorDiagram->setFrameShape(QFrame::VLine);
@@ -120,7 +128,7 @@ void MainWindow::setupFooterBar()
     m_diagramCombo->addItem(tr("Mt"),   static_cast<int>(Structura::Visualization::DiagramType::Mt));
     m_diagramCombo->addItem(tr("My"),   static_cast<int>(Structura::Visualization::DiagramType::My));
     m_diagramCombo->addItem(tr("Mz"),   static_cast<int>(Structura::Visualization::DiagramType::Mz));
-    m_diagramCombo->setMinimumWidth(70);
+    m_diagramCombo->setMinimumWidth(56);
     m_diagramCombo->setEnabled(false);
     m_diagramCombo->setToolTip(tr("Selecionar tipo de diagrama de esforços"));
     footerLayout->addWidget(m_diagramCombo);
@@ -133,7 +141,7 @@ void MainWindow::setupFooterBar()
     m_diagramScaleSlider->setMinimum(1);
     m_diagramScaleSlider->setMaximum(100);
     m_diagramScaleSlider->setValue(33); // ~1.0
-    m_diagramScaleSlider->setFixedWidth(100);
+    m_diagramScaleSlider->setFixedWidth(64);
     m_diagramScaleSlider->setEnabled(false);
     m_diagramScaleSlider->setToolTip(tr("Ajustar escala visual dos diagramas"));
     footerLayout->addWidget(m_diagramScaleSlider);
@@ -149,6 +157,25 @@ void MainWindow::setupFooterBar()
     m_scaleModeCombo->setEnabled(false);
     m_scaleModeCombo->setToolTip(tr("Modo de normalização da escala"));
     footerLayout->addWidget(m_scaleModeCombo);
+
+    auto *valuesLabel = new QLabel(tr("Valores:"), m_footerBar);
+    valuesLabel->setStyleSheet("font-weight: 600; color: #1e232b;");
+    footerLayout->addWidget(valuesLabel);
+    m_diagramLabelCombo = new QComboBox(m_footerBar);
+    m_diagramLabelCombo->addItem(tr("Nenhum"), 0);
+    m_diagramLabelCombo->addItem(tr("Extremos"), 1);
+    m_diagramLabelCombo->addItem(tr("Por barra"), 2);
+    m_diagramLabelCombo->setCurrentIndex(1);
+    m_diagramLabelCombo->setEnabled(false);
+    m_diagramLabelCombo->setToolTip(tr("Rótulos com os valores sobre o diagrama: só máximo e mínimo globais, ou o valor de pico de cada barra"));
+    footerLayout->addWidget(m_diagramLabelCombo);
+    m_diagramHatchCheck = new QCheckBox(tr("Hachura"), m_footerBar);
+    m_diagramHatchCheck->setChecked(true);
+    m_diagramHatchCheck->setEnabled(false);
+    m_diagramHatchCheck->setToolTip(tr("Linhas de ordenada entre o eixo da barra e a curva do diagrama"));
+    footerLayout->addWidget(m_diagramHatchCheck);
+    connect(m_diagramLabelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onDiagramLabelModeChanged);
+    connect(m_diagramHatchCheck, &QCheckBox::toggled, this, &MainWindow::onDiagramHatchToggled);
 
     // Conexões dos controles de diagrama
     connect(m_diagramCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -167,6 +194,7 @@ void MainWindow::onShowDiagrams()
 {
     if (!m_postProcessor) return;
     m_postProcessor->activate();
+    applyLoadVisibility();
     // Selecionar diagrama atual (se houver)
     if (m_diagramCombo) {
         onDiagramTypeChanged(m_diagramCombo->currentIndex());
@@ -177,9 +205,11 @@ void MainWindow::onHideDiagrams()
 {
     if (!m_postProcessor) return;
     m_postProcessor->deactivate();
+    applyLoadVisibility();
     if (m_vtkWidget && m_vtkWidget->renderWindow()) {
         m_vtkWidget->renderWindow()->Render();
     }
+    updateDiagramInfo();
 }
 
 void MainWindow::onDiagramTypeChanged(int /*index*/)
@@ -188,9 +218,11 @@ void MainWindow::onDiagramTypeChanged(int /*index*/)
     const auto type = static_cast<Structura::Visualization::DiagramType>(
         m_diagramCombo->currentData().toInt());
     m_postProcessor->showDiagram(type);
+    applyLoadVisibility();
     if (m_vtkWidget && m_vtkWidget->renderWindow()) {
         m_vtkWidget->renderWindow()->Render();
     }
+    updateDiagramInfo();
 }
 
 void MainWindow::onDiagramScaleChanged(int value)
@@ -198,10 +230,23 @@ void MainWindow::onDiagramScaleChanged(int value)
     if (!m_postProcessor) return;
     // Mapear 1..100 -> 0.1..5.0 (curva raiz quadrada para resposta mais natural)
     const double scale = 0.1 + (static_cast<double>(value) / 100.0) * 4.9;
-    m_postProcessor->setUserScale(scale);
-    if (m_vtkWidget && m_vtkWidget->renderWindow()) {
-        m_vtkWidget->renderWindow()->Render();
+    m_pendingDiagramScale = scale;
+    if (!m_diagramScaleTimer) {
+        m_diagramScaleTimer = new QTimer(this);
+        m_diagramScaleTimer->setSingleShot(true);
+        m_diagramScaleTimer->setInterval(45);
+        connect(m_diagramScaleTimer, &QTimer::timeout, this, [this]() {
+            if (!m_postProcessor) {
+                return;
+            }
+            m_postProcessor->setUserScale(m_pendingDiagramScale);   // reconstroi a geometria uma unica vez por rajada de movimentos
+            if (m_vtkWidget && m_vtkWidget->renderWindow()) {
+                m_vtkWidget->renderWindow()->Render();
+            }
+            updateDiagramInfo();
+        });
     }
+    m_diagramScaleTimer->start();
 }
 
 void MainWindow::onScaleModeChanged(int /*index*/)
@@ -213,6 +258,7 @@ void MainWindow::onScaleModeChanged(int /*index*/)
     if (m_vtkWidget && m_vtkWidget->renderWindow()) {
         m_vtkWidget->renderWindow()->Render();
     }
+    updateDiagramInfo();
 }
 
 
@@ -251,6 +297,20 @@ void MainWindow::updateStatus()
     case Command::RotateElements:
     {
         showStatusMessage(tr("Rotacionar: clique no ponto central (pivo) | Esc sai"));
+        break;
+    }
+    case Command::Measure:
+    {
+        QString message = (m_placement && m_placement->hasStartPoint())
+            ? tr("Medir: clique no segundo ponto")
+            : tr("Medir: clique no primeiro ponto");
+        message += tr(" | Tab edita | Esc sai");
+        showStatusMessage(message);
+        break;
+    }
+    case Command::InsertNode:
+    {
+        showStatusMessage(tr("Inserir nó: clique no ponto (sobre uma barra, ela é dividida) | Tab edita | Esc sai"));
         break;
     }
     case Command::MirrorElements:

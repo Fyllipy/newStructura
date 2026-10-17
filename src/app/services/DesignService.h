@@ -10,6 +10,7 @@
 #include <QStringList>
 #include <QVector>
 
+#include <functional>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -102,8 +103,10 @@ public:
         int memberId {0};
         const SectionInfo *section {nullptr};
     };
+    /// As barras sao verificadas em paralelo (verificacoes independentes); `progress(feitas, total)` e chamado de qualquer thread.
     static QVector<MemberVerdict> verifyAll(const QVector<MemberEffects> &effects, const std::vector<MemberRef> &members,
-                                            const DesignSettings &settings, double lengthFactorToMm);
+                                            const DesignSettings &settings, double lengthFactorToMm,
+                                            const std::function<void(int, int)> &progress = {});
 
     /// Perfis candidatos (mesma serie/familia do perfil informado), ordenados por peso crescente.
     static QVector<SectionInfo> candidateSeries(const SectionInfo &current);

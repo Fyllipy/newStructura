@@ -10,6 +10,11 @@
 #include "SupportGlyphFactory.h"
 
 #include <vtkSmartPointer.h>
+#include <QMatrix4x4>
+#include <QPointF>
+#include <QSizeF>
+#include <QString>
+#include <optional>
 
 #include <vector>
 #include <memory>
@@ -71,15 +76,50 @@ public:
     void setScaleMode(DiagramScaleMode mode);
     void setActiveElementIds(const std::vector<int>& ids);
 
+    // ── Valores e hachura ────────────────────────────────────────────────────
+    /// Rotulos de valor: nenhum, extremos globais ou maximo de cada barra.
+    enum class LabelMode { None, Global, PerMember };
+    void setLabelMode(LabelMode mode);
+    [[nodiscard]] LabelMode labelMode() const { return m_labelMode; }
+    void setHatchVisible(bool visible);
+    /// Resultados desatualizados (modelo mudou depois da analise): o diagrama fica esmaecido.
+    void setStale(bool stale);
+    [[nodiscard]] bool isStale() const { return m_stale; }
+    [[nodiscard]] bool hatchVisible() const { return m_hatchVisible; }
+
+    /// Resumo do diagrama atual (valores fisicos, com o sinal do esforco).
+    struct Summary {
+        bool valid {false};
+        DiagramType type {DiagramType::None};
+        double maxValue {0.0}, minValue {0.0};
+        int maxElement {0}, minElement {0};
+        double metersPerUnit {0.0};   ///< comprimento desenhado (m) por unidade do esforco
+        QString unit;
+        QString name;
+    };
+    [[nodiscard]] Summary summary() const;
+    [[nodiscard]] static QString unitOf(DiagramType type);
+    [[nodiscard]] static QString nameOf(DiagramType type);
+
+    /// Leitura do diagrama sob o cursor (coordenadas de widget; `composite` = projecao x visao da camera).
+    struct ProbeHit {
+        int elementId {0};
+        double x {0.0};          ///< m, medido a partir do no inicial
+        double length {0.0};
+        std::array<double, 3> curvePoint {};   ///< ponto da curva do diagrama (mundo)
+        double value {0.0};      ///< valor fisico do diagrama atual
+        InternalForces forces;   ///< todos os esforcos nesta secao
+        std::array<double, 3> end1 {}, end2 {};
+    };
+    [[nodiscard]] std::optional<ProbeHit> probe(const QMatrix4x4 &composite, const QSizeF &viewport, const QPointF &cursor, double tolerancePx) const;
+
     // ── Limpeza ──────────────────────────────────────────────────────────────
     void clearAll();
 
 private:
     // ── Reconstrução de diagrama ─────────────────────────────────────────────
     void rebuildDiagram(DiagramType type);
-    void buildActorsForElement(const BeamElementResults& el,
-                               DiagramType type,
-                               const SampledDiagram& sampled);
+    void buildActors(DiagramType type);
     void rebuildLabels();
 
     // ── Gestão de atores VTK ─────────────────────────────────────────────────
@@ -96,6 +136,9 @@ private:
     std::vector<BeamElementResults>    m_results;
     int                                m_analysisRevision{0};
     DiagramType                        m_currentDiagram{DiagramType::None};
+    LabelMode                          m_labelMode{LabelMode::Global};
+    bool                               m_hatchVisible{true};
+    bool                               m_stale{false};
     bool                               m_active{false};
 
     // ── Componentes ──────────────────────────────────────────────────────────
@@ -110,6 +153,7 @@ private:
     std::vector<vtkSmartPointer<vtkActor>> m_posActors;     ///< Superfícies positivas (azul)
     std::vector<vtkSmartPointer<vtkActor>> m_negActors;     ///< Superfícies negativas (vermelho)
     std::vector<vtkSmartPointer<vtkActor>> m_outlineActors; ///< Contornos
+    std::vector<vtkSmartPointer<vtkActor>> m_hatchActors;   ///< Hachura (ordenadas)
 };
 
 } // namespace Structura::Visualization

@@ -9,6 +9,7 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QMenu>
 #include <QSize>
 #include <QSizePolicy>
 #include <QStyle>
@@ -28,6 +29,7 @@ QWidget *MainWindow::createQuickAccessBar()
         #QuickAccessBar QToolButton {background: transparent; border: none; color: #eef5fb; padding: 2px 4px; margin: 0px;}
         #QuickAccessBar QToolButton:hover { background: rgba(255,255,255,0.18); border-radius: 3px; }
         #QuickAccessBar QToolButton[startButton="true"] { font-weight: 600; padding: 2px 8px; margin-left: 6px; border-radius: 3px; }
+        #QuickAccessBar QToolButton[startButton="true"]::menu-indicator { image: none; width: 0px; }
         #QuickAccessBar QToolButton[startButton="true"]:hover { background: rgba(255,255,255,0.24); }
         #QuickAccessBar QToolButton[startButton="true"]:checked { background: rgba(255,255,255,0.34); }  /* use :checked em vez de [checked='true'] */
         #QuickAccessBar QToolButton[systemButton="true"] { padding: 2px; margin-left: 2px; margin-right: 0px; border-radius: 3px; }
@@ -72,13 +74,20 @@ QWidget *MainWindow::createQuickAccessBar()
     leftLayout->addWidget(createQuickButton(m_saveModelAction));
 
     m_homeTabButton = new QToolButton(bar);
-    m_homeTabButton->setText(tr("Inicio"));
+    m_homeTabButton->setText(tr("Arquivo"));
     m_homeTabButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    m_homeTabButton->setCheckable(true);
+    m_homeTabButton->setPopupMode(QToolButton::InstantPopup);
+    auto *fileMenu = new QMenu(m_homeTabButton);
+    fileMenu->addAction(m_newModelAction);
+    fileMenu->addSeparator();
+    fileMenu->addAction(m_saveModelAction);
+    fileMenu->addAction(m_saveAsModelAction);
+    fileMenu->addSeparator();
+    fileMenu->addAction(m_aboutAction);
+    m_homeTabButton->setMenu(fileMenu);
     m_homeTabButton->setProperty("startButton", QStringLiteral("true"));
     m_homeTabButton->setCursor(Qt::PointingHandCursor);
     m_homeTabButton->setFixedHeight(22);
-    m_homeTabButton->setChecked(true);
     leftLayout->addWidget(m_homeTabButton);
 
     layout->addWidget(leftWidget, 0, Qt::AlignVCenter);
@@ -115,11 +124,6 @@ QWidget *MainWindow::createQuickAccessBar()
     connect(m_minimizeButton, &QToolButton::clicked, this, &MainWindow::showMinimized);
     connect(m_maximizeButton, &QToolButton::clicked, this, &MainWindow::toggleMaximized);
     connect(m_closeButton, &QToolButton::clicked, this, &MainWindow::close);
-    connect(m_homeTabButton, &QToolButton::clicked, this, [this]() {
-        if (m_ribbon) {
-            m_ribbon->setCurrentIndex(0);
-        }
-    });
 
     return bar;
 }
@@ -173,7 +177,7 @@ void MainWindow::createRibbon()
     modelGrid->setHorizontalSpacing(30);
     modelGrid->setVerticalSpacing(15);
     modelGrid->setAlignment(Qt::AlignTop);
-    const QList<QAction *> modelActions = { m_insertBarAction, m_applyRestraintsAction };
+    const QList<QAction *> modelActions = { m_insertBarAction, m_insertNodeAction, m_splitBarsAction, m_generateTrussAction, m_measureAction, m_applyRestraintsAction };
     const int modelColumns = 2;
     populateActionGrid(modelGrid, modelActions, modelActions.size());
     const int modelRows = (modelActions.count() + modelColumns - 1) / modelColumns;
@@ -204,7 +208,7 @@ void MainWindow::createRibbon()
     m_groupsPanelAction->setIcon(Structura::UI::svgIcon(QStringLiteral("groups.svg"), QColor(QStringLiteral("#1e232b")), 64));
     m_groupsPanelAction->setToolTip(tr("Painel de grupos: exibir/ocultar, adicionar e remover barras"));
     connect(m_groupsPanelAction, &QAction::triggered, this, &MainWindow::onToggleGroupsPanel);
-    const QList<QAction *> editActions = { m_copyElementsAction, m_moveElementsAction, m_serialCopyAction, m_rotateElementsAction, m_mirrorElementsAction, m_createGroupAction, m_groupsPanelAction };
+    const QList<QAction *> editActions = { m_copyElementsAction, m_moveElementsAction, m_serialCopyAction, m_rotateElementsAction, m_mirrorElementsAction, m_deleteElementsAction, m_createGroupAction, m_groupsPanelAction };
     populateActionGrid(editGrid, editActions, editActions.size());
     editGrid->setRowStretch(1, 1);
     homeLayout->addWidget(editGroup, 0, Qt::AlignTop);
@@ -285,7 +289,7 @@ void MainWindow::createRibbon()
     docsLayout->setHorizontalSpacing(30);
     docsLayout->setVerticalSpacing(15);
     docsLayout->setAlignment(Qt::AlignTop);
-    populateActionGrid(docsLayout, { m_quantitiesAction, m_exportDxfAction }, 2);
+    populateActionGrid(docsLayout, { m_quantitiesAction, m_exportDxfAction, m_sheetsAction }, 3);
     toolsLayout->addWidget(docsGroup, 0, Qt::AlignTop);
     toolsLayout->addStretch(1);
 
@@ -329,7 +333,7 @@ void MainWindow::createRibbon()
     auto *analysisGrid = new QGridLayout(analysisGroup);
     analysisGrid->setContentsMargins(4, 5, 4, 4);
     analysisGrid->setAlignment(Qt::AlignTop);
-    populateActionGrid(analysisGrid, { m_runAnalysisAction, m_bucklingAction, m_modalAction }, 3);
+    populateActionGrid(analysisGrid, { m_runAnalysisAction, m_bucklingAction, m_modalAction, m_dynamicsAction }, 4);
     loadsLayout->addWidget(analysisGroup, 0, Qt::AlignTop);
     loadsLayout->addStretch(1);
 
@@ -369,6 +373,11 @@ void MainWindow::createRibbon()
     m_hideDiagramsAction->setEnabled(false);
     connect(m_hideDiagramsAction, &QAction::triggered, this, &MainWindow::onHideDiagrams);
 
+    m_compareAction = new QAction(tr("Comparar\ncombinações"), this);
+    m_compareAction->setIcon(Structura::UI::svgIcon(QStringLiteral("compare.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_compareAction->setToolTip(tr("Compara deslocamentos, reações e esforços entre combinações, com a envoltória e a combinação que governa"));
+    connect(m_compareAction, &QAction::triggered, this, &MainWindow::onCompareResults);
+
     auto *resultsTab = new QWidget(this);
     resultsTab->setObjectName(QStringLiteral("RibbonPage"));
     resultsTab->setStyleSheet(QStringLiteral("#RibbonPage { background: #f2f5fa; }"));
@@ -385,11 +394,24 @@ void MainWindow::createRibbon()
     diagramsGrid->setAlignment(Qt::AlignTop);
     populateActionGrid(diagramsGrid, { m_showDiagramsAction, m_hideDiagramsAction }, 2);
     resultsLayout->addWidget(diagramsGroup, 0, Qt::AlignTop);
+    auto *compareGroup = new QGroupBox(tr("Comparação"), this);
+    auto *compareGrid = new QGridLayout(compareGroup);
+    compareGrid->setContentsMargins(4, 5, 4, 4);
+    compareGrid->setHorizontalSpacing(30);
+    compareGrid->setVerticalSpacing(15);
+    compareGrid->setAlignment(Qt::AlignTop);
+    populateActionGrid(compareGrid, { m_compareAction }, 1);
+    resultsLayout->addWidget(compareGroup, 0, Qt::AlignTop);
     resultsLayout->addStretch(1);
 
     m_ribbon->addTab(resultsTab, tr("Resultados"));
 
     // ── Aba Dimensionamento ────────────────────────────────────────────
+    m_compositeAction = new QAction(tr("Vigas e lajes\nmistas"), this);
+    m_compositeAction->setIcon(Structura::UI::svgIcon(QStringLiteral("composite.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_compositeAction->setToolTip(tr("Viga mista de aço e concreto (NBR 8800, Anexo L) e laje mista com forma de aço incorporada — steel deck (Anexo N)"));
+    connect(m_compositeAction, &QAction::triggered, this, &MainWindow::onCompositeFloor);
+
     m_designSettingsAction = new QAction(tr("Parâmetros"), this);
     m_designSettingsAction->setIcon(Structura::UI::svgIcon(QStringLiteral("design-params.svg"), QColor(QStringLiteral("#1e232b")), 64));
     m_designSettingsAction->setToolTip(tr("Aço, comprimentos efetivos, travamentos e combinações do dimensionamento"));
@@ -415,7 +437,7 @@ void MainWindow::createRibbon()
     designGrid->setHorizontalSpacing(30);
     designGrid->setVerticalSpacing(15);
     designGrid->setAlignment(Qt::AlignTop);
-    populateActionGrid(designGrid, { m_designSettingsAction, m_verifyDesignAction, m_optimizeDesignAction, m_connectionsAction }, 4);
+    populateActionGrid(designGrid, { m_designSettingsAction, m_verifyDesignAction, m_optimizeDesignAction, m_connectionsAction, m_compositeAction }, 5);
     designLayout->addWidget(designGroup, 0, Qt::AlignTop);
     m_reportAction = new QAction(tr("Memorial"), this);
     m_reportAction->setIcon(Structura::UI::svgIcon(QStringLiteral("report.svg"), QColor(QStringLiteral("#1e232b")), 64));
@@ -508,7 +530,5 @@ void MainWindow::onRibbonTabChanged(int index)
 
 void MainWindow::updateRibbonTabButtons(int currentIndex)
 {
-    if (m_homeTabButton) {
-        m_homeTabButton->setChecked(currentIndex == 0);
-    }
+    Q_UNUSED(currentIndex);
 }

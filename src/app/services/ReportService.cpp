@@ -604,6 +604,54 @@ ReportDocument ReportService::buildGlobal(const Input &input, const Options &o)
             }
         }
     }
+    if (o.connections && !input.connections.isEmpty()) {
+        chapterTitle(QStringLiteral("Ligações"));
+        doc.paragraph("Ligações verificadas conforme a ABNT NBR 8800:2024 (6.2 solda, 6.3 parafusos, 6.5 elementos de ligação, 6.7 bases de pilares), a ABNT NBR 6118:2023 (pressão de contato no bloco) "
+                      "e o CIDECT Design Guide 1 (ligações soldadas de perfis tubulares circulares). "
+                      "Esforços de cálculo: combinações últimas na extremidade da barra (viga–apoio: cortante resultante e axial tratado como cortante nos parafusos; chapa de nó: tração e compressão máximas da diagonal; "
+                      "emenda, base e ligação tubular: combinação a combinação, prevalece a mais desfavorável). Distribuição elástica de parafusos e soldas; efeito alavanca e o apoio (alma/mesa do pilar ou do banzo) não verificados, exceto na ligação tubular.");
+        Table summary;
+        summary.caption = S(QStringLiteral("Resumo das ligações"));
+        summary.header = {"Nó", "Viga", "Tipo", "Descrição", "V (kN)", "N (kN)", "η"};
+        summary.widths = {1, 1.4, 2.4, 5, 1, 1, 1};
+        summary.align = {'c', 'c', 'l', 'l', 'r', 'r', 'r'};
+        for (const auto &entry : input.connections) {
+            const auto &c = entry.connection;
+            summary.rows.push_back({std::to_string(c.nodeId), S(QStringLiteral("%1 (%2)").arg(c.memberId).arg(c.atEnd ? QStringLiteral("fim") : QStringLiteral("início"))),
+                                    S(ConnectionService::typeName(c.type)), S(entry.evaluation.description),
+                                    entry.hasForces ? S(num(entry.forces.shear / 1000.0, 1)) : "-", entry.hasForces ? S(num(entry.forces.axial / 1000.0, 1)) : "-",
+                                    S(num(entry.evaluation.maxRatio, 2))});
+            summary.status.push_back({CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, statusOf(entry.evaluation.maxRatio)});
+        }
+        doc.table(summary);
+        for (const auto &entry : input.connections) {
+            const auto &c = entry.connection;
+            doc.heading(2, S(QStringLiteral("Ligação no nó %1 — viga %2 (%3)").arg(c.nodeId).arg(c.memberId).arg(ConnectionService::typeName(c.type))));
+            doc.paragraph(S(entry.evaluation.description));
+            if (!entry.evaluation.governingCase.isEmpty() && entry.hasForces) {
+                doc.paragraph(S(QStringLiteral("Combinação governante: %1.").arg(entry.evaluation.governingCase)));
+            }
+            Table t;
+            t.header = {"Verificação", "Item NBR", "Solicitação", "Resistência", "Razão"};
+            t.widths = {5, 2, 1.6, 1.6, 1};
+            t.align = {'l', 'l', 'r', 'r', 'r'};
+            for (const auto &check : entry.evaluation.checks) {
+                t.rows.push_back({check.name, check.clause, S(QStringLiteral("%1 %2").arg(num(check.demand, 2), QString::fromStdString(check.unit))),
+                                  S(QStringLiteral("%1 %2").arg(num(check.resistance, 2), QString::fromStdString(check.unit))), S(num(check.ratio(), 3))});
+                t.status.push_back({CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, statusOf(check.ratio())});
+            }
+            doc.table(t);
+            if (o.showFormulas) {
+                for (const auto &check : entry.evaluation.checks) {
+                    if (check.lines.empty()) {
+                        continue;
+                    }
+                    doc.blocks.push_back(paragraphOf(check.name + ":", ParagraphStyle::Label));
+                    appendCalculationLines(doc, check.lines);
+                }
+            }
+        }
+    }
     return doc;
 }
 

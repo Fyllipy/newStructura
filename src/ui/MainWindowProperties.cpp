@@ -6,6 +6,8 @@
 #include "ProfileManagerDialog.h"
 
 #include "MaterialDialog.h"
+#include "NewProjectWizard.h"
+#include "app/services/DesignService.h"
 #include "app/services/MaterialLibrary.h"
 #include "app/services/UserLibrary.h"
 #include "viz/SceneController.h"
@@ -499,6 +501,9 @@ void MainWindow::onAssignProperties()
 
 void MainWindow::onOpenModel()
 {
+    if (!maybeSave()) {
+        return;
+    }
     const QString initialDir = datDialogInitialDirectory();
     const QString filePath = QFileDialog::getOpenFileName(this,
                                                           tr("Abrir modelo"),
@@ -515,10 +520,24 @@ void MainWindow::onOpenModel()
 
 void MainWindow::onSaveModel()
 {
+    if (m_currentFilePath.isEmpty()) {
+        onSaveModelAs();
+        return;
+    }
+    if (saveToDat(m_currentFilePath)) {
+        showDatStatusMessage(tr("Modelo salvo"), m_currentFilePath);
+    }
+}
+
+void MainWindow::onSaveModelAs()
+{
     const QString initialDir = datDialogInitialDirectory();
+    const QString suggestion = m_currentFilePath.isEmpty()
+        ? initialDir + QLatin1String("/") + (m_projectName.isEmpty() ? QStringLiteral("modelo") : m_projectName) + QLatin1String(".dat")
+        : m_currentFilePath;
     const QString filePath = QFileDialog::getSaveFileName(this,
-                                                          tr("Salvar modelo"),
-                                                          initialDir + QLatin1String("/modelo.dat"),
+                                                          tr("Salvar modelo como"),
+                                                          suggestion,
                                                           tr("Arquivos DAT (*.dat);;Todos os arquivos (*.*)"));
     if (filePath.isEmpty()) {
         return;
@@ -531,6 +550,109 @@ void MainWindow::onSaveModel()
         m_lastDatDirectory = QFileInfo(finalPath).absolutePath();
         showDatStatusMessage(tr("Modelo salvo"), finalPath);
     }
+}
+
+void MainWindow::onNewModel()
+{
+    if (!m_sceneController) {
+        return;
+    }
+    if (!maybeSave()) {
+        return;
+    }
+    QStringList steels;
+    for (const auto &steel : Structura::App::Services::DesignService::steelGrades()) {
+        steels << steel.name;
+    }
+    Structura::UI::NewProjectWizard wizard(steels, m_extras.design.defaultSteel, this);
+    if (wizard.exec() != QDialog::Accepted) {
+        return;
+    }
+    const auto settings = wizard.settings();
+    auto applyIdentification = [&]() {
+        if (!settings.name.isEmpty()) {
+            m_projectName = settings.name;
+        }
+        auto &title = m_extras.titleBlock;
+        title.project = settings.name;
+        title.company = settings.company;
+        title.client = settings.client;
+        title.site = settings.site;
+        title.author = settings.author;
+        title.registration = settings.registration;
+    };
+    bool fromTemplate = false;
+    if (settings.start == Structura::UI::NewProjectSettings::Start::ReadyModel) {
+        fromTemplate = newFromTemplateDialog();
+        if (!fromTemplate) {
+            return;   // cancelou o modelo pronto: nada e alterado
+        }
+        applyIdentification();
+    } else {
+        resetModel();
+        m_projectName.clear();
+        applyIdentification();
+        // material do aco padrao (kN e m)
+        if (const auto steel = Structura::App::Services::DesignService::findSteel(settings.steel)) {
+            const auto *entry = Structura::App::Services::MaterialLibrary::find(steel->name);
+            MaterialInfo info;
+            info.uuid = QUuid::createUuid();
+            info.externalId = nextMaterialExternalId();
+            info.name = steel->name;
+            info.youngModulus = (entry ? entry->eGPa : 200.0) * 1e6;
+            info.shearModulus = (entry ? entry->gGPa : 77.0) * 1e6;
+            info.unitWeight = entry ? entry->unitWeight : 78.5;
+            info.library = entry ? entry->name : QString();
+            info.fy = steel->fy;
+            info.fu = steel->fu;
+            m_materials.append(info);
+            m_lastMaterialId = info.uuid;
+            m_extras.design.defaultSteel = steel->name;
+        }
+        m_extras.loadCases.clear();
+        auto addCase = [this](const QString &name, const QString &abbreviation, bool selfWeight) {
+            Structura::App::ProjectData::LoadCase c;
+            c.name = name;
+            c.abbreviation = abbreviation;
+            c.selfWeight = selfWeight;
+            m_extras.loadCases.append(c);
+        };
+        if (settings.selfWeightCase) {
+            addCase(tr("Permanente"), QStringLiteral("PER"), true);
+        }
+        if (settings.liveCase) {
+            addCase(tr("Sobrecarga"), QStringLiteral("SC"), false);
+        }
+        if (settings.windX) {
+            addCase(tr("Vento X"), QStringLiteral("VX"), false);
+        }
+        if (settings.windY) {
+            addCase(tr("Vento Y"), QStringLiteral("VY"), false);
+        }
+        rebuildCaseSelector();
+    }
+    if (m_undoService) {
+        m_undoService->stack()->clear();
+    }
+    m_extraDirty = true;
+    m_resultsFingerprint = 0;
+    updateWindowTitle();
+    updateStaleIndicator();
+    updateStatus();
+    showStatusMessage(fromTemplate ? tr("Novo projeto criado a partir de um modelo pronto.") : tr("Novo projeto criado. Defina perfis, desenhe o modelo e aplique as cargas."), 6000);
+    if (!fromTemplate && settings.openCombinationGenerator && !m_extras.loadCases.isEmpty()) {
+        onGenerateCombinations();
+    }
+}
+
+void MainWindow::onAbout()
+{
+    QMessageBox::about(this,
+                       tr("Sobre o Structura 3D"),
+                       tr("<b>Structura 3D</b><br>Modelagem, análise e dimensionamento de estruturas metálicas em 3D.<br><br>"
+                          "Análise: solver de elementos de barra (1ª e 2ª ordem).<br>"
+                          "Dimensionamento: NBR 8800:2024 e NBR 14762:2010.<br>"
+                          "Ligações: NBR 8800:2024, NBR 6118:2023 e CIDECT Design Guide 1."));
 }
 
 QString MainWindow::datDialogInitialDirectory() const

@@ -93,7 +93,8 @@ ReportDialog::ReportDialog(const ReportService::Input &input, const QVector<int>
     m_geometry = new QCheckBox(tr("Geometria (nós, barras, vínculos)"));
     m_loads = new QCheckBox(tr("Ações, casos e combinações"));
     m_results = new QCheckBox(tr("Resultados da análise (deslocamentos e reações)"));
-    for (auto *c : {m_materials, m_geometry, m_loads, m_results}) {
+    m_connections = new QCheckBox(tr("Ligações viga–apoio (se houver)"));
+    for (auto *c : {m_materials, m_geometry, m_loads, m_results, m_connections}) {
         c->setChecked(true);
         dl->addWidget(c);
     }
@@ -174,6 +175,7 @@ ReportService::Options ReportDialog::options() const
     o.designSummary = m_designSummary->isChecked();
     o.designDetails = m_designDetails->isChecked();
     o.serviceChecks = m_service->isChecked();
+    o.connections = m_connections->isChecked();
     o.sectionDrawings = m_drawings->isChecked();
     o.showFormulas = m_formulas->isChecked();
     o.scope = static_cast<ReportService::BarScope>(m_scope->currentData().toInt());

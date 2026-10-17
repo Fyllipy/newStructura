@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "QuantityDialog.h"
+#include "app/services/ConnectionService.h"
 #include "app/services/DxfExporter.h"
 #include "app/services/QuantityService.h"
 #include "viz/SceneController.h"
@@ -45,7 +46,14 @@ void MainWindow::onShowQuantities()
         QMessageBox::information(this, tr("Quantitativos"), tr("Não há barras no modelo."));
         return;
     }
-    Structura::UI::QuantityDialog dialog(QuantityService::compute(bars, m_sections, m_materials), this);
+    auto summary = QuantityService::compute(bars, m_sections, m_materials);
+    for (const auto &connection : m_extras.connections) {
+        const auto evaluation = Structura::App::Services::ConnectionService::evaluate(connection, {});
+        for (const auto &part : evaluation.parts) {
+            QuantityService::addConnectionPart(summary, QString::fromStdString(part.description), part.quantity, part.massEach, part.length);
+        }
+    }
+    Structura::UI::QuantityDialog dialog(summary, this);
     dialog.exec();
 }
 

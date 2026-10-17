@@ -3,12 +3,9 @@
 #include "VisualizationTheme.h"
 
 #include <vtkCellArray.h>
-#include <vtkNew.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
-#include <vtkPolyDataNormals.h>
 
-#include <algorithm>
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -18,6 +15,51 @@
 #endif
 
 namespace Structura::Visualization {
+
+// ── Acumulador ────────────────────────────────────────────────────────────────
+
+DiagramMeshBuilder::MeshAccumulator::MeshAccumulator()
+    : m_posPoints(vtkSmartPointer<vtkPoints>::New())
+    , m_negPoints(vtkSmartPointer<vtkPoints>::New())
+    , m_outPoints(vtkSmartPointer<vtkPoints>::New())
+    , m_hatchPoints(vtkSmartPointer<vtkPoints>::New())
+    , m_posCells(vtkSmartPointer<vtkCellArray>::New())
+    , m_negCells(vtkSmartPointer<vtkCellArray>::New())
+    , m_outCells(vtkSmartPointer<vtkCellArray>::New())
+    , m_hatchCells(vtkSmartPointer<vtkCellArray>::New())
+{
+}
+
+namespace {
+
+vtkSmartPointer<vtkPolyData> surface(vtkPoints* points, vtkCellArray* cells)
+{
+    if (points->GetNumberOfPoints() == 0) {
+        return nullptr;
+    }
+    auto pd = vtkSmartPointer<vtkPolyData>::New();
+    pd->SetPoints(points);
+    pd->SetPolys(cells);
+    return pd;
+}
+
+vtkSmartPointer<vtkPolyData> lines(vtkPoints* points, vtkCellArray* cells)
+{
+    if (points->GetNumberOfPoints() == 0) {
+        return nullptr;
+    }
+    auto pd = vtkSmartPointer<vtkPolyData>::New();
+    pd->SetPoints(points);
+    pd->SetLines(cells);
+    return pd;
+}
+
+} // namespace
+
+vtkSmartPointer<vtkPolyData> DiagramMeshBuilder::MeshAccumulator::positive() const { return surface(m_posPoints, m_posCells); }
+vtkSmartPointer<vtkPolyData> DiagramMeshBuilder::MeshAccumulator::negative() const { return surface(m_negPoints, m_negCells); }
+vtkSmartPointer<vtkPolyData> DiagramMeshBuilder::MeshAccumulator::outline() const { return lines(m_outPoints, m_outCells); }
+vtkSmartPointer<vtkPolyData> DiagramMeshBuilder::MeshAccumulator::hatch() const { return lines(m_hatchPoints, m_hatchCells); }
 
 // ── Helpers estáticos ─────────────────────────────────────────────────────────
 
@@ -32,8 +74,8 @@ std::array<double, 3> DiagramMeshBuilder::addScaled(const std::array<double, 3>&
 
 int DiagramMeshBuilder::computeSampleCount(double length)
 {
-    return std::max(VisualizationTheme::minSamples,
-                    static_cast<int>(length * VisualizationTheme::samplesPerMeter));
+    // Esforcos de cargas uniformes sao polinomios de grau <= 2: 4 amostras por metro (entre 24 e 120) reproduzem a curva.
+    return std::clamp(static_cast<int>(std::ceil(length * VisualizationTheme::samplesPerMeter)), VisualizationTheme::minSamples, VisualizationTheme::maxSamples);
 }
 
 double DiagramMeshBuilder::extractValue(const InternalForces& f, DiagramType type)
@@ -89,319 +131,165 @@ void DiagramMeshBuilder::sampleElement(const BeamElementResults& element,
     for (int i = 0; i < n; ++i) {
         const double x  = static_cast<double>(i) * L / static_cast<double>(n - 1);
         const InternalForces f = evaluator.evaluate(x);
-        const double v = extractValue(f, type);
-
-        // Posição mundo ao longo do eixo da barra
-        std::array<double, 3> bp{
+        sampled.basePoints.push_back({
             element.node1[0] + element.xLocal[0] * x,
             element.node1[1] + element.xLocal[1] * x,
-            element.node1[2] + element.xLocal[2] * x
-        };
-        sampled.basePoints.push_back(bp);
-        sampled.rawValues.push_back(v);
+            element.node1[2] + element.xLocal[2] * x});
+        sampled.rawValues.push_back(extractValue(f, type));
     }
-    
-    // LOG DE COMPROVAÇÃO SOLICITADO
-    #include <fstream>
-    std::ofstream logFile("C:\\Users\\João\\Documents\\Repos\\newStructura\\diagram_log.txt", std::ios_base::app);
-    if (logFile.is_open()) {
-        logFile << "\n============================================\n"
-                << "PROVA NUMERICA - GERACAO DE DIAGRAMA\n"
-                << "Elemento ID: " << element.externalId << "\n"
-                << "Tipo Solicitado (Enum): " << static_cast<int>(type) << "\n"
-                << "Valor Extraido no meio da barra (x=L/2): " 
-                << extractValue(evaluator.evaluate(L/2.0), type) << "\n"
-                << "Eixo de Extrusao Escolhido (perpAxis): "
-                << "[" << sampled.perpAxis[0] << ", " 
-                << sampled.perpAxis[1] << ", " 
-                << sampled.perpAxis[2] << "]\n"
-                << "============================================\n";
-    }
-
     cache.store(key, std::move(sampled));
 }
 
-// ── buildMesh (dispatcher) ────────────────────────────────────────────────────
+// ── append (despachante) ──────────────────────────────────────────────────────
 
-DiagramMeshBuilder::ElementMesh DiagramMeshBuilder::buildMesh(
-    const SampledDiagram& sampled,
-    const DiagramScaleManager& scale) const
-{
-    // Tipo Mt → faixa helicoidal; demais → superfície lateral padrão
-    // Detectamos Mt indiretamente: se perpAxis == secAxis, é Mt.
-    // Mais robusto: checar externamente. Aqui usamos heurística de perp vs sec.
-    // Para simplificar: chamamos sempre buildStandardMesh, com hélice
-    // implementada no buildTorsionMesh quando secAxis difere de perpAxis.
-    // O PostProcessorRenderer passa o tipo → DiagramMeshBuilder deveria recebê-lo.
-    // Solução: adicionamos overload com tipo explícito (ver buildMesh abaixo).
-    return buildStandardMesh(sampled, scale);
-}
-
-DiagramMeshBuilder::ElementMesh DiagramMeshBuilder::buildMesh(
-    const SampledDiagram& sampled,
-    const DiagramScaleManager& scale,
-    DiagramType type) const
+void DiagramMeshBuilder::append(const SampledDiagram& sampled,
+                                const DiagramScaleManager& scale,
+                                DiagramType type,
+                                bool withHatch,
+                                MeshAccumulator& out) const
 {
     if (type == DiagramType::Mt) {
-        return buildTorsionMesh(sampled, scale);
+        appendTorsion(sampled, scale, out);
+    } else {
+        appendStandard(sampled, scale, withHatch, out);
     }
-    return buildStandardMesh(sampled, scale);
 }
 
-// ── buildStandardMesh ────────────────────────────────────────────────────────
+namespace {
 
-DiagramMeshBuilder::ElementMesh DiagramMeshBuilder::buildStandardMesh(
-    const SampledDiagram& sampled,
-    const DiagramScaleManager& scale) const
+/// Quadrilatero (dois triangulos) entre as amostras p0-p1 e as pontas d0-d1.
+void addQuad(vtkPoints* pts, vtkCellArray* cells,
+             const std::array<double,3>& p0, const std::array<double,3>& p1,
+             const std::array<double,3>& d0, const std::array<double,3>& d1)
+{
+    const vtkIdType i0 = pts->InsertNextPoint(p0.data());
+    const vtkIdType i1 = pts->InsertNextPoint(p1.data());
+    const vtkIdType i2 = pts->InsertNextPoint(d1.data());
+    const vtkIdType i3 = pts->InsertNextPoint(d0.data());
+    const vtkIdType triA[3] = {i0, i1, i2};
+    const vtkIdType triB[3] = {i0, i2, i3};
+    cells->InsertNextCell(3, triA);
+    cells->InsertNextCell(3, triB);
+}
+
+} // namespace
+
+// ── Diagramas comuns (N, Vy, Vz, My, Mz) ──────────────────────────────────────
+
+void DiagramMeshBuilder::appendStandard(const SampledDiagram& sampled,
+                                        const DiagramScaleManager& scale,
+                                        bool withHatch,
+                                        MeshAccumulator& out) const
 {
     const std::size_t n = sampled.rawValues.size();
     if (n < 2) {
-        return {};
+        return;
     }
-
-    // Pré-computa pontos do diagrama (com offset físico)
     std::vector<std::array<double, 3>> diagPts(n);
     for (std::size_t i = 0; i < n; ++i) {
-        const double offset = scale.physicalOffset(sampled.rawValues[i]);
-        diagPts[i] = addScaled(sampled.basePoints[i], sampled.perpAxis, offset);
+        diagPts[i] = addScaled(sampled.basePoints[i], sampled.perpAxis, scale.physicalOffset(sampled.rawValues[i]));
     }
 
-    // ── Construção das malhas positiva e negativa ──────────────────────────
-    // Usamos VTK para construir dois vtkPolyData separados
-    vtkNew<vtkPoints>    posPoints, negPoints, outPoints;
-    vtkNew<vtkCellArray> posCells,  negCells,  outCells;
-
-    auto addQuad = [](vtkPoints* pts, vtkCellArray* cells,
-                      const std::array<double,3>& p0,
-                      const std::array<double,3>& p1,
-                      const std::array<double,3>& d0,
-                      const std::array<double,3>& d1)
-    {
-        const vtkIdType i0 = pts->InsertNextPoint(p0.data());
-        const vtkIdType i1 = pts->InsertNextPoint(p1.data());
-        const vtkIdType i2 = pts->InsertNextPoint(d1.data());
-        const vtkIdType i3 = pts->InsertNextPoint(d0.data());
-        // Triângulo A
-        vtkIdType triA[3] = {i0, i1, i2};
-        cells->InsertNextCell(3, triA);
-        // Triângulo B
-        vtkIdType triB[3] = {i0, i2, i3};
-        cells->InsertNextCell(3, triB);
-    };
-
-    // Contorno: polyline ao longo da curva do diagrama
-    vtkNew<vtkCellArray> outlineCells;
-    vtkNew<vtkPoints>    outlinePoints;
-
-    // Processar segmentos entre amostras consecutivas
     for (std::size_t i = 0; i + 1 < n; ++i) {
         const double v0 = sampled.rawValues[i];
         const double v1 = sampled.rawValues[i + 1];
-
         const auto& p0 = sampled.basePoints[i];
         const auto& p1 = sampled.basePoints[i + 1];
-        auto d0 = diagPts[i];
-        auto d1 = diagPts[i + 1];
-
+        const auto& d0 = diagPts[i];
+        const auto& d1 = diagPts[i + 1];
         if (v0 * v1 >= 0.0) {
-            // Mesmo sinal — um único quad
-            if (v0 >= 0.0) {
-                addQuad(posPoints.GetPointer(), posCells.GetPointer(), p0, p1, d0, d1);
-            } else {
-                addQuad(negPoints.GetPointer(), negCells.GetPointer(), p0, p1, d0, d1);
+            if (v0 >= 0.0 && (v0 > 0.0 || v1 > 0.0)) {
+                addQuad(out.m_posPoints, out.m_posCells, p0, p1, d0, d1);
+            } else if (v0 < 0.0 || v1 < 0.0) {
+                addQuad(out.m_negPoints, out.m_negCells, p0, p1, d0, d1);
             }
         } else {
-            // Cruzamento de zero — inserir ponto exato
-            const double t   = std::abs(v0) / (std::abs(v0) + std::abs(v1));
-            std::array<double,3> pMid{
-                p0[0] + (p1[0] - p0[0]) * t,
-                p0[1] + (p1[1] - p0[1]) * t,
-                p0[2] + (p1[2] - p0[2]) * t
-            };
-            // dMid = pMid (offset zero = no eixo)
-
+            // cruzamento de zero: insere o ponto exato (offset nulo = sobre o eixo)
+            const double t = std::abs(v0) / (std::abs(v0) + std::abs(v1));
+            const std::array<double, 3> pMid{p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t, p0[2] + (p1[2] - p0[2]) * t};
             if (v0 >= 0.0) {
-                addQuad(posPoints.GetPointer(), posCells.GetPointer(), p0, pMid, d0, pMid);
-                addQuad(negPoints.GetPointer(), negCells.GetPointer(), pMid, p1, pMid, d1);
+                addQuad(out.m_posPoints, out.m_posCells, p0, pMid, d0, pMid);
+                addQuad(out.m_negPoints, out.m_negCells, pMid, p1, pMid, d1);
             } else {
-                addQuad(negPoints.GetPointer(), negCells.GetPointer(), p0, pMid, d0, pMid);
-                addQuad(posPoints.GetPointer(), posCells.GetPointer(), pMid, p1, pMid, d1);
+                addQuad(out.m_negPoints, out.m_negCells, p0, pMid, d0, pMid);
+                addQuad(out.m_posPoints, out.m_posCells, pMid, p1, pMid, d1);
             }
         }
     }
 
-    // ── Contorno: polyline da curva do diagrama ───────────────────────────
+    // contorno: curva do diagrama e linha de base (eixo da barra)
     {
-        std::vector<vtkIdType> ids;
-        ids.reserve(n);
+        std::vector<vtkIdType> ids(n), baseIds(n);
         for (std::size_t i = 0; i < n; ++i) {
-            ids.push_back(outlinePoints->InsertNextPoint(diagPts[i].data()));
+            ids[i] = out.m_outPoints->InsertNextPoint(diagPts[i].data());
         }
-        outlineCells->InsertNextCell(static_cast<vtkIdType>(ids.size()), ids.data());
-        // Linha de base (eixo da barra)
-        std::vector<vtkIdType> baseIds;
-        baseIds.reserve(n);
+        out.m_outCells->InsertNextCell(static_cast<vtkIdType>(n), ids.data());
         for (std::size_t i = 0; i < n; ++i) {
-            baseIds.push_back(outlinePoints->InsertNextPoint(sampled.basePoints[i].data()));
+            baseIds[i] = out.m_outPoints->InsertNextPoint(sampled.basePoints[i].data());
         }
-        outlineCells->InsertNextCell(static_cast<vtkIdType>(baseIds.size()), baseIds.data());
+        out.m_outCells->InsertNextCell(static_cast<vtkIdType>(n), baseIds.data());
     }
 
-    // ── Monta vtkPolyData ─────────────────────────────────────────────────
-    auto makePolyData = [](vtkPoints* pts, vtkCellArray* cells) {
-        vtkNew<vtkPolyData> pd;
-        pd->SetPoints(pts);
-        pd->SetPolys(cells);
-        // Normais para iluminação correta (sem suavização geométrica)
-        vtkNew<vtkPolyDataNormals> normals;
-        normals->SetInputData(pd);
-        normals->ComputePointNormalsOn();
-        normals->ComputeCellNormalsOn();
-        normals->SplittingOff();  // preserva topologia original
-        normals->Update();
-        return vtkSmartPointer<vtkPolyData>(normals->GetOutput());
-    };
-
-    ElementMesh mesh;
-    if (posPoints->GetNumberOfPoints() > 0) {
-        mesh.positiveSurface = makePolyData(posPoints.GetPointer(), posCells.GetPointer());
+    // hachura: ordenadas do eixo ate a curva
+    if (withHatch) {
+        const int count = std::clamp(static_cast<int>(std::ceil(sampled.elementLength / 0.25)), 6, 40);
+        for (int k = 0; k <= count; ++k) {
+            const std::size_t i = std::min(n - 1, static_cast<std::size_t>(std::llround(static_cast<double>(k) * static_cast<double>(n - 1) / count)));
+            if (std::abs(sampled.rawValues[i]) < 1e-12) {
+                continue;
+            }
+            const vtkIdType ids[2] = {out.m_hatchPoints->InsertNextPoint(sampled.basePoints[i].data()), out.m_hatchPoints->InsertNextPoint(diagPts[i].data())};
+            out.m_hatchCells->InsertNextCell(2, ids);
+        }
     }
-    if (negPoints->GetNumberOfPoints() > 0) {
-        mesh.negativeSurface = makePolyData(negPoints.GetPointer(), negCells.GetPointer());
-    }
-
-    // Contorno (polylines — não precisa de normais)
-    {
-        vtkNew<vtkPolyData> outlinePD;
-        outlinePD->SetPoints(outlinePoints);
-        outlinePD->SetLines(outlineCells);
-        mesh.outline = outlinePD;
-    }
-
-    return mesh;
 }
 
-// ── buildTorsionMesh ──────────────────────────────────────────────────────────
+// ── Torção (Mt): faixa helicoidal ─────────────────────────────────────────────
 
-DiagramMeshBuilder::ElementMesh DiagramMeshBuilder::buildTorsionMesh(
-    const SampledDiagram& sampled,
-    const DiagramScaleManager& scale) const
+void DiagramMeshBuilder::appendTorsion(const SampledDiagram& sampled,
+                                       const DiagramScaleManager& scale,
+                                       MeshAccumulator& out) const
 {
     const std::size_t n = sampled.rawValues.size();
     if (n < 2) {
-        return {};
+        return;
     }
-
     const double maxTwist = VisualizationTheme::maxTwistAngleDeg * M_PI / 180.0;
     const double refAmplitude = scale.refLength()
                               * VisualizationTheme::defaultAmplitudeFraction
                               * VisualizationTheme::torsionBandWidthFraction
                               * scale.userScale();
+    const double maxAbs = scale.maxAbs() < 1e-30 ? 1.0 : scale.maxAbs();
+    const auto& yA = sampled.perpAxis;
+    const auto& zA = sampled.secAxis;
 
-    vtkNew<vtkPoints>    posPoints, negPoints;
-    vtkNew<vtkCellArray> posCells,  negCells;
-    vtkNew<vtkPoints>    outlinePoints;
-    vtkNew<vtkCellArray> outlineCells;
+    auto wing = [&](const std::array<double,3>& center, double theta) {
+        const double cy = std::cos(theta) * refAmplitude;
+        const double sz = std::sin(theta) * refAmplitude;
+        std::array<std::array<double, 3>, 2> w;
+        for (std::size_t k = 0; k < 3; ++k) {
+            w[0][k] = center[k] + yA[k] * cy + zA[k] * sz;
+            w[1][k] = center[k] - yA[k] * cy - zA[k] * sz;
+        }
+        return w;
+    };
 
     for (std::size_t i = 0; i + 1 < n; ++i) {
         const double v0 = sampled.rawValues[i];
         const double v1 = sampled.rawValues[i + 1];
-
-        // Ângulo de torção proporcional ao valor normalizado do elemento
-        const double maxAbs = scale.maxAbs() < 1e-30 ? 1.0 : scale.maxAbs();
-        const double theta0 = (v0 / maxAbs) * maxTwist;
-        const double theta1 = (v1 / maxAbs) * maxTwist;
-
-        const auto& c0 = sampled.basePoints[i];
-        const auto& c1 = sampled.basePoints[i + 1];
-        const auto& yA = sampled.perpAxis; // yLocal
-        const auto& zA = sampled.secAxis;  // zLocal
-
-        // P+/P- para amostra i
-        auto wing = [&](const std::array<double,3>& center, double theta, double hw)
-            -> std::pair<std::array<double,3>, std::array<double,3>>
-        {
-            const double cy = std::cos(theta) * hw;
-            const double sz = std::sin(theta) * hw;
-            std::array<double,3> plus {
-                center[0] + yA[0]*cy + zA[0]*sz,
-                center[1] + yA[1]*cy + zA[1]*sz,
-                center[2] + yA[2]*cy + zA[2]*sz
-            };
-            std::array<double,3> minus {
-                center[0] - yA[0]*cy - zA[0]*sz,
-                center[1] - yA[1]*cy - zA[1]*sz,
-                center[2] - yA[2]*cy - zA[2]*sz
-            };
-            return {plus, minus};
-        };
-
-        auto [p0plus, p0minus] = wing(c0, theta0, refAmplitude);
-        auto [p1plus, p1minus] = wing(c1, theta1, refAmplitude);
-
-        // Quad entre amostras consecutivas
-        auto addStripQuad = [](vtkPoints* pts, vtkCellArray* cells,
-                                const std::array<double,3>& a0,
-                                const std::array<double,3>& a1,
-                                const std::array<double,3>& b0,
-                                const std::array<double,3>& b1) {
-            vtkIdType i0 = pts->InsertNextPoint(a0.data());
-            vtkIdType i1 = pts->InsertNextPoint(a1.data());
-            vtkIdType i2 = pts->InsertNextPoint(b1.data());
-            vtkIdType i3 = pts->InsertNextPoint(b0.data());
-            vtkIdType triA[3] = {i0, i1, i2};
-            cells->InsertNextCell(3, triA);
-            vtkIdType triB[3] = {i0, i2, i3};
-            cells->InsertNextCell(3, triB);
-        };
-
-        // Cor: positivo (torção positiva) → posPoints, negativo → negPoints
-        bool isPos0 = (v0 >= 0.0);
-        if (isPos0) {
-            addStripQuad(posPoints.GetPointer(), posCells.GetPointer(),
-                         p0plus, p1plus, p0minus, p1minus);
+        const auto a = wing(sampled.basePoints[i], (v0 / maxAbs) * maxTwist);
+        const auto b = wing(sampled.basePoints[i + 1], (v1 / maxAbs) * maxTwist);
+        if (v0 >= 0.0) {
+            addQuad(out.m_posPoints, out.m_posCells, a[0], b[0], a[1], b[1]);
         } else {
-            addStripQuad(negPoints.GetPointer(), negCells.GetPointer(),
-                         p0plus, p1plus, p0minus, p1minus);
+            addQuad(out.m_negPoints, out.m_negCells, a[0], b[0], a[1], b[1]);
         }
     }
-
-    // Contorno: eixo da barra
-    {
-        std::vector<vtkIdType> ids;
-        ids.reserve(n);
-        for (std::size_t i = 0; i < n; ++i) {
-            ids.push_back(outlinePoints->InsertNextPoint(sampled.basePoints[i].data()));
-        }
-        outlineCells->InsertNextCell(static_cast<vtkIdType>(ids.size()), ids.data());
+    std::vector<vtkIdType> ids(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        ids[i] = out.m_outPoints->InsertNextPoint(sampled.basePoints[i].data());
     }
-
-    auto makePolyData = [](vtkPoints* pts, vtkCellArray* cells) {
-        vtkNew<vtkPolyData> pd;
-        pd->SetPoints(pts);
-        pd->SetPolys(cells);
-        vtkNew<vtkPolyDataNormals> normals;
-        normals->SetInputData(pd);
-        normals->ComputePointNormalsOn();
-        normals->SplittingOff();
-        normals->Update();
-        return vtkSmartPointer<vtkPolyData>(normals->GetOutput());
-    };
-
-    ElementMesh mesh;
-    if (posPoints->GetNumberOfPoints() > 0) {
-        mesh.positiveSurface = makePolyData(posPoints.GetPointer(), posCells.GetPointer());
-    }
-    if (negPoints->GetNumberOfPoints() > 0) {
-        mesh.negativeSurface = makePolyData(negPoints.GetPointer(), negCells.GetPointer());
-    }
-    {
-        vtkNew<vtkPolyData> outlinePD;
-        outlinePD->SetPoints(outlinePoints);
-        outlinePD->SetLines(outlineCells);
-        mesh.outline = outlinePD;
-    }
-    return mesh;
+    out.m_outCells->InsertNextCell(static_cast<vtkIdType>(n), ids.data());
 }
 
 } // namespace Structura::Visualization

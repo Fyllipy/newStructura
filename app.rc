@@ -1,0 +1,29 @@
+// Recursos do executavel: icone do programa e informacoes de versao.
+IDI_ICON1 ICON "icons/app/app.ico"
+
+1 VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0x0L
+FILEOS 0x40004L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041604b0"
+        BEGIN
+            VALUE "FileDescription", "Structura 3D - analise e dimensionamento de estruturas metalicas"
+            VALUE "FileVersion", "1.0.0.0"
+            VALUE "InternalName", "StructuraRibbon3D"
+            VALUE "OriginalFilename", "StructuraRibbon3D.exe"
+            VALUE "ProductName", "Structura 3D"
+            VALUE "ProductVersion", "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x416, 1200
+    END
+END

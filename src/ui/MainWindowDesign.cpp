@@ -2,6 +2,8 @@
 
 #include "DesignDialogs.h"
 #include "DesignPanel.h"
+#include "BusyProgress.h"
+#include <QCryptographicHash>
 #include "DesignRunData.h"
 #include "ViewOptionsBar.h"
 #include "app/services/DesignService.h"
@@ -19,7 +21,9 @@
 #include <QStatusBar>
 
 #include <algorithm>
+#include <atomic>
 #include <map>
+#include <thread>
 
 using Structura::App::ProjectData::DesignSettings;
 using Structura::App::ProjectData::SectionInfo;
@@ -150,6 +154,29 @@ QUuid MainWindow::sectionForCandidate(const SectionInfo &candidate)
     return info.uuid;
 }
 
+QString MainWindow::designCacheKey() const
+{
+    QByteArray key = QByteArray::number(quickFingerprint()) + '|' + QByteArray::number(m_resultsFingerprint) + '|';
+    const auto &d = m_extras.design;
+    key += d.defaultSteel.toUtf8() + '|' + d.rectTubeStandard.toUtf8() + '|';
+    key += QByteArray::number(static_cast<int>(d.amplifyB1)) + QByteArray::number(static_cast<int>(d.slendernessGoverns)) + QByteArray::number(static_cast<int>(d.secondOrder))
+        + QByteArray::number(static_cast<int>(d.autoB2)) + QByteArray::number(static_cast<int>(d.singleStorey)) + QByteArray::number(static_cast<int>(d.groupByFamily))
+        + QByteArray::number(static_cast<int>(d.notionalLoads)) + QByteArray::number(d.notionalFactor, 'g', 8);
+    key += '|' + QByteArray::number(d.stiffnessReduction, 'g', 8) + '|' + QByteArray::number(d.rs, 'g', 8) + '|' + QByteArray::number(d.targetEta, 'g', 8) + '|';
+    key += d.combinations.join(QLatin1Char(',')).toUtf8() + '|';
+    auto params = [&key](const Structura::App::ProjectData::DesignMemberParams &p) {
+        key += QByteArray::number(p.memberId) + p.steel.toUtf8() + ':' + QByteArray::number(p.kx, 'g', 8) + ',' + QByteArray::number(p.ky, 'g', 8) + ',' + QByteArray::number(p.kz, 'g', 8)
+            + ',' + QByteArray::number(p.segments) + ',' + QByteArray::number(p.lb, 'g', 8) + ',' + QByteArray::number(static_cast<int>(p.braced)) + QByteArray::number(static_cast<int>(p.cbOne))
+            + ',' + QByteArray::number(p.b2, 'g', 8) + ',' + QByteArray::number(p.netAreaRatio, 'g', 8) + ',' + QByteArray::number(p.deflDenominator) + ','
+            + QByteArray::number(p.lx, 'g', 8) + ',' + QByteArray::number(p.ly, 'g', 8) + ',' + QByteArray::number(p.lz, 'g', 8) + ';';
+    };
+    params(d.defaults);
+    for (const auto &m : d.members) {
+        params(m);
+    }
+    return QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Md5).toHex());
+}
+
 bool MainWindow::buildDesignRun(DesignRunData &run)
 {
     if (m_caseRuns.isEmpty() || m_resultViews.isEmpty()) {
@@ -189,24 +216,52 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
                        "combinações cujo nome começa por \"ELS\" são tratadas como de serviço.");
         return false;
     }
-    run.effects = DesignService::collectEffects(geometry, ultimate, factors.first, factors.second);
-
-    // B2 por andar (so na analise de 1a ordem)
-    if (m_extras.design.secondOrder) {
-        run.warnings.append(tr("Análise de 2ª ordem: os esforços já incluem P-Δ e P-δ; B1 e B2 não são aplicados. "
-                               "Imperfeições geométricas (carga nocional 0,3%%) devem ser lançadas como cargas."));
-    } else if (m_extras.design.autoB2) {
-        const auto b2 = StructuralChecks::stories(geometry, ultimate, m_extras.design, factors.first, factors.second);
-        DesignService::applyB2(run.effects, b2.b2);
-        run.warnings += b2.warnings;
-    }
-
-    // Servico
-    if (service.empty()) {
-        run.warnings.append(tr("Não há combinações de serviço: crie uma combinação cujo nome comece por \"ELS\" para verificar flechas e deslocamentos."));
+    // Esforcos, B2 e flechas sao caros (percorrem todas as barras e combinacoes): ficam em cache enquanto o modelo,
+    // os resultados e os parametros de projeto nao mudarem.
+    const QString cacheKey = designCacheKey();
+    if (m_designCache && cacheKey == m_designCacheKey) {
+        run.effects = m_designCache->effects;
+        run.deflections = m_designCache->deflections;
+        run.elsStories = m_designCache->elsStories;
+        run.warnings = m_designCache->warnings;
     } else {
-        run.deflections = StructuralChecks::deflections(geometry, service, m_extras.design, factors.second);
-        run.elsStories = StructuralChecks::stories(geometry, service, m_extras.design, factors.first, factors.second);
+        const bool secondOrder = m_extras.design.secondOrder;
+        const bool autoB2 = m_extras.design.autoB2;
+        const auto designSettings = m_extras.design;
+        DesignRunData heavy;
+        heavy = Structura::UI::runBusy(this, tr("Dimensionamento"), tr("Reunindo os esforços das combinações…"),
+                                       [&](Structura::UI::BusyProgress &progress) {
+            DesignRunData out;
+            progress.setDetail(tr("Esforços de cálculo por barra e combinação…"));
+            out.effects = DesignService::collectEffects(geometry, ultimate, factors.first, factors.second);
+            // B2 por andar (so na analise de 1a ordem)
+            if (secondOrder) {
+                out.warnings.append(designSettings.notionalLoads
+                                        ? tr("Análise de 2ª ordem: os esforços já incluem P-Δ e P-δ; B1 e B2 não são aplicados. As imperfeições geométricas entram pelas forças nocionais das combinações.")
+                                        : tr("Análise de 2ª ordem: os esforços já incluem P-Δ e P-δ; B1 e B2 não são aplicados. "
+                                             "Imperfeições geométricas (carga nocional 0,3%%) devem ser lançadas como cargas ou ativadas em Parâmetros de dimensionamento."));
+            } else if (autoB2) {
+                progress.setDetail(tr("Coeficiente B2 por andar…"));
+                const auto b2 = StructuralChecks::stories(geometry, ultimate, designSettings, factors.first, factors.second);
+                DesignService::applyB2(out.effects, b2.b2);
+                out.warnings += b2.warnings;
+            }
+            // Servico
+            if (service.empty()) {
+                out.warnings.append(tr("Não há combinações de serviço: crie uma combinação cujo nome comece por \"ELS\" para verificar flechas e deslocamentos."));
+            } else {
+                progress.setDetail(tr("Flechas e deslocamentos de serviço…"));
+                out.deflections = StructuralChecks::deflections(geometry, service, designSettings, factors.second);
+                out.elsStories = StructuralChecks::stories(geometry, service, designSettings, factors.first, factors.second);
+            }
+            return out;
+        });
+        run.effects = heavy.effects;
+        run.deflections = heavy.deflections;
+        run.elsStories = heavy.elsStories;
+        run.warnings = heavy.warnings;
+        m_designCache = std::make_shared<DesignRunData>(std::move(heavy));
+        m_designCacheKey = cacheKey;
     }
 
     // Barras, perfis e pesos
@@ -267,7 +322,10 @@ void MainWindow::showDesignResults(bool optimized)
         }
         return;
     }
-    const auto verdicts = DesignService::verifyAll(run.effects, run.refs, run.settings, run.lengthFactor);
+    const auto verdicts = Structura::UI::runBusy(this, tr("Verificação dos perfis"), tr("Verificando as barras…"), [&](Structura::UI::BusyProgress &progress) {
+        return DesignService::verifyAll(run.effects, run.refs, run.settings, run.lengthFactor,
+                                        [&progress](int done, int total) { progress.report(done, total, QObject::tr("Barra %1 de %2").arg(done).arg(total)); });
+    });
 
     Structura::UI::DesignPanelData data;
     data.title = optimized ? tr("Dimensionamento concluído") : tr("Verificação dos perfis adotados");
@@ -349,9 +407,13 @@ void MainWindow::onOptimizeDesign()
     }
     const bool byFamily = m_extras.design.groupByFamily;
     const double target = m_extras.design.targetEta;
+    const auto groups = buildGroups(byFamily);
+    const auto rows = Structura::UI::runBusy(this, tr("Dimensionamento automático"), tr("Avaliando %1 grupos de barras…").arg(groups.size()),
+                                             [&](Structura::UI::BusyProgress &progress) {
     QVector<Structura::UI::DesignPreviewDialog::Row> rows;
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-    for (const Group &g : buildGroups(byFamily)) {
+    int groupIndex = 0;
+    for (const Group &g : groups) {
+        progress.report(groupIndex, static_cast<int>(groups.size()), tr("Grupo %1").arg(g.label));
         Structura::UI::DesignPreviewDialog::Row row;
         row.key = g.key;
         row.label = byFamily ? tr("%1 (família)").arg(g.label) : g.label;
@@ -395,8 +457,10 @@ void MainWindow::onOptimizeDesign()
             }
         }
         rows.append(row);
+        ++groupIndex;
     }
-    QApplication::restoreOverrideCursor();
+    return rows;
+    });
     if (rows.isEmpty()) {
         QMessageBox::information(this, tr("Dimensionamento"), tr("Não há barras com perfil de aço para dimensionar."));
         return;
@@ -577,34 +641,58 @@ void MainWindow::onChangeProfileForMember(int memberId)
         std::stable_sort(candidates.begin(), candidates.end(), [](const SectionInfo &a, const SectionInfo &b) { return a.area < b.area; });
     }
 
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-    QVector<Structura::UI::ProfileChoiceDialog::Row> rows;
-    for (const SectionInfo &candidate : candidates) {
-        Structura::UI::ProfileChoiceDialog::Row row;
-        row.name = candidate.name;
-        row.areaCm2 = candidate.area * 1e4;
-        row.kgPerM = candidate.area * kSteelDensity;
-        row.current = candidate.name == currentCopy.name && candidate.family == currentCopy.family;
-        double worst = 0.0;
-        bool supported = true;
-        for (const int id : affected) {
-            for (const auto &e : run.effects) {
-                if (e.memberId != id) {
-                    continue;
+    // verificacao de todos os perfis candidatos: em paralelo (as verificacoes sao independentes) e com progresso
+    const int candidateCount = static_cast<int>(candidates.size());
+    const auto rows = Structura::UI::runBusy(this, tr("Trocar perfil — barra %1").arg(memberId),
+                                             tr("Verificando %1 perfis candidatos…").arg(candidateCount),
+                                             [&](Structura::UI::BusyProgress &progress) {
+        QVector<Structura::UI::ProfileChoiceDialog::Row> out(candidateCount);
+        std::atomic<int> next {0}, done {0};
+        auto worker = [&]() {
+            for (;;) {
+                const int i = next.fetch_add(1);
+                if (i >= candidateCount) {
+                    break;
                 }
-                const auto verdict = DesignService::verifyMember(e, candidate, run.settings.paramsFor(id), run.settings, run.lengthFactor);
-                if (!verdict.supported || verdict.output.checks.empty()) {
-                    supported = false;
-                } else {
-                    worst = std::max(worst, verdict.output.maxRatio);
+                const SectionInfo &candidate = candidates[i];
+                Structura::UI::ProfileChoiceDialog::Row row;
+                row.name = candidate.name;
+                row.areaCm2 = candidate.area * 1e4;
+                row.kgPerM = candidate.area * kSteelDensity;
+                row.current = candidate.name == currentCopy.name && candidate.family == currentCopy.family;
+                double worst = 0.0;
+                bool supported = true;
+                for (const int id : affected) {
+                    for (const auto &e : run.effects) {
+                        if (e.memberId != id) {
+                            continue;
+                        }
+                        const auto verdict = DesignService::verifyMember(e, candidate, run.settings.paramsFor(id), run.settings, run.lengthFactor);
+                        if (!verdict.supported || verdict.output.checks.empty()) {
+                            supported = false;
+                        } else {
+                            worst = std::max(worst, verdict.output.maxRatio);
+                        }
+                    }
                 }
+                row.eta = worst;
+                row.supported = supported;
+                out[i] = row;
+                progress.report(done.fetch_add(1) + 1, candidateCount);
             }
+        };
+        const unsigned hardware = std::max(1u, std::thread::hardware_concurrency());
+        const unsigned workers = std::min<unsigned>(hardware, 8u);
+        std::vector<std::thread> pool;
+        for (unsigned w = 1; w < workers; ++w) {
+            pool.emplace_back(worker);
         }
-        row.eta = worst;
-        row.supported = supported;
-        rows.append(row);
-    }
-    QApplication::restoreOverrideCursor();
+        worker();
+        for (auto &t : pool) {
+            t.join();
+        }
+        return out;
+    });
 
     const QString subtitle = affected.size() > 1
         ? tr("Barra %1 (e outras %2 do grupo). Perfil atual: %3. O η considera todas as barras afetadas, com os esforços da análise atual.")

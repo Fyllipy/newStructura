@@ -9,9 +9,22 @@
         <file alias="save.png">icons/save.png</file>
         <file alias="setBars.png">icons/setBars.png</file>
         <file alias="zoomExtents.png">icons/zoomExtents.png</file>
+        <file alias="app/app-16.png">icons/app/app-16.png</file>
+        <file alias="app/app-24.png">icons/app/app-24.png</file>
+        <file alias="app/app-32.png">icons/app/app-32.png</file>
+        <file alias="app/app-48.png">icons/app/app-48.png</file>
+        <file alias="app/app-64.png">icons/app/app-64.png</file>
+        <file alias="app/app-128.png">icons/app/app-128.png</file>
+        <file alias="app/app-256.png">icons/app/app-256.png</file>
     </qresource>
     <qresource prefix="/svg">
         <file alias="bar-insert.svg">icons/svg/bar-insert.svg</file>
+        <file alias="node-insert.svg">icons/svg/node-insert.svg</file>
+        <file alias="dynamics.svg">icons/svg/dynamics.svg</file>
+        <file alias="split-bar.svg">icons/svg/split-bar.svg</file>
+        <file alias="measure.svg">icons/svg/measure.svg</file>
+        <file alias="compare.svg">icons/svg/compare.svg</file>
+        <file alias="composite.svg">icons/svg/composite.svg</file>
         <file alias="material-new.svg">icons/svg/material-new.svg</file>
         <file alias="force-point.svg">icons/svg/force-point.svg</file>
         <file alias="force-distributed.svg">icons/svg/force-distributed.svg</file>
@@ -30,6 +43,8 @@
         <file alias="hinge-both.svg">icons/svg/hinge-both.svg</file>
         <file alias="fixed-ends.svg">icons/svg/fixed-ends.svg</file>
         <file alias="truss.svg">icons/svg/truss.svg</file>
+        <file alias="constraint.svg">icons/svg/constraint.svg</file>
+        <file alias="labels-hide.svg">icons/svg/labels-hide.svg</file>
         <file alias="tie.svg">icons/svg/tie.svg</file>
         <file alias="delete-loads.svg">icons/svg/delete-loads.svg</file>
         <file alias="area-panel.svg">icons/svg/area-panel.svg</file>
@@ -43,6 +58,7 @@
         <file alias="modal.svg">icons/svg/modal.svg</file>
         <file alias="connection.svg">icons/svg/connection.svg</file>
         <file alias="restraint.svg">icons/svg/restraint.svg</file>
+        <file alias="sheets.svg">icons/svg/sheets.svg</file>
         <file alias="axes-config.svg">icons/svg/axes-config.svg</file>
         <file alias="axes-ref.svg">icons/svg/axes-ref.svg</file>
         <file alias="bar-force.svg">icons/svg/bar-force.svg</file>
@@ -77,8 +93,13 @@
         <file alias="serial.svg">icons/svg/serial.svg</file>
         <file alias="snap.svg">icons/svg/snap.svg</file>
         <file alias="solids.svg">icons/svg/solids.svg</file>
+        <file alias="truss.svg">icons/svg/truss.svg</file>
+        <file alias="connections3d.svg">icons/svg/connections3d.svg</file>
         <file alias="supports.svg">icons/svg/supports.svg</file>
         <file alias="trash.svg">icons/svg/trash.svg</file>
+    </qresource>
+    <qresource prefix="/images">
+        <file alias="splash.png">images/splash.png</file>
     </qresource>
     <qresource prefix="/data">
         <file alias="catalog_steel.json">data/catalog_steel.json</file>

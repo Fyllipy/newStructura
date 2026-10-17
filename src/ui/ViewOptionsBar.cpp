@@ -26,14 +26,16 @@ const QString ViewOptionsBar::kBarLabels = QStringLiteral("bar_labels");
 const QString ViewOptionsBar::kLocalAxes = QStringLiteral("local_axes");
 const QString ViewOptionsBar::kNodes = QStringLiteral("nodes");
 const QString ViewOptionsBar::kSupports = QStringLiteral("supports");
+const QString ViewOptionsBar::kConstraints = QStringLiteral("constraints");
 const QString ViewOptionsBar::kSolids = QStringLiteral("solids");
+const QString ViewOptionsBar::kConnections = QStringLiteral("connections3d");
 const QString ViewOptionsBar::kAllLevels = QStringLiteral("all_levels");
-const QString ViewOptionsBar::kIsolate = QStringLiteral("isolate");
 const QString ViewOptionsBar::kPlaneOnly = QStringLiteral("planeonly");
 const QString ViewOptionsBar::kNodeForces = QStringLiteral("node_forces");
 const QString ViewOptionsBar::kNodeMoments = QStringLiteral("node_moments");
 const QString ViewOptionsBar::kBarForces = QStringLiteral("bar_forces");
 const QString ViewOptionsBar::kBarMoments = QStringLiteral("bar_moments");
+const QString ViewOptionsBar::kHideLoadLabels = QStringLiteral("hide_load_labels");
 const QString ViewOptionsBar::kAreaPanels = QStringLiteral("area_panels");
 const QString ViewOptionsBar::kSnap = QStringLiteral("snap");
 const QString ViewOptionsBar::kSnapGrid = QStringLiteral("snap_grid");
@@ -75,12 +77,15 @@ ViewOptionsBar::ViewOptionsBar(QWidget *parent)
     addToggle(kLocalAxes, QStringLiteral("local-axes.svg"), tr("Eixos locais das barras"), false);
     addToggle(kNodes, QStringLiteral("nodes.svg"), tr("Nos"));
     addToggle(kSolids, QStringLiteral("solids.svg"), tr("Secoes extrudadas (solido)"), false);
-    addToggle(kSupports, QStringLiteral("supports.svg"), tr("Apoios dos nos"));
+    addToggle(kSupports, QStringLiteral("supports.svg"), tr("Apoios (engaste, articulado e movel: restringem o deslocamento Z)"));
+    addToggle(kConstraints, QStringLiteral("constraint.svg"), tr("Restricoes nodais (demais restricoes de translacao e rotacao dos nos)"));
+    addToggle(kConnections, QStringLiteral("connections3d.svg"), tr("Ligacoes em 3D (chapas, parafusos e soldas; cor = utilizacao)"), true);
     addSeparator();
     addToggle(kNodeForces, QStringLiteral("node-force.svg"), tr("Forcas nodais"));
     addToggle(kNodeMoments, QStringLiteral("node-moment.svg"), tr("Momentos nodais"));
     addToggle(kBarForces, QStringLiteral("bar-force.svg"), tr("Cargas distribuidas nas barras"));
     addToggle(kBarMoments, QStringLiteral("bar-moment.svg"), tr("Momentos distribuidos nas barras"));
+    addToggle(kHideLoadLabels, QStringLiteral("labels-hide.svg"), tr("Ocultar os valores (rotulos) dos carregamentos"), false);
     addToggle(kAreaPanels, QStringLiteral("area-panel.svg"), tr("Panos das cargas de area e vento (e sua acao nas barras)"));
     addSeparator();
 
@@ -165,10 +170,6 @@ ViewOptionsBar::ViewOptionsBar(QWidget *parent)
     m_selectionButton->setMenu(selectionMenu);
     m_selectionButton->setPopupMode(QToolButton::InstantPopup);
     layout->addWidget(m_selectionButton);
-
-    // Isolar nivel (esmaecer ou ocultar os demais).
-    addToggle(kIsolate, QStringLiteral("isolate.svg"),
-              tr("Esmaecer os outros niveis (destaca o nivel ativo)"), false);
 
     // Cores por secao / material.
     QToolButton *colors = makeButton(QStringLiteral("palette.svg"), tr("Colorir barras por secao ou material"));

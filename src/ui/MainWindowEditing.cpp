@@ -59,10 +59,13 @@ void MainWindow::updateEditActionsEnabled()
     if (m_copyElementsAction) {
         m_copyElementsAction->setEnabled(hasSelection);
     }
+    if (m_splitBarsAction) {
+        m_splitBarsAction->setEnabled(m_selectionModel && !m_selectionModel->selectedBars().isEmpty());
+    }
     if (m_moveElementsAction) {
         m_moveElementsAction->setEnabled(hasSelection);
     }
-    for (QAction *action : {m_serialCopyAction, m_rotateElementsAction, m_mirrorElementsAction}) {
+    for (QAction *action : {m_serialCopyAction, m_rotateElementsAction, m_mirrorElementsAction, m_deleteElementsAction}) {
         if (action) {
             action->setEnabled(hasSelection);
         }

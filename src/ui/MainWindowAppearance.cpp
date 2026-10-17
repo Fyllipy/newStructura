@@ -103,7 +103,6 @@ void MainWindow::applyAppearance()
         return;
     }
     auto *construction = m_sceneController->constructionScene();
-    const bool isolate = m_viewOptionsBar->isChecked(Structura::UI::ViewOptionsBar::kIsolate);
     const bool planeOnly = m_viewOptionsBar->isChecked(Structura::UI::ViewOptionsBar::kPlaneOnly);
     const int colorMode = m_viewOptionsBar->colorMode();
     const int normal = construction ? Structura::Construction::planeAxes(construction->planeMode()).normal : 2;
@@ -132,8 +131,6 @@ void MainWindow::applyAppearance()
             appearance.state = ElementAppearance::State::Hidden;
         } else if (planeOnly && !atLevel(node)) {
             appearance.state = ElementAppearance::State::Hidden;
-        } else if (isolate && !atLevel(node)) {
-            appearance.state = ElementAppearance::State::Dimmed;
         }
         if (appearance.state != ElementAppearance::State::Normal) {
             m_offNodeKeys.insert(positionKey(node.x, node.y, node.z));
@@ -184,8 +181,6 @@ void MainWindow::applyAppearance()
             appearance.state = ElementAppearance::State::Hidden;
         } else if (planeOnly && a != nodeById.constEnd() && b != nodeById.constEnd() && !(atLevel(*a) && atLevel(*b))) {
             appearance.state = ElementAppearance::State::Hidden;
-        } else if (isolate && a != nodeById.constEnd() && b != nodeById.constEnd() && !(atLevel(*a) && atLevel(*b))) {
-            appearance.state = ElementAppearance::State::Dimmed;
         }
         if (appearance.state != ElementAppearance::State::Normal && a != nodeById.constEnd() && b != nodeById.constEnd()) {
             m_offBarKeys.insert(positionKey(a->x, a->y, a->z) + QLatin1Char('|') + positionKey(b->x, b->y, b->z));
@@ -208,6 +203,28 @@ void MainWindow::applyAppearance()
             m_hiddenBarExt.insert(bar.externalId);
         }
         bars.insert(bar.id, appearance);
+    }
+    // no cujas barras estao todas ocultas tambem fica oculto (nos soltos seguem o proprio estado)
+    {
+        QHash<QUuid, int> total, hiddenCount;
+        for (const auto &bar : m_sceneController->bars()) {
+            const bool hidden = bars.value(bar.id).state == ElementAppearance::State::Hidden;
+            for (const QUuid &end : {bar.startNodeId, bar.endNodeId}) {
+                total[end] += 1;
+                hiddenCount[end] += hidden ? 1 : 0;
+            }
+        }
+        for (const auto &node : nodeInfos) {
+            if (total.value(node.id) > 0 && total.value(node.id) == hiddenCount.value(node.id)
+                && nodes.value(node.id).state != ElementAppearance::State::Hidden) {
+                ElementAppearance appearance = nodes.value(node.id);
+                appearance.state = ElementAppearance::State::Hidden;
+                nodes.insert(node.id, appearance);
+                m_effHiddenNodes.insert(node.id);
+                m_hiddenNodeExt.insert(node.externalId);
+                m_offNodeKeys.insert(positionKey(node.x, node.y, node.z));
+            }
+        }
     }
     m_barAppearance = bars;
 

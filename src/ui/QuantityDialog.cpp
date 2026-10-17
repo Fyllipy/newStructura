@@ -57,6 +57,25 @@ QuantityDialog::QuantityDialog(const QuantityService::Summary &summary, QWidget 
         warn->setWordWrap(true);
         root->addWidget(warn);
     }
+    if (!summary.connections.isEmpty()) {
+        auto *title = new QLabel(tr("<b>Ligações</b> — massa de peças: <b>%1 kg</b>").arg(summary.connectionMass, 0, 'f', 1));
+        root->addWidget(title);
+        auto *conn = new QTableWidget(summary.connections.size(), 4);
+        conn->setHorizontalHeaderLabels({tr("Peça"), tr("Qtd"), tr("Massa unitária (kg)"), tr("Massa total (kg)")});
+        conn->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        conn->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        conn->verticalHeader()->hide();
+        conn->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        conn->setMaximumHeight(170);
+        for (int i = 0; i < summary.connections.size(); ++i) {
+            const auto &c = summary.connections[i];
+            const QStringList cells {c.description, QString::number(c.quantity), QString::number(c.massEach, 'f', 2), QString::number(c.totalMass, 'f', 1)};
+            for (int col = 0; col < cells.size(); ++col) {
+                conn->setItem(i, col, new QTableWidgetItem(cells[col]));
+            }
+        }
+        root->addWidget(conn);
+    }
     auto *note = new QLabel(tr("Massa = A·L·γ do material, sem perdas, chapas de ligação, parafusos ou soldas. Pintura = perímetro da seção × comprimento."));
     note->setStyleSheet(QStringLiteral("color:#5a6472;"));
     note->setWordWrap(true);

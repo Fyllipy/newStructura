@@ -101,6 +101,11 @@ void PropertiesPanel::buildBarGroup()
 
     m_barDistributedLoadsLabel = new QLabel(QObject::tr("Cargas distrib.: nenhuma"), m_barGroup);
     form->addRow(m_barDistributedLoadsLabel);
+    m_barLoadDetailsLabel = new QLabel(m_barGroup);
+    m_barLoadDetailsLabel->setTextFormat(Qt::RichText);
+    m_barLoadDetailsLabel->setWordWrap(true);
+    m_barLoadDetailsLabel->setStyleSheet(QStringLiteral("color:#3b4654; font-size:8.5pt;"));
+    form->addRow(m_barLoadDetailsLabel);
 
     m_materialCombo = new QComboBox(m_barGroup);
     m_materialCombo->setPlaceholderText(tr("Selecionar material"));
@@ -270,7 +275,11 @@ void PropertiesPanel::setBarEntries(const QVector<BarEntry> &entries)
                 entry.distributedLoadCount > 0
                     ? tr("Cargas distrib.: %1").arg(entry.distributedLoadCount)
                     : tr("Cargas distrib.: nenhuma"));
+            m_barLoadDetailsLabel->setText(entry.loadDetails);
+            m_barLoadDetailsLabel->setVisible(!entry.loadDetails.isEmpty());
         } else {
+            m_barLoadDetailsLabel->clear();
+            m_barLoadDetailsLabel->hide();
             m_barIdLabel->setText(tr("%1 barras").arg(entries.size()));
             m_barNodesLabel->setText(tr("Nós: vários"));
             m_barLengthLabel->setText(tr("Comprimentos variados"));

@@ -43,7 +43,9 @@ public:
         Copy, ///< Dois pontos: base e destino (copia os elementos selecionados)
         Move, ///< Dois pontos: base e destino (move os elementos selecionados)
         Rotate, ///< Um ponto (pivo)
-        Mirror  ///< Dois pontos (eixo de espelhamento)
+        Mirror, ///< Dois pontos (eixo de espelhamento)
+        Node,   ///< Um ponto, com snap ao longo das barras (insere no e divide a barra)
+        Measure ///< Dois pontos: mede distancia, deltas e inclinacao
     };
 
     PlacementController(SceneController *scene, QWidget *viewport, QObject *parent = nullptr);

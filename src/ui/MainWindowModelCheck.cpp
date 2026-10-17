@@ -87,38 +87,45 @@ void MainWindow::onNewFromTemplate()
     if (!m_sceneController) {
         return;
     }
-    if (!m_sceneController->bars().empty()
-        && QMessageBox::question(this, tr("Modelo pronto"), tr("O modelo atual será substituído. Continuar?")) != QMessageBox::Yes) {
+    if (!maybeSave()) {
         return;
     }
+    newFromTemplateDialog();
+}
+
+bool MainWindow::newFromTemplateDialog()
+{
     Structura::UI::TemplateDialog dialog(this);
     if (dialog.exec() != QDialog::Accepted) {
-        return;
+        return false;
     }
     QString error;
     const QString text = dialog.generate(&error);
     if (text.isEmpty()) {
         QMessageBox::warning(this, tr("Modelo pronto"), error.isEmpty() ? tr("Não foi possível gerar o modelo.") : error);
-        return;
+        return false;
     }
     QTemporaryDir dir;
     if (!dir.isValid()) {
-        return;
+        return false;
     }
     const QString path = dir.filePath(QStringLiteral("modelo.dat"));
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly)) {
         QMessageBox::warning(this, tr("Modelo pronto"), tr("Não foi possível gravar o arquivo temporário."));
-        return;
+        return false;
     }
     file.write(text.toUtf8());
     file.close();
     if (loadFromDat(path)) {
+        m_currentFilePath.clear();
         m_projectName = dialog.suggestedName();
         if (m_undoService) {
             m_undoService->stack()->clear();
         }
         m_sceneController->zoomExtents();
         showStatusMessage(tr("Modelo gerado. Use Checar modelo, rode a análise (F5) e depois o dimensionamento."), 8000);
+        return true;
     }
+    return false;
 }

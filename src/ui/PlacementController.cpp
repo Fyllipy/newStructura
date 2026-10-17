@@ -73,6 +73,7 @@ PlacementController::~PlacementController() = default;
 void PlacementController::start(Mode mode)
 {
     m_mode = mode;
+    m_solver->setBarSnap(mode == Mode::Node || mode == Mode::Measure);
     m_start.reset();
     m_press.reset();
     cancelCoordinateEdit(false);
@@ -89,6 +90,7 @@ void PlacementController::start(Mode mode)
 void PlacementController::stop()
 {
     m_mode = Mode::None;
+    m_solver->setBarSnap(false);
     m_ghostSource.clear();
     m_start.reset();
     m_press.reset();
@@ -217,11 +219,12 @@ void PlacementController::refresh()
 
     using Structura::Construction::SnapKind;
     QPointF markerScreen;
-    if ((kind == SnapKind::Grid || kind == SnapKind::Endpoint || kind == SnapKind::Center)
+    if ((kind == SnapKind::Grid || kind == SnapKind::Endpoint || kind == SnapKind::Center || kind == SnapKind::OnBar)
         && m_solver->worldToWidget(display, markerScreen)) {
         m_marker->setKind(kind == SnapKind::Grid ? SnapMarkerWidget::Kind::Grid
                           : kind == SnapKind::Endpoint ? SnapMarkerWidget::Kind::Endpoint
-                                                       : SnapMarkerWidget::Kind::Center);
+                          : kind == SnapKind::OnBar ? SnapMarkerWidget::Kind::OnBar
+                                                    : SnapMarkerWidget::Kind::Center);
         m_marker->placeAt(markerScreen);
     } else {
         m_marker->hide();
@@ -252,11 +255,11 @@ void PlacementController::refresh()
 void PlacementController::placeAt(const Vec3 &point)
 {
     cancelCoordinateEdit(false);
-    if (m_mode == Mode::Rotate) {
+    if (m_mode == Mode::Rotate || m_mode == Mode::Node) {
         if (onSinglePoint) {
             onSinglePoint(m_mode, point);
         }
-    } else if (m_mode == Mode::Bar || m_mode == Mode::Copy || m_mode == Mode::Move || m_mode == Mode::Mirror) {
+    } else if (m_mode == Mode::Bar || m_mode == Mode::Copy || m_mode == Mode::Move || m_mode == Mode::Mirror || m_mode == Mode::Measure) {
         if (!m_start) {
             m_start = point;
         } else {

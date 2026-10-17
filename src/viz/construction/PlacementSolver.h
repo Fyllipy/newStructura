@@ -21,7 +21,8 @@ enum class SnapKind {
     Endpoint,
     Center,
     Perpendicular,
-    Orthogonal
+    Orthogonal,
+    OnBar   ///< ponto qualquer ao longo de uma barra (divide a barra ao inserir um no)
 };
 
 struct PlacementTarget {
@@ -48,6 +49,9 @@ public:
 
     /// Tamanho logico do widget que recebe o mouse (para converter para pixels do render window).
     void setWidgetSize(const QSizeF &size) { m_widgetSize = size; }
+
+    /// Liga o snap ao longo das barras (usado ao inserir nos).
+    void setBarSnap(bool enabled) { m_barSnap = enabled; }
 
     /// Intersecao do raio do cursor com o plano ativo.
     [[nodiscard]] bool cursorOnPlane(const QPointF &pointer, Vec3 &out) const;
@@ -83,6 +87,7 @@ private:
     const ConstructionScene *m_scene;
     QSizeF m_widgetSize {1.0, 1.0};
     mutable double m_hitLevel {0.0};
+    bool m_barSnap {false};
 };
 
 } // namespace Structura::Construction

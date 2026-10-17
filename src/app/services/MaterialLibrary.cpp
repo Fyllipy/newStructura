@@ -1,3 +1,4 @@
+#include <mutex>
 #include "MaterialLibrary.h"
 
 #include <cmath>
@@ -73,7 +74,10 @@ bool g_dirty = true;
 
 const QVector<MaterialLibrary::Entry> &MaterialLibrary::entries()
 {
+    // Chamado tambem pelas threads do dimensionamento paralelo: a reconstrucao precisa ser exclusiva.
+    static std::mutex mutex;
     static QVector<Entry> merged;
+    std::lock_guard<std::mutex> lock(mutex);
     if (g_dirty || merged.isEmpty()) {
         merged = buildLibrary();
         merged += g_userEntries;

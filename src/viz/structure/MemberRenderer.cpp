@@ -63,6 +63,7 @@ void MemberRenderer::clear()
 
     m_barLines->Modified();
     m_colors->Modified();
+    m_barData->DeleteCells();   // as celulas foram alteradas direto no vtkCellArray: forca a reconstrucao antes de qualquer picking
     m_barData->Modified();
 }
 
@@ -78,6 +79,7 @@ void MemberRenderer::addBar(const QUuid& id, vtkIdType nodeI_idx, vtkIdType node
 
     m_barLines->Modified();
     m_colors->Modified();
+    m_barData->DeleteCells();   // idem: o picker consulta as celulas (vtkPolyData::GetCell) antes da proxima renderizacao
     m_barData->Modified();
 }
 
