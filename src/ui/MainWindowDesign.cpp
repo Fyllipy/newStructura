@@ -21,6 +21,7 @@
 #include <QStatusBar>
 
 #include <algorithm>
+#include <optional>
 #include <atomic>
 #include <map>
 #include <thread>
@@ -167,7 +168,7 @@ QString MainWindow::designCacheKey() const
     auto params = [&key](const Structura::App::ProjectData::DesignMemberParams &p) {
         key += QByteArray::number(p.memberId) + p.steel.toUtf8() + ':' + QByteArray::number(p.kx, 'g', 8) + ',' + QByteArray::number(p.ky, 'g', 8) + ',' + QByteArray::number(p.kz, 'g', 8)
             + ',' + QByteArray::number(p.segments) + ',' + QByteArray::number(p.lb, 'g', 8) + ',' + QByteArray::number(static_cast<int>(p.braced)) + QByteArray::number(static_cast<int>(p.cbOne))
-            + ',' + QByteArray::number(p.b2, 'g', 8) + ',' + QByteArray::number(p.netAreaRatio, 'g', 8) + ',' + QByteArray::number(p.deflDenominator) + ','
+            + ',' + QByteArray::number(p.b2, 'g', 8) + ',' + QByteArray::number(p.netAreaRatio, 'g', 8) + ',' + QByteArray::number(p.deflDenominator) + ',' + QByteArray::number(p.stiffenerSpacing, 'g', 8) + ',' + QByteArray::number(p.panelTensionFlange) + ',' + QByteArray::number(static_cast<int>(p.coldWork)) + ','
             + QByteArray::number(p.lx, 'g', 8) + ',' + QByteArray::number(p.ly, 'g', 8) + ',' + QByteArray::number(p.lz, 'g', 8) + ';';
     };
     params(d.defaults);
@@ -228,6 +229,32 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
         const bool secondOrder = m_extras.design.secondOrder;
         const bool autoB2 = m_extras.design.autoB2;
         const auto designSettings = m_extras.design;
+        // Rigidez de servico dos perfis formados a frio: inercia da secao efetiva para a tensao de servico (NBR 14762, 9.8.5)
+        QHash<int, const SectionInfo *> sectionOfBar;
+        for (const auto &bar : bars) {
+            for (const auto &sec : m_sections) {
+                if (sec.uuid == bar.sectionId) {
+                    sectionOfBar.insert(bar.externalId, &sec);
+                    break;
+                }
+            }
+        }
+        auto designSections = std::make_shared<QHash<QString, Structura::Design::DesignSection>>();
+        const double momentToNmm = factors.first * factors.second;
+        const StructuralChecks::InertiaRatio inertiaRatio = [sectionOfBar, designSections, designSettings, momentToNmm](int memberId, double mz, double my) -> std::array<double, 2> {
+            const SectionInfo *section = sectionOfBar.value(memberId, nullptr);
+            if (!section) {
+                return {1.0, 1.0};
+            }
+            const auto params = designSettings.paramsFor(memberId);
+            const QString steelName = params.steel.isEmpty() ? designSettings.defaultSteel : params.steel;
+            const QString key = section->uuid.toString();
+            auto it = designSections->find(key);
+            if (it == designSections->end()) {
+                it = designSections->insert(key, DesignService::makeSection(*section, designSettings.rectTubeStandard));
+            }
+            return DesignService::serviceInertiaRatios(it.value(), steelName, mz * momentToNmm, my * momentToNmm);
+        };
         DesignRunData heavy;
         heavy = Structura::UI::runBusy(this, tr("Dimensionamento"), tr("Reunindo os esforços das combinações…"),
                                        [&](Structura::UI::BusyProgress &progress) {
@@ -251,7 +278,7 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
                 out.warnings.append(tr("Não há combinações de serviço: crie uma combinação cujo nome comece por \"ELS\" para verificar flechas e deslocamentos."));
             } else {
                 progress.setDetail(tr("Flechas e deslocamentos de serviço…"));
-                out.deflections = StructuralChecks::deflections(geometry, service, designSettings, factors.second);
+                out.deflections = StructuralChecks::deflections(geometry, service, designSettings, factors.second, inertiaRatio);
                 out.elsStories = StructuralChecks::stories(geometry, service, designSettings, factors.first, factors.second);
             }
             return out;
@@ -472,6 +499,8 @@ void MainWindow::onOptimizeDesign()
     const QStringList excluded = preview.excludedKeys();
 
     // ── Aplicacao: troca, reanalisa e repete ──────────────────────────────
+    std::optional<Structura::UI::BusyScope> scope;
+    scope.emplace(this, tr("Dimensionamento automático"), tr("Trocando perfis e reanalisando…"));
     QApplication::setOverrideCursor(Qt::WaitCursor);
     QStringList notes;
     int changedTotal = 0;
@@ -485,6 +514,7 @@ void MainWindow::onOptimizeDesign()
     double weightAfter = weightBefore;
     int deflectionRaises = 0;
     for (int iteration = 0; iteration < kMaxIterations; ++iteration) {
+        scope->update(iteration, kMaxIterations, tr("Iteração %1: esforços, escolha dos perfis e reanálise").arg(iteration + 1));
         DesignRunData current;
         if (!buildDesignRun(current)) {
             QApplication::restoreOverrideCursor();
@@ -559,10 +589,13 @@ void MainWindow::onOptimizeDesign()
         }
     }
     QApplication::restoreOverrideCursor();
+    scope->update(kMaxIterations, kMaxIterations, tr("Atualizando resultados…"));
     refreshPropertiesPanel();
     if (m_postProcessor) {
         showResultView(m_viewOptionsBar ? std::max(0, m_viewOptionsBar->currentResultView()) : 0);
     }
+    scope.reset();
+    updateStaleIndicator();
     showStatusMessage(converged ? tr("Dimensionamento convergiu (%1 troca(s); massa de aço %2 → %3 kg, flechas ELS consideradas). Ctrl+Z desfaz a troca de perfis.")
                                       .arg(changedTotal).arg(weightBefore, 0, 'f', 0).arg(weightAfter, 0, 'f', 0)
                                 : tr("Dimensionamento interrompido após %1 iterações sem convergência.").arg(kMaxIterations),

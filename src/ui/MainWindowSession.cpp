@@ -58,7 +58,7 @@ void MainWindow::markModified()
 void MainWindow::updateWindowTitle()
 {
     const QString name = m_projectName.isEmpty() ? tr("Sem título") : m_projectName;
-    setWindowTitle(QStringLiteral("%1%2 — Structura 3D").arg(isModelDirty() ? QStringLiteral("● ") : QString(), name));
+    setWindowTitle(QStringLiteral("%1%2 — Structura").arg(isModelDirty() ? QStringLiteral("● ") : QString(), name));
 }
 
 quint64 MainWindow::quickFingerprint() const
@@ -85,6 +85,9 @@ void MainWindow::markResultsCurrent()
 
 void MainWindow::updateStaleIndicator()
 {
+    if (Structura::UI::isBusy()) {
+        return;   // durante um calculo o estado muda varias vezes; o indicador e atualizado ao final
+    }
     const bool hasResults = !m_caseRuns.isEmpty();
     const bool stale = hasResults && quickFingerprint() != m_resultsFingerprint;
     if (m_staleLabel) {

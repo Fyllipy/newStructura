@@ -107,4 +107,37 @@ inline std::optional<Structura::App::Services::ConnectionService::Forces> connec
     return forces;
 }
 
+/// Idem, acrescentando a solicitacao das demais ligacoes que chegam a mesma barra de apoio (`supMember`) no mesmo no:
+/// a verificacao local do apoio deve considerar o esforco de todas elas.
+inline std::optional<Structura::App::Services::ConnectionService::Forces> connectionForces(const DesignRunData &run,
+                                                                                         const Structura::App::ProjectData::NodeConnection &connection,
+                                                                                         const QVector<Structura::App::ProjectData::NodeConnection> &all)
+{
+    using Structura::App::ProjectData::NodeConnection;
+    using Structura::App::Services::ConnectionService;
+    auto forces = connectionForces(run, connection);
+    const int host = static_cast<int>(connection.values.value(QStringLiteral("supMember"), 0.0) + 0.5);
+    const bool usesSupport = connection.type == NodeConnection::kShearTab || connection.type == NodeConnection::kDoubleAngle || connection.type == NodeConnection::kGusset;
+    if (!forces || host <= 0 || !usesSupport) {
+        return forces;
+    }
+    for (const auto &other : all) {
+        const bool same = other.memberId == connection.memberId && other.atEnd == connection.atEnd && other.nodeId == connection.nodeId && other.type == connection.type;
+        const bool otherUses = other.type == NodeConnection::kShearTab || other.type == NodeConnection::kDoubleAngle || other.type == NodeConnection::kGusset;
+        if (same || !otherUses || other.nodeId != connection.nodeId
+            || static_cast<int>(other.values.value(QStringLiteral("supMember"), 0.0) + 0.5) != host) {
+            continue;
+        }
+        const auto otherForces = connectionForces(run, other);
+        if (!otherForces) {
+            continue;
+        }
+        const auto demand = ConnectionService::supportDemand(other, *otherForces);
+        forces->hostTension += demand.first;
+        forces->hostCompression += demand.second;
+        ++forces->hostConnections;
+    }
+    return forces;
+}
+
 } // namespace Structura::UI

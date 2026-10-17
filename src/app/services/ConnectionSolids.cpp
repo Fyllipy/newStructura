@@ -127,6 +127,32 @@ void gusset(const NodeConnection &c, std::vector<Primitive> &out)
     }
 }
 
+void coldFormed(const NodeConnection &c, std::vector<Primitive> &out)
+{
+    const int mode = static_cast<int>(val(c, "mode", 0.0) + 0.5);
+    const int n = count(c, "n", 2.0), lines = count(c, "lines", 1.0);
+    const double d = val(c, "d", 12.0), pitch = val(c, "pitch", 40.0), gauge = val(c, "gauge", 40.0), end1 = val(c, "end1", 30.0), end2 = val(c, "end2", 30.0), edge = val(c, "edge", 25.0);
+    const double t1 = val(c, "t1", 2.0), t2 = val(c, "t2", 4.75);
+    const double overlap = std::max(end1 + end2 + (n - 1) * pitch, mode == 1 ? val(c, "lLong", 80.0) + 10.0 : 0.0);
+    const double width = std::max((lines - 1) * gauge + 2.0 * edge, mode == 1 ? std::max(val(c, "lTrans", 0.0), 40.0) : 0.0);
+    // chapa de ligacao (u entre 0 e t2) e perfil sobreposto (u entre t2 e t2 + t1), de s = 0 a s = overlap
+    out.push_back(box(Role::Plate, overlap / 2.0 - 40.0, 0.0, t2 / 2.0, overlap + 80.0, width, t2));
+    out.push_back(box(Role::Member, overlap / 2.0 + 60.0, 0.0, t2 + t1 / 2.0, overlap + 120.0, width, t1));
+    if (mode == 1) {
+        const double w = val(c, "leg", 3.0);
+        out.push_back(box(Role::Weld, 0.0, 0.0, t2 + t1 + w / 2.0, w, width, w));
+        for (const double side : {-1.0, 1.0}) {
+            out.push_back(box(Role::Weld, val(c, "lLong", 80.0) / 2.0, side * width / 2.0, t2 + t1 + w / 2.0, val(c, "lLong", 80.0), w, w));
+        }
+        return;
+    }
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < lines; ++j) {
+            addBolt(out, {end2 + i * pitch, (j - (lines - 1) / 2.0) * gauge, 0.0}, 2, -1.5, t2 + t1 + 1.5, d);
+        }
+    }
+}
+
 void splice(const NodeConnection &c, std::vector<Primitive> &out)
 {
     const double db = val(c, "db", 20.0), d = val(c, "beamD", 300.0), tfl = val(c, "tfl", 10.0), tw = val(c, "tw", 6.0), gap = val(c, "gap", 10.0);
@@ -299,6 +325,7 @@ std::vector<Primitive> ConnectionSolids::build(const NodeConnection &c, bool con
     case NodeConnection::kGusset: gusset(c, out); break;
     case NodeConnection::kSplice: splice(c, out); break;
     case NodeConnection::kBasePlate: basePlate(c, out); break;
+    case NodeConnection::kColdFormed: coldFormed(c, out); break;
     default: {
         // ligacao tubular soldada: disco-marcador em torno do banzo
         if (!context) {
@@ -309,6 +336,29 @@ std::vector<Primitive> ConnectionSolids::build(const NodeConnection &c, bool con
     }
     }
     return out;
+}
+
+double ConnectionSolids::extent(const std::vector<Primitive> &primitives)
+{
+    double best = 0.0;
+    auto take = [&](double x, double y, double z) { best = std::max(best, std::sqrt(x * x + y * y + z * z)); };
+    for (const auto &p : primitives) {
+        switch (p.kind) {
+        case Kind::Box:
+            take(std::abs(p.a[0]) + p.size[0] / 2.0, std::abs(p.a[1]) + p.size[1] / 2.0, std::abs(p.a[2]) + p.size[2] / 2.0);
+            break;
+        case Kind::Cylinder:
+            take(std::abs(p.a[0]) + p.radius, std::abs(p.a[1]) + p.radius, std::abs(p.a[2]) + p.radius);
+            take(std::abs(p.b[0]) + p.radius, std::abs(p.b[1]) + p.radius, std::abs(p.b[2]) + p.radius);
+            break;
+        case Kind::Prism:
+            for (const auto &v : p.polygon) {
+                take(v[0], v[1], std::max(std::abs(p.u0), std::abs(p.u1)));
+            }
+            break;
+        }
+    }
+    return best;
 }
 
 std::array<unsigned char, 3> ConnectionSolids::color(Role role, double eta)

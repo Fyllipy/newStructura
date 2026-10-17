@@ -178,7 +178,7 @@ bool MainWindow::buildReportInput(ReportService::Input &input, bool withDesign)
             for (const auto &connection : m_extras.connections) {
                 ReportService::Input::ConnectionEntry entry;
                 entry.connection = connection;
-                const auto forces = Structura::UI::connectionForces(run, connection);
+                const auto forces = Structura::UI::connectionForces(run, connection, m_extras.connections);
                 entry.hasForces = forces.has_value();
                 entry.forces = forces.value_or(Structura::App::Services::ConnectionService::Forces {});
                 entry.evaluation = Structura::App::Services::ConnectionService::evaluate(connection, entry.forces);

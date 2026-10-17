@@ -8,6 +8,8 @@
 #include <QMap>
 #include <QString>
 #include <QStringList>
+
+#include <array>
 #include <QVector>
 
 #include <functional>
@@ -92,6 +94,10 @@ public:
 
     /// Secao de dimensionamento correspondente ao perfil (propriedades brutas nos eixos principais).
     static Structura::Design::DesignSection makeSection(const SectionInfo &section, const QString &rectTubeStandard);
+
+    /// Razoes Ief/I (eixos X e Y de projeto) para as flechas de ELS: secao efetiva em perfis formados a frio (momentos de servico
+    /// `mxNmm`, `myNmm` em N.mm), 1,0 nos demais.
+    static std::array<double, 2> serviceInertiaRatios(const Structura::Design::DesignSection &section, const QString &steelName, double mxNmm, double myNmm);
 
     /// Verifica uma barra com o perfil informado.
     static MemberVerdict verifyMember(const MemberEffects &effects, const SectionInfo &section,

@@ -19,7 +19,7 @@
 #include <QMap>
 #include <vector>
 #include "app/SolverBridge.h"
-#include "viz/SceneController.h"
+#include "app/GeometrySnapshot.h"
 #include "app/services/ReportService.h"
 #include "app/services/ModelCheckService.h"
 #include <optional>
@@ -124,6 +124,8 @@ private slots:
     void onCompositeFloor();
     void onGenerateTruss();
     bool newFromTemplateDialog();
+    bool addSteelMaterial(const QString &name);
+    void ensureDefaultMaterial();
     void syncConnectionVisuals();
     QString friendlySolverMessage(const QString &raw) const;
     void reportActionableError(const QString &title, const QString &raw);
@@ -320,8 +322,8 @@ private:
         std::size_t barIndex {0};
         std::vector<std::pair<double, QUuid>> cuts;   ///< (fracao do comprimento, no)
     };
-    void splitCore(SceneController::GeometrySnapshot &after, ModelState &state, const std::vector<SplitPlan> &plan);
-    void applyTopology(const SceneController::GeometrySnapshot &geometry, const ModelState &state);
+    void splitCore(Structura::App::GeometrySnapshot &after, ModelState &state, const std::vector<SplitPlan> &plan);
+    void applyTopology(const Structura::App::GeometrySnapshot &geometry, const ModelState &state);
     bool applyMirror(const std::array<double, 3> &a, const std::array<double, 3> &b);
     void showResultView(int index);
     QStringList loadCaseNames() const;

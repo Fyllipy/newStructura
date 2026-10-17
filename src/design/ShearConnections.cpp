@@ -161,6 +161,7 @@ std::vector<Check> checkShearTab(const ShearTabInput &in)
         b.shearY = V;
         b.shearX = std::abs(N);
         b.momentZ = M;
+        b.grip = in.plateThickness + in.webThickness;
         const auto plateChecks = checkBolted(b);
         append(checks, pick(plateChecks, "Cisalhamento", ""));
         append(checks, pick(plateChecks, "Pressao de contato", " - chapa"));
@@ -322,6 +323,7 @@ std::vector<Check> checkDoubleAngle(const DoubleAngleInput &in)
         w.shearY = V;
         w.shearX = std::abs(N);
         w.momentZ = M;
+        w.grip = in.webThickness + 2.0 * in.angleThickness;
         const auto webChecks = checkBolted(w);
         for (Check c : pick(webChecks, "Cisalhamento", " - lado da alma (corte duplo)")) {
             checks.push_back(c);
@@ -339,6 +341,7 @@ std::vector<Check> checkDoubleAngle(const DoubleAngleInput &in)
         BoltedInput s = boltsOf(in.grade, in.db, in.threadInShearPlane, 1, n, in.pitch, in.angleThickness, in.angle, in.edgeV, in.supportEdgeDistance);
         s.shearY = V / 2.0;
         s.tension = N > 0.0 ? N / 2.0 : 0.0;
+        s.grip = in.angleThickness + in.supportThickness;
         const auto supChecks = checkBolted(s);
         append(checks, pick(supChecks, "Cisalhamento", " - lado do apoio (por cantoneira)"));
         append(checks, pick(supChecks, "Pressao de contato", " - cantoneira (apoio)"));
@@ -347,6 +350,26 @@ std::vector<Check> checkDoubleAngle(const DoubleAngleInput &in)
         g.plateThickness = in.supportThickness;
         g.plateFu = in.support.fu;
         append(checks, pick(checkBolted(g), "Pressao de contato", " - apoio"));
+        if (N > 0.0) {
+            // efeito de alavanca na aba da cantoneira tracionada pelos parafusos do apoio (6.3.5)
+            const double ab = 0.25 * 3.14159265358979 * in.db * in.db;
+            PryingInput pr;
+            pr.db = in.db;
+            pr.tensionForce = N / 2.0 / n;
+            pr.boltResistance = 0.75 * ab * in.grade.fub / in.gammaA2;
+            pr.a = in.supportEdgeDistance;
+            pr.b = in.gaugeSupport - in.angleThickness;
+            const double pext = std::min(in.edgeV, 1.75 * pr.b) + std::min(0.5 * in.pitch, 1.75 * pr.b);
+            pr.p = n > 1 ? std::min(pext, std::min(in.pitch, 3.5 * pr.b)) : std::min(in.edgeV, 1.75 * pr.b) * 2.0;
+            pr.holeWidth = standardHoleDiameter(in.db);
+            pr.thickness = in.angleThickness;
+            pr.fu = in.angle.fu;
+            pr.gammaA1 = in.gammaA1;
+            for (Check c : checkPrying(pr)) {
+                c.name += " - aba do apoio";
+                checks.push_back(c);
+            }
+        }
     }
     // cantoneira (cada uma recebe V/2 e momento V/2 * a)
     {

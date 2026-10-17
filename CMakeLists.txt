@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(StructuraRibbon3D LANGUAGES CXX)
+project(Structura LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -140,10 +140,14 @@ set(APP_SOURCES
     src/design/TrussConnections.cpp
     src/design/BasePlate.h
     src/design/BasePlate.cpp
+    src/design/ColdFormedConnections.h
+    src/design/ColdFormedConnections.cpp
     src/design/TubularJoints.h
     src/design/TubularJoints.cpp
     src/design/CompositeFloor.h
     src/design/CompositeFloor.cpp
+    src/design/SupportChecks.h
+    src/design/SupportChecks.cpp
     src/design/Nbr8800.h
     src/design/Nbr8800.cpp
     src/design/Nbr14762.h
@@ -417,6 +421,9 @@ target_link_libraries(StructuraRibbon3D
         StructuraLib
 )
 
+# o executavel se chama Structura.exe (o alvo CMake mantem o nome interno)
+set_target_properties(StructuraRibbon3D PROPERTIES OUTPUT_NAME Structura)
+
 set(STRUCTURA_SOLVER_HINT_DIR "" CACHE PATH "Optional path containing solver_dll shared library")
 
 if (WIN32)
@@ -509,3 +516,17 @@ if (MSVC)
         endif()
     endif()
 endif()
+
+# --- Distribuicao ---
+# A cada compilacao, a pasta dist/Structura recebe o executavel, as DLLs (Qt, VTK e solver), os plugins do Qt,
+# os exemplos e a documentacao, pronta para ser copiada ou compactada.
+set(STRUCTURA_DIST_DIR "${CMAKE_SOURCE_DIR}/dist/Structura" CACHE PATH "Pasta de distribuicao do programa")
+add_custom_command(TARGET StructuraRibbon3D POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_DIR=$<TARGET_FILE_DIR:StructuraRibbon3D>
+            -DDIST_DIR=${STRUCTURA_DIST_DIR}
+            -DREPO_DIR=${CMAKE_SOURCE_DIR}
+            -P ${CMAKE_SOURCE_DIR}/cmake/Distribute.cmake
+    COMMENT "Montando a pasta de distribuicao em ${STRUCTURA_DIST_DIR}"
+    VERBATIM
+)

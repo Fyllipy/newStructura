@@ -8,6 +8,7 @@
 #include "SelectionModel.h"
 #include "app/services/ConnectionService.h"
 #include "app/services/DesignService.h"
+#include "viz/LocalCoordinateSystem.h"
 #include "viz/SceneController.h"
 
 #include <QHash>
@@ -89,6 +90,33 @@ void MainWindow::onCheckConnections()
         }
         return {};
     };
+    // eixos locais (x', y', z') de uma barra, com giro da secao
+    auto axesOf = [this](const SceneController::BarInfo &bar) -> std::optional<std::array<std::array<double, 3>, 3>> {
+        QHash<QUuid, std::array<double, 3>> pos;
+        for (const auto &node : m_sceneController->nodeInfos()) {
+            pos.insert(node.id, {node.x, node.y, node.z});
+        }
+        const auto a = pos.constFind(bar.startNodeId), b = pos.constFind(bar.endNodeId);
+        if (a == pos.constEnd() || b == pos.constEnd()) {
+            return std::nullopt;
+        }
+        std::optional<std::array<double, 3>> kPoint;
+        if (const auto *model = m_sceneController->findBar(bar.id)) {
+            if (model->hasKPoint()) {
+                const auto &k = *model->kPoint();
+                kPoint = std::array<double, 3> {k.x(), k.y(), k.z()};
+            }
+        }
+        double rotation = 0.0;
+        for (const auto &p : m_extras.placements) {
+            if (p.memberId == bar.externalId) {
+                rotation = p.rotationDeg;
+            }
+        }
+        Structura::Geometry::DefaultLocalAxisProvider provider;
+        const auto lcs = Structura::Geometry::rotatedAboutX(provider.computeLCS(*a, *b, kPoint), rotation);
+        return std::array<std::array<double, 3>, 3> {lcs.xPrime, lcs.yPrime, lcs.zPrime};
+    };
     auto memberInfo = [this](const Structura::App::ProjectData::SectionInfo &section, int memberId) {
         ConnectionService::BeamInfo beam;
         beam.name = section.name;
@@ -109,12 +137,12 @@ void MainWindow::onCheckConnections()
     };
 
     NodeConnectionsDialog::Callbacks callbacks;
-    callbacks.forces = [currentRun](const NodeConnection &connection) -> std::optional<ConnectionService::Forces> {
+    callbacks.forces = [currentRun](const NodeConnection &connection, const QVector<NodeConnection> &all) -> std::optional<ConnectionService::Forces> {
         const auto run = currentRun();
         if (!run) {
             return std::nullopt;
         }
-        return Structura::UI::connectionForces(*run, connection);
+        return Structura::UI::connectionForces(*run, connection, all);
     };
     callbacks.focus = [this](const NodeConnection &connection) {
         for (const auto &bar : m_sceneController->bars()) {
@@ -126,7 +154,165 @@ void MainWindow::onCheckConnections()
         }
     };
     callbacks.calculator = [this]() { onOpenConnectionCalculator(); };
-    callbacks.create = [this, barsAtNode, sectionInfoOf, memberInfo](int type) -> NodeConnection {
+    // Grava na ligacao a barra de apoio escolhida pelo usuario: face (mesa ou alma), dimensoes e o numero da barra
+    // (o afastamento da face e recalculado a partir da geometria em syncConnectionVisuals)
+    auto attachToSupport = [this, barsAtNode, sectionInfoOf, memberInfo, axesOf](NodeConnection &connection, const SceneController::BarInfo &beamBar, int nodeId, int supportMemberId) {
+        auto &v = connection.values;
+        v.remove(QStringLiteral("supMember"));
+        v.remove(QStringLiteral("supType"));
+        if (supportMemberId <= 0) {
+            return;
+        }
+        const auto refs = barsAtNode(nodeId);
+        const EndRef *beamRef = nullptr, *supRef = nullptr;
+        for (const auto &r : refs) {
+            if (r.memberId == beamBar.externalId) {
+                beamRef = &r;
+            }
+            if (r.memberId == supportMemberId) {
+                supRef = &r;
+            }
+        }
+        if (!beamRef || !supRef) {
+            return;
+        }
+        auto unit = [](const EndRef &r) {
+            const double l = std::max(std::sqrt(r.dx * r.dx + r.dy * r.dy + r.dz * r.dz), 1e-12);
+            return std::array<double, 3> {r.dx / l, r.dy / l, r.dz / l};
+        };
+        const auto s = unit(*beamRef);   // do no para dentro da viga
+        SceneController::BarInfo supBar;
+        Structura::App::ProjectData::SectionInfo section;
+        for (const auto &bar : m_sceneController->bars()) {
+            if (bar.externalId == supportMemberId) {
+                supBar = bar;
+                section = sectionInfoOf(bar.sectionId);
+            }
+        }
+        const auto axes = axesOf(supBar);
+        if (!axes) {
+            return;
+        }
+        const auto &y = (*axes)[1], &z = (*axes)[2];
+        const double ay = std::abs(s[0] * y[0] + s[1] * y[1] + s[2] * y[2]);
+        const double az = std::abs(s[0] * z[0] + s[1] * z[1] + s[2] * z[2]);
+        const bool onFlange = ay >= az;   // a viga chega pela direcao da altura do perfil: face externa da mesa
+        const auto &g = section.geometry;
+        const double d = g.value(QStringLiteral("d"), g.value(QStringLiteral("D"), 0.0));
+        const double bf = g.value(QStringLiteral("bf"), g.value(QStringLiteral("b"), 0.0));
+        const double tf = g.value(QStringLiteral("tf"), g.value(QStringLiteral("t"), 0.0));
+        const double tw = g.value(QStringLiteral("tw"), g.value(QStringLiteral("t"), 0.0));
+        // o apoio continua do outro lado do no?
+        const auto supportDir = unit(*supRef);
+        bool continues = false;
+        for (const auto &r : refs) {
+            if (r.memberId == supportMemberId || r.memberId == beamBar.externalId) {
+                continue;
+            }
+            const auto u = unit(r);
+            continues = continues || (u[0] * supportDir[0] + u[1] * supportDir[1] + u[2] * supportDir[2]) < -0.985;
+        }
+        const auto info = memberInfo(section, supportMemberId);
+        v[QStringLiteral("supMember")] = supportMemberId;
+        v[QStringLiteral("supD")] = d;
+        v[QStringLiteral("supBf")] = bf;
+        v[QStringLiteral("supTf")] = tf;
+        v[QStringLiteral("supTw")] = tw;
+        v[QStringLiteral("supR")] = g.value(QStringLiteral("r"), g.value(QStringLiteral("r1"), 0.0));
+        v[QStringLiteral("supEnd")] = continues ? 0.0 : 1.0;
+        v[QStringLiteral("supFy")] = info.fy;
+        v[QStringLiteral("supFu")] = info.fu;
+        // as verificacoes locais (mesa/alma) so existem para perfis I/H
+        if (g.contains(QStringLiteral("tf")) && g.contains(QStringLiteral("tw"))) {
+            v[QStringLiteral("supType")] = onFlange ? 1.0 : 2.0;
+            v[QStringLiteral("supOffset")] = onFlange ? d / 2.0 : tw / 2.0;
+            v[QStringLiteral("supT")] = onFlange ? tf : tw;
+        } else {
+            v[QStringLiteral("supOffset")] = onFlange ? d / 2.0 : bf / 2.0;
+            v[QStringLiteral("supT")] = tf > 0.0 ? tf : 10.0;
+        }
+    };
+    // Pede ao usuario a barra de apoio entre as que chegam ao no (exceto a propria), destacando-a no modelo enquanto escolhe.
+    // Retorna false se cancelado.
+    auto chooseSupport = [this, barsAtNode, sectionInfoOf, attachToSupport](NodeConnection &connection, const SceneController::BarInfo &beamBar, int nodeId) -> bool {
+        const auto refs = barsAtNode(nodeId);
+        struct Candidate {
+            int memberId {0};
+            QUuid barId;
+            QString text;
+        };
+        std::vector<Candidate> candidates;
+        for (const auto &r : refs) {
+            if (r.memberId == beamBar.externalId) {
+                continue;
+            }
+            QString section;
+            for (const auto &bar : m_sceneController->bars()) {
+                if (bar.externalId == r.memberId) {
+                    section = sectionInfoOf(bar.sectionId).name;
+                }
+            }
+            candidates.push_back({r.memberId, r.barId, tr("Barra %1 – %2").arg(r.memberId).arg(section.isEmpty() ? tr("sem seção") : section)});
+        }
+        if (candidates.empty()) {
+            QMessageBox::information(this, tr("Barra de apoio"),
+                                     tr("Nenhuma outra barra chega ao nó %1: a ligação fica sem barra de apoio (preencha o apoio à mão).").arg(nodeId));
+            attachToSupport(connection, beamBar, nodeId, 0);
+            return true;
+        }
+        QStringList items;
+        for (const auto &c : candidates) {
+            items << c.text;
+        }
+        const QString none = tr("Nenhuma (definir à mão)");
+        items << none;
+        // a escolha realca a barra no modelo; a selecao original e restaurada ao fechar
+        const QSet<QUuid> previous = m_selectionModel ? m_selectionModel->selectedBars() : QSet<QUuid>();
+        auto highlight = [this, &candidates](const QString &text) {
+            if (!m_selectionModel) {
+                return;
+            }
+            for (const auto &c : candidates) {
+                if (c.text == text) {
+                    m_selectionModel->selectBars({c.barId});
+                    return;
+                }
+            }
+            m_selectionModel->clear();
+        };
+        QInputDialog chooser(this);
+        chooser.setWindowTitle(tr("Barra de apoio da ligação"));
+        chooser.setLabelText(tr("Em qual barra a ligação se apoia? (barras que chegam ao nó %1; a escolhida fica destacada no modelo)").arg(nodeId));
+        chooser.setComboBoxItems(items);
+        chooser.setComboBoxEditable(false);
+        highlight(items.value(0));
+        connect(&chooser, &QInputDialog::textValueChanged, this, highlight);
+        const bool accepted = chooser.exec() == QDialog::Accepted;
+        const QString choice = chooser.textValue();
+        if (m_selectionModel) {
+            m_selectionModel->selectBars(QVector<QUuid>(previous.begin(), previous.end()));
+        }
+        if (!accepted) {
+            return false;
+        }
+        int memberId = 0;
+        for (const auto &c : candidates) {
+            if (c.text == choice) {
+                memberId = c.memberId;
+            }
+        }
+        attachToSupport(connection, beamBar, nodeId, memberId);
+        return true;
+    };
+    callbacks.chooseSupport = [this, chooseSupport](NodeConnection &connection) -> bool {
+        for (const auto &bar : m_sceneController->bars()) {
+            if (bar.externalId == connection.memberId) {
+                return chooseSupport(connection, bar, connection.nodeId);
+            }
+        }
+        return false;
+    };
+    callbacks.create = [this, barsAtNode, sectionInfoOf, memberInfo, chooseSupport](int type) -> NodeConnection {
         NodeConnection none;
         const auto selected = m_selectionModel ? m_selectionModel->selectedBars() : QSet<QUuid>();
         QUuid barId;
@@ -140,6 +326,7 @@ void MainWindow::onCheckConnections()
             const QString what = type == NodeConnection::kGusset ? tr("a diagonal ou o contraventamento")
                                : type == NodeConnection::kBasePlate ? tr("o pilar")
                                : type == NodeConnection::kTubular ? tr("o banzo (tubo circular)")
+                               : type == NodeConnection::kColdFormed ? tr("a barra de perfil formado a frio")
                                : type == NodeConnection::kSplice ? tr("a viga (um dos lados da emenda)")
                                                                  : tr("a viga que se liga ao apoio");
             QMessageBox::information(this, tr("Ligações"), tr("Selecione no modelo %1 e tente novamente.").arg(what));
@@ -163,6 +350,7 @@ void MainWindow::onCheckConnections()
             const QString prompt = type == NodeConnection::kBasePlate ? tr("Barra %1: extremidade apoiada na fundação (base do pilar):")
                                  : type == NodeConnection::kTubular ? tr("Barra %1 (banzo): extremidade no nó da ligação:")
                                  : type == NodeConnection::kGusset ? tr("Barra %1 (diagonal): extremidade ligada à chapa de nó:")
+                                 : type == NodeConnection::kColdFormed ? tr("Barra %1 (perfil formado a frio): extremidade da ligação:")
                                  : type == NodeConnection::kSplice ? tr("Barra %1: extremidade da emenda:")
                                                                    : tr("Barra %1: extremidade que se liga ao apoio:");
             // o no da extremidade escolhida fica marcado na tela enquanto o usuario decide
@@ -249,6 +437,11 @@ void MainWindow::onCheckConnections()
                 }
             } else {
                 connection = ConnectionService::makeDefault(type, beam, plateFy, plateFu);
+                if (type == NodeConnection::kShearTab || type == NodeConnection::kDoubleAngle || type == NodeConnection::kGusset) {
+                    if (!chooseSupport(connection, bar, nodeId)) {
+                        return none;
+                    }
+                }
             }
             connection.id = 1;   // o dialogo renumera
             connection.memberId = bar.externalId;

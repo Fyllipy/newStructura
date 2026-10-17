@@ -10,6 +10,7 @@
 #include "viz/construction/ConstructionScene.h"
 
 #include "app/services/CombinationService.h"
+#include "app/services/ConnectionPlacement.h"
 #include "app/services/ConnectionSolids.h"
 #include "app/services/DesignService.h"
 #include "app/services/SectionPlacementService.h"
@@ -107,6 +108,52 @@ void MainWindow::syncConnectionVisuals()
     Structura::Geometry::DefaultLocalAxisProvider axisProvider;
     ConnectionSolids::Mesh mesh;
     const auto allBars = m_sceneController->bars();
+    QHash<QUuid, const SectionInfo *> sectionsById;
+    for (const auto &section : m_sections) {
+        sectionsById.insert(section.uuid, &section);
+    }
+
+    // Eixos locais e pontos do eixo da barra (com giro da secao e excentricidade, como no solver e nos solidos)
+    struct BarFrame {
+        std::array<double, 3> start {}, end {}, x {}, y {}, z {};
+        const SectionInfo *section {nullptr};
+    };
+    auto frameOf = [&](const SceneController::BarInfo &bar) -> std::optional<BarFrame> {
+        const auto start = positionById.constFind(bar.startNodeId);
+        const auto end = positionById.constFind(bar.endNodeId);
+        if (start == positionById.constEnd() || end == positionById.constEnd()) {
+            return std::nullopt;
+        }
+        std::optional<std::array<double, 3>> kPoint;
+        if (const auto *model = m_sceneController->findBar(bar.id)) {
+            if (model->hasKPoint()) {
+                const auto &k = *model->kPoint();
+                kPoint = std::array<double, 3> {k.x(), k.y(), k.z()};
+            }
+        }
+        Structura::App::ProjectData::MemberPlacement placement;
+        for (const auto &candidate : m_extras.placements) {
+            if (candidate.memberId == bar.externalId) {
+                placement = candidate;
+                break;
+            }
+        }
+        const auto lcs = Structura::Geometry::rotatedAboutX(axisProvider.computeLCS(*start, *end, kPoint), placement.rotationDeg);
+        BarFrame frame;
+        const auto sectionIt = sectionsById.constFind(bar.sectionId);
+        frame.section = sectionIt == sectionsById.constEnd() ? nullptr : *sectionIt;
+        const auto offset = Structura::App::Services::SectionPlacementService::axisOffset(frame.section, placement);
+        for (std::size_t i = 0; i < 3; ++i) {
+            const double shift = lcs.yPrime[i] * offset.dy + lcs.zPrime[i] * offset.dz;
+            frame.start[i] = (*start)[i] + shift;
+            frame.end[i] = (*end)[i] + shift;
+        }
+        frame.x = lcs.xPrime;
+        frame.y = lcs.yPrime;
+        frame.z = lcs.zPrime;
+        return frame;
+    };
+
     for (const auto &connection : m_extras.connections) {
         const SceneController::BarInfo *bar = nullptr;
         for (const auto &candidate : allBars) {
@@ -118,36 +165,52 @@ void MainWindow::syncConnectionVisuals()
         if (!bar) {
             continue;
         }
-        const auto start = positionById.constFind(bar->startNodeId);
-        const auto end = positionById.constFind(bar->endNodeId);
-        if (start == positionById.constEnd() || end == positionById.constEnd()) {
+        const auto beam = frameOf(*bar);
+        if (!beam) {
             continue;
         }
-        std::optional<std::array<double, 3>> kPoint;
-        if (const auto *model = m_sceneController->findBar(bar->id)) {
-            if (model->hasKPoint()) {
-                const auto &k = *model->kPoint();
-                kPoint = std::array<double, 3> {k.x(), k.y(), k.z()};
-            }
+        ConnectionSolids::Frame frame;
+        const double sign = connection.atEnd ? -1.0 : 1.0;   // s aponta do no para dentro da barra
+        frame.origin = connection.atEnd ? beam->end : beam->start;   // eixo da barra no no (ja com a excentricidade)
+        for (std::size_t i = 0; i < 3; ++i) {
+            frame.s[i] = sign * beam->x[i];
+            frame.t[i] = beam->y[i];
+            frame.u[i] = beam->z[i];
         }
-        Structura::App::ProjectData::MemberPlacement placement;
-        for (const auto &candidate : m_extras.placements) {
-            if (candidate.memberId == bar->externalId) {
-                placement = candidate;
+        // s = 0 fica na face do apoio: plano da mesa/alma da barra de apoio escolhida, na posicao real dela
+        double supportOffset = connection.values.value(QStringLiteral("supOffset"), 0.0) / lengthFactor;
+        const int supportId = static_cast<int>(connection.values.value(QStringLiteral("supMember"), 0.0) + 0.5);
+        if (supportId > 0) {
+            for (const auto &candidate : allBars) {
+                if (candidate.externalId != supportId) {
+                    continue;
+                }
+                const auto host = frameOf(candidate);
+                if (!host || !host->section) {
+                    break;
+                }
+                const auto &g = host->section->geometry;
+                Structura::App::Services::SupportSection support;
+                support.axisPoint = host->start;
+                support.y = host->y;
+                support.z = host->z;
+                support.depth = g.value(QStringLiteral("d"), g.value(QStringLiteral("D"), 0.0));
+                support.width = g.value(QStringLiteral("bf"), g.value(QStringLiteral("b"), support.depth));
+                support.webThickness = g.value(QStringLiteral("tw"), 0.0);
+                support.isIShape = g.contains(QStringLiteral("tf")) && g.contains(QStringLiteral("tw"));
+                double computed = 0.0;
+                if (Structura::App::Services::supportFaceOffset(frame.origin, frame.s, support, 1.0 / lengthFactor, computed)) {
+                    supportOffset = computed;   // viga quase paralela ao apoio: mantem o afastamento gravado
+                }
                 break;
             }
         }
-        const auto lcs = Structura::Geometry::rotatedAboutX(axisProvider.computeLCS(*start, *end, kPoint), placement.rotationDeg);
-        ConnectionSolids::Frame frame;
-        const double sign = connection.atEnd ? -1.0 : 1.0;   // s aponta do no para dentro da barra
-        frame.origin = connection.atEnd ? *end : *start;
         for (std::size_t i = 0; i < 3; ++i) {
-            frame.s[i] = sign * lcs.xPrime[i];
-            frame.t[i] = lcs.yPrime[i];
-            frame.u[i] = lcs.zPrime[i];
+            frame.origin[i] += frame.s[i] * supportOffset;
         }
+        const auto primitives = ConnectionSolids::build(connection);
         frame.scale = 1.0 / lengthFactor;
-        ConnectionSolids::append(mesh, ConnectionSolids::build(connection), frame, connection.verified ? std::max(connection.eta, 1e-6) : 0.0);
+        ConnectionSolids::append(mesh, primitives, frame, connection.verified ? std::max(connection.eta, 1e-6) : 0.0);
     }
     Structura::Visualization::ConnectionRenderer::Mesh out;
     out.points = std::move(mesh.points);
@@ -333,6 +396,7 @@ void MainWindow::applyViewOption(const QString &key, bool on)
     } else if (key == Bar::kSolids) {
         m_sceneController->setSolidsVisible(on);
         syncSolidVisuals();
+        syncConnectionVisuals();
     } else if (key == Bar::kNodeForces || key == Bar::kNodeMoments
                || key == Bar::kBarForces || key == Bar::kBarMoments) {
         applyLoadVisibility();

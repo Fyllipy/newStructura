@@ -4,6 +4,7 @@
 #include "design/DesignTypes.h"
 #include "design/Nbr8800.h"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,8 @@ struct Options {
     double maxSlendernessCompression {200.0};   ///< 9.7.4
     double maxSlendernessTension {300.0};       ///< 9.6.3 (recomendacao)
     bool checkDistortional {true};
+    int panelTensionFlange {0};          ///< Anexo F: 0 = nao; 1 = mesa tracionada ligada a painel, barra biapoiada; 2 = barra continua
+    bool coldWork {false};               ///< Anexo B: fya nas dobras (secoes totalmente efetivas); usa ri = t
     bool shearLagReduction {false};
 };
 
@@ -78,5 +81,22 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
 
 /// Forca cortante resistente de calculo (9.8.3). `Axis::Y`: paralela a b (alma).
 ShearData shear(const DesignSection &s, const SteelGrade &steel, Axis direction, const Options &o);
+
+/// Esmagamento da alma sob forca concentrada (Anexo D): perfis U simples e enrijecido, mesas nao conectadas ao apoio, uma mesa
+/// carregada (Tabela D.2). `endForce`: distancia da forca a extremidade <= 1,5 h. `c`: comprimento de atuacao da forca (mm).
+struct WebCripplingData {
+    bool covered {false};
+    double FRd {0.0};   ///< N, por alma
+    std::vector<std::string> lines;
+};
+WebCripplingData webCrippling(const DesignSection &s, const SteelGrade &steel, bool endForce, double c, const Options &o);
+
+/// Resistencia ao escoamento modificada pelo trabalho a frio (Anexo B.2.1-c): fya = C fyc + (1 - C) fy <= fu.
+/// `flexure`: C e a razao entre a area das dobras e a da mesa comprimida; senao, entre as dobras e a secao toda. Devolve fy se nao aplicavel.
+double coldWorkYield(const DesignSection &s, const SteelGrade &steel, bool flexure, std::string *note = nullptr);
+
+/// Razoes Ief/I (em torno de X e de Y) da secao efetiva para as flechas (9.8.5-a, MLE com a tensao normal de servico sn = M/Wc).
+/// Momentos negativos: usa sn = fy (limite inferior da rigidez); momento nulo: razao 1,0.
+std::array<double, 2> serviceInertiaRatios(const DesignSection &s, const SteelGrade &steel, double mxServiceNmm = -1.0, double myServiceNmm = -1.0);
 
 } // namespace Structura::Design::Nbr14762

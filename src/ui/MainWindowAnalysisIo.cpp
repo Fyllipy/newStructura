@@ -673,6 +673,7 @@ bool MainWindow::loadFromDat(const QString &filePath)
 
     syncLoadVisuals();
     syncSupportVisuals();
+    ensureDefaultMaterial();
     syncPlacementVisuals();
     refreshPropertiesPanel();
     restoreStoredResults();

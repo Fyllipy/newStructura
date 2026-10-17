@@ -15,6 +15,7 @@ struct Options {
     double gammaA2 {1.35};          ///< ruptura
     double netAreaRatio {1.0};      ///< An/Ag da regiao da ligacao (1,0 = sem furos)
     double ct {1.0};                ///< coeficiente de reducao da area liquida (5.2.5)
+    double stiffenerSpacing {0.0};  ///< a entre enrijecedores transversais da alma (mm); 0 = sem enrijecedores (5.4.3.1.1)
     double maxSlendernessCompression {200.0};   ///< 5.3.7.1 (recomendacao)
     double maxSlendernessTension {300.0};       ///< 5.2.8.1 (recomendacao)
 };
@@ -47,6 +48,7 @@ struct CompressionData {
 
 struct FlexureData {
     bool covered {true};
+    bool fullyEffective {false};   ///< NBR 14762: secao totalmente efetiva (Wef = W) na fibra comprimida
     double MRd {0.0};
     double Mpl {0.0};
     std::string governing;      ///< estado-limite que governa (FLT, FLM, FLA, ...)

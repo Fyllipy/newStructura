@@ -48,6 +48,8 @@ public:
     [[nodiscard]] static std::vector<Primitive> build(const Structura::App::ProjectData::NodeConnection &connection, bool context = false);
     /// Malha triangulada no referencial global; `eta` > 0 colore chapas pela utilizacao (verde ate 0,7, amarelo ate 1, vermelho acima).
     static void append(Mesh &mesh, const std::vector<Primitive> &primitives, const Frame &frame, double eta);
+    /// Maior distancia (mm) de um ponto das pecas a origem da ligacao.
+    [[nodiscard]] static double extent(const std::vector<Primitive> &primitives);
     [[nodiscard]] static std::array<unsigned char, 3> color(Role role, double eta);
 };
 

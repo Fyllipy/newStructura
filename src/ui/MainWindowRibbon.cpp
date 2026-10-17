@@ -93,7 +93,7 @@ QWidget *MainWindow::createQuickAccessBar()
     layout->addWidget(leftWidget, 0, Qt::AlignVCenter);
 
     layout->addStretch(1);
-    m_titleLabel = new QLabel(tr("Structura 3D"), bar);
+    m_titleLabel = new QLabel(tr("Structura"), bar);
     connect(this, &QWidget::windowTitleChanged, m_titleLabel, &QLabel::setText);
     m_titleLabel->setAlignment(Qt::AlignCenter);
     m_titleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);

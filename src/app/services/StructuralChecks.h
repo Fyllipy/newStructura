@@ -4,6 +4,9 @@
 #include "app/SolverBridge.h"
 #include "app/services/DesignService.h"
 
+#include <array>
+#include <functional>
+
 #include <QMap>
 #include <QString>
 #include <QVector>
@@ -70,9 +73,12 @@ public:
                           const DesignSettings &settings, double forceFactorToN, double lengthFactorToMm);
 
     /// Flechas das barras nas combinacoes dadas (esforcos em unidades do modelo; E e I do modelo).
+    /// `inertiaRatio(barra, |Mz|max, |My|max)` (momentos de servico em unidades do modelo) devolve {Ief/I em torno de z local, Ief/I em torno
+    /// de y local}: reduz a rigidez de perfis formados a frio pela secao efetiva (NBR 14762, 9.8.5).
+    using InertiaRatio = std::function<std::array<double, 2>(int, double, double)>;
     static QVector<DeflectionResult> deflections(const Structura::App::SolverBridge::ModelData &geometry,
                                                  const std::vector<ResultSet> &sets, const DesignSettings &settings,
-                                                 double lengthFactorToMm);
+                                                 double lengthFactorToMm, const InertiaRatio &inertiaRatio = {});
 };
 
 } // namespace Structura::App::Services

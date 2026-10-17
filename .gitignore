@@ -1,4 +1,6 @@
 build/
 normas/
+dist/
 .vscode
 .git
+dist/

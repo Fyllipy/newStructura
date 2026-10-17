@@ -325,11 +325,15 @@ struct DesignMemberParams {
     double b2 {1.0};            ///< Amplificacao dos efeitos globais (B2)
     double netAreaRatio {1.0};  ///< An / Ag na ligacao
     int deflDenominator {0};    ///< Limite de flecha L/n (0 = automatico: L/350 horizontais, L/250 inclinadas)
+    double stiffenerSpacing {0.0};   ///< Distancia entre enrijecedores transversais de alma, a (mm); 0 = sem enrijecedores (kv = 5,34)
+    int panelTensionFlange {0};      ///< NBR 14762 Anexo F: 0 = nao, 1 = mesa tracionada ligada a painel (barra biapoiada), 2 = idem (barra continua)
+    bool coldWork {false};           ///< NBR 14762 Anexo B: aumento de fy nas dobras (trabalho a frio)
     bool operator==(const DesignMemberParams &o) const
     {
         return memberId == o.memberId && steel == o.steel && kx == o.kx && ky == o.ky && kz == o.kz && lx == o.lx && ly == o.ly && lz == o.lz
             && segments == o.segments && lb == o.lb && braced == o.braced && cbOne == o.cbOne && b2 == o.b2
-            && netAreaRatio == o.netAreaRatio && deflDenominator == o.deflDenominator;
+            && netAreaRatio == o.netAreaRatio && deflDenominator == o.deflDenominator && stiffenerSpacing == o.stiffenerSpacing
+            && panelTensionFlange == o.panelTensionFlange && coldWork == o.coldWork;
     }
 };
 
@@ -440,6 +444,7 @@ struct NodeConnection {
     static constexpr int kSplice = 3;      ///< emenda de viga parafusada
     static constexpr int kBasePlate = 4;   ///< base de pilar com chumbadores
     static constexpr int kTubular = 5;     ///< ligacao soldada de trelica tubular
+    static constexpr int kColdFormed = 6;  ///< ligacao de perfil formado a frio (NBR 14762, secao 10)
 
     int id {0};
     int nodeId {0};            ///< id externo do no

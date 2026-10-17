@@ -554,6 +554,64 @@ double drawBasePlateDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, do
 
 // ---- ligacao tubular -------------------------------------------------------------------------------------------------
 
+double drawColdFormedDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, double rx0, double ry0, double rx1, double ry1, bool notes, double fixedScale)
+{
+    const L l = layers(s);
+    const NodeConnection &c = d.connection;
+    const int mode = static_cast<int>(val(c, "mode", 0.0) + 0.5);
+    const int n = std::max(1, static_cast<int>(val(c, "n", 2.0) + 0.5)), lines = std::max(1, static_cast<int>(val(c, "lines", 1.0) + 0.5));
+    const double pitch = val(c, "pitch", 40.0), gauge = val(c, "gauge", 40.0), end1 = val(c, "end1", 30.0), end2 = val(c, "end2", 30.0), edge = val(c, "edge", 25.0);
+    const double dd = val(c, "d", 12.0);
+    const double dh = dd < 12.5 ? dd + 0.8 : dd + 1.5;
+    const double lLong = val(c, "lLong", 80.0), lTrans = val(c, "lTrans", 0.0);
+    double width = (lines - 1) * gauge + 2.0 * edge;
+    double overlap = end1 + end2 + (n - 1) * pitch;
+    if (mode == 1) {
+        width = std::max(width, std::max(lTrans, 40.0));
+        overlap = std::max(overlap, lLong + 10.0);
+    }
+    const Panels p = panelsFor(rx0, ry0, rx1, ry1);
+    const double extX = width + 60.0, extY = 2.0 * overlap + 80.0;
+    const double scale = pickScaleMargin(extX, extY, p.lx1 - p.lx0, p.y1 - p.y0 - 8.0, 16.0, fixedScale);
+    const double k = 1.0 / scale;
+    const double cx = (p.lx0 + p.lx1) / 2.0, base = (p.y0 + p.y1) / 2.0 - overlap * k;
+    auto P = [&](double x, double y) { return Point {cx + x * k, base + y * k}; };
+    s.text({p.lx0 + 6.0, p.y1}, "LIGAÇÃO POR SOBREPOSIÇÃO - VISTA EM PLANTA", 3.2, l.text, TextAlign::Left, 0.0, true);
+    // perfil (abaixo) e chapa (acima) sobrepostos em `overlap`
+    s.rect(P(-width / 2.0, -overlap - 40.0), P(width / 2.0, overlap * 0.0 + 0.0), l.outline);
+    s.line(P(-width / 2.0 - 4.0, -overlap - 46.0), P(width / 2.0 + 4.0, -overlap - 34.0), l.outline);
+    s.text(P(width / 2.0 + 6.0, -overlap - 30.0), "PERFIL FORMADO A FRIO t1 = " + fmtNum(val(c, "t1", 2.0), 2), 2.2, l.text);
+    s.rect(P(-width / 2.0, -overlap), P(width / 2.0, 40.0), l.plate);
+    s.text(P(width / 2.0 + 6.0, 20.0), "CHAPA t2 = " + fmtNum(val(c, "t2", 4.75), 2), 2.2, l.text);
+    if (mode == 1) {
+        const double w = val(c, "leg", 3.0);
+        s.line(P(-width / 2.0, -overlap), P(width / 2.0, -overlap), l.weld);
+        s.line(P(-width / 2.0, -overlap), P(-width / 2.0, -overlap + lLong), l.weld);
+        s.line(P(width / 2.0, -overlap), P(width / 2.0, -overlap + lLong), l.weld);
+        s.text(P(0.0, -overlap * 0.5), "FILETE " + fmtNum(w, 1) + " mm  (L// = " + fmtNum(lLong, 0) + ", L⟂ = " + fmtNum(lTrans, 0) + ")", 2.2, l.text, TextAlign::Center);
+    } else {
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < lines; ++j) {
+                const double x = (j - (lines - 1) / 2.0) * gauge;
+                const double y = -overlap + end2 + i * pitch;
+                s.circle(P(x, y), std::max(0.6, dh / 2.0 * k), l.bolt);
+            }
+        }
+        if (n > 1) {
+            dimLinear(s, l, P(width / 2.0 + 8.0, -overlap + end2), P(width / 2.0 + 8.0, -overlap + end2 + pitch), 6.0, "s = " + fmtNum(pitch, 0));
+        }
+        dimLinear(s, l, P(-width / 2.0 - 8.0, -overlap), P(-width / 2.0 - 8.0, -overlap + end2), -6.0, "e2 = " + fmtNum(end2, 0));
+    }
+    if (notes) {
+        auto text = connectionNotes(d, "");
+        const char *modes[] = {"PARAFUSOS COMUNS (10.3)", "SOLDA DE FILETE (10.2)", "PARAFUSOS AUTOATARRAXANTES (10.5)"};
+        text.push_back(std::string("MEIO DE LIGAÇÃO: ") + modes[std::max(0, std::min(2, mode))]);
+        text.push_back("ESPESSURA DAS PARTES LIGADAS <= 4,75 mm (NBR 14762:2010, 10.2.1 E 10.3.1); ACIMA DISSO, NBR 8800.");
+        notesFinish(s, l, rx0, ry0, text, d, "ABNT NBR 14762:2010, SEÇÃO 10 - LIGAÇÕES.");
+    }
+    return scale;
+}
+
 double drawTubularDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, double rx0, double ry0, double rx1, double ry1, bool notes, double fixedScale)
 {
     const L l = layers(s);
@@ -702,6 +760,7 @@ double drawConnectionDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, d
     case NodeConnection::kSplice: return drawSpliceDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);
     case NodeConnection::kBasePlate: return drawBasePlateDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);
     case NodeConnection::kTubular: return drawTubularDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);
+    case NodeConnection::kColdFormed: return drawColdFormedDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);
     default: break;
     }
     const bool angle = c.type == NodeConnection::kDoubleAngle;

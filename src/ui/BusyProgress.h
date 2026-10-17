@@ -44,6 +44,24 @@ void runBusyImpl(QWidget *parent, const QString &calculation, const QString &det
 /// Verdadeiro enquanto houver um calculo em andamento (para suspender salvamento automatico e dicas do mouse).
 [[nodiscard]] bool isBusy();
 
+/// Janela "Calculando…" para laços executados na própria thread da interface (que mexem no modelo e na cena):
+/// aparece imediatamente, é atualizada a cada etapa e faz os `runBusy` internos executarem direto, sem novas janelas.
+/// Enquanto existir, `isBusy()` é verdadeiro (o indicador de "resultados desatualizados" e o salvamento automático ficam quietos).
+class BusyScope
+{
+public:
+    BusyScope(QWidget *parent, const QString &calculation, const QString &detail);
+    ~BusyScope();
+    BusyScope(const BusyScope &) = delete;
+    BusyScope &operator=(const BusyScope &) = delete;
+    /// `total` = 0: indeterminado. Processa eventos de pintura (sem aceitar cliques).
+    void update(int value, int total, const QString &detail = QString());
+
+private:
+    struct Impl;
+    Impl *m_impl {nullptr};
+};
+
 template <typename F>
 auto runBusy(QWidget *parent, const QString &calculation, const QString &detail, F &&task)
 {

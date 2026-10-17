@@ -1,9 +1,11 @@
 #include "DesignService.h"
 
+#include <array>
 #include <atomic>
 #include <thread>
 
 #include "app/services/MaterialLibrary.h"
+#include "design/Nbr14762.h"
 #include "app/services/SectionPlacementService.h"
 #include "viz/postprocessor/UniformLoadForceEvaluator.h"
 #include "viz/structure/SectionCatalog.h"
@@ -277,6 +279,20 @@ Structura::Design::DesignSection DesignService::makeSection(const SectionInfo &s
     return s;
 }
 
+std::array<double, 2> DesignService::serviceInertiaRatios(const Structura::Design::DesignSection &ds, const QString &steelName, double mxNmm, double myNmm)
+{
+    using namespace Structura::Design;
+    if (!ds.supported() || ds.standard != Standard::NBR14762) {
+        return {1.0, 1.0};
+    }
+    const std::optional<SteelOption> option = findSteel(steelName);
+    SteelGrade steel;
+    steel.fy = option ? option->fy : 250.0;
+    steel.fu = option ? option->fu : 400.0;
+    steel.coldFormed = true;
+    return Nbr14762::serviceInertiaRatios(ds, steel, mxNmm, myNmm);
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Verificacao
 // ---------------------------------------------------------------------------------------------------------------------
@@ -320,6 +336,9 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
     in.b2 = params.b2;
     in.slendernessGoverns = settings.slendernessGoverns;
     in.netAreaRatio = params.netAreaRatio;
+    in.stiffenerSpacing = params.stiffenerSpacing;
+    in.panelTensionFlange = params.panelTensionFlange;
+    in.coldWork = params.coldWork;
     in.combos = effects.combos;
     // Combinacoes selecionadas
     if (!settings.combinations.isEmpty()) {

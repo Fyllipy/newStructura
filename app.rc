@@ -14,11 +14,11 @@ BEGIN
     BEGIN
         BLOCK "041604b0"
         BEGIN
-            VALUE "FileDescription", "Structura 3D - analise e dimensionamento de estruturas metalicas"
+            VALUE "FileDescription", "Structura - analise e dimensionamento de estruturas metalicas"
             VALUE "FileVersion", "1.0.0.0"
-            VALUE "InternalName", "StructuraRibbon3D"
-            VALUE "OriginalFilename", "StructuraRibbon3D.exe"
-            VALUE "ProductName", "Structura 3D"
+            VALUE "InternalName", "Structura"
+            VALUE "OriginalFilename", "Structura.exe"
+            VALUE "ProductName", "Structura"
             VALUE "ProductVersion", "1.0.0.0"
         END
     END

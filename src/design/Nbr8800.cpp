@@ -453,9 +453,26 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
                 const double lambdaW = s.h / s.tw;
                 const double lpW = 1.12 * std::sqrt(E / fy);
                 const double lrW = 1.40 * std::sqrt(E / fy);
-                const double mrW = fy * w;
-                const double m2 = interpolate(lambdaW, lpW, lrW, mpl, mrW, mrW, gamma, false);
-                states.push_back({"FLA", m2, fmt("FLA (D.2.2, alma do U comprimida): h/tw = %.1f, lambda_p = %.1f, lambda_r = %.1f -> M_Rd = %s", lambdaW, lpW, lrW, knm(m2).c_str())});
+                // Largura efetiva da alma (5.3.4.2, grupo 2, chi = 1) -> Wef
+                const double bt = lambdaW;
+                const double btLim = 1.49 * std::sqrt(E / fy);
+                double hef = s.h;
+                if (bt > btLim) {
+                    const double sigmaEl = sq(1.31 * btLim / bt) * fy;
+                    const double q = std::sqrt(sigmaEl / fy);
+                    hef = s.h * (1.0 - 0.18 * q) * q;
+                }
+                const double dA = (s.h - hef) * s.tw;
+                const double aw = s.webLeft ? s.g.aMin + s.tw / 2.0 : s.g.aMax - s.tw / 2.0;
+                const double aExt = s.webLeft ? s.g.aMin : s.g.aMax;
+                const double aef = s.g.area - dA;
+                const double shift = -dA * aw / aef;
+                const double ief = (s.g.Iy - dA * sq(aw)) - aef * sq(shift);
+                const double wef = std::min(w, ief / std::fabs(aExt - shift));
+                const double mrW = fy * wef;
+                const double mcrW = sq(wef) * fy / w;
+                const double m2 = interpolate(lambdaW, lpW, lrW, mpl, mrW, mcrW, gamma);
+                states.push_back({"FLA", m2, fmt("FLA (D.2.8-d, alma do U comprimida): h/tw = %.1f, lambda_p = %.1f, lambda_r = %.1f, Wef/W = %.3f -> M_Rd = %s", lambdaW, lpW, lrW, wef / w, knm(m2).c_str())});
             }
             if (states.empty()) {
                 states.push_back({"plastificacao", mpl / gamma, fmt("Nenhum estado-limite de flambagem aplicavel: M_Rd = Mpl / gama_a1 = %s", knm(mpl / gamma).c_str())});
@@ -517,8 +534,18 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
                 states.push_back({"FLT", m, fmt("FLT (D.2.3, alma tracionada): Lb = %.0f mm, lambda = %.1f, lambda_p = %.1f, lambda_r = %.1f, Mcr = %s -> M_Rd = %s", lb, lambda, lp, lr, knm(mcr).c_str(), knm(m).c_str())});
             } else {
                 const double mcr = mcrBase * (-bParam + std::sqrt(1.0 + sq(bParam)));
-                const double m = std::min(mcr, fy * wx) / gamma;
-                states.push_back({"FLT", m, fmt("FLT (D.2.3, alma comprimida): Mcr = %s <= fy Wx -> M_Rd = %s", knm(mcr).c_str(), knm(m).c_str())});
+                // D.2.3 (NBR 8800:2024): r = fy Wx / Mcr
+                const double my = fy * wx;
+                const double r = my / mcr;
+                double m;
+                if (mcr <= 0.0) {
+                    m = 0.0;
+                } else if (r <= 1.0) {
+                    m = std::min((1.92 - 1.17 * std::sqrt(r)) * my, 1.5 * my) / gamma;
+                } else {
+                    m = (0.92 - 0.17 / r) * mcr / gamma;
+                }
+                states.push_back({"FLT", m, fmt("FLT (D.2.3, alma comprimida): Mcr = %s, fy Wx/Mcr = %.2f -> M_Rd = %s", knm(mcr).c_str(), r, knm(m).c_str())});
             }
         } else {
             lines.push_back("FLT: Lb = 0, estado-limite nao aplicavel.");
@@ -610,6 +637,27 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
         }
         return finish(states, mpl, w, steel, o, lines);
     }
+    case SectionKind::Angle: {
+        // A NBR 8800:2024 (Anexo D) nao traz cantoneira simples em flexao. Criterio conservador e adaptado
+        // (AISC 360-22, F10): escoamento no limite elastico, FLM da aba e FLT em torno do eixo principal maior.
+        const double my = fy * w;
+        const double lambda = s.leg / s.t;
+        const double lpLeg = 0.54 * std::sqrt(E / fy);
+        const double lrLeg = 0.91 * std::sqrt(E / fy);
+        lines.push_back("Cantoneira simples em flexao: a NBR 8800:2024 nao a trata no Anexo D; criterio adaptado da AISC 360-22, F10 (eixos principais).");
+        states.push_back({"escoamento", my / gamma, fmt("Escoamento (limite elastico): M_Rd = fy W / gama_a1 = %s", knm(my / gamma).c_str())});
+        if (lambda > lpLeg) {
+            const double m = lambda <= lrLeg ? fy * w * (2.43 - 1.72 * lambda * std::sqrt(fy / E)) / gamma : 0.71 * E * w / sq(lambda) / gamma;
+            states.push_back({"FLM", m, fmt("FLM da aba (adaptado de F10): b/t = %.1f, lambda_p = %.1f, lambda_r = %.1f -> M_Rd = %s", lambda, lpLeg, lrLeg, knm(m).c_str())});
+        }
+        if (major && lb > 0.0) {
+            const double me = 0.46 * E * sq(s.leg) * sq(s.t) * cb / lb;
+            const double r = my / me;
+            const double m = (r <= 1.0 ? std::min((1.92 - 1.17 * std::sqrt(r)) * my, 1.5 * my) : (0.92 - 0.17 / r) * me) / gamma;
+            states.push_back({"FLT", m, fmt("FLT (adaptado de F10, eixo principal maior): Lb = %.0f mm, Me = %s -> M_Rd = %s", lb, knm(me).c_str(), knm(m).c_str())});
+        }
+        return finish(states, my, w, steel, o, lines);
+    }
     default:
         return none;
     }
@@ -651,7 +699,10 @@ ShearData shear(const DesignSection &s, const SteelGrade &steel, Axis direction,
     case SectionKind::I:
     case SectionKind::Channel: {
         if (alongB) {
-            return plateShear(s.h, s.tw, s.d * s.tw, s.h / s.tw > 0 ? 5.34 : 5.34, steel, o, "Cortante na alma (5.4.3.1.1)");
+            // kv (5.4.3.1.1): 5,34 sem enrijecedores ou a/h > 3; 5 + 5/(a/h)^2 nos demais casos
+            const double ah = o.stiffenerSpacing > 0.0 && s.h > 0.0 ? o.stiffenerSpacing / s.h : 0.0;
+            const double kv = ah > 0.0 && ah <= 3.0 ? 5.0 + 5.0 / (ah * ah) : 5.34;
+            return plateShear(s.h, s.tw, s.d * s.tw, kv, steel, o, ah > 0.0 && ah <= 3.0 ? "Cortante na alma com enrijecedores (5.4.3.1.1)" : "Cortante na alma (5.4.3.1.1)");
         }
         const double h = (s.kind == SectionKind::I) ? s.bf / 2.0 : s.bf;
         return plateShear(h, s.tf, 2.0 * s.bf * s.tf, 1.2, steel, o, "Cortante nas mesas (5.4.3.5)");

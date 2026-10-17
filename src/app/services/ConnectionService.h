@@ -72,7 +72,14 @@ public:
         double compression {0.0};   ///< maior compressao (N)
         double moment {0.0};        ///< maior momento (N.mm)
         QVector<ForceCase> cases;   ///< por combinacao (usado por emenda, base e ligacao tubular)
+        /// Solicitacao das OUTRAS ligacoes que chegam a mesma barra de apoio no mesmo no (N), somada a desta na verificacao do apoio.
+        double hostTension {0.0};
+        double hostCompression {0.0};
+        int hostConnections {0};
     };
+
+    /// Forcas (tracao, compressao; N) que a ligacao transmite normalmente a face da barra de apoio.
+    static std::pair<double, double> supportDemand(const Structura::App::ProjectData::NodeConnection &connection, const Forces &forces);
 
     struct Evaluation {
         std::vector<Structura::Design::Connections::Check> checks;

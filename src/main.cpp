@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
     Q_INIT_RESOURCE(resources);
 
     QApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("Structura 3D"));
+    app.setApplicationName(QStringLiteral("Structura"));
     app.setWindowIcon(applicationIcon());
 
     StartupSplash splash(QPixmap(QStringLiteral(":/images/splash.png")));

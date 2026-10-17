@@ -56,7 +56,7 @@ private:
 private slots:
     void testUiHeadersDoNotIncludeConcreteSceneController()
     {
-        const fs::path sourceRoot = fs::path(STRUCTURA_SOURCE_DIR) / "src" / "ui";
+        const fs::path sourceRoot = fs::u8path(STRUCTURA_SOURCE_DIR) / "src" / "ui";
         const auto files = collectSourceFiles(sourceRoot);
         QVERIFY2(!files.empty(), "No source files found under src/ui.");
 
@@ -78,7 +78,7 @@ private slots:
 
     void testAppHeadersDoNotIncludeConcreteSceneController()
     {
-        const fs::path sourceRoot = fs::path(STRUCTURA_SOURCE_DIR) / "src" / "app";
+        const fs::path sourceRoot = fs::u8path(STRUCTURA_SOURCE_DIR) / "src" / "app";
         const auto files = collectSourceFiles(sourceRoot);
         QVERIFY2(!files.empty(), "No source files found under src/app.");
 
@@ -100,7 +100,7 @@ private slots:
 
     void testAppHeadersDoNotIncludeUiPresenterTypes()
     {
-        const fs::path sourceRoot = fs::path(STRUCTURA_SOURCE_DIR) / "src" / "app";
+        const fs::path sourceRoot = fs::u8path(STRUCTURA_SOURCE_DIR) / "src" / "app";
         const auto files = collectSourceFiles(sourceRoot);
         QVERIFY2(!files.empty(), "No source files found under src/app.");
 
@@ -122,7 +122,7 @@ private slots:
 
     void testAppHeadersDoNotIncludeVizSceneController()
     {
-        const fs::path sourceRoot = fs::path(STRUCTURA_SOURCE_DIR) / "src" / "app";
+        const fs::path sourceRoot = fs::u8path(STRUCTURA_SOURCE_DIR) / "src" / "app";
         const auto files = collectSourceFiles(sourceRoot);
         QVERIFY2(!files.empty(), "No source files found under src/app.");
 
@@ -144,7 +144,7 @@ private slots:
 
     void testCoreModelDoesNotDependOnUiOrApp()
     {
-        const fs::path sourceRoot = fs::path(STRUCTURA_SOURCE_DIR) / "src" / "core" / "model";
+        const fs::path sourceRoot = fs::u8path(STRUCTURA_SOURCE_DIR) / "src" / "core" / "model";
         const auto files = collectSourceFiles(sourceRoot);
         QVERIFY2(!files.empty(), "No source files found under src/core/model.");
 
@@ -165,7 +165,7 @@ private slots:
 
     void testVizDoesNotDependOnUi()
     {
-        const fs::path sourceRoot = fs::path(STRUCTURA_SOURCE_DIR) / "src" / "viz";
+        const fs::path sourceRoot = fs::u8path(STRUCTURA_SOURCE_DIR) / "src" / "viz";
         const auto files = collectSourceFiles(sourceRoot);
         QVERIFY2(!files.empty(), "No source files found under src/viz.");
 

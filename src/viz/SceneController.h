@@ -23,6 +23,7 @@
 #include "core/model/Bar.h"
 #include "core/model/Material.h"
 #include "core/model/Section.h"
+#include "app/GeometrySnapshot.h"
 #include "app/ISceneEditGateway.h"
 #include "app/ISceneModelGateway.h"
 #include "viz/postprocessor/SupportGlyphFactory.h"
@@ -229,19 +230,7 @@ public:
     bool updateNodePositions(const QVector<QUuid> &nodeIds, const QVector<QVector3D> &positions);
 
     /// Copia da topologia (ids internos e externos preservados) para excluir/dividir/desfazer.
-    struct GeometrySnapshot {
-        struct N {
-            QUuid id;
-            int externalId {0};
-            double x {0.0}, y {0.0}, z {0.0};
-        };
-        struct B {
-            QUuid id, start, end, material, section;
-            int externalId {0};
-        };
-        std::vector<N> nodes;
-        std::vector<B> bars;
-    };
+    using GeometrySnapshot = Structura::App::GeometrySnapshot;
     [[nodiscard]] GeometrySnapshot captureGeometry() const;
     /// Substitui toda a topologia (nos e barras) pela copia, mantendo os mesmos ids.
     void restoreGeometry(const GeometrySnapshot &geometry);

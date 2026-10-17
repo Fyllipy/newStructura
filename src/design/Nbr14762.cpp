@@ -806,7 +806,7 @@ GeometryLimits geometryLimits(const DesignSection &s, const SteelGrade &steel)
 // Tracao (9.6)
 // ---------------------------------------------------------------------------------------------------------------------
 
-TensionData tension(const DesignSection &s, const SteelGrade &steel, const Options &o)
+static TensionData tensionCore(const DesignSection &s, const SteelGrade &steel, const Options &o)
 {
     TensionData t;
     const double a = s.g.area;
@@ -826,7 +826,7 @@ TensionData tension(const DesignSection &s, const SteelGrade &steel, const Optio
 // Compressao (9.7)
 // ---------------------------------------------------------------------------------------------------------------------
 
-CompressionData compression(const DesignSection &s, const SteelGrade &steel, const Buckling &len, const Options &o)
+static CompressionData compressionCore(const DesignSection &s, const SteelGrade &steel, const Buckling &len, const Options &o)
 {
     CompressionData c;
     const double E = steel.E;
@@ -939,7 +939,7 @@ CompressionData compression(const DesignSection &s, const SteelGrade &steel, con
 // Flexao (9.8.2)
 // ---------------------------------------------------------------------------------------------------------------------
 
-FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, bool posCompressed, double lb, double cb, const Options &o)
+static FlexureData flexureCore(const DesignSection &s, const SteelGrade &steel, Axis axis, bool posCompressed, double lb, double cb, const Options &o)
 {
     FlexureData f;
     const double E = steel.E;
@@ -955,12 +955,54 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
     f.lines.insert(f.lines.end(), bs.lines.begin(), bs.lines.end());
     f.lines.push_back(fmt("Inicio de escoamento da secao efetiva (9.8.2.1): Wef = %.0f mm3 (W bruto = %.0f mm3) -> M_Rd = Wef fy / %.2f = %s",
                           std::min(bs.Wc, bs.Wt), (major ? s.g.Wx() : s.g.Wy()), o.gammaFlexure, knm(mYieldRd).c_str()));
+    {
+        const double wGross = major ? (posCompressed ? s.g.WxTop : s.g.WxBottom) : (posCompressed ? s.g.WyRight : s.g.WyLeft);
+        f.fullyEffective = bs.Wc >= wGross * (1.0 - 1e-6);
+    }
     f.MRd = mYieldRd;
     f.governing = "escoamento da secao efetiva";
     f.Mpl = my;
 
+    // Anexo F: mesa tracionada ligada a painel (tercas sob succao) substitui a flambagem lateral com torcao: M_Rd = R Wef fy / gamma
+    bool panelApplied = false;
+    if (o.panelTensionFlange > 0 && major && (s.kind == SectionKind::ColdLippedChannel || s.kind == SectionKind::ColdZ) && s.lip > 0.0) {
+        const double bw = s.d, flat = s.bf - 4.0 * s.t;
+        const bool u = s.kind == SectionKind::ColdLippedChannel;
+        std::vector<std::string> failed;
+        if (bw > 292.0) failed.push_back("bw <= 292 mm");
+        if (bw / s.t < 60.0 || bw / s.t > 170.0) failed.push_back("60 <= bw/t <= 170");
+        if (bw / s.bf < 2.8 || bw / s.bf > 4.5) failed.push_back("2,8 <= bw/bf <= 4,5");
+        if (flat / s.t < 16.0 || flat / s.t > 43.0) failed.push_back("16 <= b/t <= 43");
+        if (fy > 410.0) failed.push_back("fy <= 410 MPa");
+        double r = 0.0;
+        if (o.panelTensionFlange == 1) {
+            r = bw <= 165.0 ? 0.70 : (bw <= 216.0 ? 0.65 : (u ? 0.40 : 0.50));
+        } else {
+            r = u ? 0.60 : 0.70;
+        }
+        if (failed.empty()) {
+            const double mRd = r * mYieldRd;
+            f.lines.push_back(fmt("Anexo F (mesa tracionada ligada a painel, barra %s, secao %s): bw = %.0f mm; bw/t = %.1f; bw/bf = %.2f; b/t = %.1f -> R = %.2f (Tab. F.1); "
+                                  "M_Rd = R Wef fy / %.2f = %s (substitui a FLT)",
+                                  o.panelTensionFlange == 1 ? "biapoiada" : "continua", u ? "U enrijecido" : "Z enrijecido", bw, bw / s.t, bw / s.bf, flat / s.t, r,
+                                  o.gammaFlexure, knm(mRd).c_str()));
+            f.lines.push_back("Anexo F: exige tambem vao < 10 m, conectores e painel conforme F.1 (i a l) e nao se aplica a balancos nem entre o ponto de inflexao e o apoio (F.4): responsabilidade do projetista.");
+            f.MRd = std::min(f.MRd, mRd);
+            if (mRd <= f.MRd) {
+                f.governing = "Anexo F (painel na mesa tracionada)";
+            }
+            panelApplied = true;
+        } else {
+            std::string text;
+            for (const auto &c : failed) {
+                text += (text.empty() ? "" : "; ") + c;
+            }
+            f.lines.push_back("Anexo F nao aplicavel (condicoes nao atendidas: " + text + "): usa-se a FLT do trecho.");
+        }
+    }
+
     // 9.8.2.2: flambagem lateral com torcao (flexao em torno do eixo de maior inercia)
-    const bool lateralApplicable = lb > 0.0 && major && s.g.Ix > s.g.Iy;
+    const bool lateralApplicable = lb > 0.0 && major && s.g.Ix > s.g.Iy && !panelApplied;
     if (lateralApplicable) {
         const double ey = sq(kPi) * E * s.g.Iy / sq(lb);
         const double x0 = tw.closed ? 0.0 : tw.x0;
@@ -1091,6 +1133,126 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Aumento da resistencia ao escoamento por trabalho a frio (Anexo B)
+// ---------------------------------------------------------------------------------------------------------------------
+
+double coldWorkYield(const DesignSection &s, const SteelGrade &steel, bool flexure, std::string *note)
+{
+    auto say = [&](const std::string &text) {
+        if (note) {
+            *note = text;
+        }
+    };
+    const double fy = steel.fy, fu = steel.fu;
+    if (!isColdFormed(s.kind) || fy <= 0.0 || s.t <= 0.0) {
+        return fy;
+    }
+    if (fu / fy < 1.2) {
+        say("Anexo B nao aplicavel: fu/fy < 1,2");
+        return fy;
+    }
+    const double ri = s.t;   // raio interno de dobramento adotado igual a espessura (ri/t = 1 <= 7)
+    const double r = fu / fy;
+    const double bc = 3.69 * r - 0.819 * r * r - 1.79;
+    const double m = 0.192 * r - 0.068;
+    const double fyc = bc * fy / std::pow(ri / s.t, m);
+    // numero de dobras (90 graus) pelos vertices da linha media; secoes fechadas: 4
+    const ThinWalled tw = buildThinWalled(s);
+    int corners = 0;
+    if (tw.closed) {
+        corners = 4;
+    } else {
+        for (std::size_t k = 1; k + 1 < tw.pathNodes.size(); ++k) {
+            const auto &a = tw.pathNodes[k - 1], &b = tw.pathNodes[k], &c = tw.pathNodes[k + 1];
+            const double ux = b[0] - a[0], uy = b[1] - a[1], vx = c[0] - b[0], vy = c[1] - b[1];
+            const double lu = std::hypot(ux, uy), lv = std::hypot(vx, vy);
+            if (lu > 1e-9 && lv > 1e-9 && (ux * vx + uy * vy) / (lu * lv) < std::cos(30.0 * kPi / 180.0)) {
+                ++corners;
+            }
+        }
+    }
+    const double cornerArea = s.t * 0.5 * kPi * (ri + 0.5 * s.t);
+    double c;
+    if (flexure) {
+        // mesa comprimida: dobra mesa-alma e, se houver, mesa-enrijecedor, sobre a area da mesa (desenvolvida com o enrijecedor)
+        const int flangeCorners = s.lip > 0.0 ? 2 : 1;
+        c = std::min(1.0, flangeCorners * cornerArea / (s.t * (s.bf + s.lip)));
+    } else {
+        c = s.g.area > 0.0 ? std::min(1.0, corners * cornerArea / s.g.area) : 0.0;
+    }
+    const double fya = std::min(c * fyc + (1.0 - c) * fy, fu);
+    say(fmt("Anexo B (trabalho a frio): fu/fy = %.2f; Bc = %.3f; m = %.3f; fyc = Bc fy/(ri/t)^m = %.1f MPa; C = %.3f (%s) -> fya = C fyc + (1 - C) fy = %.1f MPa (<= fu)",
+            r, bc, m, fyc, c, flexure ? "dobras da mesa comprimida / area da mesa" : "area das dobras / area da secao", fya));
+    return std::max(fy, fya);
+}
+
+TensionData tension(const DesignSection &s, const SteelGrade &steel, const Options &o)
+{
+    if (o.coldWork) {
+        std::string note;
+        const double fya = coldWorkYield(s, steel, false, &note);
+        if (fya > steel.fy) {
+            SteelGrade modified = steel;
+            modified.fy = fya;
+            Options plain = o;
+            plain.coldWork = false;
+            TensionData t = tensionCore(s, modified, plain);
+            t.lines.insert(t.lines.begin(), note + " (B.2.2)");
+            return t;
+        }
+    }
+    return tensionCore(s, steel, o);
+}
+
+CompressionData compression(const DesignSection &s, const SteelGrade &steel, const Buckling &len, const Options &o)
+{
+    Options plain = o;
+    plain.coldWork = false;
+    CompressionData base = compressionCore(s, steel, len, plain);
+    if (!o.coldWork) {
+        return base;
+    }
+    // B.1: so para barras totalmente efetivas (Aef = A, lambda_p <= 0,673)
+    std::string note;
+    const double fya = coldWorkYield(s, steel, false, &note);
+    if (fya > steel.fy && base.Aef >= s.g.area * (1.0 - 1e-6)) {
+        SteelGrade modified = steel;
+        modified.fy = fya;
+        CompressionData raised = compressionCore(s, modified, len, plain);
+        if (raised.Aef >= s.g.area * (1.0 - 1e-6) && raised.NcRd > base.NcRd) {
+            raised.lines.insert(raised.lines.begin(), note + " (secao totalmente efetiva)");
+            return raised;
+        }
+    }
+    base.lines.push_back("Anexo B: aumento de fy nao aplicado (secao com largura efetiva reduzida ou sem ganho).");
+    return base;
+}
+
+FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, bool posCompressed, double lb, double cb, const Options &o)
+{
+    Options plain = o;
+    plain.coldWork = false;
+    FlexureData base = flexureCore(s, steel, axis, posCompressed, lb, cb, plain);
+    if (!o.coldWork) {
+        return base;
+    }
+    // B.1: so para flexao com Wef = W (secao totalmente efetiva)
+    std::string note;
+    const double fya = coldWorkYield(s, steel, true, &note);
+    if (fya > steel.fy && base.fullyEffective) {
+        SteelGrade modified = steel;
+        modified.fy = fya;
+        FlexureData raised = flexureCore(s, modified, axis, posCompressed, lb, cb, plain);
+        if (raised.fullyEffective && raised.MRd > base.MRd) {
+            raised.lines.insert(raised.lines.begin(), note + " (secao totalmente efetiva)");
+            return raised;
+        }
+    }
+    base.lines.push_back("Anexo B: aumento de fy nao aplicado (secao com largura efetiva reduzida ou sem ganho).");
+    return base;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Cortante (9.8.3)
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -1150,6 +1312,75 @@ ShearData shear(const DesignSection &s, const SteelGrade &steel, Axis direction,
     v.lines.push_back(fmt("Cortante (9.8.3): h/t = %.1f, kv = %.1f, limites %.1f e %.1f -> V_Rd por alma = %s x %.2f alma(s) = %s", lambda, kv, l1, l2, kn(per).c_str(), webs,
                           kn(v.VRd).c_str()));
     return v;
+}
+
+std::array<double, 2> serviceInertiaRatios(const DesignSection &s, const SteelGrade &steel, double mxServiceNmm, double myServiceNmm)
+{
+    std::array<double, 2> ratios {1.0, 1.0};
+    if (!s.supported() || s.kind == SectionKind::RoundTube) {
+        return ratios;
+    }
+    const ThinWalled tw = buildThinWalled(s);
+    if (tw.elements.empty()) {
+        return ratios;
+    }
+    // Inercia efetiva com a fibra extrema comprimida em fy (limite inferior da rigidez de servico; 9.8.3 e 9.2.3 usam a
+    // secao efetiva para a tensao de servico, sempre menor ou igual a esta).
+    for (int k = 0; k < 2; ++k) {
+        const Axis axis = (k == 0) ? Axis::X : Axis::Y;
+        const double gross = (k == 0) ? s.g.Ix : s.g.Iy;
+        const double moment = (k == 0) ? mxServiceNmm : myServiceNmm;
+        if (moment == 0.0) {
+            continue;
+        }
+        double worst = 1.0;
+        for (const bool posCompressed : {true, false}) {
+            const double wc = (k == 0) ? (posCompressed ? s.g.WxTop : s.g.WxBottom) : (posCompressed ? s.g.WyRight : s.g.WyLeft);
+            const double sigma = moment < 0.0 ? steel.fy : std::min(steel.fy, moment / std::max(wc, 1e-9));
+            const BendingSection b = effectiveBending(s, tw, axis, posCompressed, sigma, steel.E);
+            if (gross > 0.0 && b.Ief > 0.0) {
+                worst = std::min(worst, b.Ief / gross);
+            }
+        }
+        ratios[k] = std::clamp(worst, 0.05, 1.0);
+    }
+    return ratios;
+}
+
+WebCripplingData webCrippling(const DesignSection &s, const SteelGrade &steel, bool endForce, double c, const Options &o)
+{
+    WebCripplingData r;
+    if ((s.kind != SectionKind::ColdChannel && s.kind != SectionKind::ColdLippedChannel && s.kind != SectionKind::ColdZ && s.kind != SectionKind::ColdHat) || s.t <= 0.0) {
+        r.lines.push_back("Esmagamento da alma (Anexo D): implementado para perfis U simples, U enrijecido, Z e cartola.");
+        return r;
+    }
+    const double t = s.t;
+    const double ri = t;                         // raio interno de dobramento adotado (= t)
+    const double h = s.d - 2.0 * (ri + t);       // parte plana da alma
+    const double cEff = std::max(c, 20.0);
+    const bool lipped = (s.kind == SectionKind::ColdLippedChannel);
+    if (h / t > 200.0 || cEff / t > 210.0 || cEff / h > 2.0) {
+        r.lines.push_back(fmt("Esmagamento da alma (Anexo D): fora do campo de validade (h/t = %.0f, c/t = %.0f, c/h = %.2f).", h / t, cEff / t, cEff / h));
+        return r;
+    }
+    // Tabela D.2, mesa nao conectada, uma mesa carregada: alpha, alpha_r, alpha_c, alpha_h
+    double a, ar, ac, ah;
+    const bool hat = (s.kind == SectionKind::ColdHat);
+    if (hat) {
+        // Tabela D.4 (cartola), mesa nao conectada, uma mesa carregada; resistencia = soma das duas almas
+        if (endForce) { a = 4.0; ar = 0.25; ac = 0.68; ah = 0.04; } else { a = 19.5; ar = 0.13; ac = 0.13; ah = 0.04; }
+    } else if (lipped) {
+        if (endForce) { a = 4.3; ar = 0.14; ac = 0.35; ah = 0.02; } else { a = 15.8; ar = 0.23; ac = 0.14; ah = 0.01; }
+    } else {
+        if (endForce) { a = 4.6; ar = 0.40; ac = 0.60; ah = 0.03; } else { a = 14.9; ar = 0.32; ac = 0.10; ah = 0.01; }
+    }
+    const double fy = steel.fy;
+    r.FRd = a * t * t * fy * (1.0 - ar * std::sqrt(ri / t)) * (1.0 + ac * std::sqrt(cEff / t)) * (1.0 - ah * std::sqrt(h / t)) / 1.35 * (hat ? 2.0 : 1.0);
+    r.covered = true;
+    (void)o;
+    r.lines.push_back(fmt("Esmagamento da alma (Anexo D, Tab. D.2, %s, %s): alpha = %.2f, alpha_r = %.2f, alpha_c = %.2f, alpha_h = %.3f; h = %.1f mm, c = %.0f mm -> F_Rd = %s",
+                          hat ? "cartola, 2 almas, Tab. D.4" : lipped ? "U enrijecido" : (s.kind == SectionKind::ColdZ ? "Z sem enrijecedor, Tab. D.3" : "U simples"), endForce ? "forca de extremidade" : "forca interna", a, ar, ac, ah, h, cEff, kn(r.FRd).c_str()));
+    return r;
 }
 
 } // namespace Structura::Design::Nbr14762

@@ -602,6 +602,15 @@ bool DatModelIoService::load(const QString &filePath,
                     d.ly = toDouble(parts[11], &ok);
                     d.lz = toDouble(parts[12], &ok);
                 }
+                if (parts.size() >= 14) {
+                    d.stiffenerSpacing = toDouble(parts[13], &ok);
+                }
+                if (parts.size() >= 15) {
+                    d.panelTensionFlange = toInt(parts[14], &ok);
+                }
+                if (parts.size() >= 16) {
+                    d.coldWork = toInt(parts[15], &ok) != 0;
+                }
             }
             break;
         }
@@ -631,6 +640,15 @@ bool DatModelIoService::load(const QString &filePath,
                 p.lx = toDouble(parts[12], &ok);
                 p.ly = toDouble(parts[13], &ok);
                 p.lz = toDouble(parts[14], &ok);
+            }
+            if (parts.size() >= 16) {
+                p.stiffenerSpacing = toDouble(parts[15], &ok);
+            }
+            if (parts.size() >= 17) {
+                p.panelTensionFlange = toInt(parts[16], &ok);
+            }
+            if (parts.size() >= 18) {
+                p.coldWork = toInt(parts[17], &ok) != 0;
             }
             designTmp.members.append(p);
             break;
@@ -1282,16 +1300,17 @@ bool DatModelIoService::save(const QString &filePath,
         for (const QString &name : ds.combinations) {
             stream << "COMBINATION " << token(name) << "\n";
         }
-        stream << QString::asprintf("DEFAULTS %g %g %g %d %g %d %d %g %g %g %g %g\n", ds.defaults.kx, ds.defaults.ky, ds.defaults.kz,
+        stream << QString::asprintf("DEFAULTS %g %g %g %d %g %d %d %g %g %g %g %g %g %d %d\n", ds.defaults.kx, ds.defaults.ky, ds.defaults.kz,
                                     ds.defaults.segments, ds.defaults.lb, ds.defaults.braced ? 1 : 0, ds.defaults.cbOne ? 1 : 0,
-                                    ds.defaults.b2, ds.defaults.netAreaRatio, ds.defaults.lx, ds.defaults.ly, ds.defaults.lz);
+                                    ds.defaults.b2, ds.defaults.netAreaRatio, ds.defaults.lx, ds.defaults.ly, ds.defaults.lz, ds.defaults.stiffenerSpacing,
+                                    ds.defaults.panelTensionFlange, ds.defaults.coldWork ? 1 : 0);
         if (!ds.members.isEmpty()) {
             stream << "\n[MEMBER_DESIGN]\n";
             stream << "# Member_ID  Aco(-=padrao)  kx ky kz  trechos  Lb(m)  mesa_contida  Cb=1  B2  An/Ag  flecha_L/n(0=auto)  Lx Ly Lz (m; 0 = usa K.L)\n";
             for (const auto &p : ds.members) {
                 stream << QString::asprintf("%-10d ", p.memberId) << token(p.steel)
-                       << QString::asprintf(" %g %g %g %d %g %d %d %g %g %d %g %g %g\n", p.kx, p.ky, p.kz, p.segments, p.lb,
-                                            p.braced ? 1 : 0, p.cbOne ? 1 : 0, p.b2, p.netAreaRatio, p.deflDenominator, p.lx, p.ly, p.lz);
+                       << QString::asprintf(" %g %g %g %d %g %d %d %g %g %d %g %g %g %g %d %d\n", p.kx, p.ky, p.kz, p.segments, p.lb,
+                                            p.braced ? 1 : 0, p.cbOne ? 1 : 0, p.b2, p.netAreaRatio, p.deflDenominator, p.lx, p.ly, p.lz, p.stiffenerSpacing, p.panelTensionFlange, p.coldWork ? 1 : 0);
             }
         }
     }

@@ -1,4 +1,4 @@
-# StructuraRibbon3D
+# Structura
 
 Aplicativo C++ com Qt e VTK para renderização 3D. O projeto usa Widgets (Qt) e módulos VTK incluindo suporte a Qt e OpenGL.
 

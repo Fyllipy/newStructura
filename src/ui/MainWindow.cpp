@@ -59,7 +59,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::CustomizeWindowHint);
     setMouseTracking(true);
-    setWindowTitle(tr("Structura 3D"));
+    setWindowTitle(tr("Structura"));
 
     // Banco de dados do programa: perfis e materiais salvos pelo usuario
     Structura::UI::ProfileLibrary::setUserProfiles(Structura::App::Services::UserLibrary::loadProfiles());
@@ -340,6 +340,7 @@ MainWindow::MainWindow(QWidget *parent)
     updateMaximizeButtonIcon();
     updateLoadActionsEnabled();
     syncLoadVisuals();
+    ensureDefaultMaterial();
 }
 
 MainWindow::~MainWindow() = default;

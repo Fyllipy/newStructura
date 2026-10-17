@@ -126,7 +126,7 @@ void MainWindow::onGenerateDrawings()
                 }
             }
             if (run) {
-                if (const auto forces = Structura::UI::connectionForces(*run, connection)) {
+                if (const auto forces = Structura::UI::connectionForces(*run, connection, m_extras.connections)) {
                     detail.hasForces = true;
                     detail.shearKN = forces->shear / 1000.0;
                     detail.axialKN = forces->axial / 1000.0;

@@ -104,7 +104,9 @@ NodeConnectionsDialog::NodeConnectionsDialog(const QVector<NodeConnection> &conn
     auto *refresh = new QPushButton(tr("Atualizar esforços"));
     auto *focus = new QPushButton(tr("Ir para a viga"));
     auto *copy = new QPushButton(tr("Copiar memorial"));
-    for (auto *button : {propose, refresh, focus, copy}) {
+    auto *support = new QPushButton(tr("Barra de apoio…"));
+    support->setToolTip(tr("Escolhe em qual das barras que chegam ao nó a ligação se apoia; a barra fica destacada no modelo."));
+    for (auto *button : {propose, refresh, focus, support, copy}) {
         actions->addWidget(button);
     }
     actions->addStretch(1);
@@ -149,6 +151,23 @@ NodeConnectionsDialog::NodeConnectionsDialog(const QVector<NodeConnection> &conn
     connect(focus, &QPushButton::clicked, this, [this]() {
         if (m_current >= 0 && m_callbacks.focus) {
             m_callbacks.focus(m_connections.at(m_current));
+        }
+    });
+    connect(support, &QPushButton::clicked, this, [this]() {
+        if (m_current < 0 || !m_callbacks.chooseSupport) {
+            return;
+        }
+        auto &c = m_connections[m_current];
+        const bool usesSupport = c.type == NodeConnection::kShearTab || c.type == NodeConnection::kDoubleAngle || c.type == NodeConnection::kGusset;
+        if (!usesSupport) {
+            QMessageBox::information(this, tr("Barra de apoio"), tr("Esta tipologia de ligação não tem barra de apoio."));
+            return;
+        }
+        NodeConnection edited = c;
+        if (m_callbacks.chooseSupport(edited)) {
+            edited.verified = false;
+            c = edited;
+            selectRow(m_current);
         }
     });
     connect(copy, &QPushButton::clicked, this, [this]() { QApplication::clipboard()->setText(memorialText()); });
@@ -331,7 +350,7 @@ void NodeConnectionsDialog::refreshForces()
 {
     m_forces.reset();
     if (m_current >= 0 && m_callbacks.forces) {
-        m_forces = m_callbacks.forces(m_connections.at(m_current));
+        m_forces = m_callbacks.forces(m_connections.at(m_current), m_connections);
     }
     if (m_forces) {
         const int type = m_connections.at(m_current).type;
@@ -432,7 +451,8 @@ void NodeConnectionsDialog::chooseType()
                                     {NodeConnection::kGusset, tr("Treliça e contraventamento")},
                                     {NodeConnection::kTubular, tr("Treliça tubular")},
                                     {NodeConnection::kSplice, tr("Continuidade de viga")},
-                                    {NodeConnection::kBasePlate, tr("Fundação")}};
+                                    {NodeConnection::kBasePlate, tr("Fundação")},
+                                    {NodeConnection::kColdFormed, tr("Perfis formados a frio")}};
     QDialog picker(this);
     picker.setWindowTitle(tr("Nova ligação"));
     picker.resize(760, 700);
@@ -553,7 +573,7 @@ void NodeConnectionsDialog::verifyAll()
     const int keep = m_current;
     for (int i = 0; i < m_connections.size(); ++i) {
         m_current = i;
-        const auto forces = m_callbacks.forces ? m_callbacks.forces(m_connections.at(i)) : std::nullopt;
+        const auto forces = m_callbacks.forces ? m_callbacks.forces(m_connections.at(i), m_connections) : std::nullopt;
         auto &c = m_connections[i];
         const auto e = ConnectionService::evaluate(c, forces.value_or(ConnectionService::Forces {}));
         c.eta = e.maxRatio;

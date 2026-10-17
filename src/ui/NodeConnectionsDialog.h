@@ -30,7 +30,11 @@ public:
         /// Cria uma ligacao (escolha de viga/extremidade/tipo pelo usuario); id == 0 = cancelado.
         std::function<Structura::App::ProjectData::NodeConnection(int type)> create;
         /// Esforcos de calculo (envoltoria das combinacoes ultimas) na extremidade da viga.
-        std::function<std::optional<Structura::App::Services::ConnectionService::Forces>(const Structura::App::ProjectData::NodeConnection &)> forces;
+        /// Recebe tambem todas as ligacoes em edicao: as que chegam a mesma barra de apoio somam seus esforcos na verificacao do apoio.
+        std::function<std::optional<Structura::App::Services::ConnectionService::Forces>(const Structura::App::ProjectData::NodeConnection &,
+                                                                                        const QVector<Structura::App::ProjectData::NodeConnection> &)> forces;
+        /// Pergunta a barra de apoio (barras que chegam ao no, com realce no modelo) e grava-a na ligacao; false = cancelado.
+        std::function<bool(Structura::App::ProjectData::NodeConnection &)> chooseSupport;
         /// Seleciona a viga/no no modelo.
         std::function<void(const Structura::App::ProjectData::NodeConnection &)> focus;
         /// Abre a calculadora avulsa.

@@ -606,8 +606,8 @@ std::vector<unsigned char> writeDocx(const ReportDocument &doc)
     const std::string core =
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" "
         "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><dc:title>" +
-        esc(doc.title) + "</dc:title><dc:creator>" + esc(doc.author.empty() ? "Structura 3D" : doc.author) + "</dc:creator></cp:coreProperties>";
-    const std::string app = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Application>Structura 3D</Application></Properties>";
+        esc(doc.title) + "</dc:title><dc:creator>" + esc(doc.author.empty() ? "Structura" : doc.author) + "</dc:creator></cp:coreProperties>";
+    const std::string app = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Application>Structura</Application></Properties>";
     const std::string settings = std::string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:settings ") + kNamespaces + ">" +
                                  (doc.tableOfContents ? "<w:updateFields w:val=\"true\"/>" : "") +
                                  "<m:mathPr><m:mathFont m:val=\"Cambria Math\"/><m:dispDef/></m:mathPr><w:defaultTabStop w:val=\"720\"/><w:compat><w:compatSetting w:name=\"compatibilityMode\" "

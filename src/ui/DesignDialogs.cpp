@@ -85,6 +85,20 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     e.defl->setRange(0, 2000);
     e.defl->setSpecialValueText(tr("automático"));
     e.defl->setPrefix(QStringLiteral("L / "));
+    e.coldWork = new QCheckBox(tr("Considerar o aumento de fy pelo trabalho a frio nas dobras (NBR 14762, Anexo B)"));
+    e.coldWork->setToolTip(tr("fya = C·fyc + (1 − C)·fy ≤ fu, aplicável só a seções totalmente efetivas (λp ≤ 0,673) em tração, compressão e flexão; "
+                              "exige fu/fy ≥ 1,2, ri/t ≤ 7 e dobras ≤ 120°. Usa ri = t."));
+    e.panel = new QComboBox;
+    e.panel->addItem(tr("Não"), 0);
+    e.panel->addItem(tr("Sim – barra biapoiada"), 1);
+    e.panel->addItem(tr("Sim – barra contínua"), 2);
+    e.panel->setToolTip(tr("Terça U enrijecido ou Z enrijecido com telha parafusada na mesa tracionada (ação de sucção): o momento resistente é "
+                           "R · Wef · fy / 1,10, com R da Tabela F.1, em lugar da flambagem lateral com torção. As demais condições do Anexo F "
+                           "(vão < 10 m, conectores, painel) são de responsabilidade do projetista."));
+    e.stiffener = spin(0.0, 20000.0, 0.0, 0, 50.0, tr(" mm"));
+    e.stiffener->setSpecialValueText(tr("sem enrijecedores"));
+    e.stiffener->setToolTip(tr("Distância entre os eixos de enrijecedores transversais adjacentes, a (NBR 8800:2024, 5.4.3.1.1): "
+                               "kv = 5 + 5/(a/h)² para a/h ≤ 3; sem enrijecedores (ou a/h > 3) kv = 5,34. Só vale para I, H e U."));
     form->addRow(tr("Aço"), e.steel);
     form->addRow(tr("Kx (flexão em torno de X, plano da altura)"), e.kx);
     form->addRow(tr("Ky (flexão em torno de Y)"), e.ky);
@@ -104,6 +118,9 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     form->addRow(tr("Amplificação global B2"), e.b2);
     form->addRow(tr("An / Ag na ligação (tração)"), e.netArea);
     form->addRow(tr("Limite de flecha (ELS)"), e.defl);
+    form->addRow(tr("Espaçamento dos enrijecedores de alma (a)"), e.stiffener);
+    form->addRow(tr("Mesa tracionada ligada a painel (NBR 14762, Anexo F)"), e.panel);
+    form->addRow(QString(), e.coldWork);
     return widget;
 }
 
@@ -124,6 +141,9 @@ void DesignSettingsDialog::load(ParamEditors &e, const DesignMemberParams &p)
     e.b2->setValue(p.b2);
     e.netArea->setValue(p.netAreaRatio);
     e.defl->setValue(p.deflDenominator);
+    e.stiffener->setValue(p.stiffenerSpacing);
+    e.panel->setCurrentIndex(std::clamp(p.panelTensionFlange, 0, 2));
+    e.coldWork->setChecked(p.coldWork);
 }
 
 DesignMemberParams DesignSettingsDialog::read(const ParamEditors &e)
@@ -143,6 +163,9 @@ DesignMemberParams DesignSettingsDialog::read(const ParamEditors &e)
     p.b2 = e.b2->value();
     p.netAreaRatio = e.netArea->value();
     p.deflDenominator = e.defl->value();
+    p.stiffenerSpacing = e.stiffener->value();
+    p.panelTensionFlange = e.panel->currentData().toInt();
+    p.coldWork = e.coldWork->isChecked();
     return p;
 }
 

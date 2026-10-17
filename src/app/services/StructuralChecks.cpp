@@ -3,6 +3,7 @@
 #include "viz/postprocessor/UniformLoadForceEvaluator.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <map>
 #include <unordered_map>
@@ -26,7 +27,8 @@ struct NodeKey {
 
 QVector<StructuralChecks::DeflectionResult> StructuralChecks::deflections(const Structura::App::SolverBridge::ModelData &geometry,
                                                                           const std::vector<ResultSet> &sets,
-                                                                          const DesignSettings &settings, double lengthFactorToMm)
+                                                                          const DesignSettings &settings, double lengthFactorToMm,
+                                                                          const InertiaRatio &inertiaRatio)
 {
     std::unordered_map<int, Structura::App::SolverBridge::MaterialData> materials;
     for (const auto &m : geometry.materials) {
@@ -53,6 +55,29 @@ QVector<StructuralChecks::DeflectionResult> StructuralChecks::deflections(const 
     }
     auto isFree = [&](int node) { return attached[node] == 1 && !restrained[node]; };
 
+    // Tabela B.1: vigas que suportam pilares tem limite L/500. Um no livre onde um pilar chega por cima e nenhum
+    // pilar continua por baixo (o pilar nasce na viga) marca as vigas horizontais ligadas a ele.
+    std::unordered_map<int, std::array<double, 3>> position;
+    for (const auto &n : geometry.nodes) {
+        position[n.id] = {n.x, n.y, n.z};
+    }
+    std::unordered_map<int, bool> columnAbove, columnBelow;
+    for (const auto &m : geometry.members) {
+        const auto a = position.find(m.nodeI), b = position.find(m.nodeJ);
+        if (a == position.end() || b == position.end()) {
+            continue;
+        }
+        const double dxy = std::hypot(b->second[0] - a->second[0], b->second[1] - a->second[1]);
+        const double dzv = b->second[2] - a->second[2];
+        if (std::abs(dzv) < 4.0 * dxy || std::abs(dzv) < 1e-9) {
+            continue;   // nao e vertical (inclinacao > ~14 graus)
+        }
+        const int low = dzv > 0.0 ? m.nodeI : m.nodeJ, high = dzv > 0.0 ? m.nodeJ : m.nodeI;
+        columnAbove[low] = true;    // pilar sobe a partir deste no
+        columnBelow[high] = true;   // pilar desce ate este no
+    }
+    auto supportsColumns = [&](int node) { return columnAbove[node] && !columnBelow[node] && !restrained[node]; };
+
     std::map<int, DeflectionResult> worst;
     constexpr int kSamples = 80;
     for (const ResultSet &set : sets) {
@@ -77,7 +102,7 @@ QVector<StructuralChecks::DeflectionResult> StructuralChecks::deflections(const 
             int denominator = params.deflDenominator;
             if (denominator <= 0) {
                 if (dz < 0.02) {
-                    denominator = 350;
+                    denominator = supportsColumns(mit->second.nodeI) || supportsColumns(mit->second.nodeJ) ? 500 : 350;
                 } else if (dz < 0.5) {
                     denominator = 250;
                 } else {
@@ -88,8 +113,18 @@ QVector<StructuralChecks::DeflectionResult> StructuralChecks::deflections(const 
             const bool freeJ = isFree(mit->second.nodeJ);
             const bool cantilever = freeI != freeJ;
 
-            const double eiz = mat->second.e * sec->second.iz;
-            const double eiy = mat->second.e * sec->second.iy;
+            std::array<double, 2> stiffness {1.0, 1.0};
+            if (inertiaRatio) {
+                double mzMax = 0.0, myMax = 0.0;
+                for (int i = 0; i <= kSamples; ++i) {
+                    const InternalForces f = evaluator.evaluate(length * i / kSamples);
+                    mzMax = std::max(mzMax, std::abs(f.Mz));
+                    myMax = std::max(myMax, std::abs(f.My));
+                }
+                stiffness = inertiaRatio(el.externalId, mzMax, myMax);
+            }
+            const double eiz = mat->second.e * sec->second.iz * stiffness[0];
+            const double eiy = mat->second.e * sec->second.iy * stiffness[1];
             std::vector<double> vy(kSamples + 1, 0.0), vz(kSamples + 1, 0.0), sy(kSamples + 1, 0.0), sz(kSamples + 1, 0.0);
             const double h = length / kSamples;
             double prevKy = 0.0, prevKz = 0.0;

@@ -85,7 +85,7 @@ ViewOptionsBar::ViewOptionsBar(QWidget *parent)
     addToggle(kNodeMoments, QStringLiteral("node-moment.svg"), tr("Momentos nodais"));
     addToggle(kBarForces, QStringLiteral("bar-force.svg"), tr("Cargas distribuidas nas barras"));
     addToggle(kBarMoments, QStringLiteral("bar-moment.svg"), tr("Momentos distribuidos nas barras"));
-    addToggle(kHideLoadLabels, QStringLiteral("labels-hide.svg"), tr("Ocultar os valores (rotulos) dos carregamentos"), false);
+    addToggle(kHideLoadLabels, QStringLiteral("labels-hide.svg"), tr("Ocultar os valores (rotulos) dos carregamentos"), true);
     addToggle(kAreaPanels, QStringLiteral("area-panel.svg"), tr("Panos das cargas de area e vento (e sua acao nas barras)"));
     addSeparator();
 

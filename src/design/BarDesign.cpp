@@ -97,9 +97,12 @@ BarDesignOutput designBar(const BarDesignInput &in)
 
     Nbr8800::Options o8 = in.opt8800;
     o8.netAreaRatio = in.netAreaRatio;
+    o8.stiffenerSpacing = in.stiffenerSpacing;
     o8.ct = in.ct;
     Nbr14762::Options o14 = in.opt14762;
     o14.netAreaRatio = in.netAreaRatio;
+    o14.panelTensionFlange = in.panelTensionFlange;
+    o14.coldWork = in.coldWork;
     o14.ct = in.ct;
 
     const Nbr8800::Buckling len {in.lxOverride > 0.0 ? in.lxOverride : in.Kx * L,
@@ -137,7 +140,22 @@ BarDesignOutput designBar(const BarDesignInput &in)
         const auto key = std::make_tuple(static_cast<int>(ax), pos, std::llround(lbv * 10.0), std::llround(cbv * 1000.0));
         auto it = flexCache.find(key);
         if (it == flexCache.end()) {
-            it = flexCache.emplace(key, cold ? Nbr14762::flexure(s, in.steel, ax, pos, lbv, cbv, o14) : Nbr8800::flexure(s, in.steel, ax, pos, lbv, cbv, o8)).first;
+            Nbr8800::FlexureData data = cold ? Nbr14762::flexure(s, in.steel, ax, pos, lbv, cbv, o14) : Nbr8800::flexure(s, in.steel, ax, pos, lbv, cbv, o8);
+            if (!cold && data.covered && in.netAreaRatio < 1.0 - 1e-9) {
+                // 5.4.2.6: furos na mesa tracionada (Afn/Afg adotado igual a An/Ag informado)
+                const double yt = (in.steel.fy / in.steel.fu <= 0.8) ? 1.0 : 1.10;
+                if (in.steel.fu * in.netAreaRatio < yt * in.steel.fy) {
+                    const double wt = (ax == Axis::X) ? (pos ? s.g.WxBottom : s.g.WxTop) : (pos ? s.g.WyLeft : s.g.WyRight);
+                    const double limit = in.steel.fu * in.netAreaRatio * wt / o8.gammaA1;
+                    data.lines.push_back(fmt("Furos na mesa tracionada (5.4.2.6): fu Afn = %.0f < Yt fy Afg = %.0f (por mm2 de Afg): M_Rd <= fu (Afn/Afg) Wt / ga1 = %.2f kN*m", in.steel.fu * in.netAreaRatio,
+                                             yt * in.steel.fy, limit / kKnm));
+                    if (limit < data.MRd) {
+                        data.MRd = limit;
+                        data.governing = "ruptura da mesa tracionada (5.4.2.6)";
+                    }
+                }
+            }
+            it = flexCache.emplace(key, std::move(data)).first;
         }
         return it->second;
     };
@@ -411,6 +429,23 @@ BarDesignOutput designBar(const BarDesignInput &in)
     }
     std::sort(out.checks.begin(), out.checks.end(), [](const CheckResult &a, const CheckResult &b) { return a.ratio > b.ratio; });
 
+    if (cold && (s.kind == SectionKind::ColdChannel || s.kind == SectionKind::ColdLippedChannel || s.kind == SectionKind::ColdZ || s.kind == SectionKind::ColdHat)) {
+        // Reacao nas extremidades (cortante na alma): esmagamento da alma, Anexo D da NBR 14762, para um apoio de 50 mm
+        double reaction = 0.0;
+        for (const ComboEffects &combo : in.combos) {
+            if (!combo.stations.empty()) {
+                reaction = std::max({reaction, std::abs(combo.stations.front().e.Vy), std::abs(combo.stations.back().e.Vy)});
+            }
+        }
+        if (reaction > 0.0) {
+            const Nbr14762::WebCripplingData wc = Nbr14762::webCrippling(s, in.steel, true, 50.0, o14);
+            if (wc.covered) {
+                out.warnings.push_back(fmt("Esmagamento da alma (NBR 14762, Anexo D) nao e verificado automaticamente (o comprimento de apoio e desconhecido): "
+                                           "para apoio de 50 mm na extremidade, F_Rd = %.1f kN (mesas nao conectadas) %s reacao maxima de %.1f kN.",
+                                           wc.FRd / kKn, reaction > wc.FRd ? "E MENOR QUE a" : "contra a", reaction / kKn));
+            }
+        }
+    }
     if (anyTorsionIgnored) {
         out.warnings.push_back("Ha momento de torcao em perfil aberto/macico: a verificacao de torcao nao e coberta (requer analise de empenamento).");
     }

@@ -49,6 +49,9 @@ struct BarDesignInput {
     double b2 {1.0};                        ///< amplificacao global B2 aplicada aos momentos
     bool slendernessGoverns {true};         ///< limite de esbeltez entra no aproveitamento
     double netAreaRatio {1.0};              ///< An/Ag
+    double stiffenerSpacing {0.0};          ///< a entre enrijecedores transversais de alma (mm); 0 = sem (NBR 8800, 5.4.3.1.1)
+    int panelTensionFlange {0};             ///< NBR 14762 Anexo F: 0 = nao; 1 = painel na mesa tracionada, biapoiada; 2 = continua
+    bool coldWork {false};                  ///< NBR 14762 Anexo B: aumento de fy nas dobras
     double ct {1.0};
     Standard rectangularTubeStandard {Standard::NBR14762};
     Nbr8800::Options opt8800;

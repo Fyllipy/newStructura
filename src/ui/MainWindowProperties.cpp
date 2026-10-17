@@ -592,23 +592,8 @@ void MainWindow::onNewModel()
         resetModel();
         m_projectName.clear();
         applyIdentification();
-        // material do aco padrao (kN e m)
-        if (const auto steel = Structura::App::Services::DesignService::findSteel(settings.steel)) {
-            const auto *entry = Structura::App::Services::MaterialLibrary::find(steel->name);
-            MaterialInfo info;
-            info.uuid = QUuid::createUuid();
-            info.externalId = nextMaterialExternalId();
-            info.name = steel->name;
-            info.youngModulus = (entry ? entry->eGPa : 200.0) * 1e6;
-            info.shearModulus = (entry ? entry->gGPa : 77.0) * 1e6;
-            info.unitWeight = entry ? entry->unitWeight : 78.5;
-            info.library = entry ? entry->name : QString();
-            info.fy = steel->fy;
-            info.fu = steel->fu;
-            m_materials.append(info);
-            m_lastMaterialId = info.uuid;
-            m_extras.design.defaultSteel = steel->name;
-        }
+        addSteelMaterial(settings.steel);
+        ensureDefaultMaterial();
         m_extras.loadCases.clear();
         auto addCase = [this](const QString &name, const QString &abbreviation, bool selfWeight) {
             Structura::App::ProjectData::LoadCase c;
@@ -648,8 +633,8 @@ void MainWindow::onNewModel()
 void MainWindow::onAbout()
 {
     QMessageBox::about(this,
-                       tr("Sobre o Structura 3D"),
-                       tr("<b>Structura 3D</b><br>Modelagem, análise e dimensionamento de estruturas metálicas em 3D.<br><br>"
+                       tr("Sobre o Structura"),
+                       tr("<b>Structura</b><br>Modelagem, análise e dimensionamento de estruturas metálicas em 3D.<br><br>"
                           "Análise: solver de elementos de barra (1ª e 2ª ordem).<br>"
                           "Dimensionamento: NBR 8800:2024 e NBR 14762:2010.<br>"
                           "Ligações: NBR 8800:2024, NBR 6118:2023 e CIDECT Design Guide 1."));
@@ -665,4 +650,41 @@ QString MainWindow::datDialogInitialDirectory() const
 void MainWindow::showDatStatusMessage(const QString &prefix, const QString &filePath)
 {
     statusBar()->showMessage(tr("%1: %2").arg(prefix, QFileInfo(filePath).fileName()), 5000);
+}
+
+bool MainWindow::addSteelMaterial(const QString &name)
+{
+    const auto steel = Structura::App::Services::DesignService::findSteel(name);
+    if (!steel) {
+        return false;
+    }
+    const auto *entry = Structura::App::Services::MaterialLibrary::find(steel->name);
+    MaterialInfo info;
+    info.uuid = QUuid::createUuid();
+    info.externalId = nextMaterialExternalId();
+    info.name = steel->name;
+    info.youngModulus = (entry ? entry->eGPa : 200.0) * 1e6;   // kN/m2
+    info.shearModulus = (entry ? entry->gGPa : 77.0) * 1e6;
+    info.unitWeight = entry ? entry->unitWeight : 78.5;
+    info.library = entry ? entry->name : QString();
+    info.fy = steel->fy;
+    info.fu = steel->fu;
+    m_materials.append(info);
+    m_lastMaterialId = info.uuid;
+    m_extras.design.defaultSteel = steel->name;
+    return true;
+}
+
+/// Todo projeto tem ao menos um material: sem ele nao ha como atribuir propriedades as barras.
+void MainWindow::ensureDefaultMaterial()
+{
+    if (!m_materials.isEmpty()) {
+        return;
+    }
+    if (!addSteelMaterial(m_extras.design.defaultSteel)) {
+        const auto grades = Structura::App::Services::DesignService::steelGrades();
+        if (!grades.isEmpty()) {
+            addSteelMaterial(grades.first().name);
+        }
+    }
 }

@@ -1074,6 +1074,49 @@ private slots:
         model.nodes.front().x = 1.0;
         QVERIFY(fp1 != Structura::App::Services::ResultsPersistence::fingerprint({&model}, false, 0.8));
     }
+    void supportMemberAccumulatesAllConnectionsAtTheNode()
+    {
+        using Structura::App::Services::ConnectionService;
+        ConnectionService::BeamInfo beam;
+        beam.depth = 313;
+        beam.tw = 6.6;
+        auto connection = ConnectionService::makeDefault(ProjectData::NodeConnection::kShearTab, beam, 250.0, 400.0);
+        connection.values["supType"] = 1.0;
+        connection.values["supD"] = 250.0;
+        connection.values["supBf"] = 146.0;
+        connection.values["supTf"] = 8.6;
+        connection.values["supTw"] = 6.1;
+        ConnectionService::Forces alone;
+        alone.shear = 80000.0;
+        alone.axial = 20000.0;
+        auto shared = alone;
+        const auto demand = ConnectionService::supportDemand(connection, alone);
+        QVERIFY(demand.first > 0.0);
+        shared.hostTension = demand.first;
+        shared.hostCompression = demand.second;
+        shared.hostConnections = 1;
+        const auto single = ConnectionService::evaluate(connection, alone);
+        const auto both = ConnectionService::evaluate(connection, shared);
+        // a segunda ligacao sobre a mesma barra de apoio aumenta a solicitacao local do apoio (e os rotulos indicam isso)
+        const std::string suffix = " (com mais 1 ligação(ões) na barra de apoio)";
+        int labelled = 0;
+        for (const auto &check : both.checks) {
+            const auto at = check.name.find(suffix);
+            if (at == std::string::npos) {
+                continue;
+            }
+            ++labelled;
+            const std::string base = check.name.substr(0, at);
+            for (const auto &c1 : single.checks) {
+                if (c1.name == base) {
+                    QVERIFY(check.ratio() >= c1.ratio() - 1e-12);
+                    QVERIFY(check.demand >= c1.demand);
+                }
+            }
+        }
+        QVERIFY(labelled > 0);
+        QVERIFY(both.maxRatio >= single.maxRatio);
+    }
     void nodeConnectionsEvaluateAndPersist()
     {
         using Structura::App::Services::ConnectionService;
@@ -1137,6 +1180,31 @@ private slots:
         QCOMPARE(c.governing, connection.governing);
         QCOMPARE(c.values.value(QStringLiteral("plateT")), connection.values.value(QStringLiteral("plateT")));
         QCOMPARE(again.extras.connections.at(1).type, ProjectData::NodeConnection::kDoubleAngle);
+
+        // parametros de dimensionamento novos e a barra de apoio da ligacao sobrevivem a gravacao
+        again.extras.design.defaults.stiffenerSpacing = 1500.0;
+        again.extras.design.defaults.panelTensionFlange = 1;
+        again.extras.design.defaults.coldWork = true;
+        ProjectData::DesignMemberParams member;
+        member.memberId = 12;
+        member.stiffenerSpacing = 900.0;
+        member.panelTensionFlange = 2;
+        member.coldWork = true;
+        again.extras.design.members.append(member);
+        again.extras.connections[0].values[QStringLiteral("supMember")] = 5.0;
+        const QString third = dir.filePath(QStringLiteral("c3.dat"));
+        QVERIFY(service.save(third, &gateway2, again.materials, again.sections, again.supports, again.nodal, again.member, again.extras, &error));
+        MemoryGateway gateway3;
+        Loaded last;
+        QVERIFY(load(service, gateway3, third, last));
+        QCOMPARE(last.extras.design.defaults.stiffenerSpacing, 1500.0);
+        QCOMPARE(last.extras.design.defaults.panelTensionFlange, 1);
+        QVERIFY(last.extras.design.defaults.coldWork);
+        QCOMPARE(last.extras.design.members.size(), 1);
+        QCOMPARE(last.extras.design.members.first().stiffenerSpacing, 900.0);
+        QCOMPARE(last.extras.design.members.first().panelTensionFlange, 2);
+        QVERIFY(last.extras.design.members.first().coldWork);
+        QCOMPARE(last.extras.connections.first().values.value(QStringLiteral("supMember")), 5.0);
     }
     void newConnectionTypesEvaluateProposeAndPersist()
     {
@@ -1193,6 +1261,16 @@ private slots:
             QVERIFY(std::abs(e.maxRatio - std::max(ConnectionService::evaluate(c, onlyLight).maxRatio, ConnectionService::evaluate(c, onlyHeavy).maxRatio)) < 1e-12);
             QVERIFY(ConnectionService::evaluate(c, onlyHeavy).maxRatio >= ConnectionService::evaluate(c, onlyLight).maxRatio);
             QVERIFY(!e.governingCase.isEmpty());
+            // atrito (6.3.4): acrescenta as verificacoes de deslizamento das talas de mesa e de alma
+            auto slipping = c;
+            slipping.values[QStringLiteral("slip")] = 1.0;
+            const auto slipEval = ConnectionService::evaluate(slipping, onlyHeavy);
+            int slipChecks = 0;
+            for (const auto &check : slipEval.checks) {
+                slipChecks += check.clause.find("6.3.4") != std::string::npos ? 1 : 0;
+            }
+            QCOMPARE(slipChecks, 2);
+            QCOMPARE(static_cast<int>(slipEval.checks.size()), static_cast<int>(ConnectionService::evaluate(c, onlyHeavy).checks.size()) + 2);
             c.id = 2;
             list.append(c);
         }

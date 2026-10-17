@@ -50,6 +50,9 @@ private:
         QDoubleSpinBox *b2 {nullptr};
         QDoubleSpinBox *netArea {nullptr};
         QSpinBox *defl {nullptr};
+        QDoubleSpinBox *stiffener {nullptr};
+        QComboBox *panel {nullptr};
+        QCheckBox *coldWork {nullptr};
     };
     QWidget *buildParamForm(ParamEditors &editors, bool allowInheritSteel);
     static void load(ParamEditors &editors, const Structura::App::ProjectData::DesignMemberParams &p);

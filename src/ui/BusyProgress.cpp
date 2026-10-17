@@ -20,6 +20,8 @@ namespace Structura::UI {
 namespace {
 
 std::atomic<int> g_busyDepth {0};
+class ProgressPopup;
+ProgressPopup *g_scopePopup = nullptr;   // janela de um BusyScope ativo (calculos internos a reaproveitam)
 
 constexpr int kShowDelayMs = 250;
 
@@ -220,11 +222,79 @@ bool isBusy()
     return g_busyDepth.load() > 0;
 }
 
+struct BusyScope::Impl {
+    ProgressPopup *popup {nullptr};
+    bool counted {false};
+};
+
+BusyScope::BusyScope(QWidget *parent, const QString &calculation, const QString &detail)
+    : m_impl(new Impl)
+{
+    if (!QCoreApplication::instance() || QThread::currentThread() != QCoreApplication::instance()->thread()) {
+        return;
+    }
+    ++g_busyDepth;
+    m_impl->counted = true;
+    QApplication::setOverrideCursor(Qt::BusyCursor);
+    m_impl->popup = new ProgressPopup(parent, calculation, detail);
+    g_scopePopup = m_impl->popup;
+    m_impl->popup->setState(0, 0, detail);
+    m_impl->popup->present();
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 30);
+}
+
+BusyScope::~BusyScope()
+{
+    if (m_impl->popup && g_scopePopup == m_impl->popup) {
+        g_scopePopup = nullptr;
+    }
+    if (m_impl->counted) {
+        QApplication::restoreOverrideCursor();
+        --g_busyDepth;
+    }
+    delete m_impl->popup;
+    delete m_impl;
+}
+
+void BusyScope::update(int value, int total, const QString &detail)
+{
+    if (!m_impl->popup) {
+        return;
+    }
+    m_impl->popup->setState(value, total, detail);
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 30);
+}
+
 void runBusyImpl(QWidget *parent, const QString &calculation, const QString &detail, const std::function<void(BusyProgress &)> &job)
 {
     BusyProgress progress;
-    if (g_busyDepth.load() > 0 || !QCoreApplication::instance() || QThread::currentThread() != QCoreApplication::instance()->thread()) {
+    const bool onUiThread = QCoreApplication::instance() && QThread::currentThread() == QCoreApplication::instance()->thread();
+    if (!onUiThread || (g_busyDepth.load() > 0 && !g_scopePopup)) {
         job(progress);   // aninhado (ou fora da interface): executa direto
+        return;
+    }
+    if (g_scopePopup) {
+        // dentro de um BusyScope: o calculo roda em outra thread e a janela do escopo continua animada e informando a etapa
+        std::exception_ptr failure;
+        std::atomic<bool> finished {false};
+        std::thread worker([&]() {
+            try {
+                job(progress);
+            } catch (...) {
+                failure = std::current_exception();
+            }
+            finished = true;
+        });
+        while (!finished.load()) {
+            progress.takeDetailChanged();
+            g_scopePopup->setState(progress.value(), progress.total(), progress.detail().isEmpty() ? detail : progress.detail());
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 20);
+            QThread::msleep(8);
+        }
+        worker.join();
+        if (failure) {
+            std::rethrow_exception(failure);
+        }
         return;
     }
     ++g_busyDepth;

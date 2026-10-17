@@ -163,3 +163,8 @@ A janela **Ligações** (aba Dimensionamento) tem agora um seletor de tipologia 
 ### Ligações em 3D
 
 Botão *Ligações em 3D* na barra de exibição. Para cada ligação do modelo desenha, no referencial da barra (s ao longo da barra a partir do nó, t na altura da seção, u na normal da alma), chapas, cantoneiras, talas, parafusos (haste, cabeça e porca), soldas, chumbadores e bloco de concreto (`app/services/ConnectionSolids`, `viz/structure/ConnectionRenderer`). As chapas ficam verdes (η ≤ 0,7), amarelas (≤ 1,0) ou vermelhas (> 1,0) quando a ligação foi verificada; a ligação tubular é só um marcador no banzo. A geometria é esquemática (dimensões das entradas da ligação); a orientação supõe a alma no plano x'–y' local da barra.
+
+## Livros de engenharia (fórmulas e marchas de cálculo)
+
+* `docs/LIVRO_DIMENSIONAMENTO_PERFIS_LAMINADOS.md` — perfis laminados, soldados e tubulares (NBR 8800:2024), ligações, base de pilar, vigas e lajes mistas.
+* `docs/LIVRO_DIMENSIONAMENTO_PERFIS_FORMADOS_A_FRIO.md` — perfis formados a frio (NBR 14762:2010): MLE, flambagem distorcional por faixas finitas, FLT.

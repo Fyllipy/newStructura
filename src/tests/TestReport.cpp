@@ -46,7 +46,7 @@ private slots:
         in.info.project = QStringLiteral("Projeto de teste");
         SheetBuilder::ConnectionDetail detail;
         using NC = Structura::App::ProjectData::NodeConnection;
-        for (const auto type : {NC::kShearTab, NC::kDoubleAngle, NC::kGusset, NC::kSplice, NC::kBasePlate, NC::kTubular}) {
+        for (const auto type : {NC::kShearTab, NC::kDoubleAngle, NC::kGusset, NC::kSplice, NC::kBasePlate, NC::kTubular, NC::kColdFormed}) {
             SheetBuilder::ConnectionDetail d;
             Structura::App::Services::ConnectionService::BeamInfo beam;
             beam.depth = 360;
@@ -85,7 +85,7 @@ private slots:
                 QVERIFY(sheet.entities.size() > 40);
             }
         }
-        QCOMPARE(details, 6);
+        QCOMPARE(details, 7);
         const QString path = QDir::temp().filePath(QStringLiteral("structura_sheets_test.pdf"));
         QFile::remove(path);
         {

@@ -31,6 +31,14 @@ function(add_structura_test TARGET_NAME SOURCE_FILE)
                     $<TARGET_RUNTIME_DLLS:${TARGET_NAME}> $<TARGET_FILE_DIR:${TARGET_NAME}>
             COMMAND_EXPAND_LISTS
         )
+        # testes de interface rodam em modo offscreen: o plugin de plataforma fica ao lado de cada executavel
+        # (sem ele o Qt informa que o unico plugin disponivel e "windows")
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/platforms
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}/platforms/qoffscreen.dll"
+                    $<TARGET_FILE_DIR:${TARGET_NAME}>/platforms/qoffscreen.dll
+        )
     endif()
 
     add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME})
@@ -42,16 +50,6 @@ add_structura_test(TestArchitectureBoundaries TestArchitectureBoundaries.cpp)
 add_structura_test(TestSectionShapes TestSectionShapes.cpp)
 add_structura_test(TestProjectIoAndSolver TestProjectIoAndSolver.cpp)
 add_structura_test(TestProfileUi TestProfileUi.cpp)
-
-# Testes de interface rodam em modo offscreen: copia o plugin de plataforma ao lado do executavel.
-if (MSVC)
-    add_custom_command(TARGET TestProfileUi POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:TestProfileUi>/platforms
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}/platforms/qoffscreen.dll"
-                $<TARGET_FILE_DIR:TestProfileUi>/platforms/qoffscreen.dll
-    )
-endif()
 
 add_structura_test(TestAppearanceRender TestAppearanceRender.cpp)
 vtk_module_autoinit(TARGETS TestAppearanceRender MODULES ${VTK_LIBRARIES})
