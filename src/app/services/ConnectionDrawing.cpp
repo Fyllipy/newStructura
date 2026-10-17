@@ -566,7 +566,7 @@ double drawColdFormedDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, d
     const double lLong = val(c, "lLong", 80.0), lTrans = val(c, "lTrans", 0.0);
     double width = (lines - 1) * gauge + 2.0 * edge;
     double overlap = end1 + end2 + (n - 1) * pitch;
-    if (mode == 1) {
+    if (mode == 1 || mode == 3) {
         width = std::max(width, std::max(lTrans, 40.0));
         overlap = std::max(overlap, lLong + 10.0);
     }
@@ -583,7 +583,7 @@ double drawColdFormedDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, d
     s.text(P(width / 2.0 + 6.0, -overlap - 30.0), "PERFIL FORMADO A FRIO t1 = " + fmtNum(val(c, "t1", 2.0), 2), 2.2, l.text);
     s.rect(P(-width / 2.0, -overlap), P(width / 2.0, 40.0), l.plate);
     s.text(P(width / 2.0 + 6.0, 20.0), "CHAPA t2 = " + fmtNum(val(c, "t2", 4.75), 2), 2.2, l.text);
-    if (mode == 1) {
+    if (mode == 1 || mode == 3) {
         const double w = val(c, "leg", 3.0);
         s.line(P(-width / 2.0, -overlap), P(width / 2.0, -overlap), l.weld);
         s.line(P(-width / 2.0, -overlap), P(-width / 2.0, -overlap + lLong), l.weld);
@@ -608,6 +608,61 @@ double drawColdFormedDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, d
         text.push_back(std::string("MEIO DE LIGAÇÃO: ") + modes[std::max(0, std::min(2, mode))]);
         text.push_back("ESPESSURA DAS PARTES LIGADAS <= 4,75 mm (NBR 14762:2010, 10.2.1 E 10.3.1); ACIMA DISSO, NBR 8800.");
         notesFinish(s, l, rx0, ry0, text, d, "ABNT NBR 14762:2010, SEÇÃO 10 - LIGAÇÕES.");
+    }
+    return scale;
+}
+
+double drawEndPlateDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, double rx0, double ry0, double rx1, double ry1, bool notes, double fixedScale)
+{
+    const L l = layers(s);
+    const NodeConnection &c = d.connection;
+    const double db = val(c, "db", 20.0), dh = Structura::Design::Connections::standardHoleDiameter(db);
+    const double depth = val(c, "beamD", 300.0), bfl = val(c, "bfl", 150.0), tfl = val(c, "tfl", 10.0), tw = val(c, "tw", 6.0);
+    const double width = val(c, "plateW", 160.0), gauge = val(c, "gauge", 90.0), pitch = val(c, "pitch", 70.0), firstRow = val(c, "firstRow", 40.0), edge = val(c, "edgeV", 35.0);
+    const int tRows = std::max(1, static_cast<int>(val(c, "tRows", 2.0) + 0.5)), sRows = std::max(1, static_cast<int>(val(c, "sRows", 1.0) + 0.5));
+    const double extTop = firstRow + (tRows - 1) * pitch + edge, extBot = firstRow + (sRows - 1) * pitch + edge;
+    const double height = depth + extTop + extBot;
+    const Panels p = panelsFor(rx0, ry0, rx1, ry1);
+    const double extX = width + 120.0, extY = height + 80.0;
+    const double scale = pickScaleMargin(extX, extY, p.rx1 - p.lx0, p.y1 - p.y0 - 8.0, 16.0, fixedScale);
+    const double k = 1.0 / scale;
+    const double cx = (p.lx0 + p.rx1) / 2.0, cy = (p.y0 + p.y1) / 2.0 - 4.0;
+    auto P = [&](double u, double t) { return Point {cx + u * k, cy + (t - (extTop - extBot) / 2.0) * k}; };
+    s.text({p.lx0 + 6.0, p.y1}, "LIGAÇÃO RÍGIDA - CHAPA DE EXTREMIDADE (VISTA FRONTAL)", 3.2, l.text, TextAlign::Left, 0.0, true);
+    s.rect(P(-width / 2.0, -(depth / 2.0 + extBot)), P(width / 2.0, depth / 2.0 + extTop), l.plate);
+    // perfil da viga atras da chapa
+    s.rect(P(-bfl / 2.0, depth / 2.0 - tfl), P(bfl / 2.0, depth / 2.0), l.hidden);
+    s.rect(P(-bfl / 2.0, -depth / 2.0), P(bfl / 2.0, -depth / 2.0 + tfl), l.hidden);
+    s.rect(P(-tw / 2.0, -depth / 2.0 + tfl), P(tw / 2.0, depth / 2.0 - tfl), l.hidden);
+    s.line(P(-width / 2.0 - 10.0, 0.0), P(width / 2.0 + 10.0, 0.0), l.centre);
+    s.line(P(0.0, -(depth / 2.0 + extBot) - 10.0), P(0.0, depth / 2.0 + extTop + 10.0), l.centre);
+    auto bolt = [&](double u, double t) { s.circle(P(u, t), std::max(0.6, dh / 2.0 * k), l.bolt); };
+    for (int i = 0; i < tRows; ++i) {
+        for (const double col : {-1.0, 1.0}) {
+            bolt(col * gauge / 2.0, depth / 2.0 + firstRow + i * pitch);
+        }
+    }
+    for (int j = 0; j < sRows; ++j) {
+        for (const double col : {-1.0, 1.0}) {
+            bolt(col * gauge / 2.0, -(depth / 2.0 + firstRow + j * pitch));
+        }
+    }
+    const double top = depth / 2.0 + extTop;
+    dimLinear(s, l, P(-gauge / 2.0, depth / 2.0 + firstRow), P(gauge / 2.0, depth / 2.0 + firstRow), 14.0, "g = " + fmtNum(gauge, 0));
+    dimLinear(s, l, P(width / 2.0, depth / 2.0), P(width / 2.0, depth / 2.0 + firstRow), 8.0, "b = " + fmtNum(firstRow, 0));
+    if (tRows > 1) {
+        dimLinear(s, l, P(width / 2.0, depth / 2.0 + firstRow), P(width / 2.0, depth / 2.0 + firstRow + pitch), 8.0, "p = " + fmtNum(pitch, 0));
+    }
+    dimLinear(s, l, P(-width / 2.0, -(depth / 2.0 + extBot)), P(-width / 2.0, top), -10.0, "H = " + fmtNum(height, 0));
+    dimLinear(s, l, P(-width / 2.0, -(depth / 2.0 + extBot) - 2.0), P(width / 2.0, -(depth / 2.0 + extBot) - 2.0), -8.0, "B = " + fmtNum(width, 0));
+    if (notes) {
+        auto text = connectionNotes(d, "");
+        text.push_back("CHAPA DE EXTREMIDADE t = " + fmtNum(val(c, "plateT", 22.4), 1) + " mm; SOLDA DAS MESAS " + fmtNum(val(c, "weldF", 8.0), 0) + " mm, DA ALMA " + fmtNum(val(c, "weldW", 6.0), 0) + " mm.");
+        text.push_back("PARAFUSOS TRACIONADOS: " + std::to_string(2 * tRows) + " (ACIMA DA MESA); DE CORTANTE: " + std::to_string(2 * sRows) + " (ABAIXO).");
+        if (val(c, "cont", 0.0) != 0.0) {
+            text.push_back("ENRIJECEDORES HORIZONTAIS NO PILAR " + fmtNum(val(c, "contW", 60.0), 0) + " x " + fmtNum(val(c, "contT", 9.5), 1) + " mm, ALINHADOS COM AS MESAS DA VIGA.");
+        }
+        notesFinish(s, l, rx0, ry0, text, d, "ABNT NBR 8800:2024, 5.7 E 6.3 - LIGAÇÃO RÍGIDA.");
     }
     return scale;
 }
@@ -761,6 +816,7 @@ double drawConnectionDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, d
     case NodeConnection::kBasePlate: return drawBasePlateDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);
     case NodeConnection::kTubular: return drawTubularDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);
     case NodeConnection::kColdFormed: return drawColdFormedDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);
+    case NodeConnection::kEndPlate: return drawEndPlateDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);
     default: break;
     }
     const bool angle = c.type == NodeConnection::kDoubleAngle;

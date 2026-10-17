@@ -328,12 +328,23 @@ struct DesignMemberParams {
     double stiffenerSpacing {0.0};   ///< Distancia entre enrijecedores transversais de alma, a (mm); 0 = sem enrijecedores (kv = 5,34)
     int panelTensionFlange {0};      ///< NBR 14762 Anexo F: 0 = nao, 1 = mesa tracionada ligada a painel (barra biapoiada), 2 = idem (barra continua)
     bool coldWork {false};           ///< NBR 14762 Anexo B: aumento de fy nas dobras (trabalho a frio)
+    double bearingLength {0.0};      ///< NBR 14762 Anexo D: comprimento de apoio c (mm) das reacoes de extremidade; 0 = so aviso
+    int fatigueCategory {0};         ///< NBR 8800 Anexo H: categoria do detalhe (0 = nao verifica; 1 A, 2 B, 3 B', 4 C, 5 D, 6 E, 7 E', 8 F, 9 G)
+    double fatigueCycles {0.0};      ///< numero de ciclos de variacao de tensoes N na vida util
+    double openingDiameter {0.0};    ///< NBR 8800 Anexo F: diametro D da abertura circular na alma (mm); 0 = sem abertura
+    double openingPosition {0.0};    ///< distancia do centro da abertura ao apoio esquerdo (mm)
+    double openingOffset {0.0};      ///< excentricidade do centro da abertura em relacao a meia altura (mm)
+    double openingNeighbourD {0.0};  ///< diametro da abertura adjacente (mm); 0 = nao ha
+    double openingSpacing {0.0};     ///< distancia entre os centros das duas aberturas, ao longo da viga (mm)
     bool operator==(const DesignMemberParams &o) const
     {
         return memberId == o.memberId && steel == o.steel && kx == o.kx && ky == o.ky && kz == o.kz && lx == o.lx && ly == o.ly && lz == o.lz
             && segments == o.segments && lb == o.lb && braced == o.braced && cbOne == o.cbOne && b2 == o.b2
             && netAreaRatio == o.netAreaRatio && deflDenominator == o.deflDenominator && stiffenerSpacing == o.stiffenerSpacing
-            && panelTensionFlange == o.panelTensionFlange && coldWork == o.coldWork;
+            && panelTensionFlange == o.panelTensionFlange && coldWork == o.coldWork && bearingLength == o.bearingLength
+            && fatigueCategory == o.fatigueCategory && fatigueCycles == o.fatigueCycles && openingDiameter == o.openingDiameter
+            && openingPosition == o.openingPosition && openingOffset == o.openingOffset && openingNeighbourD == o.openingNeighbourD
+            && openingSpacing == o.openingSpacing;
     }
 };
 
@@ -445,6 +456,7 @@ struct NodeConnection {
     static constexpr int kBasePlate = 4;   ///< base de pilar com chumbadores
     static constexpr int kTubular = 5;     ///< ligacao soldada de trelica tubular
     static constexpr int kColdFormed = 6;  ///< ligacao de perfil formado a frio (NBR 14762, secao 10)
+    static constexpr int kEndPlate = 7;    ///< ligacao rigida viga-pilar por chapa de extremidade
 
     int id {0};
     int nodeId {0};            ///< id externo do no

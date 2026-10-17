@@ -85,6 +85,34 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     e.defl->setRange(0, 2000);
     e.defl->setSpecialValueText(tr("automático"));
     e.defl->setPrefix(QStringLiteral("L / "));
+    e.fatigueCategory = new QComboBox;
+    e.fatigueCategory->addItem(tr("Não verificar"), 0);
+    e.fatigueCategory->addItem(tr("A – metal-base afastado de solda (165 MPa)"), 1);
+    e.fatigueCategory->addItem(tr("B – soldas contínuas, seção bruta de juntas por atrito (110 MPa)"), 2);
+    e.fatigueCategory->addItem(tr("B' – soldas contínuas com chapa de espera (83 MPa)"), 3);
+    e.fatigueCategory->addItem(tr("C – furos/ligações parafusadas, enrijecedores soldados (69 MPa)"), 4);
+    e.fatigueCategory->addItem(tr("D – acessórios longos soldados (48 MPa)"), 5);
+    e.fatigueCategory->addItem(tr("E – acessórios soldados, chapa de cobertura (31 MPa)"), 6);
+    e.fatigueCategory->addItem(tr("E' – extremidade de cobrejunta, cantos reentrantes (18 MPa)"), 7);
+    e.fatigueCategory->addItem(tr("F – cisalhamento na garganta de filete (55 MPa)"), 8);
+    e.fatigueCategory->addItem(tr("G – parafusos e barras rosqueadas em tração (48 MPa)"), 9);
+    e.fatigueCategory->setToolTip(tr("Tabela H.1: escolha o caso do detalhe. A faixa de tensões é a diferença entre a maior e a menor tensão normal (N/A ± M/W) "
+                                     "nas combinações selecionadas: selecione as combinações de fadiga (H.2.1, ações variáveis com ψ1 = 1,0). Dispensada para N < 20 000."));
+    e.fatigueCycles = spin(0.0, 1e12, 0.0, 0, 100000.0);
+    e.fatigueCycles->setSpecialValueText(tr("infinito (usa σTH)"));
+    e.openingD = spin(0.0, 5000.0, 0.0, 0, 10.0, tr(" mm"));
+    e.openingD->setSpecialValueText(tr("sem abertura"));
+    e.openingD->setToolTip(tr("NBR 8800:2024, Anexo F.3: aberturas circulares sem reforço em vigas I biapoiadas, prismáticas, com carga uniformemente distribuída, "
+                              "dentro do terço médio da altura e dos dois quartos centrais do vão, afastadas ≥ 2,5 D, com cortante nos apoios ≤ 50 % de V_Rd."));
+    e.openingPos = spin(0.0, 1e6, 0.0, 0, 50.0, tr(" mm"));
+    e.openingOffset = spin(-5000.0, 5000.0, 0.0, 0, 10.0, tr(" mm"));
+    e.openingNeighbourD = spin(0.0, 5000.0, 0.0, 0, 10.0, tr(" mm"));
+    e.openingNeighbourD->setSpecialValueText(tr("não há"));
+    e.openingSpacing = spin(0.0, 1e6, 0.0, 0, 50.0, tr(" mm"));
+    e.bearing = spin(0.0, 1000.0, 0.0, 0, 5.0, tr(" mm"));
+    e.bearing->setSpecialValueText(tr("só aviso (50 mm)"));
+    e.bearing->setToolTip(tr("NBR 14762, Anexo D (perfis U, Z e cartola): com o comprimento de apoio c informado (mínimo 20 mm), a reação de extremidade "
+                             "passa a ser verificada contra F_Rd; em 0 só aparece um aviso calculado para 50 mm."));
     e.coldWork = new QCheckBox(tr("Considerar o aumento de fy pelo trabalho a frio nas dobras (NBR 14762, Anexo B)"));
     e.coldWork->setToolTip(tr("fya = C·fyc + (1 − C)·fy ≤ fu, aplicável só a seções totalmente efetivas (λp ≤ 0,673) em tração, compressão e flexão; "
                               "exige fu/fy ≥ 1,2, ri/t ≤ 7 e dobras ≤ 120°. Usa ri = t."));
@@ -121,6 +149,14 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     form->addRow(tr("Espaçamento dos enrijecedores de alma (a)"), e.stiffener);
     form->addRow(tr("Mesa tracionada ligada a painel (NBR 14762, Anexo F)"), e.panel);
     form->addRow(QString(), e.coldWork);
+    form->addRow(tr("Comprimento de apoio das reações (esmagamento da alma, Anexo D)"), e.bearing);
+    form->addRow(tr("Fadiga (NBR 8800, Anexo H): categoria do detalhe"), e.fatigueCategory);
+    form->addRow(tr("Fadiga: número de ciclos N"), e.fatigueCycles);
+    form->addRow(tr("Abertura circular na alma (Anexo F): diâmetro D"), e.openingD);
+    form->addRow(tr("Abertura: distância do centro ao apoio esquerdo"), e.openingPos);
+    form->addRow(tr("Abertura: excentricidade em relação à meia altura"), e.openingOffset);
+    form->addRow(tr("Abertura adjacente: diâmetro"), e.openingNeighbourD);
+    form->addRow(tr("Abertura adjacente: distância entre centros"), e.openingSpacing);
     return widget;
 }
 
@@ -144,6 +180,14 @@ void DesignSettingsDialog::load(ParamEditors &e, const DesignMemberParams &p)
     e.stiffener->setValue(p.stiffenerSpacing);
     e.panel->setCurrentIndex(std::clamp(p.panelTensionFlange, 0, 2));
     e.coldWork->setChecked(p.coldWork);
+    e.bearing->setValue(p.bearingLength);
+    e.fatigueCategory->setCurrentIndex(std::clamp(p.fatigueCategory, 0, 9));
+    e.fatigueCycles->setValue(p.fatigueCycles);
+    e.openingD->setValue(p.openingDiameter);
+    e.openingPos->setValue(p.openingPosition);
+    e.openingOffset->setValue(p.openingOffset);
+    e.openingNeighbourD->setValue(p.openingNeighbourD);
+    e.openingSpacing->setValue(p.openingSpacing);
 }
 
 DesignMemberParams DesignSettingsDialog::read(const ParamEditors &e)
@@ -166,6 +210,14 @@ DesignMemberParams DesignSettingsDialog::read(const ParamEditors &e)
     p.stiffenerSpacing = e.stiffener->value();
     p.panelTensionFlange = e.panel->currentData().toInt();
     p.coldWork = e.coldWork->isChecked();
+    p.bearingLength = e.bearing->value();
+    p.fatigueCategory = e.fatigueCategory->currentData().toInt();
+    p.fatigueCycles = e.fatigueCycles->value();
+    p.openingDiameter = e.openingD->value();
+    p.openingPosition = e.openingPos->value();
+    p.openingOffset = e.openingOffset->value();
+    p.openingNeighbourD = e.openingNeighbourD->value();
+    p.openingSpacing = e.openingSpacing->value();
     return p;
 }
 

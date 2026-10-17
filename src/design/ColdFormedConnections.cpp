@@ -153,6 +153,50 @@ void weld(const ColdFormedInput &in, double force, std::vector<Check> &out)
     out.push_back(std::move(len));
 }
 
+/// 10.2.4: solda de filete em superficies curvas (ruptura do metal-base e da solda).
+void curvedWeld(const ColdFormedInput &in, double force, std::vector<Check> &out)
+{
+    const double t = in.t1;
+    const double length = in.curvedParallel ? in.lengthLong : in.lengthTrans;
+    double tef;
+    std::string tefText;
+    if (in.curvedSalient) {
+        tef = 0.7 * std::min(in.curvedW1, in.curvedW2);
+        tefText = fmtn("face saliente: tef = 0,7 min(w1 ; w2) = 0,7 x %.1f = %.2f mm", std::min(in.curvedW1, in.curvedW2), tef);
+    } else if (in.curvedTwoSurfaces) {
+        tef = (in.curvedRe > 12.5 ? 0.37 : 0.5) * in.curvedRe;
+        tefText = fmtn("face rente, duas superficies curvas: tef = %s re = %.2f mm", in.curvedRe > 12.5 ? "0,37" : "0,5", tef);
+    } else {
+        tef = 0.3 * in.curvedRe;
+        tefText = fmtn("face rente, uma superficie curva: tef = 0,3 re = %.2f mm", tef);
+    }
+    double resistance;
+    std::string base;
+    if (!in.curvedParallel) {
+        resistance = 0.83 * t * length * in.fu1 / 1.65;
+        base = "10.2.4-a (normal ao eixo): F_Rd = 0,83 t L fu / 1,65";
+    } else if (tef >= 2.0 * t && in.curvedStiffenerHeight >= length) {
+        resistance = 1.50 * t * length * in.fu1 / 1.80;
+        base = "10.2.4-b (paralela, tef >= 2 t e h >= L): F_Rd = 1,50 t L fu / 1,80";
+    } else {
+        resistance = 0.75 * t * length * in.fu1 / 1.80;
+        base = "10.2.4-b (paralela, t <= tef < 2 t ou h < L): F_Rd = 0,75 t L fu / 1,80";
+    }
+    if (t > 2.5) {
+        const double weldRd = 0.75 * tef * length * in.fw / 1.65;
+        resistance = std::min(resistance, weldRd);
+        base += fmtn("; limitado por 10.2.4-c (t > 2,5 mm): 0,75 tef L fw / 1,65 = %.1f kN", weldRd / 1e3);
+    }
+    Check c = ratioN("Filete em superficie curva", "NBR 14762:2010, 10.2.4", force, resistance);
+    c.lines.push_back(tefText);
+    c.lines.push_back(fmtn("t = %.2f mm; L = %.0f mm; re = %.1f mm; fu = %.0f MPa; fw = %.0f MPa", t, length, in.curvedRe, in.fu1, in.fw));
+    c.lines.push_back(fmtn("%s = %.1f kN", base.c_str(), resistance / 1e3));
+    out.push_back(std::move(c));
+    Check len = detail::minimumRule("Comprimento da solda", "NBR 14762:2010, 10.2.4", length, std::max(4.0 * in.leg, 1.0), "mm");
+    len.lines.push_back("Comprimento minimo adotado como 4 vezes a perna (boa pratica; a NBR 14762 nao fixa o valor).");
+    out.push_back(std::move(len));
+}
+
 void screws(const ColdFormedInput &in, double force, std::vector<Check> &out)
 {
     const int count = std::max(1, in.n) * std::max(1, in.lines);
@@ -259,6 +303,7 @@ std::vector<Check> checkColdFormed(const ColdFormedInput &in)
     switch (in.mode) {
     case ColdFormedInput::Weld: weld(in, force, out); break;
     case ColdFormedInput::Screws: screws(in, force, out); break;
+    case ColdFormedInput::CurvedWeld: curvedWeld(in, force, out); break;
     default: bolts(in, force, out); break;
     }
     return out;
@@ -275,7 +320,7 @@ std::vector<Part> partsColdFormed(const ColdFormedInput &in)
     plate.quantity = 1;
     plate.massEach = detail::plateMass(length, width, in.t2);
     parts.push_back(plate);
-    if (in.mode == ColdFormedInput::Weld) {
+    if (in.mode == ColdFormedInput::Weld || in.mode == ColdFormedInput::CurvedWeld) {
         Part w;
         w.description = fmtn("Solda de filete, perna %.1f mm", in.leg);
         w.quantity = 1;

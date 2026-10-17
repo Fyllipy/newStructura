@@ -168,7 +168,9 @@ QString MainWindow::designCacheKey() const
     auto params = [&key](const Structura::App::ProjectData::DesignMemberParams &p) {
         key += QByteArray::number(p.memberId) + p.steel.toUtf8() + ':' + QByteArray::number(p.kx, 'g', 8) + ',' + QByteArray::number(p.ky, 'g', 8) + ',' + QByteArray::number(p.kz, 'g', 8)
             + ',' + QByteArray::number(p.segments) + ',' + QByteArray::number(p.lb, 'g', 8) + ',' + QByteArray::number(static_cast<int>(p.braced)) + QByteArray::number(static_cast<int>(p.cbOne))
-            + ',' + QByteArray::number(p.b2, 'g', 8) + ',' + QByteArray::number(p.netAreaRatio, 'g', 8) + ',' + QByteArray::number(p.deflDenominator) + ',' + QByteArray::number(p.stiffenerSpacing, 'g', 8) + ',' + QByteArray::number(p.panelTensionFlange) + ',' + QByteArray::number(static_cast<int>(p.coldWork)) + ','
+            + ',' + QByteArray::number(p.b2, 'g', 8) + ',' + QByteArray::number(p.netAreaRatio, 'g', 8) + ',' + QByteArray::number(p.deflDenominator) + ',' + QByteArray::number(p.stiffenerSpacing, 'g', 8) + ',' + QByteArray::number(p.panelTensionFlange) + ',' + QByteArray::number(static_cast<int>(p.coldWork)) + ',' + QByteArray::number(p.bearingLength, 'g', 8) + ',' + QByteArray::number(p.fatigueCategory) + ',' + QByteArray::number(p.fatigueCycles, 'g', 10) + ','
+            + QByteArray::number(p.openingDiameter, 'g', 8) + ',' + QByteArray::number(p.openingPosition, 'g', 8) + ',' + QByteArray::number(p.openingOffset, 'g', 8) + ','
+            + QByteArray::number(p.openingNeighbourD, 'g', 8) + ',' + QByteArray::number(p.openingSpacing, 'g', 8) + ','
             + QByteArray::number(p.lx, 'g', 8) + ',' + QByteArray::number(p.ly, 'g', 8) + ',' + QByteArray::number(p.lz, 'g', 8) + ';';
     };
     params(d.defaults);

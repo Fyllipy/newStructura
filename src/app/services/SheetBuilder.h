@@ -48,6 +48,7 @@ public:
         // posicao do centroide em relacao a cada no (alinhamento / excentricidade), nos eixos locais girados (mm)
         double offsetIy {0.0}, offsetIz {0.0};
         double offsetJy {0.0}, offsetJz {0.0};
+        double trimI {0.0}, trimJ {0.0};   ///< recuo (mm) das extremidades I e J ate a face do apoio da ligacao
         double massPerMeter {0.0};    ///< kg/m
     };
     using Info = Structura::App::ProjectData::TitleBlockSettings;

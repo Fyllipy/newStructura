@@ -742,8 +742,8 @@ void drawView(Sheet &s, const Layers &l, const Region &region, const SheetBuilde
         const bool horizontal = isHorizontal(na, nb);
         const V3 n3a = pos(na), n3b = pos(nb);
         const Axes axes = localAxes(n3a, n3b, bar.rotationDeg);
-        const V3 a3 = centroidAt(n3a, axes, bar.offsetIy, bar.offsetIz);
-        const V3 b3 = centroidAt(n3b, axes, bar.offsetJy, bar.offsetJz);
+        const V3 a3 = centroidAt(n3a, axes, bar.offsetIy, bar.offsetIz) + axes.x * bar.trimI;
+        const V3 b3 = centroidAt(n3b, axes, bar.offsetJy, bar.offsetJz) - axes.x * bar.trimJ;
         Item item {&bar, project(a3), project(b3), a3, b3, vertical, horizontal, axes, project(n3a), project(n3b)};
         bool take = false;
         switch (view.kind) {
@@ -1147,8 +1147,8 @@ void draw3DView(Sheet &s, const Layers &l, const Region &region, const SheetBuil
         const auto na = nodes.value(bar.nodeI), nb = nodes.value(bar.nodeJ);
         const V3 n3a = pos(na), n3b = pos(nb);
         const Axes axes = localAxes(n3a, n3b, bar.rotationDeg);
-        const V3 a3 = centroidAt(n3a, axes, bar.offsetIy, bar.offsetIz);
-        const V3 b3 = centroidAt(n3b, axes, bar.offsetJy, bar.offsetJz);
+        const V3 a3 = centroidAt(n3a, axes, bar.offsetIy, bar.offsetIz) + axes.x * bar.trimI;
+        const V3 b3 = centroidAt(n3b, axes, bar.offsetJy, bar.offsetJz) - axes.x * bar.trimJ;
         const int role = bar.memberType == 2 ? 4 : (bar.memberType == 1 ? 3 : (isVertical(na, nb) ? 0 : (isHorizontal(na, nb) ? 1 : 2)));
         const int tag = barIndex * 8 + role;
         ++barIndex;

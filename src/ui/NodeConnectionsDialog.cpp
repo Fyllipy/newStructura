@@ -158,7 +158,7 @@ NodeConnectionsDialog::NodeConnectionsDialog(const QVector<NodeConnection> &conn
             return;
         }
         auto &c = m_connections[m_current];
-        const bool usesSupport = c.type == NodeConnection::kShearTab || c.type == NodeConnection::kDoubleAngle || c.type == NodeConnection::kGusset;
+        const bool usesSupport = c.type == NodeConnection::kShearTab || c.type == NodeConnection::kDoubleAngle || c.type == NodeConnection::kGusset || c.type == NodeConnection::kEndPlate;
         if (!usesSupport) {
             QMessageBox::information(this, tr("Barra de apoio"), tr("Esta tipologia de ligação não tem barra de apoio."));
             return;
@@ -450,6 +450,7 @@ void NodeConnectionsDialog::chooseType()
                                     {NodeConnection::kDoubleAngle, tr("Viga–apoio")},
                                     {NodeConnection::kGusset, tr("Treliça e contraventamento")},
                                     {NodeConnection::kTubular, tr("Treliça tubular")},
+                                    {NodeConnection::kEndPlate, tr("Viga–pilar (rígida)")},
                                     {NodeConnection::kSplice, tr("Continuidade de viga")},
                                     {NodeConnection::kBasePlate, tr("Fundação")},
                                     {NodeConnection::kColdFormed, tr("Perfis formados a frio")}};

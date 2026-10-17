@@ -142,6 +142,8 @@ set(APP_SOURCES
     src/design/BasePlate.cpp
     src/design/ColdFormedConnections.h
     src/design/ColdFormedConnections.cpp
+    src/design/EndPlateConnection.h
+    src/design/EndPlateConnection.cpp
     src/design/TubularJoints.h
     src/design/TubularJoints.cpp
     src/design/CompositeFloor.h

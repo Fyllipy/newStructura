@@ -10,7 +10,7 @@ namespace Structura::Design::Connections {
 /// Ligacao por sobreposicao de perfil formado a frio a chapa (ABNT NBR 14762:2010, Secao 10).
 /// Unidades: N, mm, MPa. Aplicavel a partes ligadas com t <= 4,75 mm (10.2.1 e 10.3.1).
 struct ColdFormedInput {
-    enum Mode { Bolts = 0, Weld = 1, Screws = 2 };
+    enum Mode { Bolts = 0, Weld = 1, Screws = 2, CurvedWeld = 3 };
     int mode {Bolts};
 
     double force {0.0};           ///< forca de cisalhamento de calculo na ligacao (N)
@@ -41,6 +41,15 @@ struct ColdFormedInput {
     double lengthLong {0.0};      ///< comprimento de filetes paralelos a forca (mm)
     double lengthTrans {0.0};     ///< comprimento de filetes normais a forca (mm)
     double fw {485.0};
+
+    // solda de filete em superficies curvas (10.2.4); usa `lengthLong` (paralelo) ou `lengthTrans` (normal) como L
+    double curvedRe {6.0};        ///< raio externo de dobramento re (mm)
+    bool curvedTwoSurfaces {false};   ///< solda entre duas superficies curvas (senao uma)
+    bool curvedSalient {false};   ///< face externa do filete saliente em relacao ao metal-base (Figuras 7f, 7g); senao rente
+    double curvedW1 {3.0};        ///< pernas do filete w1 e w2 (saliente)
+    double curvedW2 {3.0};
+    double curvedStiffenerHeight {0.0};   ///< h do enrijecedor (mm); >= L permite a resistencia maior (Figura 7d)
+    bool curvedParallel {true};   ///< solicitacao paralela ao eixo da solda (senao normal)
 
     // parafusos autoatarraxantes (10.5)
     double fssRk {0.0};           ///< cisalhamento nominal do parafuso, fabricante (N); 0 = nao informado

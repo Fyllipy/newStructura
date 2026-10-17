@@ -339,6 +339,14 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
     in.stiffenerSpacing = params.stiffenerSpacing;
     in.panelTensionFlange = params.panelTensionFlange;
     in.coldWork = params.coldWork;
+    in.bearingLength = params.bearingLength;
+    in.fatigueCategory = params.fatigueCategory;
+    in.fatigueCycles = params.fatigueCycles;
+    in.openingDiameter = params.openingDiameter;
+    in.openingPosition = params.openingPosition;
+    in.openingOffset = params.openingOffset;
+    in.openingNeighbourD = params.openingNeighbourD;
+    in.openingSpacing = params.openingSpacing;
     in.combos = effects.combos;
     // Combinacoes selecionadas
     if (!settings.combinations.isEmpty()) {

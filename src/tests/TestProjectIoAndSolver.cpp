@@ -1190,6 +1190,14 @@ private slots:
         member.stiffenerSpacing = 900.0;
         member.panelTensionFlange = 2;
         member.coldWork = true;
+        member.bearingLength = 75.0;
+        member.fatigueCategory = 4;
+        member.fatigueCycles = 2.5e6;
+        member.openingDiameter = 120.0;
+        member.openingPosition = 3000.0;
+        member.openingOffset = 15.0;
+        member.openingNeighbourD = 90.0;
+        member.openingSpacing = 400.0;
         again.extras.design.members.append(member);
         again.extras.connections[0].values[QStringLiteral("supMember")] = 5.0;
         const QString third = dir.filePath(QStringLiteral("c3.dat"));
@@ -1204,6 +1212,14 @@ private slots:
         QCOMPARE(last.extras.design.members.first().stiffenerSpacing, 900.0);
         QCOMPARE(last.extras.design.members.first().panelTensionFlange, 2);
         QVERIFY(last.extras.design.members.first().coldWork);
+        QCOMPARE(last.extras.design.members.first().bearingLength, 75.0);
+        QCOMPARE(last.extras.design.members.first().fatigueCategory, 4);
+        QCOMPARE(last.extras.design.members.first().fatigueCycles, 2.5e6);
+        QCOMPARE(last.extras.design.members.first().openingDiameter, 120.0);
+        QCOMPARE(last.extras.design.members.first().openingPosition, 3000.0);
+        QCOMPARE(last.extras.design.members.first().openingOffset, 15.0);
+        QCOMPARE(last.extras.design.members.first().openingNeighbourD, 90.0);
+        QCOMPARE(last.extras.design.members.first().openingSpacing, 400.0);
         QCOMPARE(last.extras.connections.first().values.value(QStringLiteral("supMember")), 5.0);
     }
     void newConnectionTypesEvaluateProposeAndPersist()

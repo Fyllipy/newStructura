@@ -52,6 +52,14 @@ struct BarDesignInput {
     double stiffenerSpacing {0.0};          ///< a entre enrijecedores transversais de alma (mm); 0 = sem (NBR 8800, 5.4.3.1.1)
     int panelTensionFlange {0};             ///< NBR 14762 Anexo F: 0 = nao; 1 = painel na mesa tracionada, biapoiada; 2 = continua
     bool coldWork {false};                  ///< NBR 14762 Anexo B: aumento de fy nas dobras
+    double bearingLength {0.0};             ///< NBR 14762 Anexo D: comprimento de apoio c (mm); 0 = so aviso
+    int fatigueCategory {0};                ///< NBR 8800 Anexo H: 0 = nao; 1 A, 2 B, 3 B', 4 C, 5 D, 6 E, 7 E', 8 F, 9 G
+    double fatigueCycles {0.0};             ///< N; 0 = vida infinita (limite sigma_TH)
+    double openingDiameter {0.0};           ///< NBR 8800 Anexo F: D da abertura circular na alma (mm); 0 = nao ha
+    double openingPosition {0.0};           ///< centro da abertura ate o apoio esquerdo (mm)
+    double openingOffset {0.0};             ///< excentricidade em relacao a meia altura (mm)
+    double openingNeighbourD {0.0};         ///< abertura adjacente: diametro (mm)
+    double openingSpacing {0.0};            ///< distancia entre centros (mm)
     double ct {1.0};
     Standard rectangularTubeStandard {Standard::NBR14762};
     Nbr8800::Options opt8800;

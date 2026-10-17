@@ -53,6 +53,14 @@ private:
         QDoubleSpinBox *stiffener {nullptr};
         QComboBox *panel {nullptr};
         QCheckBox *coldWork {nullptr};
+        QDoubleSpinBox *bearing {nullptr};
+        QComboBox *fatigueCategory {nullptr};
+        QDoubleSpinBox *fatigueCycles {nullptr};
+        QDoubleSpinBox *openingD {nullptr};
+        QDoubleSpinBox *openingPos {nullptr};
+        QDoubleSpinBox *openingOffset {nullptr};
+        QDoubleSpinBox *openingNeighbourD {nullptr};
+        QDoubleSpinBox *openingSpacing {nullptr};
     };
     QWidget *buildParamForm(ParamEditors &editors, bool allowInheritSteel);
     static void load(ParamEditors &editors, const Structura::App::ProjectData::DesignMemberParams &p);

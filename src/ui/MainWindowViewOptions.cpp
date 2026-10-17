@@ -94,11 +94,11 @@ void MainWindow::rebuildResultViewSelector()
     m_viewOptionsBar->setResultViews(names, 0);
 }
 
-void MainWindow::syncConnectionVisuals()
+QVector<MainWindow::ConnectionPlacementInfo> MainWindow::connectionPlacements() const
 {
-    using Structura::App::Services::ConnectionSolids;
-    if (!m_sceneController || !m_viewOptionsBar || !m_viewOptionsBar->isChecked(Bar::kConnections)) {
-        return;
+    QVector<ConnectionPlacementInfo> result;
+    if (!m_sceneController) {
+        return result;
     }
     QHash<QUuid, std::array<double, 3>> positionById;
     for (const auto &node : m_sceneController->nodeInfos()) {
@@ -106,7 +106,6 @@ void MainWindow::syncConnectionVisuals()
     }
     const double lengthFactor = Structura::App::Services::DesignService::unitFactors(m_materials).second;
     Structura::Geometry::DefaultLocalAxisProvider axisProvider;
-    ConnectionSolids::Mesh mesh;
     const auto allBars = m_sceneController->bars();
     QHash<QUuid, const SectionInfo *> sectionsById;
     for (const auto &section : m_sections) {
@@ -154,7 +153,8 @@ void MainWindow::syncConnectionVisuals()
         return frame;
     };
 
-    for (const auto &connection : m_extras.connections) {
+    for (int index = 0; index < m_extras.connections.size(); ++index) {
+        const auto &connection = m_extras.connections.at(index);
         const SceneController::BarInfo *bar = nullptr;
         for (const auto &candidate : allBars) {
             if (candidate.externalId == connection.memberId) {
@@ -169,13 +169,14 @@ void MainWindow::syncConnectionVisuals()
         if (!beam) {
             continue;
         }
-        ConnectionSolids::Frame frame;
+        ConnectionPlacementInfo info;
+        info.index = index;
         const double sign = connection.atEnd ? -1.0 : 1.0;   // s aponta do no para dentro da barra
-        frame.origin = connection.atEnd ? beam->end : beam->start;   // eixo da barra no no (ja com a excentricidade)
+        info.origin = connection.atEnd ? beam->end : beam->start;   // eixo da barra no no (ja com a excentricidade)
         for (std::size_t i = 0; i < 3; ++i) {
-            frame.s[i] = sign * beam->x[i];
-            frame.t[i] = beam->y[i];
-            frame.u[i] = beam->z[i];
+            info.s[i] = sign * beam->x[i];
+            info.t[i] = beam->y[i];
+            info.u[i] = beam->z[i];
         }
         // s = 0 fica na face do apoio: plano da mesa/alma da barra de apoio escolhida, na posicao real dela
         double supportOffset = connection.values.value(QStringLiteral("supOffset"), 0.0) / lengthFactor;
@@ -199,18 +200,48 @@ void MainWindow::syncConnectionVisuals()
                 support.webThickness = g.value(QStringLiteral("tw"), 0.0);
                 support.isIShape = g.contains(QStringLiteral("tf")) && g.contains(QStringLiteral("tw"));
                 double computed = 0.0;
-                if (Structura::App::Services::supportFaceOffset(frame.origin, frame.s, support, 1.0 / lengthFactor, computed)) {
+                if (Structura::App::Services::supportFaceOffset(info.origin, info.s, support, 1.0 / lengthFactor, computed)) {
                     supportOffset = computed;   // viga quase paralela ao apoio: mantem o afastamento gravado
                 }
                 break;
             }
         }
         for (std::size_t i = 0; i < 3; ++i) {
-            frame.origin[i] += frame.s[i] * supportOffset;
+            info.origin[i] += info.s[i] * supportOffset;
         }
-        const auto primitives = ConnectionSolids::build(connection);
+        // a barra termina na face do apoio (mais a folga de montagem da chapa de cisalhamento), nao no no
+        const bool bearsOnSupport = connection.type == Structura::App::ProjectData::NodeConnection::kShearTab
+            || connection.type == Structura::App::ProjectData::NodeConnection::kDoubleAngle
+            || connection.type == Structura::App::ProjectData::NodeConnection::kGusset
+            || connection.type == Structura::App::ProjectData::NodeConnection::kEndPlate;
+        if (bearsOnSupport && (supportId > 0 || supportOffset > 0.0)) {
+            // chapa de cisalhamento: folga de montagem; chapa de extremidade: a viga comeca na face da chapa
+            const double setback = connection.type == Structura::App::ProjectData::NodeConnection::kShearTab ? connection.values.value(QStringLiteral("setback"), 0.0)
+                                 : connection.type == Structura::App::ProjectData::NodeConnection::kEndPlate ? connection.values.value(QStringLiteral("plateT"), 0.0) : 0.0;
+            info.trimMm = std::max(0.0, supportOffset * lengthFactor + setback);
+        }
+        result.append(info);
+    }
+    return result;
+}
+
+void MainWindow::syncConnectionVisuals()
+{
+    using Structura::App::Services::ConnectionSolids;
+    if (!m_sceneController || !m_viewOptionsBar || !m_viewOptionsBar->isChecked(Bar::kConnections)) {
+        return;
+    }
+    const double lengthFactor = Structura::App::Services::DesignService::unitFactors(m_materials).second;
+    ConnectionSolids::Mesh mesh;
+    for (const auto &info : connectionPlacements()) {
+        const auto &connection = m_extras.connections.at(info.index);
+        ConnectionSolids::Frame frame;
+        frame.origin = info.origin;
+        frame.s = info.s;
+        frame.t = info.t;
+        frame.u = info.u;
         frame.scale = 1.0 / lengthFactor;
-        ConnectionSolids::append(mesh, primitives, frame, connection.verified ? std::max(connection.eta, 1e-6) : 0.0);
+        ConnectionSolids::append(mesh, ConnectionSolids::build(connection), frame, connection.verified ? std::max(connection.eta, 1e-6) : 0.0);
     }
     Structura::Visualization::ConnectionRenderer::Mesh out;
     out.points = std::move(mesh.points);
@@ -235,6 +266,13 @@ void MainWindow::syncSolidVisuals()
     }
 
     Structura::Geometry::DefaultLocalAxisProvider axisProvider;
+    const double lengthFactorMm = Structura::App::Services::DesignService::unitFactors(m_materials).second;
+    QHash<int, std::array<double, 2>> trimsByMember;   // recuo (mm) das extremidades I e J por barra
+    for (const auto &info : connectionPlacements()) {
+        const auto &connection = m_extras.connections.at(info.index);
+        auto &trim = trimsByMember[connection.memberId];
+        trim[connection.atEnd ? 1 : 0] = std::max(trim[connection.atEnd ? 1 : 0], info.trimMm);
+    }
     QVector<SceneController::SolidMemberVisual> visuals;
     for (const auto &bar : m_sceneController->bars()) {
         const auto sectionIt = sectionsById.constFind(bar.sectionId);
@@ -277,6 +315,17 @@ void MainWindow::syncSolidVisuals()
         visual.barId = bar.id;
         visual.start = toVector(*start) + axisShift;
         visual.end = toVector(*end) + axisShift;
+        {
+            // a barra que se apoia em outra termina na face do apoio, nao no no
+            const QVector3D xDir = toVector(lcs.xPrime);
+            const float span = (visual.end - visual.start).length();
+            const float cap = 0.45f * span;
+            const auto trims = trimsByMember.constFind(bar.externalId);
+            if (trims != trimsByMember.constEnd()) {
+                visual.start += xDir * std::min(static_cast<float>((*trims)[0] / lengthFactorMm), cap);
+                visual.end -= xDir * std::min(static_cast<float>((*trims)[1] / lengthFactorMm), cap);
+            }
+        }
         visual.xAxis = toVector(lcs.xPrime);
         visual.yAxis = toVector(lcs.yPrime);
         visual.zAxis = toVector(lcs.zPrime);

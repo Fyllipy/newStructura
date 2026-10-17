@@ -4,6 +4,7 @@
 #include "app/services/StructuralChecks.h"
 #include "app/services/ConnectionService.h"
 #include "app/services/ConnectionPlacement.h"
+#include "design/EndPlateConnection.h"
 #include "app/services/ConnectionSolids.h"
 #include "app/services/TrussGenerator.h"
 #include "design/SupportChecks.h"
@@ -155,7 +156,7 @@ private slots:
         beam.area = 4000.0;
         beam.fy = 345.0;
         beam.fu = 450.0;
-        for (const int type : {0, 1, 2, 3, 4, 6}) {
+        for (const int type : {0, 1, 2, 3, 4, 6, 7}) {
             const auto connection = ConnectionService::makeDefault(type, beam, 250.0, 400.0);
             const auto prims = ConnectionSolids::build(connection);
             QVERIFY2(!prims.empty(), qPrintable(QString::number(type)));
@@ -424,6 +425,70 @@ private slots:
         const double kBased = Structura::Design::designBar(in).maxRatio;
         QVERIFY(std::abs(kBased - braced) < 1e-9);
     }
+    void fatigueOpeningAndBracingChecksOfAnnexFHAnd412()
+    {
+        const DesignSection section = make("W Laminado", {{"d", 300}, {"bf", 150}, {"tw", 8}, {"tf", 12}});
+        Structura::Design::BarDesignInput in;
+        in.section = &section;
+        in.steel = {"A572 Gr50", 345, 450};
+        in.length = 6000.0;
+        Structura::Design::ComboEffects heavy, none;
+        heavy.name = "FAD1";
+        none.name = "FAD0";
+        for (const double x : {0.0, 3000.0, 6000.0}) {
+            Structura::Design::StationEffects st;
+            st.x = x;
+            st.e.Mx = x == 3000.0 ? 40.0e6 : 0.0;
+            st.e.Vy = x == 3000.0 ? 0.0 : 20000.0;
+            heavy.stations.push_back(st);
+            Structura::Design::StationEffects zero;
+            zero.x = x;
+            none.stations.push_back(zero);
+        }
+        in.combos = {heavy, none};
+        struct Found {
+            bool present {false};
+            Structura::Design::CheckResult check;
+        };
+        auto find = [&in](const char *id) {
+            Found found;
+            for (const auto &c : Structura::Design::designBar(in).checks) {
+                if (c.id == id) {
+                    found.present = true;
+                    found.check = c;
+                }
+            }
+            return found;
+        };
+        QVERIFY(!find("fatigue").present);
+        in.fatigueCategory = 4;   // C: Cf = 44e8, sigma_TH = 69 MPa
+        in.fatigueCycles = 2.0e6;
+        const auto fatigue = find("fatigue").check;
+        const double range = 40.0e6 / section.g.Wx();
+        const double adm = std::max(std::pow(329.0 * 44e8 / 2.0e6, 0.333), 69.0);
+        QVERIFY(std::abs(fatigue.demand - range) < 1e-6);
+        QVERIFY(std::abs(fatigue.resistance - adm) < 1e-6);
+        in.fatigueCycles = 10000.0;   // H.2.6: dispensada
+        QCOMPARE(find("fatigue").check.ratio, 0.0);
+
+        // Anexo F: abertura no meio do vao atende; fora dos dois quartos centrais nao
+        in.openingDiameter = 100.0;
+        in.openingPosition = 3000.0;
+        QCOMPARE(find("web_opening").check.ratio, 0.0);
+        in.openingPosition = 1000.0;
+        QVERIFY(find("web_opening").check.ratio > 1.0);
+        in.openingPosition = 3000.0;
+        in.openingNeighbourD = 80.0;
+        in.openingSpacing = 200.0;   // < 2,5 x 100
+        QVERIFY(find("web_opening").check.ratio > 1.0);
+
+        // 4.12: contencao no meio do vao -> requisitos de forca e rigidez
+        in.lateralSegments = 2;
+        const auto bracing = find("bracing");
+        QVERIFY(bracing.present);
+        QVERIFY(bracing.check.lines.front().find("F_br") != std::string::npos);
+    }
+
     void gussetPlateConnection()
     {
         namespace C = Structura::Design::Connections;
@@ -835,6 +900,88 @@ private slots:
         bolt.connectionLength = 1000.0;
         QVERIFY(std::abs(shearOf(C::checkBolted(bolt)).demand - 1.2 * base.demand) < 1e-9);
     }
+    void endPlateMomentConnectionMatchesHandCalculation()
+    {
+        namespace C = Structura::Design::Connections;
+        C::EndPlateInput in;
+        for (const auto &g : C::boltGrades()) {
+            if (g.name.find("A325") != std::string::npos) {
+                in.grade = g;
+            }
+        }
+        in.db = 20.0;
+        in.moment = 100.0e6;
+        in.shear = 80000.0;
+        auto find = [](const std::vector<C::Check> &checks, const char *name) {
+            for (const auto &c : checks) {
+                if (c.name.find(name) != std::string::npos) {
+                    return c;
+                }
+            }
+            return C::Check {};
+        };
+        const auto checks = C::checkEndPlate(in);
+        // F_t = M/(d - tf) = 100e6/290; 4 parafusos tracionados (2 fileiras x 2)
+        const double ft = 100.0e6 / 290.0;
+        const double ab = 0.25 * 3.14159265358979 * 400.0;
+        const auto bolts = find(checks, "Parafusos tracionados");
+        QVERIFY(std::abs(bolts.demand - ft / 4.0 / 1000.0) < 1e-6);
+        QVERIFY(std::abs(bolts.resistance - 0.75 * ab * in.grade.fub / 1.35 / 1000.0) < 1e-6);
+        // painel de alma sem reforco: kv = 5,34; h = 260 - 2 (12,7 + 10) = 214,6; tw = 7,6
+        const auto panel = find(checks, "Painel de alma");
+        const double h = 260.0 - 2.0 * (12.7 + 10.0), lambda = h / 7.6;
+        const double lp = 1.10 * std::sqrt(5.34 * 200000.0 / 250.0), lr = 1.37 * std::sqrt(5.34 * 200000.0 / 250.0);
+        const double vpl = 0.6 * 260.0 * 7.6 * 250.0;
+        const double vrd = (lambda <= lp ? vpl : (lambda <= lr ? lp / lambda * vpl : 1.24 * lp * lp / (lambda * lambda) * vpl)) / 1.10;
+        QVERIFY(std::abs(panel.resistance - vrd / 1000.0) < 1e-6);
+        QVERIFY(std::abs(panel.demand - ft / 1000.0) < 1e-6);
+        QVERIFY(C::endPlateHeight(in) > in.beamDepth);
+        // com chapa de reforco da alma a resistencia do painel aumenta
+        in.doublerThickness = 8.0;
+        QVERIFY(find(C::checkEndPlate(in), "Painel de alma").resistance > panel.resistance);
+        // enrijecedores: aparecem as verificacoes 5.7.9
+        in.continuityPlates = true;
+        bool stiffeners = false;
+        for (const auto &c : C::checkEndPlate(in)) {
+            stiffeners = stiffeners || c.clause.find("5.7.9") != std::string::npos;
+        }
+        QVERIFY(stiffeners);
+        QVERIFY(!C::partsEndPlate(in).empty());
+    }
+
+    void curvedSurfaceFilletWeldFollows1476210_2_4()
+    {
+        namespace C = Structura::Design::Connections;
+        C::ColdFormedInput in;
+        in.mode = C::ColdFormedInput::CurvedWeld;
+        in.t1 = 2.0;
+        in.fu1 = 450.0;
+        in.fw = 485.0;
+        in.force = 20000.0;
+        in.lengthLong = 100.0;
+        in.lengthTrans = 100.0;
+        in.curvedRe = 6.0;
+        auto resistanceOf = [](const C::ColdFormedInput &input) {
+            for (const auto &c : C::checkColdFormed(input)) {
+                if (c.clause.find("10.2.4") != std::string::npos && c.name.find("Filete") != std::string::npos) {
+                    return c.resistance * 1000.0;
+                }
+            }
+            return -1.0;
+        };
+        in.curvedParallel = false;   // 10.2.4-a
+        QVERIFY(std::abs(resistanceOf(in) - 0.83 * 2.0 * 100.0 * 450.0 / 1.65) < 1e-6);
+        in.curvedParallel = true;    // tef = 0,3 re = 1,8 < 2 t: 0,75 t L fu / 1,80
+        QVERIFY(std::abs(resistanceOf(in) - 0.75 * 2.0 * 100.0 * 450.0 / 1.80) < 1e-6);
+        in.curvedTwoSurfaces = true;   // re > 12,5: tef = 0,37 re >= 2 t; enrijecedor com h >= L: 1,50 t L fu / 1,80
+        in.curvedRe = 14.0;
+        in.curvedStiffenerHeight = 120.0;
+        QVERIFY(std::abs(resistanceOf(in) - 1.50 * 2.0 * 100.0 * 450.0 / 1.80) < 1e-6);
+        in.t1 = 3.0;   // t > 2,5: tef = 5,18 < 2 t = 6 (0,75 t L fu / 1,80), tambem limitada por 0,75 tef L fw / 1,65
+        const double tef = 0.37 * 14.0;
+        QVERIFY(std::abs(resistanceOf(in) - std::min(0.75 * 3.0 * 100.0 * 450.0 / 1.80, 0.75 * tef * 100.0 * 485.0 / 1.65)) < 1e-6);
+    }
+
     void weldGroupsFollowNorm2024Annex()
     {
         namespace C = Structura::Design::Connections;

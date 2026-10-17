@@ -48,6 +48,14 @@ Tabela 14 (furos-padrão), Tabelas 9, 10, 11 (soldas); 6.3.3.1 a 6.3.3.4 (parafu
 | NBR 14762, Anexo B (aumento de `fy` nas dobras) | parâmetro de barra; só seções totalmente efetivas |
 | Barra de apoio escolhida pelo usuário, com face geométrica real (excentricidades e giro) | `ConnectionPlacement.h`, `chooseSupport` |
 | Esforços de todas as ligações da mesma barra de apoio somados na verificação local do apoio | `Forces::hostTension/hostCompression` |
+| Barra que se apoia termina na face do apoio (3D e pranchas), não no nó | `MainWindow::connectionPlacements`, `SheetBuilder::Bar::trimI/trimJ` |
+| NBR 14762, 10.2.4 (filete em superfície curva) | meio de ligação "Filete em superfície curva" da ligação de formado a frio |
+| NBR 14762, Anexo D: esmagamento da alma como verificação efetiva | parâmetro de barra "comprimento de apoio" (0 = só aviso) |
+| NBR 8800, 5.4.3.1.3: requisitos dos enrijecedores transversais | linhas do memorial do cortante com enrijecedores (`j`, `I ≥ a tw³ j`, `b/t`) |
+| NBR 8800, Anexo H (fadiga): categorias A a G, `σSR`, `σTH`, dispensas H.2.5/H.2.6 | parâmetros de barra "categoria do detalhe" e "ciclos N"; faixa de tensão pelas combinações selecionadas |
+| NBR 8800, Anexo F (aberturas circulares sem reforço) | parâmetros de barra (diâmetro, posição, excentricidade, abertura adjacente); verifica as condições de F.3 |
+| NBR 8800, 4.12 (contenções laterais) | memorial "Contenções laterais": `F_br` e `S_br` de pilares (4.12.2.2) e vigas (4.12.3.3) quando há travamentos |
+| Ligação rígida viga–pilar por chapa de extremidade (nova tipologia) | `EndPlateConnection`: parafusos tracionados, efeito alavanca, cortante, soldas, mesa e alma do pilar (5.7.2 a 5.7.5), enrijecedores (5.7.9), painel de alma (5.7.7), chapa de reforço |
 
 Observações: o efeito alavanca só é verificado onde há parafusos tracionados por aba flexível (cantoneira dupla); a verificação por centro
 instantâneo de rotação e o grupo combinado existem como funções de projeto, ainda sem tipologia de ligação que as use (a chapa de cisalhamento
@@ -56,16 +64,17 @@ instantâneo de rotação e o grupo combinado existem como funções de projeto,
 ## 4. Ainda não implementado (diferenças conhecidas em relação às normas)
 
 **NBR 8800:2024**
-* Cortante: projeto dos enrijecedores (5.4.3.1.3, 5.7.9).
-* 5.7.6 a 5.7.8: instabilidade por par de forças e painel de alma (exigem ligação rígida viga–pilar, que o software não tem).
-* Anexo F (aberturas na alma), Anexo G (seção variável), Anexo H (fadiga), 4.12 (requisitos de contenção lateral), análise plástica (4.10.2.2-b).
+* Projeto/verificação do enrijecedor propriamente dito (5.7.9); 5.4.3.1.3 só emite os requisitos no memorial.
+* 5.7.6 (instabilidade da alma por par de forças, vigas dos dois lados do pilar) e 5.7.8 (apoios sem restrição à rotação); 5.7.7.3 (enrijecedores diagonais).
+* Anexo G (barras de seção variável), contenção de torção (4.12.3.6 em diante) e análise plástica (4.10.2.2-b). Anexo H: só categorias de tensões normais e
+  de cisalhamento na garganta (F), sem os casos H.4-c (soldas de penetração parcial C', C'').
 * Tabela B.1: vigas de rolamento, travessas/pilares de fechamento e limites horizontais por pavimento continuam por informação do usuário
   (campo "denominador de flecha"; deslocamentos de andar na verificação de estabilidade global).
-* Ligação por atrito sob momento (ligação rígida) e com tração e cisalhamento combinados em tipologias além das listadas.
+* Chapa de extremidade: distribuição igual da tração entre as fileiras, sem método das linhas de plastificação nem fileiras entre as mesas; ligação por atrito sob momento.
 
 **NBR 14762:2010**
-* Anexo G (vigas mistas), 9.5 (enrijecedores), 9.8.6 (barras compostas fletidas), 10.2.4 (soldas em superfícies curvas), Seção 11 (ensaios) e
-  ligações rígidas viga–pilar.
+* Anexo G (vigas mistas), 9.5 (enrijecedores), 9.8.6 (barras compostas fletidas), Seção 11 (ensaios) e ligações rígidas viga–pilar;
+  interação entre esmagamento da alma e momento (não localizada no texto do Anexo D).
 * Esmagamento da alma sem o comprimento de apoio real (aviso, não verificação) e sem a interação com o momento fletor.
 * Ligações: não há verificação do perfil de apoio (flexão local) nem da tração na seção líquida do perfil na ligação (use a razão `An/Ag` nos
   parâmetros da barra).

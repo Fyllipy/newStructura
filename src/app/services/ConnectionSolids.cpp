@@ -133,12 +133,12 @@ void coldFormed(const NodeConnection &c, std::vector<Primitive> &out)
     const int n = count(c, "n", 2.0), lines = count(c, "lines", 1.0);
     const double d = val(c, "d", 12.0), pitch = val(c, "pitch", 40.0), gauge = val(c, "gauge", 40.0), end1 = val(c, "end1", 30.0), end2 = val(c, "end2", 30.0), edge = val(c, "edge", 25.0);
     const double t1 = val(c, "t1", 2.0), t2 = val(c, "t2", 4.75);
-    const double overlap = std::max(end1 + end2 + (n - 1) * pitch, mode == 1 ? val(c, "lLong", 80.0) + 10.0 : 0.0);
-    const double width = std::max((lines - 1) * gauge + 2.0 * edge, mode == 1 ? std::max(val(c, "lTrans", 0.0), 40.0) : 0.0);
+    const double overlap = std::max(end1 + end2 + (n - 1) * pitch, mode == 1 || mode == 3 ? val(c, "lLong", 80.0) + 10.0 : 0.0);
+    const double width = std::max((lines - 1) * gauge + 2.0 * edge, mode == 1 || mode == 3 ? std::max(val(c, "lTrans", 0.0), 40.0) : 0.0);
     // chapa de ligacao (u entre 0 e t2) e perfil sobreposto (u entre t2 e t2 + t1), de s = 0 a s = overlap
     out.push_back(box(Role::Plate, overlap / 2.0 - 40.0, 0.0, t2 / 2.0, overlap + 80.0, width, t2));
     out.push_back(box(Role::Member, overlap / 2.0 + 60.0, 0.0, t2 + t1 / 2.0, overlap + 120.0, width, t1));
-    if (mode == 1) {
+    if (mode == 1 || mode == 3) {
         const double w = val(c, "leg", 3.0);
         out.push_back(box(Role::Weld, 0.0, 0.0, t2 + t1 + w / 2.0, w, width, w));
         for (const double side : {-1.0, 1.0}) {
@@ -149,6 +149,41 @@ void coldFormed(const NodeConnection &c, std::vector<Primitive> &out)
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < lines; ++j) {
             addBolt(out, {end2 + i * pitch, (j - (lines - 1) / 2.0) * gauge, 0.0}, 2, -1.5, t2 + t1 + 1.5, d);
+        }
+    }
+}
+
+void endPlate(const NodeConnection &c, std::vector<Primitive> &out)
+{
+    const double db = val(c, "db", 20.0), d = val(c, "beamD", 300.0), bfl = val(c, "bfl", 150.0), tfl = val(c, "tfl", 10.0);
+    const double tp = val(c, "plateT", 22.4), width = val(c, "plateW", 160.0), gauge = val(c, "gauge", 90.0), pitch = val(c, "pitch", 70.0);
+    const double firstRow = val(c, "firstRow", 40.0), edge = val(c, "edgeV", 35.0), wf = val(c, "weldF", 8.0);
+    const int tRows = count(c, "tRows", 2.0), sRows = count(c, "sRows", 1.0);
+    const double extTop = firstRow + (tRows - 1) * pitch + edge, extBot = firstRow + (sRows - 1) * pitch + edge;
+    const double height = d + extTop + extBot;
+    const double colTf = std::max(val(c, "supTf", 12.7), 6.0);
+    out.push_back(box(Role::Plate, tp / 2.0, (extTop - extBot) / 2.0, 0.0, tp, height, width));
+    // face do pilar (referencia): mesa do pilar atras da chapa
+    out.push_back(box(Role::Concrete, -colTf / 2.0, (extTop - extBot) / 2.0, 0.0, colTf, height + 120.0, std::max(val(c, "supBf", 146.0), width + 40.0)));
+    for (const double side : {-1.0, 1.0}) {
+        out.push_back(box(Role::Weld, tp + wf / 2.0, side * (d / 2.0 - tfl / 2.0), 0.0, wf, tfl + 2.0 * wf, bfl + 2.0 * wf));
+    }
+    for (int i = 0; i < tRows; ++i) {
+        for (const double col : {-1.0, 1.0}) {
+            addBolt(out, {0.0, d / 2.0 + firstRow + i * pitch, col * gauge / 2.0}, 0, -colTf - 2.0, tp + 2.0, db);
+        }
+    }
+    for (int j = 0; j < sRows; ++j) {
+        for (const double col : {-1.0, 1.0}) {
+            addBolt(out, {0.0, -(d / 2.0 + firstRow + j * pitch), col * gauge / 2.0}, 0, -colTf - 2.0, tp + 2.0, db);
+        }
+    }
+    if (val(c, "cont", 0.0) != 0.0) {
+        // enrijecedores horizontais entre as mesas do pilar, alinhados com as mesas da viga
+        const double cd = std::max(val(c, "supD", 260.0), 2.0 * colTf + 20.0), ct = val(c, "contT", 9.5);
+        const double inner = cd - 2.0 * colTf;
+        for (const double side : {-1.0, 1.0}) {
+            out.push_back(box(Role::Plate, -colTf - inner / 2.0, side * (d / 2.0 - tfl / 2.0), 0.0, inner, ct, std::max(val(c, "supBf", 146.0) - 10.0, 20.0)));
         }
     }
 }
@@ -261,6 +296,11 @@ void addContext(const NodeConnection &c, std::vector<Primitive> &out)
         addIBeam(out, setback, setback + 520.0, depth, depth * 0.5, std::max(8.0, depth / 28.0), val(c, "webT", 6.0));
         break;
     }
+    case NodeConnection::kEndPlate: {
+        const double d = val(c, "beamD", 300.0), bfl = val(c, "bfl", 150.0), tfl = val(c, "tfl", 10.0), tp = val(c, "plateT", 22.4);
+        addIBeam(out, tp, tp + 520.0, d, bfl, tfl, val(c, "tw", 6.0));
+        break;
+    }
     case NodeConnection::kGusset: {
         const double legT = std::max(val(c, "legT", 6.0), 3.0), gT = val(c, "gT", 9.5);
         const int rows = count(c, "rows", 3.0), lines = count(c, "lines", 1.0);
@@ -326,6 +366,7 @@ std::vector<Primitive> ConnectionSolids::build(const NodeConnection &c, bool con
     case NodeConnection::kSplice: splice(c, out); break;
     case NodeConnection::kBasePlate: basePlate(c, out); break;
     case NodeConnection::kColdFormed: coldFormed(c, out); break;
+    case NodeConnection::kEndPlate: endPlate(c, out); break;
     default: {
         // ligacao tubular soldada: disco-marcador em torno do banzo
         if (!context) {

@@ -1,5 +1,6 @@
 #include "ConnectionService.h"
 
+#include "design/EndPlateConnection.h"
 #include "design/SupportChecks.h"
 #include "design/BasePlate.h"
 #include "design/ColdFormedConnections.h"
@@ -144,6 +145,13 @@ D::ColdFormedInput toColdFormed(const NodeConnection &c, const ConnectionService
     in.lengthLong = value(c, "lLong", 0.0);
     in.lengthTrans = value(c, "lTrans", 0.0);
     in.fw = value(c, "fw", 485.0);
+    in.curvedRe = value(c, "cRe", 6.0);
+    in.curvedTwoSurfaces = value(c, "cTwo", 0.0) != 0.0;
+    in.curvedSalient = value(c, "cSalient", 0.0) != 0.0;
+    in.curvedW1 = value(c, "cW1", 3.0);
+    in.curvedW2 = value(c, "cW2", 3.0);
+    in.curvedStiffenerHeight = value(c, "cH", 0.0);
+    in.curvedParallel = value(c, "cParallel", 1.0) != 0.0;
     in.fssRk = value(c, "fss", 0.0) * 1000.0;
     in.ftsRk = value(c, "fts", 0.0) * 1000.0;
     in.headDiameter = value(c, "dh", 8.0);
@@ -328,6 +336,52 @@ D::TubularJointInput toTubular(const NodeConnection &c, const ConnectionService:
     return in;
 }
 
+// ---- ligacao rigida por chapa de extremidade ------------------------------------------------------------------------
+
+D::EndPlateInput toEndPlate(const NodeConnection &c, double shear, double axial, double moment)
+{
+    D::EndPlateInput in;
+    in.grade = gradeByName(c.grade);
+    in.db = value(c, "db", 20.0);
+    in.threadInShearPlane = value(c, "thread", 1.0) != 0.0;
+    in.beamDepth = value(c, "beamD", 300.0);
+    in.flangeWidth = value(c, "bfl", 150.0);
+    in.flangeThickness = value(c, "tfl", 10.0);
+    in.webThickness = value(c, "tw", 6.0);
+    in.beam = {value(c, "beamFy", 250.0), value(c, "beamFu", 400.0)};
+    in.plateWidth = value(c, "plateW", 160.0);
+    in.plateThickness = value(c, "plateT", 19.0);
+    in.plate = {value(c, "plateFy", 250.0), value(c, "plateFu", 400.0)};
+    in.tensionRows = count(c, "tRows", 2);
+    in.shearRows = count(c, "sRows", 1);
+    in.pitch = value(c, "pitch", 70.0);
+    in.gauge = value(c, "gauge", 90.0);
+    in.firstRow = value(c, "firstRow", 40.0);
+    in.edgeVertical = value(c, "edgeV", 35.0);
+    in.weldFlangeLeg = value(c, "weldF", 8.0);
+    in.weldWebLeg = value(c, "weldW", 6.0);
+    in.weldFw = value(c, "weldFw", 485.0);
+    auto positive = [&c](const char *key, double fallback) {
+        const double v = value(c, key, 0.0);
+        return v > 0.0 ? v : fallback;
+    };
+    in.colDepth = positive("supD", 260.0);
+    in.colFlangeWidth = positive("supBf", 146.0);
+    in.colFlangeThickness = positive("supTf", 12.7);
+    in.colWebThickness = positive("supTw", 7.6);
+    in.colRadius = value(c, "supR", 10.0);
+    in.column = {value(c, "supFy", 250.0), value(c, "supFu", 400.0)};
+    in.colUnbraced = value(c, "supLb", 0.0);
+    in.continuityPlates = value(c, "cont", 0.0) != 0.0;
+    in.stiffenerThickness = value(c, "contT", 9.5);
+    in.stiffenerWidth = value(c, "contW", 60.0);
+    in.doublerThickness = value(c, "doubler", 0.0);
+    in.shear = shear;
+    in.axial = axial;
+    in.moment = moment;
+    return in;
+}
+
 // ---- avaliacao por combinacao ---------------------------------------------------------------------------------------
 
 QVector<ConnectionService::ForceCase> casesOf(const ConnectionService::Forces &f)
@@ -346,6 +400,8 @@ QVector<ConnectionService::ForceCase> casesOf(const ConnectionService::Forces &f
 std::vector<D::Check> checksOf(const NodeConnection &c, const ConnectionService::ForceCase &fc)
 {
     switch (c.type) {
+    case NodeConnection::kEndPlate:
+        return D::checkEndPlate(toEndPlate(c, fc.shear, fc.axial, fc.moment));
     case NodeConnection::kSplice: {
         const auto in = toSplice(c, fc.shear, fc.axial, fc.moment);
         auto checks = D::checkSplice(in);
@@ -405,6 +461,7 @@ QString ConnectionService::typeName(int type)
     case NodeConnection::kBasePlate: return QObject::tr("Base de pilar");
     case NodeConnection::kTubular: return QObject::tr("Ligação tubular (CHS)");
     case NodeConnection::kColdFormed: return QObject::tr("Perfil formado a frio (NBR 14762)");
+    case NodeConnection::kEndPlate: return QObject::tr("Ligação rígida viga–pilar (chapa de extremidade)");
     default: return QObject::tr("Chapa de cisalhamento");
     }
 }
@@ -417,6 +474,7 @@ QString ConnectionService::typeSummary(int type)
     case NodeConnection::kGusset: return QObject::tr("Diagonal, montante ou contraventamento (cantoneira simples/dupla ou chapa) parafusado em chapa de nó soldada ao banzo ou pilar: parafusos, diagonal, secção de Whitmore e solda.");
     case NodeConnection::kSplice: return QObject::tr("Continuidade de viga I/H com talas de mesa e de alma parafusadas: transmite momento, cortante e axial.");
     case NodeConnection::kBasePlate: return QObject::tr("Pilar I/H sobre bloco de concreto com chumbadores (NBR 8800:2024, 6.7): placa de base, chumbadores, pressão no concreto e atrito.");
+    case NodeConnection::kEndPlate: return QObject::tr("Viga I/H soldada a chapa de extremidade parafusada na mesa do pilar: transmite momento e cortante (ligação rígida). Parafusos tracionados com efeito de alavanca, parafusos de cortante, soldas, mesa e alma do pilar (NBR 8800:2024, 5.7 e 6.3), enrijecedores e painel de alma.");
     case NodeConnection::kColdFormed: return QObject::tr("Perfil formado a frio (t ≤ 4,75 mm) ligado a chapa por parafusos, solda de filete ou parafusos autoatarraxantes (NBR 14762:2010, seção 10): rasgamento, pressão de contato, cisalhamento, solda e colapso por rasgamento.");
     default: return QObject::tr("Diagonais de seção circular soldadas ao banzo tubular (T, Y, X, K, N), ou chapa transversal: plastificação do banzo, punção e esmagamento (CIDECT DG1).");
     }
@@ -433,6 +491,7 @@ QPair<QString, QString> ConnectionService::steelKeys(int type)
     case NodeConnection::kDoubleAngle: return {QStringLiteral("angleFy"), QStringLiteral("angleFu")};
     case NodeConnection::kGusset: return {QStringLiteral("gFy"), QStringLiteral("gFu")};
     case NodeConnection::kColdFormed: return {QStringLiteral("fy2"), QStringLiteral("fu2")};
+    case NodeConnection::kEndPlate:
     case NodeConnection::kSplice:
     case NodeConnection::kBasePlate:
     case NodeConnection::kShearTab: return {QStringLiteral("plateFy"), QStringLiteral("plateFu")};
@@ -442,7 +501,7 @@ QPair<QString, QString> ConnectionService::steelKeys(int type)
 
 bool ConnectionService::hasProposal(int type)
 {
-    return type != NodeConnection::kTubular && type != NodeConnection::kColdFormed;
+    return type != NodeConnection::kTubular && type != NodeConnection::kColdFormed && type != NodeConnection::kEndPlate;
 }
 
 QVector<ConnectionService::FieldDef> ConnectionService::fields(int type)
@@ -575,10 +634,46 @@ QVector<ConnectionService::FieldDef> ConnectionService::fields(int type)
         add("weldFw", QObject::tr("fw do metal da solda"), 415, 550, 0, mpa);
         break;
     }
+    case NodeConnection::kEndPlate: {
+        section(QObject::tr("Parafusos"));
+        add("db", QObject::tr("Diâmetro do parafuso"), 12, 40, 1, mm);
+        add("tRows", QObject::tr("Fileiras tracionadas (2 parafusos cada)"), 1, 3, 0, QString());
+        add("sRows", QObject::tr("Fileiras de cortante, zona comprimida (2 parafusos cada)"), 1, 3, 0, QString());
+        add("pitch", QObject::tr("Espaçamento entre fileiras"), 30, 300, 1, mm);
+        add("gauge", QObject::tr("Gabarito entre as colunas de parafusos"), 40, 400, 1, mm);
+        add("firstRow", QObject::tr("Face externa da mesa – 1ª fileira (b + solda)"), 20, 200, 1, mm);
+        add("edgeV", QObject::tr("Última fileira – borda da chapa"), 15, 150, 1, mm);
+        section(QObject::tr("Chapa de extremidade"));
+        add("plateW", QObject::tr("Largura da chapa"), 60, 600, 1, mm);
+        add("plateT", QObject::tr("Espessura da chapa"), 6, 63, 1, mm);
+        add("plateFy", QObject::tr("fy da chapa"), 150, 800, 0, mpa);
+        add("plateFu", QObject::tr("fu da chapa"), 250, 1000, 0, mpa);
+        section(QObject::tr("Viga"));
+        add("beamD", QObject::tr("Altura da viga"), 100, 2000, 1, mm);
+        add("bfl", QObject::tr("Largura da mesa"), 50, 600, 1, mm);
+        add("tfl", QObject::tr("Espessura da mesa"), 4, 60, 1, mm);
+        add("tw", QObject::tr("Espessura da alma"), 3, 40, 2, mm);
+        add("beamFy", QObject::tr("fy da viga"), 150, 800, 0, mpa);
+        add("beamFu", QObject::tr("fu da viga"), 250, 1000, 0, mpa);
+        section(QObject::tr("Soldas viga–chapa"));
+        add("weldF", QObject::tr("Perna do filete das mesas"), 3, 25, 1, mm);
+        add("weldW", QObject::tr("Perna do filete da alma"), 3, 25, 1, mm);
+        add("weldFw", QObject::tr("fw do metal da solda"), 415, 550, 0, mpa);
+        section(QObject::tr("Pilar: enrijecedores e reforço (5.7.7 e 5.7.9)"));
+        add("cont", QObject::tr("Enrijecedores horizontais alinhados com as mesas da viga"), 0, 1, 0, QString(), {QObject::tr("Não"), QObject::tr("Sim")},
+            QObject::tr("Com enrijecedores, as verificações locais da mesa e da alma (5.7.2 a 5.7.5) são substituídas pelo dimensionamento dos enrijecedores (5.7.9)."));
+        add("contT", QObject::tr("Espessura do enrijecedor"), 4, 40, 1, mm);
+        add("contW", QObject::tr("Largura de cada enrijecedor"), 20, 300, 1, mm);
+        add("doubler", QObject::tr("Chapa de reforço da alma do pilar (0 = nenhuma)"), 0, 30, 1, mm);
+        add("supFy", QObject::tr("fy do pilar"), 150, 800, 0, mpa);
+        add("supFu", QObject::tr("fu do pilar"), 250, 1000, 0, mpa);
+        supportMember();
+        break;
+    }
     case NodeConnection::kColdFormed: {
         const QString kn = QObject::tr(" kN");
         section(QObject::tr("Meio de ligação"));
-        add("mode", QObject::tr("Meio de ligação"), 0, 2, 0, QString(), {QObject::tr("Parafusos comuns (10.3)"), QObject::tr("Solda de filete (10.2)"), QObject::tr("Parafusos autoatarraxantes (10.5)")},
+        add("mode", QObject::tr("Meio de ligação"), 0, 3, 0, QString(), {QObject::tr("Parafusos comuns (10.3)"), QObject::tr("Solda de filete (10.2)"), QObject::tr("Parafusos autoatarraxantes (10.5)"), QObject::tr("Filete em superfície curva (10.2.4)")},
             QObject::tr("Perfil formado a frio sobreposto a uma chapa de ligação (t ≤ 4,75 mm). As distâncias são medidas a partir do centro do furo."));
         add("memberNRd", QObject::tr("Resistência de cálculo da barra (0 = sem mínimo de 50 %)"), 0, 100000, 1, kn, {},
             QObject::tr("10.1-a: a ligação de barra axialmente solicitada é dimensionada no mínimo para 50 % da força axial resistente de cálculo."));
@@ -613,6 +708,14 @@ QVector<ConnectionService::FieldDef> ConnectionService::fields(int type)
         add("lLong", QObject::tr("Comprimento de filetes paralelos à força"), 0, 2000, 0, mm);
         add("lTrans", QObject::tr("Comprimento de filetes normais à força"), 0, 2000, 0, mm);
         add("fw", QObject::tr("fw do metal da solda"), 415, 550, 0, mpa);
+        section(QObject::tr("Filete em superfície curva (10.2.4; usa L// ou L⟂ acima)"));
+        add("cParallel", QObject::tr("Solicitação em relação ao eixo da solda"), 0, 1, 0, QString(), {QObject::tr("Normal ao eixo (Fig. 7a)"), QObject::tr("Paralela ao eixo (Fig. 7b a 7g)")});
+        add("cRe", QObject::tr("Raio externo de dobramento re"), 0.5, 40, 1, mm);
+        add("cTwo", QObject::tr("Superfícies curvas ligadas"), 0, 1, 0, QString(), {QObject::tr("Uma"), QObject::tr("Duas")});
+        add("cSalient", QObject::tr("Face externa do filete"), 0, 1, 0, QString(), {QObject::tr("Rente ao metal-base (tef = 0,3 re ou 0,5 re)"), QObject::tr("Saliente (tef = 0,7 w)")});
+        add("cW1", QObject::tr("Perna w1 (face saliente)"), 1, 20, 1, mm);
+        add("cW2", QObject::tr("Perna w2 (face saliente)"), 1, 20, 1, mm);
+        add("cH", QObject::tr("Altura h do enrijecedor (0 = menor que L)"), 0, 500, 0, mm);
         break;
     }
     case NodeConnection::kTubular: {
@@ -716,12 +819,24 @@ NodeConnection ConnectionService::makeDefault(int type, const BeamInfo &beam, do
                     {"wpT", 6.3}};
         return c;
     }
+    if (type == NodeConnection::kEndPlate) {
+        const double bf = beam.bf > 0 ? beam.bf : 150.0;
+        const double tfl = beam.tf > 0 ? beam.tf : 10.0;
+        const double db = 20.0;
+        c.values = {{"db", db}, {"thread", 1.0}, {"tRows", 2.0}, {"sRows", 1.0}, {"pitch", 70.0}, {"gauge", std::max(3.0 * db, std::round(bf * 0.6))}, {"firstRow", 40.0}, {"edgeV", 35.0},
+                    {"plateW", std::round(bf + 20.0)}, {"plateT", 22.4}, {"plateFy", plateFy}, {"plateFu", plateFu},
+                    {"beamD", beam.depth}, {"bfl", bf}, {"tfl", tfl}, {"tw", beam.tw}, {"beamFy", beam.fy}, {"beamFu", beam.fu},
+                    {"weldF", std::min(12.0, std::max(5.0, std::round(tfl * 0.8)))}, {"weldW", 6.0}, {"weldFw", 485.0},
+                    {"cont", 0.0}, {"contT", 9.5}, {"contW", 60.0}, {"doubler", 0.0},
+                    {"supFy", plateFy}, {"supFu", plateFu}};
+        return c;
+    }
     if (type == NodeConnection::kColdFormed) {
         const double t = std::min(4.75, beam.geometry.value(QStringLiteral("t"), beam.tw > 0 ? beam.tw : 2.0));
         c.values = {{"mode", 0.0}, {"memberNRd", std::round(beam.area * beam.fy / 1.20 / 100.0) / 10.0}, {"t1", t}, {"fy1", beam.fy}, {"fu1", beam.fu}, {"t2", 4.75},
                     {"fy2", plateFy}, {"fu2", plateFu}, {"d", 12.0}, {"n", 2.0}, {"lines", 1.0}, {"pitch", 40.0}, {"gauge", 40.0}, {"end1", 30.0}, {"end2", 30.0},
                     {"edge", 25.0}, {"fub", 400.0}, {"thread", 1.0}, {"planes", 1.0}, {"fss", 0.0}, {"fts", 0.0}, {"dh", 8.0}, {"dw", 0.0}, {"tw", 0.0}, {"tens", 0.0},
-                    {"leg", std::min(t, 3.0)}, {"lLong", 80.0}, {"lTrans", 0.0}, {"fw", 485.0}};
+                    {"leg", std::min(t, 3.0)}, {"lLong", 80.0}, {"lTrans", 0.0}, {"fw", 485.0}, {"cParallel", 1.0}, {"cRe", 6.0}, {"cTwo", 0.0}, {"cSalient", 0.0}, {"cW1", 3.0}, {"cW2", 3.0}, {"cH", 0.0}};
         return c;
     }
     if (type == NodeConnection::kBasePlate) {
@@ -864,6 +979,7 @@ ConnectionService::Evaluation ConnectionService::evaluate(const NodeConnection &
         e.parts = D::partsColdFormed(in);
         break;
     }
+    case NodeConnection::kEndPlate:
     case NodeConnection::kSplice:
     case NodeConnection::kBasePlate:
     case NodeConnection::kTubular: {
@@ -878,7 +994,9 @@ ConnectionService::Evaluation ConnectionService::evaluate(const NodeConnection &
                 e.governingCase = fc.name;
             }
         }
-        if (c.type == NodeConnection::kSplice) {
+        if (c.type == NodeConnection::kEndPlate) {
+            e.parts = D::partsEndPlate(toEndPlate(c, 0, 0, 0));
+        } else if (c.type == NodeConnection::kSplice) {
             e.parts = D::partsSplice(toSplice(c, 0, 0, 0));
         } else if (c.type == NodeConnection::kBasePlate) {
             e.parts = D::partsBasePlate(toBasePlate(c, 0, 0, 0));
@@ -980,6 +1098,7 @@ bool ConnectionService::propose(NodeConnection &c, const Forces &f)
         return false;
     }
     case NodeConnection::kTubular:
+    case NodeConnection::kEndPlate:
     case NodeConnection::kColdFormed:
         return false;
     default: {
@@ -1012,9 +1131,16 @@ QString ConnectionService::describe(const NodeConnection &c)
     }
     case NodeConnection::kBasePlate:
         return QObject::tr("Placa %1 mm, %2 chumbadores d%3 mm, fck %4 MPa").arg(v("plateT"), 0, 'f', 1).arg(static_cast<int>(v("anchors") + 0.5)).arg(v("anchorD"), 0, 'f', 0).arg(v("fck"), 0, 'f', 0);
+    case NodeConnection::kEndPlate:
+        return QObject::tr("Chapa %1 × %2 mm, %3 parafusos d%4 %5, solda %6/%7 mm%8").arg(v("plateT"), 0, 'f', 1).arg(v("plateW"), 0, 'f', 0)
+            .arg(2 * (static_cast<int>(v("tRows") + 0.5) + static_cast<int>(v("sRows") + 0.5))).arg(v("db"), 0, 'f', 0).arg(c.grade)
+            .arg(v("weldF"), 0, 'f', 0).arg(v("weldW"), 0, 'f', 0).arg(v("cont") != 0.0 ? QObject::tr(", enrijecedores no pilar") : QString());
     case NodeConnection::kColdFormed: {
         const int mode = static_cast<int>(v("mode") + 0.5);
         const int total = static_cast<int>(v("n") + 0.5) * std::max(1, static_cast<int>(v("lines") + 0.5));
+        if (mode == 3) {
+            return QObject::tr("Perfil t = %1 mm, filete em superfície curva re = %2 mm").arg(v("t1"), 0, 'f', 2).arg(v("cRe"), 0, 'f', 1);
+        }
         if (mode == 1) {
             return QObject::tr("Perfil t = %1 mm soldado à chapa t = %2 mm, filete %3 mm").arg(v("t1"), 0, 'f', 2).arg(v("t2"), 0, 'f', 2).arg(v("leg"), 0, 'f', 1);
         }

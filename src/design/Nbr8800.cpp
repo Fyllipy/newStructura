@@ -702,7 +702,16 @@ ShearData shear(const DesignSection &s, const SteelGrade &steel, Axis direction,
             // kv (5.4.3.1.1): 5,34 sem enrijecedores ou a/h > 3; 5 + 5/(a/h)^2 nos demais casos
             const double ah = o.stiffenerSpacing > 0.0 && s.h > 0.0 ? o.stiffenerSpacing / s.h : 0.0;
             const double kv = ah > 0.0 && ah <= 3.0 ? 5.0 + 5.0 / (ah * ah) : 5.34;
-            return plateShear(s.h, s.tw, s.d * s.tw, kv, steel, o, ah > 0.0 && ah <= 3.0 ? "Cortante na alma com enrijecedores (5.4.3.1.1)" : "Cortante na alma (5.4.3.1.1)");
+            ShearData v = plateShear(s.h, s.tw, s.d * s.tw, kv, steel, o, ah > 0.0 && ah <= 3.0 ? "Cortante na alma com enrijecedores (5.4.3.1.1)" : "Cortante na alma (5.4.3.1.1)");
+            if (ah > 0.0 && ah <= 3.0) {
+                // 5.4.3.1.3: requisitos dos enrijecedores transversais (a conferir no projeto do enrijecedor)
+                const double j = std::max(2.5 / (ah * ah) - 2.0, 0.5);
+                const double inertia = o.stiffenerSpacing * std::pow(s.tw, 3.0) * j;
+                v.lines.push_back(fmt("Enrijecedores (5.4.3.1.3): a/h = %.2f; j = max[2,5/(a/h)^2 - 2 ; 0,5] = %.2f; I do enrijecedor (em torno do plano medio da alma) >= a tw^3 j = %.0f mm4; "
+                                      "b/t <= 0,56 sqrt(E/fy) = %.1f; soldados a alma e as mesas, com interrupcao 4 tw a 6 tw da solda mesa-alma na mesa tracionada",
+                                      ah, j, inertia, 0.56 * std::sqrt(steel.E / steel.fy)));
+            }
+            return v;
         }
         const double h = (s.kind == SectionKind::I) ? s.bf / 2.0 : s.bf;
         return plateShear(h, s.tf, 2.0 * s.bf * s.tf, 1.2, steel, o, "Cortante nas mesas (5.4.3.5)");

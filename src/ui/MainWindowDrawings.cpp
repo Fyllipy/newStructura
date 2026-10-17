@@ -40,9 +40,19 @@ void MainWindow::onGenerateDrawings()
     using Structura::App::ProjectData::MemberRelease::kEndRz;
     using Structura::App::ProjectData::MemberRelease::kStartRy;
     using Structura::App::ProjectData::MemberRelease::kStartRz;
+    QHash<int, std::array<double, 2>> trimsByMember;   // recuo (mm) das extremidades ate a face do apoio
+    for (const auto &info : connectionPlacements()) {
+        const auto &connection = m_extras.connections.at(info.index);
+        auto &trim = trimsByMember[connection.memberId];
+        trim[connection.atEnd ? 1 : 0] = std::max(trim[connection.atEnd ? 1 : 0], info.trimMm);
+    }
     for (const auto &bar : m_sceneController->bars()) {
         SheetBuilder::Bar b;
         b.id = bar.externalId;
+        if (const auto trims = trimsByMember.constFind(bar.externalId); trims != trimsByMember.constEnd()) {
+            b.trimI = (*trims)[0];
+            b.trimJ = (*trims)[1];
+        }
         b.nodeI = nodeExternal.value(bar.startNodeId);
         b.nodeJ = nodeExternal.value(bar.endNodeId);
         for (const auto &section : m_sections) {

@@ -327,6 +327,7 @@ void MainWindow::onCheckConnections()
                                : type == NodeConnection::kBasePlate ? tr("o pilar")
                                : type == NodeConnection::kTubular ? tr("o banzo (tubo circular)")
                                : type == NodeConnection::kColdFormed ? tr("a barra de perfil formado a frio")
+                               : type == NodeConnection::kEndPlate ? tr("a viga que se liga rigidamente ao pilar")
                                : type == NodeConnection::kSplice ? tr("a viga (um dos lados da emenda)")
                                                                  : tr("a viga que se liga ao apoio");
             QMessageBox::information(this, tr("Ligações"), tr("Selecione no modelo %1 e tente novamente.").arg(what));
@@ -351,6 +352,7 @@ void MainWindow::onCheckConnections()
                                  : type == NodeConnection::kTubular ? tr("Barra %1 (banzo): extremidade no nó da ligação:")
                                  : type == NodeConnection::kGusset ? tr("Barra %1 (diagonal): extremidade ligada à chapa de nó:")
                                  : type == NodeConnection::kColdFormed ? tr("Barra %1 (perfil formado a frio): extremidade da ligação:")
+                                 : type == NodeConnection::kEndPlate ? tr("Barra %1 (viga): extremidade ligada rigidamente ao pilar:")
                                  : type == NodeConnection::kSplice ? tr("Barra %1: extremidade da emenda:")
                                                                    : tr("Barra %1: extremidade que se liga ao apoio:");
             // o no da extremidade escolhida fica marcado na tela enquanto o usuario decide
@@ -437,7 +439,7 @@ void MainWindow::onCheckConnections()
                 }
             } else {
                 connection = ConnectionService::makeDefault(type, beam, plateFy, plateFu);
-                if (type == NodeConnection::kShearTab || type == NodeConnection::kDoubleAngle || type == NodeConnection::kGusset) {
+                if (type == NodeConnection::kShearTab || type == NodeConnection::kDoubleAngle || type == NodeConnection::kGusset || type == NodeConnection::kEndPlate) {
                     if (!chooseSupport(connection, bar, nodeId)) {
                         return none;
                     }
@@ -463,6 +465,7 @@ void MainWindow::onCheckConnections()
         applyViewOption(Structura::UI::ViewOptionsBar::kConnections, true);
     }
     syncConnectionVisuals();
+    syncSolidVisuals();   // as barras se recuam ate a face do apoio
     showStatusMessage(tr("%1 ligação(ões) gravada(s) no modelo.").arg(m_extras.connections.size()), 5000);
 }
 

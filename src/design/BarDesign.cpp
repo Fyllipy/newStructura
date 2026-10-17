@@ -427,6 +427,157 @@ BarDesignOutput designBar(const BarDesignInput &in)
             out.governingX = cand.x;
         }
     }
+    // --- NBR 8800, Anexo H: fadiga (faixa de variacao das tensoes normais nas combinacoes selecionadas) ---
+    if (!cold && in.fatigueCategory > 0) {
+        struct Category {
+            const char *name;
+            double cf, th;
+            bool shear;
+        };
+        static const Category kCategories[] = {{"A", 250e8, 165.0, false}, {"B", 120e8, 110.0, false}, {"B'", 61e8, 83.0, false}, {"C", 44e8, 69.0, false},
+                                                {"D", 22e8, 48.0, false}, {"E", 11e8, 31.0, false}, {"E'", 3.9e8, 18.0, false}, {"F", 160e10, 55.0, true},
+                                                {"G", 3.9e8, 48.0, false}};
+        const Category &cat = kCategories[std::clamp(in.fatigueCategory, 1, 9) - 1];
+        const double area = s.g.area, wx = s.g.Wx(), wy = s.g.Wy();
+        double worstRange = 0.0;
+        bool anyTension = false;
+        for (const double sx : {-1.0, 1.0}) {
+            for (const double sy : {-1.0, 1.0}) {
+                double smax = -1e300, smin = 1e300;
+                for (const ComboEffects &combo : in.combos) {
+                    for (const StationEffects &st : combo.stations) {
+                        const double sigma = (area > 0.0 ? st.e.N / area : 0.0) + (wx > 0.0 ? sx * st.e.Mx / wx : 0.0) + (wy > 0.0 ? sy * st.e.My / wy : 0.0);
+                        smax = std::max(smax, sigma);
+                        smin = std::min(smin, sigma);
+                    }
+                }
+                if (smax > -1e299 && smax > 0.0) {   // H.2.5: sem verificacao se os extremos sao ambos de compressao
+                    anyTension = true;
+                    worstRange = std::max(worstRange, smax - smin);
+                }
+            }
+        }
+        CheckResult c;
+        c.id = "fatigue";
+        c.title = "Fadiga (faixa de variacao de tensoes)";
+        c.clause = clauseTag + ", Anexo H";
+        c.unit = "MPa";
+        double adm = cat.th;
+        if (in.fatigueCycles > 0.0) {
+            adm = cat.shear ? std::pow(11e4 * cat.cf / in.fatigueCycles, 0.167) : std::pow(329.0 * cat.cf / in.fatigueCycles, 0.333);
+            adm = std::max(adm, cat.th);
+        }
+        c.demand = worstRange;
+        c.resistance = adm;
+        if (in.fatigueCycles > 0.0 && in.fatigueCycles < 20000.0) {
+            c.ratio = 0.0;
+            c.lines.push_back(fmt("N = %.0f < 20 000 ciclos: verificacao de fadiga dispensada (H.2.6).", in.fatigueCycles));
+        } else if (!anyTension) {
+            c.ratio = 0.0;
+            c.lines.push_back("Tensoes extremas apenas de compressao: verificacao de fadiga dispensada (H.2.5).");
+        } else {
+            c.ratio = adm > 0.0 ? worstRange / adm : 0.0;
+            c.lines.push_back(fmt("Categoria %s: Cf = %.3g; sigma_TH = %.0f MPa", cat.name, cat.cf, cat.th));
+            c.lines.push_back(in.fatigueCycles > 0.0 ? fmt("sigma_SR = %s = %.1f MPa (>= sigma_TH); N = %.3g ciclos", cat.shear ? "(11e4 Cf/N)^0,167" : "(329 Cf/N)^0,333", adm, in.fatigueCycles)
+                                                      : fmt("N nao informado: vida infinita, sigma_SR = sigma_TH = %.0f MPa", adm));
+            c.lines.push_back(fmt("Faixa calculada = maior (tensao maxima - tensao minima) nos quatro cantos da secao = %.1f MPa (sigma = N/A +- Mx/Wx +- My/Wy, combinacoes selecionadas; "
+                                  "elas devem ser as combinacoes de fadiga de H.2.1)", worstRange));
+            c.lines.push_back("A categoria deve ser coerente com o detalhe construtivo (Tabela H.1); parafusos em tracao: faixa sobre a area liquida efetiva, com efeito de alavanca (H.5).");
+        }
+        out.checks.push_back(c);
+        if (c.ratio > out.maxRatio) {
+            out.maxRatio = c.ratio;
+            out.governingCheck = c.id;
+            out.governingCombo.clear();
+        }
+    }
+
+    // --- NBR 8800, Anexo F: abertura circular na alma, sem reforco ---
+    if (!cold && in.openingDiameter > 0.0 && s.kind == SectionKind::I) {
+        const double dOpen = in.openingDiameter;
+        const double sqrtEf = std::sqrt(in.steel.E / in.steel.fy);
+        std::vector<std::string> lines;
+        int failures = 0;
+        auto test = [&](bool ok, const std::string &text) {
+            lines.push_back(std::string(ok ? "[ok] " : "[NAO ATENDE] ") + text);
+            failures += ok ? 0 : 1;
+        };
+        const double slenderWeb = s.h / s.tw, limitWeb = 3.76 * sqrtEf;
+        test(slenderWeb <= limitWeb, fmt("h/tw = %.1f <= 3,76 sqrt(E/fy) = %.1f", slenderWeb, limitWeb));
+        const double slenderFlange = s.bf / (2.0 * s.tf), limitFlange = 0.38 * sqrtEf;
+        test(slenderFlange <= limitFlange, fmt("bf/(2 tf) = %.1f <= 0,38 sqrt(E/fy) = %.1f", slenderFlange, limitFlange));
+        test(std::abs(in.openingOffset) + dOpen / 2.0 <= s.d / 6.0, fmt("abertura dentro do terco medio da altura: |e| + D/2 = %.0f mm <= d/6 = %.0f mm", std::abs(in.openingOffset) + dOpen / 2.0, s.d / 6.0));
+        test(in.openingPosition - dOpen / 2.0 >= L / 4.0 && in.openingPosition + dOpen / 2.0 <= 3.0 * L / 4.0,
+             fmt("abertura nos dois quartos centrais do vao: de %.0f a %.0f mm, dentro de [%.0f ; %.0f] mm", in.openingPosition - dOpen / 2.0, in.openingPosition + dOpen / 2.0, L / 4.0, 3.0 * L / 4.0));
+        if (in.openingNeighbourD > 0.0) {
+            const double minSpacing = 2.5 * std::max(dOpen, in.openingNeighbourD);
+            test(in.openingSpacing >= minSpacing, fmt("distancia entre centros = %.0f mm >= 2,5 x maior diametro = %.0f mm", in.openingSpacing, minSpacing));
+        }
+        const auto &vy = shearOf(Axis::Y);
+        double vEnd = 0.0;
+        for (const ComboEffects &combo : in.combos) {
+            if (!combo.stations.empty()) {
+                vEnd = std::max({vEnd, std::abs(combo.stations.front().e.Vy), std::abs(combo.stations.back().e.Vy)});
+            }
+        }
+        if (vy.covered && vy.VRd > 0.0) {
+            test(vEnd <= 0.5 * vy.VRd, fmt("cortante nos apoios V_Sd = %.1f kN <= 50 %% de V_Rd = %.1f kN", vEnd / kKn, 0.5 * vy.VRd / kKn));
+        }
+        lines.push_back("Condicoes de F.3 que o programa nao confere: viga biapoiada e prismatica, carregamento uniformemente distribuido, ausencia de reforcos.");
+        CheckResult c;
+        c.id = "web_opening";
+        c.title = "Abertura circular na alma (sem reforco)";
+        c.clause = clauseTag + ", Anexo F";
+        c.unit = "-";
+        c.demand = failures;
+        c.resistance = 0.0;
+        c.ratio = failures > 0 ? 1.0 + 0.1 * failures : 0.0;
+        c.lines = lines;
+        out.checks.push_back(c);
+        if (c.ratio > out.maxRatio) {
+            out.maxRatio = c.ratio;
+            out.governingCheck = c.id;
+            out.governingCombo.clear();
+        }
+    }
+
+    // --- NBR 8800, 4.12: forca e rigidez minimas das contencoes de translacao (nas secoes entre pontos contidos) ---
+    if (!cold && (in.lateralSegments > 1 || in.lbOverride > 0.0)) {
+        CheckResult c;
+        c.id = "bracing";
+        c.title = "Contencoes laterais (requisitos)";
+        c.clause = clauseTag + ", 4.12";
+        c.unit = "-";
+        c.ratio = 0.0;
+        const double gammaR = 1.35;
+        double nMax = 0.0, mMax = 0.0;
+        for (const ComboEffects &combo : in.combos) {
+            for (const StationEffects &st : combo.stations) {
+                nMax = std::max(nMax, -st.e.N);
+                mMax = std::max(mMax, std::abs(st.e.Mx));
+            }
+        }
+        const double lbc = in.lbOverride > 0.0 ? in.lbOverride : L / std::max(1, in.lateralSegments);
+        const int braces = std::max(1, in.lateralSegments - 1);
+        if (nMax > 0.0) {
+            const double fbr = 0.01 * nMax;
+            const double sbr = 2.0 * (4.0 - 2.0 / braces) * gammaR * nMax / lbc;
+            c.lines.push_back(fmt("Pilar (4.12.2.2), N_Sd = %.1f kN, Lbc = %.0f mm, n = %d contencoes: F_br = 0,01 N_Sd = %.2f kN; S_br = 2 (4 - 2/n) gr N_Sd / Lbc = %.3f kN/mm (gr = 1,35)",
+                                  nMax / kKn, lbc, braces, fbr / kKn, sbr / kKn));
+        }
+        if (mMax > 0.0 && s.kind == SectionKind::I) {
+            const double ho = s.d - s.tf;
+            const double fbr = 0.02 * mMax / ho;
+            const double sbr = 10.0 * gammaR * mMax / (lbc * ho);
+            c.lines.push_back(fmt("Viga (4.12.3.3), M_Sd = %.1f kN*m, ho = %.0f mm, Lbb = %.0f mm, Cd = 1,0: F_br = 0,02 M_Sd Cd/ho = %.2f kN; S_br = 10 gr M_Sd Cd/(Lbb ho) = %.3f kN/mm "
+                                  "(Cd = 2,0 para a contencao proxima ao ponto de inflexao em curvatura reversa)", mMax / kKnm, ho, lbc, fbr / kKn, sbr / kKn));
+        }
+        if (!c.lines.empty()) {
+            c.lines.push_back("As contencoes adotadas (travessas, correntes, contraventamentos) devem ter resistencia e rigidez de calculo no minimo iguais a estes valores; nao e verificado pelo programa.");
+            out.checks.push_back(c);
+        }
+    }
+
     std::sort(out.checks.begin(), out.checks.end(), [](const CheckResult &a, const CheckResult &b) { return a.ratio > b.ratio; });
 
     if (cold && (s.kind == SectionKind::ColdChannel || s.kind == SectionKind::ColdLippedChannel || s.kind == SectionKind::ColdZ || s.kind == SectionKind::ColdHat)) {
@@ -437,7 +588,29 @@ BarDesignOutput designBar(const BarDesignInput &in)
                 reaction = std::max({reaction, std::abs(combo.stations.front().e.Vy), std::abs(combo.stations.back().e.Vy)});
             }
         }
-        if (reaction > 0.0) {
+        if (reaction > 0.0 && in.bearingLength > 0.0) {
+            // comprimento de apoio informado: verificacao efetiva da reacao de extremidade (Anexo D)
+            const Nbr14762::WebCripplingData wc = Nbr14762::webCrippling(s, in.steel, true, std::max(in.bearingLength, 20.0), o14);
+            if (wc.covered && wc.FRd > 0.0) {
+                CheckResult c;
+                c.id = "web_crippling";
+                c.title = "Esmagamento da alma (reacao de extremidade)";
+                c.clause = clauseTag + ", Anexo D";
+                c.demand = reaction / kKn;
+                c.resistance = wc.FRd / kKn;
+                c.unit = "kN";
+                c.ratio = reaction / wc.FRd;
+                c.lines = wc.lines;
+                c.lines.push_back(fmt("R_Sd = %.1f kN <= F_Rd = %.1f kN (c = %.0f mm)", reaction / kKn, wc.FRd / kKn, std::max(in.bearingLength, 20.0)));
+                out.checks.push_back(c);
+                if (c.ratio > out.maxRatio) {
+                    out.maxRatio = c.ratio;
+                    out.governingCheck = c.id;
+                    out.governingCombo.clear();
+                }
+                std::sort(out.checks.begin(), out.checks.end(), [](const CheckResult &a, const CheckResult &b) { return a.ratio > b.ratio; });
+            }
+        } else if (reaction > 0.0) {
             const Nbr14762::WebCripplingData wc = Nbr14762::webCrippling(s, in.steel, true, 50.0, o14);
             if (wc.covered) {
                 out.warnings.push_back(fmt("Esmagamento da alma (NBR 14762, Anexo D) nao e verificado automaticamente (o comprimento de apoio e desconhecido): "

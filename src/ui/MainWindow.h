@@ -200,6 +200,13 @@ private slots:
 
 
 private:
+    /// Posicao 3D de cada ligacao (origem na face do apoio, eixos s/t/u) e quanto a barra deve ser recuada (mm) do no ate essa face.
+    struct ConnectionPlacementInfo {
+        int index {0};   ///< indice em m_extras.connections
+        std::array<double, 3> origin {}, s {}, t {}, u {};
+        double trimMm {0.0};
+    };
+    QVector<ConnectionPlacementInfo> connectionPlacements() const;
     using Presenter = Structura::UI::MainWindowPresenter;
     using MaterialInfo = Presenter::MaterialInfo;
     using SectionInfo = Presenter::SectionInfo;
