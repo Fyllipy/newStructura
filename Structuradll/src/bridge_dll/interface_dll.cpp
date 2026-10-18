@@ -19,7 +19,90 @@ int g_modalModes = 0;
 std::vector<std::pair<int, double>> g_modalDensities;   // material id, density
 std::vector<std::pair<int, double>> g_modalMasses;      // node id, lumped mass
 SolverOutput g_lastOutput;
+std::vector<ShellElementData> g_shells;
+std::vector<ShellLoadData> g_shellLoads;
+std::vector<TieData> g_ties;
+std::vector<SpringData> g_springs;
 } // namespace
+
+extern "C" void structura_clear_shells() {
+    g_shells.clear();
+    g_shellLoads.clear();
+    g_ties.clear();
+    g_springs.clear();
+}
+
+extern "C" int structura_set_shells(
+    int shellCount, const int* shellIds, const int* shellNodeIds4, const double* shellE, const double* shellNu, const double* shellDensity,
+    const double* shellThickness, int loadCount, const int* loadShellIds, const int* loadKinds, const double* loadValues4, int tieCount,
+    const int* tieSlaveIds, const int* tieMasterCounts, const int* tieMasterIds, const double* tieWeights, int springCount,
+    const int* springNodeIds, const double* springK6, const int* springCompressionOnly, const double* springNormals3) {
+    structura_clear_shells();
+    if (shellCount < 0 || loadCount < 0 || tieCount < 0 || springCount < 0) {
+        return 1;
+    }
+    for (int i = 0; i < shellCount; ++i) {
+        ShellElementData s;
+        s.id = shellIds[i];
+        for (int k = 0; k < 4; ++k) {
+            s.nodeIds[static_cast<size_t>(k)] = shellNodeIds4[i * 4 + k];
+        }
+        s.E = shellE[i];
+        s.nu = shellNu[i];
+        s.density = shellDensity != nullptr ? shellDensity[i] : 0.0;
+        s.thickness = shellThickness[i];
+        g_shells.push_back(s);
+    }
+    for (int i = 0; i < loadCount; ++i) {
+        ShellLoadData l;
+        l.shellId = loadShellIds[i];
+        l.kind = loadKinds[i];
+        for (int k = 0; k < 4; ++k) {
+            l.v[static_cast<size_t>(k)] = loadValues4[i * 4 + k];
+        }
+        g_shellLoads.push_back(l);
+    }
+    int cursor = 0;
+    for (int i = 0; i < tieCount; ++i) {
+        TieData t;
+        t.slaveId = tieSlaveIds[i];
+        for (int k = 0; k < tieMasterCounts[i]; ++k) {
+            t.masterIds.push_back(tieMasterIds[cursor + k]);
+            t.weights.push_back(tieWeights[cursor + k]);
+        }
+        cursor += tieMasterCounts[i];
+        g_ties.push_back(std::move(t));
+    }
+    for (int i = 0; i < springCount; ++i) {
+        SpringData sp;
+        sp.nodeId = springNodeIds[i];
+        for (int k = 0; k < 6; ++k) {
+            sp.k[static_cast<size_t>(k)] = springK6[i * 6 + k];
+        }
+        sp.compressionOnly = springCompressionOnly[i] != 0;
+        for (int k = 0; k < 3; ++k) {
+            sp.normal[static_cast<size_t>(k)] = springNormals3[i * 3 + k];
+        }
+        g_springs.push_back(sp);
+    }
+    return 0;
+}
+
+extern "C" int structura_get_shell_results(int shellCount, double* values40, double* axes9) {
+    const int available = static_cast<int>(g_lastOutput.shells.size());
+    if (values40 == nullptr || axes9 == nullptr || shellCount != available) {
+        return 0;
+    }
+    for (int i = 0; i < available; ++i) {
+        for (int k = 0; k < 40; ++k) {
+            values40[i * 40 + k] = g_lastOutput.shells[static_cast<size_t>(i)].values[static_cast<size_t>(k)];
+        }
+        for (int k = 0; k < 9; ++k) {
+            axes9[i * 9 + k] = g_lastOutput.shells[static_cast<size_t>(i)].axes[static_cast<size_t>(k)];
+        }
+    }
+    return available;
+}
 
 extern "C" void structura_set_options(int secondOrder, int maxIterations, double tolerance) {
     g_options.secondOrder = secondOrder != 0;
@@ -196,6 +279,10 @@ extern "C" int structura_solve_v4(
     input.extraNodalMasses = g_modalMasses;
     input.maxIterations = g_options.maxIterations;
     input.tolerance = g_options.tolerance;
+    input.shells = g_shells;
+    input.shellLoads = g_shellLoads;
+    input.ties = g_ties;
+    input.springs = g_springs;
     input.materials.reserve(static_cast<size_t>(materialCount));
     input.sections.reserve(static_cast<size_t>(sectionCount));
     input.nodes.reserve(static_cast<size_t>(nodeCount));

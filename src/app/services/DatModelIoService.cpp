@@ -37,7 +37,7 @@ bool DatModelIoService::load(const QString &filePath,
     QTextStream stream(&file);
     stream.setLocale(QLocale::c());
 
-    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor };
+    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor, ShellModel };
     Section current = Section::None;
 
     QVector<MaterialInfo> materialsTmp;
@@ -81,6 +81,8 @@ bool DatModelIoService::load(const QString &filePath,
     QVector<Structura::App::ProjectData::SheetLayoutDef> sheetLayoutsTmp;
     QMap<int, QMap<QString, double>> compositeBeamsTmp;
     QMap<QString, double> deckSlabTmp;
+    Structura::Shell::Model shellTmp;
+    shellTmp.materials.clear();
     auto decodeName = [](const QString &token) { return QUrl::fromPercentEncoding(token.toLatin1()); };
     struct SectionGeometryRecord {
         QString family;
@@ -142,6 +144,8 @@ bool DatModelIoService::load(const QString &filePath,
                 current = Section::AreaLoads;
             } else if (trimmed.compare(QStringLiteral("[VIEWS_3D]"), Qt::CaseInsensitive) == 0) {
                 current = Section::Views3D;
+            } else if (trimmed.compare(QStringLiteral("[SHELL_MODEL]"), Qt::CaseInsensitive) == 0) {
+                current = Section::ShellModel;
             } else if (trimmed.compare(QStringLiteral("[COMPOSITE_FLOOR]"), Qt::CaseInsensitive) == 0) {
                 current = Section::CompositeFloor;
             } else if (trimmed.compare(QStringLiteral("[SHEET_LAYOUTS]"), Qt::CaseInsensitive) == 0) {
@@ -394,6 +398,24 @@ bool DatModelIoService::load(const QString &filePath,
                     member.auxK[static_cast<std::size_t>(i)] = toDouble(parts[14 + i], &ok);
                 }
                 resultsTmp.runs.last().members.append(member);
+            } else if (key == QLatin1String("SN") && parts.size() >= 14 && !resultsTmp.runs.isEmpty()) {
+                Structura::App::ProjectData::StoredNodeResult node;
+                node.nodeId = toInt(parts[1], &ok);
+                for (int i = 0; i < 6; ++i) {
+                    node.displacements[static_cast<std::size_t>(i)] = toDouble(parts[2 + i], &ok);
+                    node.reactions[static_cast<std::size_t>(i)] = toDouble(parts[8 + i], &ok);
+                }
+                resultsTmp.runs.last().shellNodes.append(node);
+            } else if (key == QLatin1String("SE") && parts.size() >= 52 && !resultsTmp.runs.isEmpty()) {
+                Structura::App::ProjectData::StoredShellResult element;
+                element.shellId = toInt(parts[1], &ok);
+                for (int i = 0; i < 40; ++i) {
+                    element.values[static_cast<std::size_t>(i)] = toDouble(parts[2 + i], &ok);
+                }
+                for (int i = 0; i < 9; ++i) {
+                    element.axes[static_cast<std::size_t>(i)] = toDouble(parts[42 + i], &ok);
+                }
+                resultsTmp.runs.last().shellElements.append(element);
             }
             break;
         }
@@ -420,6 +442,81 @@ bool DatModelIoService::load(const QString &filePath,
                 }
             }
             views3dTmp.append(v);
+            break;
+        }
+        case Section::ShellModel: {
+            const QString key = parts[0].toUpper();
+            auto objectById = [&](int id) -> Structura::Shell::Object * {
+                for (auto &o : shellTmp.objects) {
+                    if (o.id == id) {
+                        return &o;
+                    }
+                }
+                return nullptr;
+            };
+            if (key == QLatin1String("COUPLED") && parts.size() >= 2) {
+                shellTmp.coupled = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("MAT") && parts.size() >= 10) {
+                Structura::Shell::Material m;
+                m.name = decodeName(parts[2]).toStdString();
+                m.concrete = toInt(parts[3], &ok) != 0;
+                m.E = toDouble(parts[4], &ok);
+                m.nu = toDouble(parts[5], &ok);
+                m.unitWeight = toDouble(parts[6], &ok);
+                m.alpha = toDouble(parts[7], &ok);
+                m.fy = toDouble(parts[8], &ok);
+                m.fu = toDouble(parts[9], &ok);
+                shellTmp.materials.push_back(m);
+            } else if (key == QLatin1String("OBJ") && parts.size() >= 7) {
+                Structura::Shell::Object o;
+                o.id = toInt(parts[1], &ok);
+                o.name = decodeName(parts[2]).toStdString();
+                o.kind = static_cast<Structura::Shell::Kind>(toInt(parts[3], &ok));
+                o.material = toInt(parts[4], &ok);
+                o.meshSize = toDouble(parts[5], &ok);
+                o.visible = toInt(parts[6], &ok) != 0;
+                shellTmp.objects.push_back(o);
+            } else if (key == QLatin1String("PARAM") && parts.size() >= 4) {
+                if (auto *o = objectById(toInt(parts[1], &ok))) {
+                    o->p[parts[2].toStdString()] = toDouble(parts[3], &ok);
+                }
+            } else if (key == QLatin1String("POLY") && parts.size() >= 5) {
+                if (auto *o = objectById(toInt(parts[1], &ok))) {
+                    o->polygon.push_back({toDouble(parts[2], &ok), toDouble(parts[3], &ok), toDouble(parts[4], &ok)});
+                }
+            } else if (key == QLatin1String("LOAD") && parts.size() >= 8) {
+                Structura::Shell::Load l;
+                l.caseName = decodeName(parts[1]).toStdString();
+                l.object = toInt(parts[2], &ok);
+                l.type = static_cast<Structura::Shell::Load::Type>(toInt(parts[3], &ok));
+                for (int i = 0; i < 4; ++i) {
+                    l.v[static_cast<std::size_t>(i)] = toDouble(parts[4 + i], &ok);
+                }
+                shellTmp.loads.push_back(l);
+            } else if (key == QLatin1String("SUPPORT") && parts.size() >= 24) {
+                Structura::Shell::Support s;
+                s.object = toInt(parts[1], &ok);
+                s.selector = static_cast<Structura::Shell::Support::Selector>(toInt(parts[2], &ok));
+                s.axis = toInt(parts[3], &ok);
+                s.value = toDouble(parts[4], &ok);
+                s.value2 = toDouble(parts[5], &ok);
+                s.value3 = toDouble(parts[6], &ok);
+                s.tol = toDouble(parts[7], &ok);
+                s.legs = toInt(parts[8], &ok);
+                s.legStart = toDouble(parts[9], &ok);
+                s.limitAxis = toInt(parts[10], &ok);
+                s.limitValue = toDouble(parts[11], &ok);
+                s.limitBelow = toInt(parts[12], &ok) != 0;
+                for (int i = 0; i < 6; ++i) {
+                    s.fixed[static_cast<std::size_t>(i)] = toInt(parts[13 + i], &ok);
+                }
+                s.springPerArea = toDouble(parts[19], &ok);
+                s.compressionOnly = toInt(parts[20], &ok) != 0;
+                for (int i = 0; i < 3; ++i) {
+                    s.springNormal[static_cast<std::size_t>(i)] = toDouble(parts[21 + i], &ok);
+                }
+                shellTmp.supports.push_back(s);
+            }
             break;
         }
         case Section::CompositeFloor: {
@@ -899,6 +996,10 @@ bool DatModelIoService::load(const QString &filePath,
     extras.sheetLayouts = sheetLayoutsTmp;
     extras.compositeBeams = compositeBeamsTmp;
     extras.deckSlab = deckSlabTmp;
+    if (shellTmp.materials.empty()) {
+        shellTmp.materials.push_back(Structura::Shell::Material {});
+    }
+    extras.shell = shellTmp;
 
     // Projetos antigos nao tem casos: cria o caso padrao e atribui as cargas a ele.
     extras.loadCases = loadCasesTmp;
@@ -1356,6 +1457,42 @@ bool DatModelIoService::save(const QString &filePath,
             stream << "\n";
         }
     }
+    if (!extras.shell.objects.empty()) {
+        auto enc = [](const std::string &s) { return QString::fromLatin1(QUrl::toPercentEncoding(s.empty() ? QStringLiteral("-") : QString::fromStdString(s))); };
+        auto num = [](double v) { return QString::number(v, 'g', 12); };
+        const auto &sm = extras.shell;
+        stream << "\n[SHELL_MODEL]\n";
+        stream << "# MAT idx nome concreto E nu pesoEsp alfa fy fu | OBJ id nome tipo material malha visivel | PARAM id chave valor | POLY id x y z\n";
+        if (sm.coupled) {
+            stream << "COUPLED 1\n";
+        }
+        stream << "# LOAD caso objeto tipo v0 v1 v2 v3 | SUPPORT objeto seletor eixo v v2 v3 tol pernas inicio limEixo limValor limAbaixo f1..f6 mola so_compressao nx ny nz\n";
+        for (std::size_t i = 0; i < sm.materials.size(); ++i) {
+            const auto &m = sm.materials[i];
+            stream << "MAT " << i << ' ' << enc(m.name) << ' ' << (m.concrete ? 1 : 0) << ' ' << num(m.E) << ' ' << num(m.nu) << ' ' << num(m.unitWeight) << ' ' << num(m.alpha)
+                   << ' ' << num(m.fy) << ' ' << num(m.fu) << "\n";
+        }
+        for (const auto &o : sm.objects) {
+            stream << "OBJ " << o.id << ' ' << enc(o.name) << ' ' << static_cast<int>(o.kind) << ' ' << o.material << ' ' << num(o.meshSize) << ' ' << (o.visible ? 1 : 0) << "\n";
+            for (const auto &[key, value] : o.p) {
+                stream << "PARAM " << o.id << ' ' << QString::fromStdString(key) << ' ' << num(value) << "\n";
+            }
+            for (const auto &p : o.polygon) {
+                stream << "POLY " << o.id << ' ' << num(p[0]) << ' ' << num(p[1]) << ' ' << num(p[2]) << "\n";
+            }
+        }
+        for (const auto &l : sm.loads) {
+            stream << "LOAD " << enc(l.caseName) << ' ' << l.object << ' ' << static_cast<int>(l.type) << ' ' << num(l.v[0]) << ' ' << num(l.v[1]) << ' ' << num(l.v[2]) << ' ' << num(l.v[3]) << "\n";
+        }
+        for (const auto &s : sm.supports) {
+            stream << "SUPPORT " << s.object << ' ' << static_cast<int>(s.selector) << ' ' << s.axis << ' ' << num(s.value) << ' ' << num(s.value2) << ' ' << num(s.value3) << ' ' << num(s.tol)
+                   << ' ' << s.legs << ' ' << num(s.legStart) << ' ' << s.limitAxis << ' ' << num(s.limitValue) << ' ' << (s.limitBelow ? 1 : 0);
+            for (const int f : s.fixed) {
+                stream << ' ' << f;
+            }
+            stream << ' ' << num(s.springPerArea) << ' ' << (s.compressionOnly ? 1 : 0) << ' ' << num(s.springNormal[0]) << ' ' << num(s.springNormal[1]) << ' ' << num(s.springNormal[2]) << "\n";
+        }
+    }
     if (!extras.compositeBeams.isEmpty() || !extras.deckSlab.isEmpty()) {
         stream << "\n[COMPOSITE_FLOOR]\n";
         stream << "# BEAM id_da_barra chave valor  |  DECK chave valor (entradas das verificacoes de viga mista e laje mista)\n";
@@ -1433,6 +1570,26 @@ bool DatModelIoService::save(const QString &filePath,
                 }
                 for (const double v : m.auxK) {
                     stream << ' ' << QString::number(v, 'g', 12);
+                }
+                stream << "\n";
+            }
+            for (const auto &n : run.shellNodes) {
+                stream << "SN " << n.nodeId;
+                for (const double v : n.displacements) {
+                    stream << ' ' << QString::number(v, 'g', 10);
+                }
+                for (const double v : n.reactions) {
+                    stream << ' ' << QString::number(v, 'g', 10);
+                }
+                stream << "\n";
+            }
+            for (const auto &e : run.shellElements) {
+                stream << "SE " << e.shellId;
+                for (const double v : e.values) {
+                    stream << ' ' << QString::number(v, 'g', 10);
+                }
+                for (const double v : e.axes) {
+                    stream << ' ' << QString::number(v, 'g', 9);
                 }
                 stream << "\n";
             }

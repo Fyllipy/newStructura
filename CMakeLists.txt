@@ -121,6 +121,8 @@ set(APP_SOURCES
     src/app/services/DatModelIoService.cpp
     src/app/services/AnalysisService.h
     src/app/services/AnalysisService.cpp
+    src/app/services/ShellCouplingService.h
+    src/app/services/ShellCouplingService.cpp
     src/app/services/CombinationService.h
     src/app/services/CombinationService.cpp
     src/app/services/SectionPlacementService.h
@@ -230,6 +232,9 @@ set(UI_SOURCES
     src/ui/CompositeDialog.h
     src/ui/CompositeDialog.cpp
     src/ui/MainWindowComposite.cpp
+    src/ui/MainWindowShell.cpp
+    src/ui/ShellDialog.h
+    src/ui/ShellDialog.cpp
     src/ui/BusyProgress.h
     src/ui/BusyProgress.cpp
     src/ui/MainWindowCompare.cpp
@@ -258,6 +263,8 @@ set(UI_SOURCES
     src/app/services/ConnectionSolids.cpp
     src/viz/structure/ConnectionRenderer.h
     src/viz/structure/ConnectionRenderer.cpp
+    src/viz/structure/ShellRenderer.h
+    src/viz/structure/ShellRenderer.cpp
     src/app/services/NotionalLoadService.h
     src/app/services/NotionalLoadService.cpp
     src/ui/MainWindowDocs.cpp
@@ -380,6 +387,24 @@ set(UI_SOURCES
     src/ui/PropertiesPanelEntryBuilder.cpp
 )
 
+set(SHELL_SOURCES
+    src/shell/ShellModel.h
+    src/shell/ShellMesh.h
+    src/shell/ShellMesh.cpp
+    src/shell/ShellFactory.h
+    src/shell/ShellFactory.cpp
+    src/shell/ShellJob.h
+    src/shell/ShellJob.cpp
+    src/shell/ShellResults.h
+    src/shell/ShellResults.cpp
+    src/shell/ShellVisual.h
+    src/shell/ShellVisual.cpp
+    src/shell/ShellDesign.h
+    src/shell/ShellDesign.cpp
+    src/app/ShellSolverBridge.h
+    src/app/ShellSolverBridge.cpp
+)
+
 set(RESOURCES
     resources.qrc
 )
@@ -390,6 +415,7 @@ add_library(StructuraLib STATIC
     ${CORE_SOURCES}
     ${VIZ_SOURCES}
     ${APP_SOURCES}
+    ${SHELL_SOURCES}
     ${UI_SOURCES}
     ${RESOURCES}
 )
@@ -426,17 +452,17 @@ target_link_libraries(StructuraRibbon3D
 # o executavel se chama Structura.exe (o alvo CMake mantem o nome interno)
 set_target_properties(StructuraRibbon3D PROPERTIES OUTPUT_NAME Structura)
 
-set(STRUCTURA_SOLVER_HINT_DIR "" CACHE PATH "Optional path containing solver_dll shared library")
+set(STRUCTURA_SOLVER_HINT_DIR "" CACHE PATH "Optional path containing rds shared library")
 
 if (WIN32)
     find_library(STRUCTURA_SOLVER_LIBRARY
-        NAMES solver_dll
+        NAMES rds
         HINTS ${STRUCTURA_SOLVER_HINT_DIR}
         PATH_SUFFIXES . bin lib
     )
 else()
     find_library(STRUCTURA_SOLVER_LIBRARY
-        NAMES solver_dll libsolver_dll
+        NAMES rds librds
         HINTS ${STRUCTURA_SOLVER_HINT_DIR}
         PATH_SUFFIXES . bin lib
     )
@@ -458,16 +484,28 @@ if (STRUCTURA_SOLVER_LIBRARY)
     )
 
     message(STATUS "Using solver shared library: ${STRUCTURA_SOLVER_LIBRARY}")
-elseif (EXISTS "${CMAKE_SOURCE_DIR}/solver_dll.dll")
+elseif (EXISTS "${CMAKE_SOURCE_DIR}/rds.dll")
     # O solver e carregado em tempo de execucao (QLibrary): basta copiar a DLL da raiz.
     add_custom_command(TARGET StructuraRibbon3D POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CMAKE_SOURCE_DIR}/solver_dll.dll" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
+                "${CMAKE_SOURCE_DIR}/rds.dll" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
         VERBATIM
     )
     message(STATUS "Using solver DLL from repository root")
 else()
-    message(WARNING "solver_dll shared library not found. Set STRUCTURA_SOLVER_HINT_DIR to the folder containing the DLL/.so.")
+    message(WARNING "rds shared library not found. Set STRUCTURA_SOLVER_HINT_DIR to the folder containing the DLL/.so.")
+endif()
+
+# O MEF de cascas (mefs) e carregado em tempo de execucao (QLibrary): copia a DLL da raiz.
+if (EXISTS "${CMAKE_SOURCE_DIR}/mefs.dll")
+    add_custom_command(TARGET StructuraRibbon3D POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/mefs.dll" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
+        VERBATIM
+    )
+    message(STATUS "Using FEM shell DLL from repository root")
+else()
+    message(WARNING "mefs.dll not found in the repository root: shell analysis will be unavailable (build Femdll/ and copy mefs.dll).")
 endif()
 
 # --- Enable Testing ---

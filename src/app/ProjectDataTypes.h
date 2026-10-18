@@ -1,5 +1,6 @@
 #pragma once
 
+#include "shell/ShellModel.h"
 #include <QString>
 #include <QStringList>
 #include <QMap>
@@ -418,10 +419,17 @@ struct StoredMemberResult {
     std::array<double, 12> forces {};
     std::array<double, 3> auxK {};
 };
+struct StoredShellResult {
+    int shellId {0};
+    std::array<double, 40> values {};
+    std::array<double, 9> axes {};
+};
 struct StoredRun {
     QString name;   ///< caso de carga ou "COMB:<combinacao>" (2a ordem)
     QVector<StoredNodeResult> nodes;
     QVector<StoredMemberResult> members;
+    QVector<StoredNodeResult> shellNodes;       ///< nos proprios das cascas acopladas
+    QVector<StoredShellResult> shellElements;   ///< resultantes dos elementos de casca
 };
 struct StoredDesignResult {
     int memberId {0};
@@ -547,6 +555,7 @@ struct ProjectExtras {
     QVector<SheetLayoutDef> sheetLayouts;   ///< folhas compostas das pranchas
     QMap<int, QMap<QString, double>> compositeBeams;   ///< entradas da viga mista por barra (id externo)
     QMap<QString, double> deckSlab;                    ///< entradas da laje mista (steel deck)
+    Structura::Shell::Model shell;                     ///< cascas e chapas (placas, tanques, vasos de pressao)
 };
 
 struct NodalLoadPreset {

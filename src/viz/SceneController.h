@@ -29,6 +29,7 @@
 #include "viz/postprocessor/SupportGlyphFactory.h"
 #include "viz/structure/StructureRenderer.h"
 #include "viz/structure/ConnectionRenderer.h"
+#include "viz/structure/ShellRenderer.h"
 #include "viz/structure/ElementAppearance.h"
 namespace Structura::Construction {
 class ConstructionScene;
@@ -201,6 +202,13 @@ public:
     /// Sólidos esquemáticos das ligações (chapas, parafusos, soldas) já em coordenadas do modelo.
     void setConnectionMesh(const Structura::Visualization::ConnectionRenderer::Mesh &mesh);
     void setConnectionsVisible(bool visible);
+    /// Malha de cascas e chapas (resultados coloridos) em coordenadas do modelo.
+    void setShellMesh(const Structura::Shell::RenderMesh &mesh);
+    void setShellVisible(bool visible);
+    /// Quadrilatero de casca sob o pixel de exibicao; -1 se nenhum.
+    [[nodiscard]] int pickShellQuad(int displayX, int displayY) const;
+    /// Pontos extras de snap (vertices das cascas), em coordenadas do modelo.
+    void setExtraSnapPoints(std::vector<std::array<double, 3>> points);
     /// Marca um no (esfera translucida) para o usuario identificar de qual no se trata; sem posicao, remove a marca.
     void setNodeHighlight(const std::optional<QVector3D> &position);
     /// Rotulos (valores) das cargas para a camada de texto da viewport.
@@ -293,6 +301,8 @@ private:
     bool m_areaPanelsVisible {true};
     std::unique_ptr<Structura::Visualization::SolidMemberRenderer> m_solidRenderer;
     std::unique_ptr<Structura::Visualization::ConnectionRenderer> m_connectionRenderer;
+    std::unique_ptr<Structura::Visualization::ShellRenderer> m_shellRenderer;
+    std::vector<std::array<double, 3>> m_extraSnapPoints;
     vtkSmartPointer<vtkActor> m_nodeHighlight;
     struct LoadVisibility {
         bool nodeForces {true};

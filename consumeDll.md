@@ -1,6 +1,6 @@
-# Como Consumir a `solver_dll`
+# Como Consumir a `rds` (rds.dll)
 
-Este documento descreve como chamar a DLL gerada pelo projeto (`solver_dll.dll`) a partir de outro programa, em memoria, sem uso de arquivo `.txt`.
+Este documento descreve como chamar a DLL gerada pelo projeto (`rds.dll`) a partir de outro programa, em memoria, sem uso de arquivo `.txt`.
 
 ## Assinatura Exportada
 
@@ -161,5 +161,5 @@ int main() {
 ## Dicas de Integracao
 
 - Garanta que o chamador use o mesmo runtime/arquitetura da DLL (`x64` com `x64`, `Debug` com `Debug` durante desenvolvimento).
-- No Windows, mantenha `solver_dll.dll` acessivel no `PATH` ou na mesma pasta do executavel consumidor.
+- No Windows, mantenha `rds.dll` acessivel no `PATH` ou na mesma pasta do executavel consumidor.
 - Para C#, Python ou outras linguagens, use FFI e respeite os mesmos buffers lineares descritos acima.

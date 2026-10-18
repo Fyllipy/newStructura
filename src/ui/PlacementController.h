@@ -45,7 +45,12 @@ public:
         Rotate, ///< Um ponto (pivo)
         Mirror, ///< Dois pontos (eixo de espelhamento)
         Node,   ///< Um ponto, com snap ao longo das barras (insere no e divide a barra)
-        Measure ///< Dois pontos: mede distancia, deltas e inclinacao
+        Measure, ///< Dois pontos: mede distancia, deltas e inclinacao
+        Polyline, ///< Varios pontos (Enter, clique direito ou clique repetido termina; C fecha; Backspace desfaz): desenha cascas
+        Rectangle, ///< Dois cantos opostos no plano de construcao
+        Circle, ///< Centro e um ponto do contorno
+        Extrude, ///< Dois pontos (base e destino): vetor de extrusao, com previa deslocada
+        Axis ///< Dois pontos: eixo de revolucao
     };
 
     PlacementController(SceneController *scene, QWidget *viewport, QObject *parent = nullptr);
@@ -59,6 +64,12 @@ public:
     std::function<bool(Mode, const Vec3 &, const Vec3 &)> onDisplacement;
     /// Rotacionar: ponto unico (pivo).
     std::function<bool(Mode, const Vec3 &)> onSinglePoint;
+    /// Formas desenhadas (polilinha, retangulo, circulo): pontos e se a polilinha foi fechada. Retorna true se aceita (a forma e descartada).
+    std::function<bool(Mode, const std::vector<Vec3> &, bool)> onShape;
+    /// Termina a polilinha em andamento (fechando-a se `close`); retorna true se havia pontos suficientes.
+    bool finishShape(bool close);
+    /// Pontos ja confirmados da polilinha em andamento.
+    [[nodiscard]] const std::vector<Vec3> &shapePoints() const noexcept { return m_points; }
 
     /// Segmentos (mundo) exibidos como previa deslocada durante copiar/mover.
     void setGhostSource(const std::vector<std::pair<Vec3, Vec3>> &segments) { m_ghostSource = segments; }
@@ -106,6 +117,8 @@ private:
     std::optional<QPointF> m_pointer;
     std::optional<QPointF> m_press;
     std::optional<Vec3> m_start;
+    std::vector<Vec3> m_points;   ///< polilinha em andamento
+    std::optional<QPointF> m_rightPress;
     std::optional<Vec3> m_lastDisplay;
 
     std::optional<Vec3> m_manualTarget;

@@ -13,6 +13,7 @@ set(EIGEN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs)
 
 set(CORE_SOURCES
 	src/core/solver_core.cpp
+	../Femdll/src/shell_q4.cpp
 	src/material.cpp
 	src/section.cpp
 	src/node.cpp
@@ -55,6 +56,7 @@ target_include_directories(solver_core
 		${PROJECT_INCLUDE_DIR}
 		${EIGEN_INCLUDE_DIR}
 		${CMAKE_CURRENT_SOURCE_DIR}/src/core
+		${CMAKE_CURRENT_SOURCE_DIR}/../Femdll/src
 )
 
 add_executable(solver_cli ${CLI_SOURCES} ${CLI_HEADERS})
@@ -79,10 +81,10 @@ target_link_libraries(solver_dll PRIVATE solver_core)
 target_compile_definitions(solver_dll PRIVATE SOLVER_DLL_EXPORTS)
 
 set_target_properties(solver_cli PROPERTIES OUTPUT_NAME "solver_cli")
-set_target_properties(solver_dll PROPERTIES OUTPUT_NAME "solver_dll")
+set_target_properties(solver_dll PROPERTIES OUTPUT_NAME "rds")
 
 message(STATUS "Projeto ${PROJECT_NAME} configurado com sucesso!")
 message(STATUS "Core static library: solver_core")
 message(STATUS "CLI executable: solver_cli")
-message(STATUS "Shared library: solver_dll")
+message(STATUS "Shared library: rds")
 message(STATUS "Executáveis irão para: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")

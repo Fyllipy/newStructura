@@ -71,6 +71,45 @@ struct MemberMomentData {
     double mz = 0.0;
 };
 
+// --- cascas e chapas acopladas as barras (elemento Q4 de Femdll/src/shell_q4) -----------------------------------------------------
+struct ShellElementData {
+    int id = 0;
+    std::array<int, 4> nodeIds{0, 0, 0, 0};   // anti-horario visto do lado da normal positiva
+    double E = 0.0;
+    double nu = 0.3;
+    double density = 0.0;                      // massa especifica (so modal)
+    double thickness = 0.0;
+};
+
+// Carga por elemento de casca: kind 0 = pressao nodal v[0..3] (positiva no sentido da normal), 1 = forca de corpo global v[0..2],
+// 2 = temperatura (v[0] uniforme, v[1] gradiente).
+struct ShellLoadData {
+    int shellId = 0;
+    int kind = 0;
+    std::array<double, 4> v{0.0, 0.0, 0.0, 0.0};
+};
+
+// No escravo preso a nos mestres por interpolacao (nos pendentes de malhas nao conformes, nos de barras sobre cascas).
+struct TieData {
+    int slaveId = 0;
+    std::vector<int> masterIds;
+    std::vector<double> weights;
+};
+
+// Mola nodal (apoio elastico); compressionOnly: k[0] = rigidez normal, k[1] = tangencial; normal aponta do apoio para a estrutura.
+struct SpringData {
+    int nodeId = 0;
+    std::array<double, 6> k{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    bool compressionOnly = false;
+    std::array<double, 3> normal{0.0, 0.0, 1.0};
+};
+
+struct ShellResultData {
+    int id = 0;
+    std::array<double, 40> values{};   // 5 pontos (4 cantos + centro) x (nxx nyy nxy mxx myy mxy qx qy), eixos locais do elemento
+    std::array<double, 9> axes{};      // e1, e2, e3 (global)
+};
+
 struct SolverInput {
     std::vector<MaterialData> materials;
     std::vector<SectionData> sections;
@@ -79,6 +118,10 @@ struct SolverInput {
     std::vector<NodalLoadData> nodalLoads;
     std::vector<MemberLoadData> memberLoads;
     std::vector<MemberMomentData> memberMoments;
+    std::vector<ShellElementData> shells;
+    std::vector<ShellLoadData> shellLoads;
+    std::vector<TieData> ties;
+    std::vector<SpringData> springs;
     // Second-order (geometric non-linear) analysis by iterating K + Kg(N)
     bool secondOrder = false;
     // Tension-only members (ties/cables): deactivated while shortening, reactivated when elongating
@@ -109,6 +152,7 @@ struct MemberResult {
 struct SolverOutput {
     std::vector<NodeResult> nodes;
     std::vector<MemberResult> members;
+    std::vector<ShellResultData> shells;
     // Critical load factors (ascending) and mode shapes: modes[m] has 6 values per node (input order)
     std::vector<double> bucklingFactors;
     std::vector<std::vector<double>> bucklingModes;

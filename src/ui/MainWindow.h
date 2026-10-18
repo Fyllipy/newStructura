@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QPointer>
 #include <QVector>
 #include <QUuid>
 #include <QString>
@@ -22,6 +23,8 @@
 #include "app/GeometrySnapshot.h"
 #include "app/services/ReportService.h"
 #include "app/services/ModelCheckService.h"
+#include "shell/ShellMesh.h"
+#include "shell/ShellResults.h"
 #include <optional>
 #include <memory>
 
@@ -41,7 +44,7 @@ class QTabWidget;
 class QToolButton;
 class QVTKOpenGLNativeWidget;
 class SceneController;
-namespace Structura::UI { class ProfileManagerDialog; class LoadsPanel; class DesignPanel; class GroupsPanel; class ViewCubeWidget; }
+namespace Structura::UI { class ProfileManagerDialog; class LoadsPanel; class DesignPanel; class GroupsPanel; class ViewCubeWidget; class ShellDialog; }
 struct DesignRunData;
 class QDockWidget;
 class QCheckBox;
@@ -123,6 +126,7 @@ private slots:
     void onDynamics();
     void onCompositeFloor();
     void onGenerateTruss();
+    void onShellEditor();
     bool newFromTemplateDialog();
     bool addSteelMaterial(const QString &name);
     void ensureDefaultMaterial();
@@ -254,8 +258,49 @@ private:
         RotateElements,
         MirrorElements,
         InsertNode,
-        Measure
+        Measure,
+        ShellPolygon,     ///< chapa por contorno (polilinha fechada)
+        ShellRectangle,   ///< chapa retangular (dois cantos)
+        ShellDisk,        ///< disco / anel (centro e raio)
+        ShellExtrude,     ///< extrusao de uma linha (parede, casca reglada)
+        ShellCylinder,    ///< cilindro / cone (circulo e altura)
+        ShellRevolve,     ///< revolucao de um perfil em torno de um eixo
+        ShellMove,
+        ShellCopy
     };
+
+    /// Etapas dos comandos de casca que exigem mais de um desenho (linha base e depois vetor de extrusao ou eixo).
+    struct ShellDraft {
+        int stage {0};
+        std::vector<std::array<double, 3>> points;   ///< m
+        bool closed {false};
+        double radius {0.0};
+    };
+    ShellDraft m_shellDraft;
+    Structura::Shell::Mesh m_shellMesh;
+    int m_selectedShellObject {-1};
+    bool m_shellResultsShown {false};
+    double m_lastShellThickness {200.0};
+    int m_lastShellMaterial {0};
+    QAction *m_shellPolygonAction {nullptr};
+    QAction *m_shellRectangleAction {nullptr};
+    QAction *m_shellDiskAction {nullptr};
+    QAction *m_shellExtrudeAction {nullptr};
+    QAction *m_shellCylinderAction {nullptr};
+    QAction *m_shellRevolveAction {nullptr};
+    QAction *m_shellDeleteAction {nullptr};
+    double shellUnitsPerMeter() const;
+    void refreshShellVisuals(bool force = false);
+    int pickShellObjectAtWidgetPos(const QPoint &widgetPos) const;
+    void selectShellObject(int id);
+    QString shellKindLabel(int kind) const;
+    bool commitShell(Structura::Shell::Object object, const QString &undoText);
+    void restartShellStage();
+    bool onShellShape(int mode, const std::vector<std::array<double, 3>> &points, bool closed);
+    bool applyShellDisplacement(int mode, const std::array<double, 3> &from, const std::array<double, 3> &to);
+    void deleteSelectedShell();
+    void flipSelectedShell();
+    void showShellContextMenu(const QPoint &globalPos);
 
     void createRibbon();
     QWidget *createQuickAccessBar();
@@ -317,6 +362,12 @@ private:
     bool applyRotation(const std::array<double, 3> &pivot);
     bool applyInsertNode(const std::array<double, 3> &point);
     void onSplitBars();
+    /// Divide as barras nos nos das cascas que caem sobre o seu eixo (pre-requisito da continuidade barra-casca). Devolve o numero de cortes.
+    int splitBarsAtShellNodes(bool apply = true);
+    void onShellCoupleToggled(bool on);
+    bool coupledShellResults(const QStringList &cases, bool runAnalysis, Structura::Shell::Results &out, std::string &error);
+    QAction *m_shellCoupleAction {nullptr};
+    QAction *m_shellSplitAction {nullptr};
     void onCompareResults();
     void setupViewCube();
     void positionViewCube();
@@ -399,6 +450,8 @@ private:
     QAction *m_modalAction {nullptr};
     QAction *m_connectionsAction {nullptr};
     QAction *m_compositeAction {nullptr};
+    QAction *m_shellAction {nullptr};
+    QPointer<Structura::UI::ShellDialog> m_shellDialog;
     QAction *m_quantitiesAction {nullptr};
     QAction *m_exportDxfAction {nullptr};
     QAction *m_sheetsAction {nullptr};

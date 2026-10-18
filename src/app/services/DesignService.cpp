@@ -194,6 +194,13 @@ QVector<DesignService::MemberEffects> DesignService::collectEffects(const Struct
     using namespace Structura::Visualization;
     QMap<int, MemberEffects> byMember;
     const double momentFactor = forceFactorToN * lengthFactorToMm;
+    // tirantes (so tracao): compressao e folga (barra desativada), nao esforco de projeto: nao passa pela esbeltez de compressao
+    QSet<int> ties;
+    for (const auto &member : geometry.members) {
+        if (member.tensionOnly) {
+            ties.insert(member.id);
+        }
+    }
     for (const ResultSet &set : sets) {
         for (const ElementData &data : buildElements(geometry, set)) {
             UniformLoadForceEvaluator evaluator(data.element);
@@ -212,6 +219,9 @@ QVector<DesignService::MemberEffects> DesignService::collectEffects(const Struct
                 Structura::Design::StationEffects st;
                 st.x = x * lengthFactorToMm;
                 st.e.N = f.N * forceFactorToN;
+                if (ties.contains(data.element.externalId) && st.e.N < 0.0) {
+                    st.e.N = 0.0;
+                }
                 st.e.Mx = f.Mz * momentFactor;
                 st.e.My = -f.My * momentFactor;
                 st.e.Vy = f.Vy * forceFactorToN;

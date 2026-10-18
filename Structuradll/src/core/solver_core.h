@@ -10,5 +10,5 @@ public:
     bool run(const SolverInput& input, SolverOutput& output, std::string& errorMessage) const;
 
 private:
-    bool runPass(const SolverInput& input, const std::unordered_set<int>& inactiveMembers, SolverOutput& output, std::string& errorMessage) const;
+    bool runPass(const SolverInput& input, const std::unordered_set<int>& inactiveMembers, const std::unordered_set<int>& inactiveSprings, SolverOutput& output, std::string& errorMessage) const;
 };

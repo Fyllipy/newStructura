@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "ShellDialog.h"
 #include "app/UndoRedoService.h"
 
 #include <QCryptographicHash>
@@ -59,6 +60,12 @@ void MainWindow::applyState(const ModelState &state)
     refreshLoadsPanel();
     refreshPropertiesPanel();
     applyAppearance();
+    m_selectedShellObject = -1;
+    m_shellResultsShown = false;
+    refreshShellVisuals(true);
+    if (m_shellDialog) {
+        m_shellDialog->setModel(m_extras.shell);
+    }
 }
 
 // Impressao digital barata do estado: detecta se uma acao alterou algo (evita entradas vazias na pilha).
@@ -145,6 +152,7 @@ quint64 MainWindow::stateFingerprint() const
             num(member);
         }
     }
+    bytes += '|' + QByteArray::fromStdString(Structura::Shell::fingerprint(m_extras.shell));
     return qHash(QCryptographicHash::hash(bytes, QCryptographicHash::Md5), 0);
 }
 

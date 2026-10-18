@@ -5,6 +5,8 @@
 #include "SplitBarDialog.h"
 #include "TrussDialog.h"
 #include "app/UndoRedoService.h"
+#include "app/services/ShellCouplingService.h"
+#include "shell/ShellMesh.h"
 #include "viz/SceneController.h"
 
 #include <QLabel>
@@ -83,8 +85,12 @@ void MainWindow::onDeleteSelected()
     }
     const QSet<QUuid> selectedNodes = m_selectionModel->selectedNodes();
     const QSet<QUuid> selectedBars = m_selectionModel->selectedBars();
+    if (selectedNodes.isEmpty() && selectedBars.isEmpty() && m_selectedShellObject >= 0) {
+        deleteSelectedShell();
+        return;
+    }
     if (selectedNodes.isEmpty() && selectedBars.isEmpty()) {
-        showStatusMessage(tr("Selecione nós e/ou barras para excluir."), 3000);
+        showStatusMessage(tr("Selecione nós, barras ou cascas para excluir."), 3000);
         return;
     }
 
@@ -434,6 +440,95 @@ void MainWindow::onSplitBars()
     }
     refreshPropertiesPanel();
     showStatusMessage(tr("%1 barra(s) dividida(s): %2 corte(s), %3 nó(s) novo(s). Ctrl+Z desfaz.").arg(plan.size()).arg(cutCount).arg(created.size()), 6000);
+}
+
+int MainWindow::splitBarsAtShellNodes(bool apply)
+{
+    if (!m_sceneController || m_extras.shell.objects.empty()) {
+        return 0;
+    }
+    const Geometry before = m_sceneController->captureGeometry();
+    // modelo minimo (nos e barras com os ids externos) para localizar os nos das cascas sobre o eixo das barras
+    Structura::App::SolverBridge::ModelData lite;
+    QHash<QUuid, int> externalOf;
+    QHash<QString, QUuid> nodeAtPosition;
+    int maxNode = 0;
+    for (const auto &n : before.nodes) {
+        Structura::App::SolverBridge::NodeData node;
+        node.id = n.externalId;
+        node.x = n.x;
+        node.y = n.y;
+        node.z = n.z;
+        lite.nodes.push_back(node);
+        externalOf.insert(n.id, n.externalId);
+        nodeAtPosition.insert(posKey(n.x, n.y, n.z), n.id);
+        maxNode = std::max(maxNode, n.externalId);
+    }
+    std::unordered_map<int, std::size_t> barOfExternal;
+    for (std::size_t i = 0; i < before.bars.size(); ++i) {
+        const auto &b = before.bars[i];
+        Structura::App::SolverBridge::MemberData member;
+        member.id = b.externalId;
+        member.nodeI = externalOf.value(b.start, 0);
+        member.nodeJ = externalOf.value(b.end, 0);
+        lite.members.push_back(member);
+        barOfExternal[b.externalId] = i;
+    }
+    const Structura::Shell::Mesh mesh = Structura::Shell::generateMesh(m_extras.shell);
+    const auto cuts = Structura::App::Services::ShellCouplingService::barCuts(mesh, lite);
+    if (cuts.empty()) {
+        return 0;
+    }
+    std::vector<SplitPlan> plan;
+    std::vector<Geometry::N> created;
+    int cutCount = 0;
+    for (const auto &bar : cuts) {
+        const auto found = barOfExternal.find(bar.memberId);
+        if (found == barOfExternal.end()) {
+            continue;
+        }
+        SplitPlan item {found->second, {}};
+        for (std::size_t k = 0; k < bar.parameters.size(); ++k) {
+            const auto &p = bar.points[k];
+            const QString key = posKey(p[0], p[1], p[2]);
+            QUuid id = nodeAtPosition.value(key);
+            if (id.isNull()) {
+                Geometry::N node;
+                node.id = QUuid::createUuid();
+                node.externalId = ++maxNode;
+                node.x = p[0];
+                node.y = p[1];
+                node.z = p[2];
+                created.push_back(node);
+                nodeAtPosition.insert(key, node.id);
+                id = node.id;
+            }
+            item.cuts.push_back({bar.parameters[k], id});
+            ++cutCount;
+        }
+        plan.push_back(std::move(item));
+    }
+    if (plan.empty()) {
+        return 0;
+    }
+    if (!apply) {
+        return cutCount;
+    }
+    const ModelState stateBefore = captureState();
+    ModelState state = stateBefore;
+    Geometry after = before;
+    for (const auto &node : created) {
+        after.nodes.push_back(node);
+    }
+    splitCore(after, state, plan);
+    applyTopology(after, state);
+    if (m_undoService) {
+        m_undoService->stack()->push(new TopologyCommand(
+            tr("Dividir barras nos nós das cascas"), [this, before, stateBefore]() { applyTopology(before, stateBefore); },
+            [this, after, state]() { applyTopology(after, state); }));
+    }
+    refreshPropertiesPanel();
+    return cutCount;
 }
 
 void MainWindow::onMeasure()

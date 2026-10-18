@@ -25,6 +25,16 @@
         <file alias="measure.svg">icons/svg/measure.svg</file>
         <file alias="compare.svg">icons/svg/compare.svg</file>
         <file alias="composite.svg">icons/svg/composite.svg</file>
+        <file alias="shell.svg">icons/svg/shell.svg</file>
+        <file alias="shell-polygon.svg">icons/svg/shell-polygon.svg</file>
+        <file alias="shell-rect.svg">icons/svg/shell-rect.svg</file>
+        <file alias="shell-disk.svg">icons/svg/shell-disk.svg</file>
+        <file alias="shell-extrude.svg">icons/svg/shell-extrude.svg</file>
+        <file alias="shell-cylinder.svg">icons/svg/shell-cylinder.svg</file>
+        <file alias="shell-revolve.svg">icons/svg/shell-revolve.svg</file>
+        <file alias="shell-delete.svg">icons/svg/shell-delete.svg</file>
+        <file alias="shell-couple.svg">icons/svg/shell-couple.svg</file>
+        <file alias="shell-split.svg">icons/svg/shell-split.svg</file>
         <file alias="material-new.svg">icons/svg/material-new.svg</file>
         <file alias="force-point.svg">icons/svg/force-point.svg</file>
         <file alias="force-distributed.svg">icons/svg/force-distributed.svg</file>

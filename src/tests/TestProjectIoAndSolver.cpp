@@ -24,6 +24,9 @@
 #include "app/services/CombinationService.h"
 #include "app/services/DatModelIoService.h"
 #include "app/services/SectionPlacementService.h"
+#include "app/services/DesignService.h"
+#include "app/services/ShellCouplingService.h"
+#include "shell/ShellModel.h"
 
 #include <QFile>
 #include <QTemporaryDir>
@@ -287,9 +290,9 @@ private slots:
 
     void distributedMomentCantileverReaction()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         SolverBridge::ModelData model;
         model.materials.push_back({1, 2.1e11, 8.1e10});
@@ -349,9 +352,9 @@ private slots:
 
     void solverSectionRotationChangesBendingStiffness()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         auto tipDeflectionY = [&dll](double rotationDeg) {
             SolverBridge::ModelData model;
@@ -385,9 +388,9 @@ private slots:
 
     void solverRigidOffsetCreatesEccentricMoment()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         SolverBridge::ModelData model;
         model.materials.push_back({1, 2.0e11, 8.0e10});
@@ -417,9 +420,9 @@ private slots:
     }
     void solverSecondOrderColumnMatchesClosedForm()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         const double E = 2.0e11, I = 4e-6, L = 5.0;
         const double pcr = 3.14159265358979 * 3.14159265358979 * E * I / (4.0 * L * L);
@@ -458,9 +461,9 @@ private slots:
     }
     void solverTensionOnlyTiesDeactivateWhenShortening()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         auto build = [&](bool tensionOnly) {
             SolverBridge::ModelData model;
@@ -749,9 +752,9 @@ private slots:
     }
     void bucklingMatchesEulerLoad()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         const double E = 2.0e11, I = 4e-6, L = 5.0, P = 1000.0;
         const double pcr = 3.14159265358979 * 3.14159265358979 * E * I / (4.0 * L * L);   // pilar engastado-livre
@@ -832,9 +835,9 @@ private slots:
     void dynamicsMatchesSingleDofReference()
     {
         using Structura::App::Services::DynamicsService;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         // balanco horizontal com massa de 100 kN no extremo: k = 3EI/L3, m = P/g
         const double E = 2.0e8, I = 1.0e-4, A = 0.01, L = 4.0, P = 100.0;
@@ -937,9 +940,9 @@ private slots:
 
     void modalMatchesCantileverFrequency()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         const double E = 2.0e11, I = 4e-6, A = 0.01, L = 5.0, rho = 7850.0;
         SolverBridge::ModelData model;
@@ -1200,6 +1203,35 @@ private slots:
         member.openingSpacing = 400.0;
         again.extras.design.members.append(member);
         again.extras.connections[0].values[QStringLiteral("supMember")] = 5.0;
+        {
+            Structura::Shell::Object tank;
+            tank.id = 3;
+            tank.name = "Tanque T-01";
+            tank.kind = Structura::Shell::Kind::CylTank;
+            tank.meshSize = 0.4;
+            tank.p = {{"r", 5.0}, {"h", 8.0}, {"t1", 0.008}};
+            Structura::Shell::Object plate;
+            plate.id = 4;
+            plate.name = "Laje";
+            plate.kind = Structura::Shell::Kind::Plate;
+            plate.polygon = {{0, 0, 0}, {6, 0, 0}, {6, 4, 0}, {0, 4, 0}};
+            plate.p = {{"t", 0.2}};
+            again.extras.shell.objects = {tank, plate};
+            again.extras.shell.coupled = true;
+            Structura::Shell::Load water;
+            water.caseName = "AGUA";
+            water.object = 3;
+            water.type = Structura::Shell::Load::Hydrostatic;
+            water.v = {9810.0, 7.0, 5000.0, 0.0};
+            again.extras.shell.loads = {water};
+            Structura::Shell::Support soil;
+            soil.object = 3;
+            soil.springPerArea = 3.0e7;
+            soil.compressionOnly = true;
+            soil.legs = 4;
+            again.extras.shell.supports = {soil};
+            again.extras.shell.materials.push_back(Structura::Shell::Material {"Concreto C30", true, 2.6e10, 0.2, 25000.0, 1.0e-5, 30.0e6, 0.0});
+        }
         const QString third = dir.filePath(QStringLiteral("c3.dat"));
         QVERIFY(service.save(third, &gateway2, again.materials, again.sections, again.supports, again.nodal, again.member, again.extras, &error));
         MemoryGateway gateway3;
@@ -1221,6 +1253,18 @@ private slots:
         QCOMPARE(last.extras.design.members.first().openingNeighbourD, 90.0);
         QCOMPARE(last.extras.design.members.first().openingSpacing, 400.0);
         QCOMPARE(last.extras.connections.first().values.value(QStringLiteral("supMember")), 5.0);
+        QCOMPARE(static_cast<int>(last.extras.shell.objects.size()), 2);
+        QVERIFY(last.extras.shell.coupled);
+        QCOMPARE(last.extras.shell.objects[0].name, std::string("Tanque T-01"));
+        QCOMPARE(last.extras.shell.objects[0].param("r"), 5.0);
+        QCOMPARE(static_cast<int>(last.extras.shell.objects[1].polygon.size()), 4);
+        QCOMPARE(last.extras.shell.objects[1].polygon[2][1], 4.0);
+        QCOMPARE(static_cast<int>(last.extras.shell.loads.size()), 1);
+        QCOMPARE(last.extras.shell.loads[0].v[2], 5000.0);
+        QCOMPARE(last.extras.shell.supports[0].legs, 4);
+        QVERIFY(last.extras.shell.supports[0].compressionOnly);
+        QCOMPARE(static_cast<int>(last.extras.shell.materials.size()), 2);
+        QVERIFY(last.extras.shell.materials[1].concrete);
     }
     void newConnectionTypesEvaluateProposeAndPersist()
     {
@@ -1790,9 +1834,9 @@ private slots:
     }
     void solverEndReleaseGivesProppedCantilever()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         SolverBridge::ModelData model;
         model.materials.push_back({1, 2.0e11, 8.0e10});
@@ -1824,10 +1868,10 @@ private slots:
     }
     void exampleGalpaoLoadsAndSolves()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         const QString example = QStringLiteral(STRUCTURA_SOURCE_DIR "/Examples/galpao_3_andares.dat");
         if (!QFile::exists(dll) || !QFile::exists(example)) {
-            QSKIP("solver_dll.dll ou exemplo nao encontrados.");
+            QSKIP("rds.dll ou exemplo nao encontrados.");
         }
         DatModelIoService service;
         MemoryGateway gateway;
@@ -1876,11 +1920,151 @@ private slots:
             QVERIFY2(std::abs(sumFz + appliedFz) < 1e-3 * std::max(1.0, std::abs(appliedFz)), qPrintable(loadCase));
         }
     }
+    void exampleGalpaoWithCoupledSlab()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        const QString example = QStringLiteral(STRUCTURA_SOURCE_DIR "/Examples/galpao_3_andares.dat");
+        if (!QFile::exists(dll) || !QFile::exists(example)) {
+            QSKIP("rds.dll ou exemplo nao encontrados.");
+        }
+        DatModelIoService service;
+        MemoryGateway gateway;
+        Loaded loaded;
+        QVERIFY(load(service, gateway, example, loaded));
+        // laje de concreto no pavimento z = 4 m (12 x 24 m) com malha de 6 m: os nos da malha coincidem com os nos da grade de vigas
+        Structura::Shell::Model &shell = loaded.extras.shell;
+        Structura::Shell::ensureDefaultMaterials(shell);
+        Structura::Shell::Object slab;
+        slab.id = 1;
+        slab.name = "Laje";
+        slab.kind = Structura::Shell::Kind::Plate;
+        slab.polygon = {{0, 0, 4}, {12, 0, 4}, {12, 24, 4}, {0, 24, 4}};
+        slab.p = {{"t", 0.12}};
+        slab.meshSize = 6.0;
+        slab.material = 3;
+        shell.objects = {slab};
+        Structura::Shell::Load pressure;
+        pressure.caseName = "SC";
+        pressure.type = Structura::Shell::Load::Pressure;
+        pressure.v = {-5000.0, 0, 0, 0};
+        shell.loads = {pressure};
+
+        AnalysisService analysis;
+        auto build = [&](const QString &loadCase) {
+            return analysis.buildModel(&gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, loadCase);
+        };
+        shell.coupled = false;
+        const auto bare = build(QStringLiteral("SC"));
+        QVERIFY(bare.success && !bare.model.shell);
+        shell.coupled = true;
+        const auto coupled = build(QStringLiteral("SC"));
+        QVERIFY2(coupled.success, qPrintable(coupled.errors.join(QLatin1Char(';'))));
+        QVERIFY(coupled.model.shell && coupled.model.shell->elements.size() == 8);
+        QVERIFY(coupled.model.shell->nodes.empty());   // todos os nos da laje coincidem com nos de barras
+        QCOMPARE(static_cast<int>(coupled.model.shellLoads.size()), 8);
+
+        const SolverBridge solver(dll);
+        const auto rBare = solver.solve(bare.model);
+        const auto rCoupled = solver.solve(coupled.model);
+        auto sumFz = [](const SolverBridge::Result &r) {
+            double sum = 0.0;
+            for (const auto &n : r.nodeResults) {
+                sum += n.reactions[2];
+            }
+            for (const auto &n : r.shellNodeResults) {
+                sum += n.reactions[2];
+            }
+            return sum;
+        };
+        // a laje acrescenta p x area as reacoes verticais (o modelo do exemplo esta em kN)
+        const double forceUnit = DesignService::unitFactors(loaded.materials).first;
+        const double slabLoad = 5000.0 * 12.0 * 24.0 / forceUnit;
+        QVERIFY2(std::abs((sumFz(rCoupled) - sumFz(rBare)) - slabLoad) < 1e-4 * slabLoad, qPrintable(QString::number(sumFz(rCoupled) - sumFz(rBare)) + " vs " + QString::number(slabLoad)));
+        QCOMPARE(static_cast<int>(rCoupled.shellResults.size()), 8);
+        // combinacao linear dos resultados das cascas
+        const auto combined = CombinationService::combine({{&rCoupled, 1.5}, {&rCoupled, 0.5}});
+        QVERIFY(std::abs(combined.shellResults[0].values[3] - 2.0 * rCoupled.shellResults[0].values[3]) < 1e-9 * (1.0 + std::abs(rCoupled.shellResults[0].values[3])));
+        // resultados de volta ao formato do modulo de cascas (SI)
+        const auto mapping = ShellCouplingService::mapping(shell, coupled.model, forceUnit);
+        const auto caseResult = ShellCouplingService::caseResult(*mapping, rCoupled, "SC");
+        QCOMPARE(caseResult.elements.size(), mapping->mesh.quads.size());
+        double sagging = 0.0;
+        for (const auto &d : caseResult.displacement) {
+            sagging = std::min(sagging, d[2]);
+        }
+        QVERIFY(sagging < 0.0);
+        // resultados das cascas gravados e restaurados
+        bool restored = false;
+        const auto stored = ResultsPersistence::toStored(QStringLiteral("SC"), rCoupled);
+        const auto back = ResultsPersistence::fromStored(stored, coupled.model, &restored);
+        QVERIFY(restored);
+        QCOMPARE(back.shellResults.size(), rCoupled.shellResults.size());
+        QCOMPARE(back.shellResults[3].values[5], rCoupled.shellResults[3].values[5]);
+        QCOMPARE(back.shellNodeResults.size(), rCoupled.shellNodeResults.size());
+        // segunda ordem, modal e flambagem com a laje acoplada
+        SolverBridge::ModelData secondOrder = coupled.model;
+        secondOrder.secondOrder = true;
+        const auto r2 = solver.solve(secondOrder);
+        QVERIFY(std::abs(sumFz(r2) - sumFz(rCoupled)) < 1e-6 * std::abs(sumFz(rCoupled)));
+        SolverBridge::ModelData modal = coupled.model;
+        modal.modalModes = 3;
+        const auto rm = solver.solve(modal);
+        QVERIFY(rm.modalOmega.size() == 3 && rm.modalOmega[0] > 0.0);
+        QCOMPARE(static_cast<int>(rm.modalShapes[0].size()), static_cast<int>(coupled.model.nodes.size() * 6));
+        SolverBridge::ModelData buckling = coupled.model;
+        buckling.bucklingModes = 2;
+        const auto rb = solver.solve(buckling);
+        QVERIFY(!rb.bucklingFactors.empty() && rb.bucklingFactors[0] > 0.0);
+    }
+
+    void shellOnlyModelSolvesWithoutBars()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada.");
+        }
+        MemoryGateway gateway;
+        Loaded loaded;
+        Structura::Shell::Model &shell = loaded.extras.shell;
+        Structura::Shell::ensureDefaultMaterials(shell);
+        Structura::Shell::Object slab;
+        slab.id = 1;
+        slab.name = "Laje";
+        slab.polygon = {{0, 0, 0}, {4, 0, 0}, {4, 4, 0}, {0, 4, 0}};
+        slab.p = {{"t", 0.15}};
+        slab.meshSize = 0.5;
+        slab.material = 3;
+        shell.objects = {slab};
+        Structura::Shell::Load pressure;
+        pressure.caseName = ProjectData::defaultLoadCaseName().toStdString();
+        pressure.type = Structura::Shell::Load::Pressure;
+        pressure.v = {-1000.0, 0, 0, 0};
+        shell.loads = {pressure};
+        Structura::Shell::Support edges;
+        edges.selector = Structura::Shell::Support::FreeEdge;
+        edges.fixed = {1, 1, 1, 0, 0, 0};
+        shell.supports = {edges};
+        shell.coupled = true;
+        AnalysisService analysis;
+        const auto build = analysis.buildModel(&gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras,
+                                               ProjectData::defaultLoadCaseName());
+        QVERIFY2(build.success, qPrintable(build.errors.join(QLatin1Char(';'))));
+        QVERIFY(build.model.nodes.empty() && build.model.shell && !build.model.shell->nodes.empty());
+        const auto result = SolverBridge(dll).solve(build.model);
+        QVERIFY(!result.shellResults.empty());
+        double reaction = 0.0;
+        for (const auto &n : result.shellNodeResults) {
+            reaction += n.reactions[2];
+        }
+        const double forceUnit = DesignService::unitFactors(loaded.materials).first;
+        QVERIFY(std::abs(reaction - 1000.0 * 16.0 / forceUnit) < 1e-3 * 16000.0 / forceUnit);
+    }
+
     void memberEndForcesSatisfyEquilibriumUnderDistributedLoad()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         SolverBridge::ModelData model;
         model.materials.push_back({1, 2.0e11, 8.0e10});

@@ -52,6 +52,48 @@ QString ResultsPersistence::fingerprint(const std::vector<const SolverBridge::Mo
                 put(bytes, r);
             }
         }
+        if (model->shell) {
+            bytes += "|SH";
+            for (const auto &n : model->shell->nodes) {
+                put(bytes, n.id);
+                put(bytes, n.x);
+                put(bytes, n.y);
+                put(bytes, n.z);
+                for (const int r : n.restraints) {
+                    put(bytes, r);
+                }
+            }
+            for (const auto &e : model->shell->elements) {
+                put(bytes, e.id);
+                for (const int n : e.nodes) {
+                    put(bytes, n);
+                }
+                put(bytes, e.e);
+                put(bytes, e.nu);
+                put(bytes, e.thickness);
+            }
+            for (const auto &t : model->shell->ties) {
+                put(bytes, t.slave);
+                for (std::size_t i = 0; i < t.masters.size(); ++i) {
+                    put(bytes, t.masters[i]);
+                    put(bytes, t.weights[i]);
+                }
+            }
+            for (const auto &s : model->shell->springs) {
+                put(bytes, s.node);
+                for (const double k : s.k) {
+                    put(bytes, k);
+                }
+                put(bytes, s.compressionOnly ? 1 : 0);
+            }
+            for (const auto &l : model->shellLoads) {
+                put(bytes, l.shellId);
+                put(bytes, l.kind);
+                for (const double v : l.v) {
+                    put(bytes, v);
+                }
+            }
+        }
         bytes += "|B";
         for (const auto &m : model->members) {
             put(bytes, m.id);
@@ -112,6 +154,20 @@ ProjectData::StoredRun ResultsPersistence::toStored(const QString &name, const S
         s.auxK = m.auxK;
         run.members.append(s);
     }
+    for (const auto &n : result.shellNodeResults) {
+        ProjectData::StoredNodeResult s;
+        s.nodeId = n.nodeId;
+        s.displacements = n.displacements;
+        s.reactions = n.reactions;
+        run.shellNodes.append(s);
+    }
+    for (const auto &e : result.shellResults) {
+        ProjectData::StoredShellResult s;
+        s.shellId = e.shellId;
+        s.values = e.values;
+        s.axes = e.axes;
+        run.shellElements.append(s);
+    }
     return run;
 }
 
@@ -150,6 +206,40 @@ SolverBridge::Result ResultsPersistence::fromStored(const ProjectData::StoredRun
             r.auxK = (*it)->auxK;
         }
         result.memberResults.push_back(r);
+    }
+    if (model.shell) {
+        QHash<int, const ProjectData::StoredNodeResult *> shellNodes;
+        for (const auto &n : run.shellNodes) {
+            shellNodes.insert(n.nodeId, &n);
+        }
+        QHash<int, const ProjectData::StoredShellResult *> shellElements;
+        for (const auto &e : run.shellElements) {
+            shellElements.insert(e.shellId, &e);
+        }
+        for (const auto &node : model.shell->nodes) {
+            SolverBridge::NodeResult r;
+            r.nodeId = node.id;
+            const auto it = shellNodes.constFind(node.id);
+            if (it == shellNodes.constEnd()) {
+                good = false;
+            } else {
+                r.displacements = (*it)->displacements;
+                r.reactions = (*it)->reactions;
+            }
+            result.shellNodeResults.push_back(r);
+        }
+        for (const auto &element : model.shell->elements) {
+            SolverBridge::ShellElementResult r;
+            r.shellId = element.id;
+            const auto it = shellElements.constFind(element.id);
+            if (it == shellElements.constEnd()) {
+                good = false;
+            } else {
+                r.values = (*it)->values;
+                r.axes = (*it)->axes;
+            }
+            result.shellResults.push_back(r);
+        }
     }
     if (ok) {
         *ok = good;

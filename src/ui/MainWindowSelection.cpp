@@ -228,11 +228,20 @@ void MainWindow::clickSelect(const QPoint &widgetPos, Qt::KeyboardModifiers modi
     }
 
     if (!nodeId.isNull()) {
+        selectShellObject(-1);
         m_selectionModel->selectNode(nodeId, mode);
     } else if (!barId.isNull()) {
+        selectShellObject(-1);
         m_selectionModel->selectBar(barId, mode);
-    } else if (mode == Structura::SelectionModel::Mode::Replace) {
-        m_selectionModel->clear();
+    } else {
+        const int shellId = pickShellObjectAtWidgetPos(widgetPos);
+        if (shellId >= 0) {
+            m_selectionModel->clear();
+            selectShellObject(shellId);
+        } else if (mode == Structura::SelectionModel::Mode::Replace) {
+            m_selectionModel->clear();
+            selectShellObject(-1);
+        }
     }
 }
 
@@ -414,6 +423,15 @@ void MainWindow::showViewportContextMenu(const QPoint &widgetPos, const QPoint &
     // O elemento sob o cursor entra na selecao se ainda nao estava.
     const QUuid nodeId = pickNodeAtWidgetPos(widgetPos);
     const QUuid barId = nodeId.isNull() ? pickBarAtWidgetPos(widgetPos) : QUuid();
+    if (nodeId.isNull() && barId.isNull()) {
+        const int shellId = pickShellObjectAtWidgetPos(widgetPos);
+        if (shellId >= 0) {
+            m_selectionModel->clear();
+            selectShellObject(shellId);
+            showShellContextMenu(globalPos);
+            return;
+        }
+    }
     if (!nodeId.isNull() && !isNodeHidden(nodeId) && !m_selectionModel->isNodeSelected(nodeId)) {
         m_selectionModel->selectNode(nodeId, Structura::SelectionModel::Mode::Replace);
     } else if (!barId.isNull() && !isBarHidden(barId) && !m_selectionModel->isBarSelected(barId)) {

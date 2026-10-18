@@ -128,6 +128,16 @@ void MainWindow::setupPlacement()
     m_placement->onDisplacement = [this](Structura::UI::PlacementController::Mode mode,
                                          const Structura::UI::PlacementController::Vec3 &from,
                                          const Structura::UI::PlacementController::Vec3 &to) {
+        if (mode == Structura::UI::PlacementController::Mode::Extrude || mode == Structura::UI::PlacementController::Mode::Axis) {
+            return applyShellDisplacement(static_cast<int>(mode), from, to);
+        }
+        if (m_command == Command::ShellMove || m_command == Command::ShellCopy) {
+            const bool ok = applyShellDisplacement(static_cast<int>(mode), from, to);
+            if (ok && m_command == Command::ShellMove) {
+                QTimer::singleShot(0, this, [this]() { setCommand(Command::None); });
+            }
+            return ok;
+        }
         if (mode == Structura::UI::PlacementController::Mode::Measure) {
             return applyMeasure(from, to);
         }
@@ -141,6 +151,10 @@ void MainWindow::setupPlacement()
             QTimer::singleShot(0, this, [this]() { setCommand(Command::None); });
         }
         return ok;
+    };
+
+    m_placement->onShape = [this](Structura::UI::PlacementController::Mode mode, const std::vector<Structura::UI::PlacementController::Vec3> &points, bool closed) {
+        return onShellShape(static_cast<int>(mode), points, closed);
     };
 
     m_placement->onSinglePoint = [this](Structura::UI::PlacementController::Mode mode, const Structura::UI::PlacementController::Vec3 &point) {

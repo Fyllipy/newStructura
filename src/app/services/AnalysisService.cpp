@@ -2,7 +2,9 @@
 
 #include "app/LoadSystemUtils.h"
 #include "app/services/IdGeneratorService.h"
+#include "app/services/DesignService.h"
 #include "app/services/SectionPlacementService.h"
+#include "app/services/ShellCouplingService.h"
 
 #include <QHash>
 
@@ -253,6 +255,12 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
             data.qz = -weight;
             model.memberLoads.push_back(data);
         }
+    }
+
+    // Cascas e chapas acopladas: entram na mesma analise (nos coincidentes, ligacoes, apoios e cargas do caso)
+    if (extras.shell.coupled && !extras.shell.objects.empty() && result.errors.isEmpty()) {
+        const double forceUnit = DesignService::unitFactors(materials).first;
+        ShellCouplingService::attach(model, extras.shell, (loadCase.isEmpty() ? defaultCase : loadCase).toStdString(), forceUnit);
     }
 
     result.success = result.errors.isEmpty();

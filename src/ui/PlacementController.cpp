@@ -75,6 +75,7 @@ void PlacementController::start(Mode mode)
     m_mode = mode;
     m_solver->setBarSnap(mode == Mode::Node || mode == Mode::Measure);
     m_start.reset();
+    m_points.clear();
     m_press.reset();
     cancelCoordinateEdit(false);
     if (mode == Mode::None) {
@@ -93,6 +94,7 @@ void PlacementController::stop()
     m_solver->setBarSnap(false);
     m_ghostSource.clear();
     m_start.reset();
+    m_points.clear();
     m_press.reset();
     cancelCoordinateEdit(false);
     hideVisuals();
@@ -199,12 +201,45 @@ void PlacementController::refresh()
     m_lastDisplay = display;
 
     construction->setGuides(m_start);
-    if (m_start) {
+    if (m_start && m_mode != Mode::Rectangle) {
         construction->setPreviewLine(std::make_pair(*m_start, display));
     } else {
         construction->setPreviewLine(std::nullopt);
     }
-    if ((m_mode == Mode::Copy || m_mode == Mode::Move) && m_start && !m_ghostSource.empty()) {
+    if (m_mode == Mode::Polyline || m_mode == Mode::Rectangle || m_mode == Mode::Circle) {
+        std::vector<std::pair<Vec3, Vec3>> shape;
+        const auto axes = Structura::Construction::planeAxes(construction->planeMode());
+        const auto u = static_cast<std::size_t>(axes.u), v = static_cast<std::size_t>(axes.v);
+        if (m_mode == Mode::Polyline) {
+            for (std::size_t i = 0; i + 1 < m_points.size(); ++i) {
+                shape.push_back({m_points[i], m_points[i + 1]});
+            }
+            if (m_points.size() >= 3) {
+                shape.push_back({display, m_points.front()});   // sugestao de fechamento
+            }
+        } else if (m_mode == Mode::Rectangle && m_start) {
+            Vec3 c1 = *m_start, c2 = *m_start, c3 = display;
+            c1[u] = display[u];
+            c2[v] = display[v];
+            c3 = display;
+            shape = {{*m_start, c1}, {c1, c3}, {c3, c2}, {c2, *m_start}};
+        } else if (m_mode == Mode::Circle && m_start) {
+            const double radius = std::hypot(display[u] - (*m_start)[u], display[v] - (*m_start)[v]);
+            constexpr int kSegments = 64;
+            Vec3 previous = *m_start;
+            for (int i = 0; i <= kSegments; ++i) {
+                Vec3 p = *m_start;
+                const double a = 2.0 * kPi * i / kSegments;
+                p[u] += radius * std::cos(a);
+                p[v] += radius * std::sin(a);
+                if (i > 0) {
+                    shape.push_back({previous, p});
+                }
+                previous = p;
+            }
+        }
+        construction->setGhostSegments(shape);
+    } else if ((m_mode == Mode::Copy || m_mode == Mode::Move || m_mode == Mode::Extrude) && m_start && !m_ghostSource.empty()) {
         const Vec3 delta {display[0] - (*m_start)[0], display[1] - (*m_start)[1], display[2] - (*m_start)[2]};
         std::vector<std::pair<Vec3, Vec3>> moved;
         moved.reserve(m_ghostSource.size());
@@ -259,7 +294,33 @@ void PlacementController::placeAt(const Vec3 &point)
         if (onSinglePoint) {
             onSinglePoint(m_mode, point);
         }
-    } else if (m_mode == Mode::Bar || m_mode == Mode::Copy || m_mode == Mode::Move || m_mode == Mode::Mirror || m_mode == Mode::Measure) {
+    } else if (m_mode == Mode::Polyline) {
+        constexpr double tolerance = 1.0e-6;
+        auto same = [&](const Vec3 &a, const Vec3 &b) {
+            return std::abs(a[0] - b[0]) < tolerance && std::abs(a[1] - b[1]) < tolerance && std::abs(a[2] - b[2]) < tolerance;
+        };
+        if (!m_points.empty() && same(m_points.back(), point)) {
+            finishShape(false);   // clique repetido no ultimo ponto termina
+            return;
+        }
+        if (m_points.size() >= 3 && same(m_points.front(), point)) {
+            finishShape(true);    // clique no primeiro ponto fecha
+            return;
+        }
+        m_points.push_back(point);
+        m_start = point;
+    } else if (m_mode == Mode::Rectangle || m_mode == Mode::Circle) {
+        if (!m_start) {
+            m_start = point;
+        } else {
+            std::vector<Vec3> shape {*m_start, point};
+            const Mode mode = m_mode;
+            if (onShape && onShape(mode, shape, true)) {
+                m_start.reset();
+            }
+        }
+    } else if (m_mode == Mode::Bar || m_mode == Mode::Copy || m_mode == Mode::Move || m_mode == Mode::Mirror || m_mode == Mode::Measure
+               || m_mode == Mode::Extrude || m_mode == Mode::Axis) {
         if (!m_start) {
             m_start = point;
         } else {
@@ -279,6 +340,27 @@ void PlacementController::placeAt(const Vec3 &point)
         onStateChanged();
     }
     scheduleRefresh();
+}
+
+bool PlacementController::finishShape(bool close)
+{
+    if (m_mode != Mode::Polyline || m_points.size() < 2 || (close && m_points.size() < 3)) {
+        return false;
+    }
+    const std::vector<Vec3> points = m_points;
+    bool accepted = false;
+    if (onShape) {
+        accepted = onShape(Mode::Polyline, points, close);
+    }
+    if (accepted) {
+        m_points.clear();
+        m_start.reset();
+    }
+    if (onStateChanged) {
+        onStateChanged();
+    }
+    scheduleRefresh();
+    return accepted;
 }
 
 // ── Edicao manual de coordenadas ──────────────────────────────────────────
@@ -459,10 +541,23 @@ bool PlacementController::handleViewportEvent(QEvent *event)
         if (press->button() == Qt::LeftButton) {
             m_press = QPointF(press->position());
         }
+        if (press->button() == Qt::RightButton) {
+            m_rightPress = QPointF(press->position());
+        }
         return false;
     }
     case QEvent::MouseButtonRelease: {
         auto *release = static_cast<QMouseEvent *>(event);
+        if (release->button() == Qt::RightButton && m_rightPress) {
+            const QPointF pressed = *m_rightPress;
+            m_rightPress.reset();
+            const QPointF delta = QPointF(release->position()) - pressed;
+            if (m_mode == Mode::Polyline && std::hypot(delta.x(), delta.y()) <= kPlacementDragTolerancePixels && m_points.size() >= 2) {
+                finishShape(false);
+                return true;
+            }
+            return false;
+        }
         if (release->button() == Qt::LeftButton && m_press) {
             const QPointF pressed = *m_press;
             m_press.reset();
@@ -497,6 +592,23 @@ bool PlacementController::handleViewportEvent(QEvent *event)
             const Vec3 point = *m_manualTarget;
             placeAt(point);
             return true;
+        }
+        if (m_mode == Mode::Polyline && m_manualIndex < 0) {
+            if (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter) {
+                return finishShape(false);
+            }
+            if (key->key() == Qt::Key_C) {
+                return finishShape(true);
+            }
+            if (key->key() == Qt::Key_Backspace && !m_points.empty()) {
+                m_points.pop_back();
+                m_start = m_points.empty() ? std::nullopt : std::optional<Vec3>(m_points.back());
+                if (onStateChanged) {
+                    onStateChanged();
+                }
+                scheduleRefresh();
+                return true;
+            }
         }
         if (key->key() == Qt::Key_Escape) {
             if (onCancelRequested) {

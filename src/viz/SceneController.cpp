@@ -374,6 +374,9 @@ void SceneController::refreshConstructionGeometry()
     for (const auto &node : m_nodes) {
         nodes.push_back({node.x(), node.y(), node.z()});
     }
+    for (const auto &p : m_extraSnapPoints) {
+        nodes.push_back({p[0], p[1], p[2]});
+    }
     std::vector<Structura::Construction::Vec3> midpoints;
     midpoints.reserve(m_bars.size());
     for (const auto &bar : m_bars) {
@@ -736,6 +739,37 @@ void SceneController::setNodeHighlight(const std::optional<QVector3D> &position)
     m_nodeHighlight->SetPosition(position->x(), position->y(), position->z());
     m_nodeHighlight->SetScale(radius);
     m_nodeHighlight->SetVisibility(1);
+    requestRender();
+}
+
+void SceneController::setShellMesh(const Structura::Shell::RenderMesh &mesh)
+{
+    if (!m_shellRenderer) {
+        m_shellRenderer = std::make_unique<Structura::Visualization::ShellRenderer>();
+        m_shellRenderer->attach(m_renderer);
+    }
+    m_shellRenderer->setMesh(mesh);
+    requestRender();
+}
+
+int SceneController::pickShellQuad(int displayX, int displayY) const
+{
+    return m_shellRenderer ? m_shellRenderer->pickQuad(displayX, displayY) : -1;
+}
+
+void SceneController::setExtraSnapPoints(std::vector<std::array<double, 3>> points)
+{
+    m_extraSnapPoints = std::move(points);
+    refreshConstructionGeometry();
+}
+
+void SceneController::setShellVisible(bool visible)
+{
+    if (!m_shellRenderer) {
+        m_shellRenderer = std::make_unique<Structura::Visualization::ShellRenderer>();
+        m_shellRenderer->attach(m_renderer);
+    }
+    m_shellRenderer->setVisible(visible);
     requestRender();
 }
 

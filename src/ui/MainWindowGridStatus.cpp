@@ -313,6 +313,31 @@ void MainWindow::updateStatus()
         showStatusMessage(tr("Inserir nó: clique no ponto (sobre uma barra, ela é dividida) | Tab edita | Esc sai"));
         break;
     }
+    case Command::ShellPolygon:
+        showStatusMessage(tr("Chapa por contorno: clique nos vértices | Enter, clique direito ou clique repetido termina; C ou clique no 1º ponto fecha; Backspace desfaz | Esc sai"));
+        break;
+    case Command::ShellRectangle:
+        showStatusMessage(m_placement && m_placement->hasStartPoint() ? tr("Chapa retangular: clique no canto oposto | Esc sai") : tr("Chapa retangular: clique no primeiro canto (no plano de construção) | Esc sai"));
+        break;
+    case Command::ShellDisk:
+        showStatusMessage(m_placement && m_placement->hasStartPoint() ? tr("Disco: clique em um ponto do contorno (define o raio) | Esc sai") : tr("Disco: clique no centro | Esc sai"));
+        break;
+    case Command::ShellExtrude:
+        showStatusMessage(m_shellDraft.stage == 0 ? tr("Extrudar linha: desenhe a linha base (Enter termina; C fecha) | Esc sai")
+                                                  : (m_placement && m_placement->hasStartPoint() ? tr("Extrudar: clique no ponto de destino do vetor | Esc sai") : tr("Extrudar: clique no ponto base do vetor | Esc sai")));
+        break;
+    case Command::ShellCylinder:
+        showStatusMessage(m_shellDraft.stage == 0 ? (m_placement && m_placement->hasStartPoint() ? tr("Cilindro: clique em um ponto do contorno (raio) | Esc sai") : tr("Cilindro: clique no centro da base | Esc sai"))
+                                                  : (m_placement && m_placement->hasStartPoint() ? tr("Cilindro: clique no ponto de destino (altura e direção) | Esc sai") : tr("Cilindro: clique no ponto base do vetor | Esc sai")));
+        break;
+    case Command::ShellRevolve:
+        showStatusMessage(m_shellDraft.stage == 0 ? tr("Revolução: desenhe o perfil (Enter termina) | Esc sai")
+                                                  : (m_placement && m_placement->hasStartPoint() ? tr("Revolução: clique no segundo ponto do eixo | Esc sai") : tr("Revolução: clique no primeiro ponto do eixo | Esc sai")));
+        break;
+    case Command::ShellMove:
+    case Command::ShellCopy:
+        showStatusMessage(m_placement && m_placement->hasStartPoint() ? tr("Casca: clique no ponto de destino | Esc sai") : tr("Casca: clique no ponto base | Esc sai"));
+        break;
     case Command::MirrorElements:
     {
         QString message = (m_placement && m_placement->hasStartPoint())

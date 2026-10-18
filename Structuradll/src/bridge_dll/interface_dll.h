@@ -34,6 +34,41 @@ SOLVER_DLL_API void structura_set_modal(int modes, int materialCount, const int*
 // (6 values per node, normalized to a maximum component of 1). Returns the number of modes copied.
 SOLVER_DLL_API int structura_get_modal(int maxModes, int nodeCount, double* omega, double* massRatio3, double* shapes);
 
+// Shells and plates coupled to the frame (Q4 element of Femdll: membrane with incompatible modes + Mindlin bending with MITC4).
+// The shell nodes are ordinary nodes of the following structura_solve* calls (same ids, coordinates and restraints); members
+// may share them or be tied to them. State kept until structura_clear_shells.
+//  shells: ids, 4 node ids each (counter-clockwise seen from the positive normal), E, nu, density, thickness.
+//  loads: per shell, kind 0 = nodal pressure (4 values, positive along the normal), 1 = global body force (3 values),
+//         2 = temperature (uniform, gradient).
+//  ties: slave node tied to up to 8 master nodes (weights sum to 1) in all 6 DOFs.
+//  springs: nodal elastic supports; compressionOnly != 0: k6[0] normal, k6[1] tangential, normal (3 values) from support to structure.
+SOLVER_DLL_API void structura_clear_shells();
+SOLVER_DLL_API int structura_set_shells(
+    int shellCount,
+    const int* shellIds,
+    const int* shellNodeIds4,
+    const double* shellE,
+    const double* shellNu,
+    const double* shellDensity,
+    const double* shellThickness,
+    int loadCount,
+    const int* loadShellIds,
+    const int* loadKinds,
+    const double* loadValues4,
+    int tieCount,
+    const int* tieSlaveIds,
+    const int* tieMasterCounts,
+    const int* tieMasterIds,
+    const double* tieWeights,
+    int springCount,
+    const int* springNodeIds,
+    const double* springK6,
+    const int* springCompressionOnly,
+    const double* springNormals3);
+// Copies the shell results of the last successful solve in the order of structura_set_shells:
+// 40 values per shell (5 points x nxx nyy nxy mxx myy mxy qx qy, local axes) and the axes e1,e2,e3 (9 values). Returns the count.
+SOLVER_DLL_API int structura_get_shell_results(int shellCount, double* values40, double* axes9);
+
 // Marks members (by id) as tension-only (ties/cables) for the following structura_solve* calls; count = 0 clears.
 SOLVER_DLL_API void structura_set_tension_only(int count, const int* memberIds);
 

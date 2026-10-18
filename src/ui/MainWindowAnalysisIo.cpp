@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include "ShellDialog.h"
+
 #include "TemporaryAnalysisResultsDialog.h"
 #include "ModelCheckDialog.h"
 #include "app/SolverBridge.h"
@@ -258,7 +260,7 @@ namespace {
 /// Modelo de segunda ordem de uma combinacao (cargas dos casos ponderadas; rigidez reduzida nas combinacoes ultimas).
 bool buildSecondOrderModel(const Structura::App::ProjectData::LoadCombination &combination,
                            const QMap<QString, Structura::App::SolverBridge::ModelData> &caseModels, double stiffnessReduction,
-                           Structura::App::SolverBridge::ModelData &out)
+                           Structura::App::SolverBridge::ModelData &out, bool secondOrder = true)
 {
     using Structura::App::Services::CombinationService;
     std::vector<std::pair<const Structura::App::SolverBridge::ModelData *, double>> terms;
@@ -272,8 +274,8 @@ bool buildSecondOrderModel(const Structura::App::ProjectData::LoadCombination &c
         return false;
     }
     out = CombinationService::mergeModels(terms);
-    out.secondOrder = true;
-    if (!combination.name.startsWith(QLatin1String("ELS"), Qt::CaseInsensitive)) {
+    out.secondOrder = secondOrder;
+    if (secondOrder && !combination.name.startsWith(QLatin1String("ELS"), Qt::CaseInsensitive)) {
         for (auto &material : out.materials) {
             material.e *= stiffnessReduction;
         }
@@ -335,25 +337,46 @@ bool MainWindow::executeAnalysis(QString *reportOut)
     if (!m_sceneController) {
         return false;
     }
+    // cascas acopladas: as barras precisam estar divididas nos nos das cascas para a continuidade ao longo da linha
+    if (m_extras.shell.coupled && !m_extras.shell.objects.empty()) {
+        const int pending = splitBarsAtShellNodes(false);
+        if (pending > 0) {
+            const auto answer = QMessageBox::question(this, tr("Análise estrutural"),
+                                                       tr("%1 nó(s) da malha das cascas caem sobre barras sem dividi-las: nesses pontos a barra e a casca não estão ligadas.\n\n"
+                                                          "Dividir as barras nesses nós antes de analisar? (Ctrl+Z desfaz)\n"
+                                                          "Não = analisar assim mesmo.").arg(pending),
+                                                       QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::Yes);
+            if (answer == QMessageBox::Cancel) {
+                return false;
+            }
+            if (answer == QMessageBox::Yes) {
+                splitBarsAtShellNodes(true);
+            }
+        }
+    }
 
     auto bars = m_sceneController->bars();
     auto nodes = m_sceneController->nodeInfos();
 
-    if (nodes.empty()) {
-        QMessageBox::information(this, tr("Analise estrutural"), tr("Nao ha nos no modelo para analisar."));
-        return false;
-    }
-    if (bars.empty()) {
-        QMessageBox::information(this, tr("Analise estrutural"), tr("Nao ha barras no modelo para analisar."));
-        return false;
-    }
-    if (m_materials.isEmpty()) {
-        QMessageBox::warning(this, tr("Analise estrutural"), tr("Cadastre ao menos um material antes de rodar a analise."));
-        return false;
-    }
-    if (m_sections.isEmpty()) {
-        QMessageBox::warning(this, tr("Analise estrutural"), tr("Cadastre ao menos uma secao antes de rodar a analise."));
-        return false;
+    // modelo so de cascas acopladas (sem barras): os nos vem da malha das cascas
+    const bool shellsOnly = m_extras.shell.coupled && !m_extras.shell.objects.empty() && bars.empty();
+    if (!shellsOnly) {
+        if (nodes.empty()) {
+            QMessageBox::information(this, tr("Analise estrutural"), tr("Nao ha nos no modelo para analisar."));
+            return false;
+        }
+        if (bars.empty()) {
+            QMessageBox::information(this, tr("Analise estrutural"), tr("Nao ha barras no modelo para analisar."));
+            return false;
+        }
+        if (m_materials.isEmpty()) {
+            QMessageBox::warning(this, tr("Analise estrutural"), tr("Cadastre ao menos um material antes de rodar a analise."));
+            return false;
+        }
+        if (m_sections.isEmpty()) {
+            QMessageBox::warning(this, tr("Analise estrutural"), tr("Cadastre ao menos uma secao antes de rodar a analise."));
+            return false;
+        }
     }
 
     using Structura::App::Services::CombinationService;
@@ -402,7 +425,14 @@ bool MainWindow::executeAnalysis(QString *reportOut)
         // 2) solucao em segundo plano, com janela de progresso
         const bool secondOrder = m_extras.design.secondOrder;
         const double reduction = m_extras.design.stiffnessReduction;
-        const int totalSteps = static_cast<int>(built.size()) + (secondOrder ? static_cast<int>(combinations.size()) : 0);
+        // Tirantes (so tracao) tornam a resposta nao linear: a superposicao de casos poderia deixar um tirante comprimido
+        // numa combinacao; entao cada combinacao e resolvida com suas cargas ponderadas, como na segunda ordem.
+        bool hasTie = false;
+        for (const auto &item : built) {
+            hasTie = hasTie || std::any_of(item.second.members.begin(), item.second.members.end(), [](const auto &m) { return m.tensionOnly; });
+        }
+        const bool nonlinearCombos = secondOrder || hasTie;
+        const int totalSteps = static_cast<int>(built.size()) + (nonlinearCombos ? static_cast<int>(combinations.size()) : 0);
         runs = Structura::UI::runBusy(this, tr("Análise estrutural"), tr("Preparando o solver…"),
                                       [&](Structura::UI::BusyProgress &progress) {
             QMap<QString, CaseRun> out;
@@ -417,13 +447,13 @@ bool MainWindow::executeAnalysis(QString *reportOut)
                 ++step;
             }
             // Segunda ordem: nao ha superposicao, entao cada combinacao e resolvida com suas cargas ponderadas.
-            if (secondOrder) {
+            if (nonlinearCombos) {
                 QMap<QString, Structura::App::SolverBridge::ModelData> caseModels;
                 for (auto it = out.constBegin(); it != out.constEnd(); ++it) {
                     caseModels.insert(it.key(), it->model);
                 }
                 for (const auto& combination : combinations) {
-                    progress.report(step, totalSteps, tr("Segunda ordem — combinação %1").arg(combination.name));
+                    progress.report(step, totalSteps, tr("Combinação %1 (resolvida com tirantes/segunda ordem)").arg(combination.name));
                     ++step;
                     CaseRun run;
                     if (!buildSecondOrderModel(combination, caseModels, reduction, run.model)) {
@@ -457,7 +487,11 @@ bool MainWindow::executeAnalysis(QString *reportOut)
     }
     rebuildResultViews();
 
-    statusBar()->showMessage(tr("Analise concluida com sucesso."), 5000);
+    if (!m_extras.shell.coupled && !m_extras.shell.objects.empty()) {
+        statusBar()->showMessage(tr("Analise concluida. Atenção: as cascas NÃO estão acopladas às barras (suas cargas não chegam às vigas): ative \"Acoplar às barras\"."), 12000);
+    } else {
+        statusBar()->showMessage(tr("Analise concluida com sucesso."), 5000);
+    }
 
     QString report;
     for (const auto& view : m_resultViews) {
@@ -467,6 +501,9 @@ bool MainWindow::executeAnalysis(QString *reportOut)
     }
 
     rebuildResultViewSelector();
+    if (m_shellDialog && m_extras.shell.coupled) {
+        m_shellDialog->showProjectResults();
+    }
     if (reportOut) {
         *reportOut = report;
     }
@@ -530,10 +567,14 @@ bool MainWindow::restoreStoredResults()
             return false;
         }
     }
-    if (m_extras.design.secondOrder) {
+    bool restoreHasTie = false;
+    for (auto it = caseModels.constBegin(); it != caseModels.constEnd(); ++it) {
+        restoreHasTie = restoreHasTie || std::any_of(it->members.begin(), it->members.end(), [](const auto &m) { return m.tensionOnly; });
+    }
+    if (m_extras.design.secondOrder || restoreHasTie) {
         for (const auto &combination : CombinationService::effectiveCombinations(m_extras)) {
             CaseRun run;
-            if (!buildSecondOrderModel(combination, caseModels, m_extras.design.stiffnessReduction, run.model)) {
+            if (!buildSecondOrderModel(combination, caseModels, m_extras.design.stiffnessReduction, run.model, m_extras.design.secondOrder)) {
                 continue;
             }
             const QString key = QStringLiteral("COMB:") + combination.name;
@@ -618,6 +659,12 @@ void MainWindow::resetModel()
     m_resultViews.clear();
     m_extras.loadCases.append({Structura::App::ProjectData::defaultLoadCaseName(),
                                Structura::App::ProjectData::defaultLoadCaseName(), false});
+    m_selectedShellObject = -1;
+    m_shellResultsShown = false;
+    refreshShellVisuals(true);
+    if (m_shellDialog) {
+        m_shellDialog->close();
+    }
     syncPlacementVisuals();
     rebuildCaseSelector();
     rebuildResultViewSelector();
@@ -675,6 +722,12 @@ bool MainWindow::loadFromDat(const QString &filePath)
     syncSupportVisuals();
     ensureDefaultMaterial();
     syncPlacementVisuals();
+    m_selectedShellObject = -1;
+    m_shellResultsShown = false;
+    refreshShellVisuals(true);
+    if (m_shellDialog) {
+        m_shellDialog->setModel(m_extras.shell);
+    }
     refreshPropertiesPanel();
     restoreStoredResults();
     if (m_undoService) {

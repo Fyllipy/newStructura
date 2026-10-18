@@ -1230,9 +1230,9 @@ private slots:
     {
         using namespace Structura::App;
         using Services::DesignService;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         ProjectData::SectionInfo section;
         section.name = "W teste";
@@ -1273,6 +1273,74 @@ private slots:
         QVERIFY(std::abs(st.back().e.Mx) < 1e3);
         QVERIFY(std::abs(std::abs(st.front().e.Vy) - 20e3) < 1.0);
         QVERIFY(st.front().e.Mx < 0.0);   // balanco com carga para baixo: topo tracionado, base (-b) comprimida
+
+        // tirante (so tracao): a compressao residual e folga e nao reprova por esbeltez de compressao
+        {
+            SolverBridge::ModelData slack = model;
+            slack.nodalLoads.clear();
+            SolverBridge::NodalLoadData push;
+            push.nodeId = 2;
+            push.values = {{-5.0, 0.0, 0.0, 0.0, 0.0, 0.0}};   // 5 kN de compressao
+            slack.nodalLoads.push_back(push);
+            slack.nodes[1].x = 12.0;   // barra muito esbelta
+            const auto pushed = SolverBridge(dll).solve(slack);
+            DesignService::ResultSet pushSet;
+            pushSet.name = "ELU1";
+            pushSet.result = &pushed;
+            pushSet.terms = {{&slack, 1.0}};
+            ProjectData::DesignSettings tieSettings;
+            tieSettings.defaultSteel = "ASTM A572 Gr.50";
+            const auto asColumn = DesignService::collectEffects(slack, {pushSet}, 1000.0, 1000.0);
+            const auto columnVerdict = DesignService::verifyMember(asColumn[0], section, tieSettings.paramsFor(1), tieSettings, 1000.0);
+            QVERIFY(columnVerdict.output.maxRatio > 1.0);   // como pilar, a esbeltez reprova
+            slack.members[0].tensionOnly = true;
+            const auto asTie = DesignService::collectEffects(slack, {pushSet}, 1000.0, 1000.0);
+            for (const auto &station : asTie[0].combos[0].stations) {
+                QVERIFY(station.e.N >= 0.0);
+            }
+            const auto tieVerdict = DesignService::verifyMember(asTie[0], section, tieSettings.paramsFor(1), tieSettings, 1000.0);
+            QVERIFY(tieVerdict.output.maxRatio < 1.0);
+
+            // as demais barras ficam inalteradas: duas barras, so a 2 e tirante; a 1 mantem a compressao e o veredito
+            SolverBridge::ModelData pair = slack;
+            pair.members[0].tensionOnly = false;
+            SolverBridge::NodeData extraBase, extraTip;
+            extraBase.id = 3;
+            extraBase.y = 5.0;
+            extraBase.restraints = {{1, 1, 1, 1, 1, 1}};
+            extraTip.id = 4;
+            extraTip.x = 12.0;
+            extraTip.y = 5.0;
+            pair.nodes.push_back(extraBase);
+            pair.nodes.push_back(extraTip);
+            pair.members.push_back(SolverBridge::MemberData {2, 3, 4, 1, 1});
+            pair.members[1].tensionOnly = true;
+            SolverBridge::NodalLoadData pushTwo;
+            pushTwo.nodeId = 4;
+            pushTwo.values = {{-5.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
+            pair.nodalLoads.push_back(pushTwo);
+            const auto pairResult = SolverBridge(dll).solve(pair);
+            DesignService::ResultSet pairSet;
+            pairSet.name = "ELU1";
+            pairSet.result = &pairResult;
+            pairSet.terms = {{&pair, 1.0}};
+            const auto both = DesignService::collectEffects(pair, {pairSet}, 1000.0, 1000.0);
+            QCOMPARE(both.size(), 2);
+            const auto &column = both[0].memberId == 1 ? both[0] : both[1];
+            const auto &tieBar = both[0].memberId == 1 ? both[1] : both[0];
+            // a barra comum e igual a calculada sozinha (esforcos e veredito preservados)
+            QCOMPARE(column.combos[0].stations.size(), asColumn[0].combos[0].stations.size());
+            for (std::size_t i = 0; i < column.combos[0].stations.size(); ++i) {
+                QCOMPARE(column.combos[0].stations[i].e.N, asColumn[0].combos[0].stations[i].e.N);
+                QCOMPARE(column.combos[0].stations[i].e.Mx, asColumn[0].combos[0].stations[i].e.Mx);
+            }
+            QVERIFY(column.combos[0].stations.front().e.N < 0.0);
+            const auto pairColumn = DesignService::verifyMember(column, section, tieSettings.paramsFor(1), tieSettings, 1000.0);
+            QCOMPARE(pairColumn.output.maxRatio, columnVerdict.output.maxRatio);
+            for (const auto &station : tieBar.combos[0].stations) {
+                QVERIFY(station.e.N >= 0.0);
+            }
+        }
 
         ProjectData::DesignSettings settings;
         settings.defaultSteel = "ASTM A572 Gr.50";
@@ -1320,9 +1388,9 @@ private slots:
     void deflectionMatchesClosedForm()
     {
         using namespace Structura::App;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         const double E = 2.0e8, I = 2.0e-4, L = 6.0, q = 10.0;
         auto run = [&](bool cantilever) {
@@ -1479,9 +1547,9 @@ private slots:
     void beamSupportingColumnUsesTableB1Limit()
     {
         using namespace Structura::App;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         // viga de 6 m com um pilar que nasce no meio do vao (viga de transicao): limite L/500 (Tabela B.1)
         SolverBridge::ModelData model;
@@ -1527,9 +1595,9 @@ private slots:
     void b2FromStoryDrift()
     {
         using namespace Structura::App;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/solver_dll.dll");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
-            QSKIP("solver_dll.dll nao encontrada na raiz do repositorio.");
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
         }
         const double E = 2.0e8, I = 2.0e-4, L = 5.0, P = 300.0, H = 20.0;
         SolverBridge::ModelData model;

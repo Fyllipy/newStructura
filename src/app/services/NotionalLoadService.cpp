@@ -21,6 +21,7 @@ SolverBridge::ModelData NotionalLoadService::notionalModel(const SolverBridge::M
     model.nodalLoads.clear();
     model.memberLoads.clear();
     model.memberMoments.clear();
+    model.shellLoads.clear();
     for (const auto &[nodeId, mass] : masses) {
         SolverBridge::NodalLoadData load;
         load.nodeId = nodeId;

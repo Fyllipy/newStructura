@@ -16,6 +16,7 @@
 #include "member.h"
 #include "node.h"
 #include "section.h"
+#include "shell_q4.h"
 
 namespace {
 constexpr double kAssemblyTolerance = 1e-12;
@@ -61,6 +62,205 @@ void assembleGlobalStiffness(
     globalStiffness.setZero();
     globalStiffness.setFromTriplets(triplets.begin(), triplets.end());
     globalStiffness.makeCompressed();
+}
+
+// ---- cascas, ligacoes e molas -----------------------------------------------------------------------------------------------------
+struct ShellAssembly {
+    struct Item {
+        fem::ShellFrame frame;
+        fem::ShellStiffness stiffness;
+        fem::Mat24 transform;
+        fem::Material material;
+        std::array<int, 24> dofs{};
+        double thickness = 0.0;
+    };
+    std::vector<Item> items;
+    std::unordered_map<int, int> indexById;
+};
+
+ShellAssembly buildShellAssembly(const SolverInput& input, const std::unordered_map<int, int>& nodeIndexById,
+                                 const std::vector<std::shared_ptr<Node>>& nodes) {
+    ShellAssembly assembly;
+    assembly.items.reserve(input.shells.size());
+    for (const auto& data : input.shells) {
+        ShellAssembly::Item item;
+        std::array<fem::Vec3, 4> p;
+        for (int i = 0; i < 4; ++i) {
+            const auto it = nodeIndexById.find(data.nodeIds[static_cast<size_t>(i)]);
+            if (it == nodeIndexById.end()) {
+                throw std::runtime_error("Shell " + std::to_string(data.id) + " references unknown node");
+            }
+            const auto& node = nodes[static_cast<size_t>(it->second)];
+            p[static_cast<size_t>(i)] = fem::Vec3(node->getX(), node->getY(), node->getZ());
+            for (int c = 0; c < 6; ++c) {
+                item.dofs[static_cast<size_t>(6 * i + c)] = 6 * it->second + c;
+            }
+        }
+        if (data.thickness <= 0.0 || data.E <= 0.0) {
+            throw std::runtime_error("Shell " + std::to_string(data.id) + ": invalid material or thickness");
+        }
+        item.material.E = data.E;
+        item.material.nu = data.nu;
+        item.material.density = data.density;
+        item.thickness = data.thickness;
+        item.frame = fem::shellFrame(p);
+        if (item.frame.area < 1e-14) {
+            throw std::runtime_error("Shell " + std::to_string(data.id) + ": zero area");
+        }
+        item.stiffness = fem::shellStiffness(item.frame, item.material, data.thickness, 5.0 / 6.0);
+        item.transform = fem::shellTransform(item.frame);
+        assembly.indexById[data.id] = static_cast<int>(assembly.items.size());
+        assembly.items.push_back(std::move(item));
+    }
+    return assembly;
+}
+
+void assembleShellStiffness(const ShellAssembly& assembly, int totalDof, Eigen::SparseMatrix<double>& k) {
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(assembly.items.size() * 576U);
+    for (const auto& item : assembly.items) {
+        const fem::Mat24 kg = item.transform.transpose() * item.stiffness.K * item.transform;
+        for (int i = 0; i < 24; ++i) {
+            for (int j = 0; j < 24; ++j) {
+                triplets.emplace_back(item.dofs[static_cast<size_t>(i)], item.dofs[static_cast<size_t>(j)], kg(i, j));
+            }
+        }
+    }
+    k.resize(totalDof, totalDof);
+    k.setFromTriplets(triplets.begin(), triplets.end());
+}
+
+void addShellLoads(const SolverInput& input, const ShellAssembly& assembly, Eigen::VectorXd& load) {
+    for (const auto& l : input.shellLoads) {
+        const auto it = assembly.indexById.find(l.shellId);
+        if (it == assembly.indexById.end()) {
+            throw std::runtime_error("Shell load references unknown shell: " + std::to_string(l.shellId));
+        }
+        const auto& item = assembly.items[static_cast<size_t>(it->second)];
+        fem::Vec24 local;
+        if (l.kind == 0) {
+            local = fem::shellPressureLoad(item.frame, {l.v[0], l.v[1], l.v[2], l.v[3]});
+        } else if (l.kind == 1) {
+            local = fem::shellBodyLoad(item.frame, item.frame.R * fem::Vec3(l.v[0], l.v[1], l.v[2]), item.thickness);
+        } else {
+            local = fem::shellThermalLoad(item.frame, item.material, item.thickness, l.v[0], l.v[1]);
+        }
+        const fem::Vec24 g = item.transform.transpose() * local;
+        for (int i = 0; i < 24; ++i) {
+            load(item.dofs[static_cast<size_t>(i)]) += g(i);
+        }
+    }
+}
+
+// Rigidez geometrica das cascas (forcas de membrana do centro do elemento no deslocamento atual): efeito P-delta das cascas.
+Eigen::SparseMatrix<double> assembleShellGeometric(const ShellAssembly& assembly, const SolverInput& input, const Eigen::VectorXd& displacement, int totalDof) {
+    std::vector<double> uniformTemp(assembly.items.size(), 0.0), gradientTemp(assembly.items.size(), 0.0);
+    for (const auto& l : input.shellLoads) {
+        if (l.kind == 2) {
+            const size_t index = static_cast<size_t>(assembly.indexById.at(l.shellId));
+            uniformTemp[index] += l.v[0];
+            gradientTemp[index] += l.v[1];
+        }
+    }
+    std::vector<Eigen::Triplet<double>> triplets;
+    for (size_t e = 0; e < assembly.items.size(); ++e) {
+        const auto& item = assembly.items[e];
+        fem::Vec24 ug;
+        for (int i = 0; i < 24; ++i) {
+            ug(i) = displacement(item.dofs[static_cast<size_t>(i)]);
+        }
+        const fem::ShellResult r = fem::shellResultants(item.frame, item.material, item.thickness, 5.0 / 6.0, item.stiffness, item.transform * ug,
+                                                        uniformTemp[e], gradientTemp[e]);
+        const fem::Mat24 kgLocal = fem::shellGeometricStiffness(item.frame, r.values[8 * 4 + 0], r.values[8 * 4 + 1], r.values[8 * 4 + 2]);
+        const fem::Mat24 kg = item.transform.transpose() * kgLocal * item.transform;
+        for (int i = 0; i < 24; ++i) {
+            for (int j = 0; j < 24; ++j) {
+                if (kg(i, j) != 0.0) {
+                    triplets.emplace_back(item.dofs[static_cast<size_t>(i)], item.dofs[static_cast<size_t>(j)], kg(i, j));
+                }
+            }
+        }
+    }
+    Eigen::SparseMatrix<double> k(totalDof, totalDof);
+    k.setFromTriplets(triplets.begin(), triplets.end());
+    return k;
+}
+
+// Penalidade escalada pela rigidez diagonal do proprio no escravo (por grau de liberdade).
+void assembleTies(const SolverInput& input, const std::unordered_map<int, int>& nodeIndexById, const Eigen::SparseMatrix<double>& base,
+                  int totalDof, Eigen::SparseMatrix<double>& kTie) {
+    kTie.resize(totalDof, totalDof);
+    if (input.ties.empty()) {
+        return;
+    }
+    double maxDiagonal = 0.0;
+    for (int i = 0; i < totalDof; ++i) {
+        maxDiagonal = std::max(maxDiagonal, std::abs(base.coeff(i, i)));
+    }
+    std::vector<Eigen::Triplet<double>> triplets;
+    for (const auto& tie : input.ties) {
+        const auto slave = nodeIndexById.find(tie.slaveId);
+        if (slave == nodeIndexById.end() || tie.masterIds.empty() || tie.masterIds.size() != tie.weights.size()) {
+            throw std::runtime_error("Invalid tie (slave node " + std::to_string(tie.slaveId) + ")");
+        }
+        std::vector<int> masters;
+        for (const int id : tie.masterIds) {
+            const auto it = nodeIndexById.find(id);
+            if (it == nodeIndexById.end()) {
+                throw std::runtime_error("Tie references unknown master node: " + std::to_string(id));
+            }
+            masters.push_back(it->second);
+        }
+        for (int c = 0; c < 6; ++c) {
+            const double diagonal = std::abs(base.coeff(6 * slave->second + c, 6 * slave->second + c));
+            const double kp = 1.0e7 * (diagonal > 1e-12 * maxDiagonal ? diagonal : maxDiagonal * 1e-6);
+            std::vector<std::pair<int, double>> entries;
+            entries.emplace_back(6 * slave->second + c, 1.0);
+            for (size_t i = 0; i < masters.size(); ++i) {
+                entries.emplace_back(6 * masters[i] + c, -tie.weights[i]);
+            }
+            for (const auto& a : entries) {
+                for (const auto& b : entries) {
+                    triplets.emplace_back(a.first, b.first, kp * a.second * b.second);
+                }
+            }
+        }
+    }
+    kTie.setFromTriplets(triplets.begin(), triplets.end());
+}
+
+void assembleSprings(const SolverInput& input, const std::unordered_map<int, int>& nodeIndexById, const std::unordered_set<int>& inactive,
+                     int totalDof, Eigen::SparseMatrix<double>& kSpring) {
+    std::vector<Eigen::Triplet<double>> triplets;
+    for (size_t i = 0; i < input.springs.size(); ++i) {
+        const auto& sp = input.springs[i];
+        if (inactive.count(static_cast<int>(i)) > 0) {
+            continue;
+        }
+        const auto it = nodeIndexById.find(sp.nodeId);
+        if (it == nodeIndexById.end()) {
+            throw std::runtime_error("Spring references unknown node: " + std::to_string(sp.nodeId));
+        }
+        const int base = 6 * it->second;
+        if (sp.compressionOnly) {
+            Eigen::Vector3d n(sp.normal[0], sp.normal[1], sp.normal[2]);
+            n.normalize();
+            const Eigen::Matrix3d kk = sp.k[0] * n * n.transpose() + sp.k[1] * (Eigen::Matrix3d::Identity() - n * n.transpose());
+            for (int a = 0; a < 3; ++a) {
+                for (int b = 0; b < 3; ++b) {
+                    triplets.emplace_back(base + a, base + b, kk(a, b));
+                }
+            }
+        } else {
+            for (int c = 0; c < 6; ++c) {
+                if (sp.k[static_cast<size_t>(c)] != 0.0) {
+                    triplets.emplace_back(base + c, base + c, sp.k[static_cast<size_t>(c)]);
+                }
+            }
+        }
+    }
+    kSpring.resize(totalDof, totalDof);
+    kSpring.setFromTriplets(triplets.begin(), triplets.end());
 }
 
 void assembleGlobalLoad(
@@ -200,8 +400,12 @@ void fillOutput(
 } // namespace
 
 bool SolverCore::run(const SolverInput& input, SolverOutput& output, std::string& errorMessage) const {
-    if (input.tensionOnlyMembers.empty()) {
-        return runPass(input, {}, output, errorMessage);
+    bool compressionSprings = false;
+    for (const auto& sp : input.springs) {
+        compressionSprings = compressionSprings || sp.compressionOnly;
+    }
+    if (input.tensionOnlyMembers.empty() && !compressionSprings) {
+        return runPass(input, {}, {}, output, errorMessage);
     }
 
     // Tension-only members: iterate, deactivating members that shorten and reactivating those that elongate.
@@ -216,8 +420,9 @@ bool SolverCore::run(const SolverInput& input, SolverOutput& output, std::string
     std::unordered_map<int, const NodeResult*> resultById;
 
     std::unordered_set<int> inactive;
+    std::unordered_set<int> inactiveSprings;
     for (int iteration = 0; iteration < 40; ++iteration) {
-        if (!runPass(input, inactive, output, errorMessage)) {
+        if (!runPass(input, inactive, inactiveSprings, output, errorMessage)) {
             return false;
         }
         resultById.clear();
@@ -225,6 +430,27 @@ bool SolverCore::run(const SolverInput& input, SolverOutput& output, std::string
             resultById[n.id] = &n;
         }
         bool changed = false;
+        // compression-only springs: deactivate those pulled away from the support, reactivate those that press again
+        for (size_t i = 0; i < input.springs.size(); ++i) {
+            const auto& sp = input.springs[i];
+            if (!sp.compressionOnly) {
+                continue;
+            }
+            const auto r = resultById.find(sp.nodeId);
+            if (r == resultById.end()) {
+                continue;
+            }
+            const auto& d = r->second->displacements;
+            const double along = d[0] * sp.normal[0] + d[1] * sp.normal[1] + d[2] * sp.normal[2];
+            const bool isInactive = inactiveSprings.count(static_cast<int>(i)) > 0;
+            if (!isInactive && along > 0.0) {
+                inactiveSprings.insert(static_cast<int>(i));
+                changed = true;
+            } else if (isInactive && along < 0.0) {
+                inactiveSprings.erase(static_cast<int>(i));
+                changed = true;
+            }
+        }
         for (const int id : input.tensionOnlyMembers) {
             const auto mIt = memberById.find(id);
             if (mIt == memberById.end()) {
@@ -264,7 +490,7 @@ bool SolverCore::run(const SolverInput& input, SolverOutput& output, std::string
     return true;   // accepts the last pass when the active set keeps oscillating
 }
 
-bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>& inactiveMembers, SolverOutput& output, std::string& errorMessage) const {
+bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>& inactiveMembers, const std::unordered_set<int>& inactiveSprings, SolverOutput& output, std::string& errorMessage) const {
     try {
         if (input.nodes.empty()) {
             throw std::runtime_error("Input has no nodes");
@@ -400,6 +626,17 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         assembleGlobalStiffness(members, nodeIndexById, totalDof, fullStiffness);
         assembleGlobalLoad(loads, nodeIndexById, memberById, totalDof, fullLoad);
 
+        // shells, ties and springs (constant during the pass): added to every assembly of the member stiffness
+        const ShellAssembly shellAssembly = buildShellAssembly(input, nodeIndexById, nodes);
+        Eigen::SparseMatrix<double> kShell, kTie, kSpring;
+        assembleShellStiffness(shellAssembly, totalDof, kShell);
+        fullStiffness += kShell;
+        assembleTies(input, nodeIndexById, fullStiffness, totalDof, kTie);
+        assembleSprings(input, nodeIndexById, inactiveSprings, totalDof, kSpring);
+        const Eigen::SparseMatrix<double> kExtra = kShell + kTie + kSpring;
+        fullStiffness += kTie + kSpring;
+        addShellLoads(input, shellAssembly, fullLoad);
+
         Eigen::SparseMatrix<double> stiffnessForSolve = fullStiffness;
         Eigen::VectorXd loadForSolve = fullLoad;
         // Graus de liberdade sem rigidez alguma (por exemplo, a rotacao de um no onde todas as barras
@@ -440,7 +677,9 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         }
 
         const double residual = (stiffnessForSolve * displacement - loadForSolve).norm();
-        if (residual > 1e-6) {
+        // tolerancia relativa a soma dos termos |K||u| (ligacoes por penalidade tem rigidez muito maior que o resto do modelo)
+        const double residualScale = (stiffnessForSolve.cwiseAbs() * displacement.cwiseAbs()).norm() + loadForSolve.norm();
+        if (residual > std::max(1e-6, 1e-9 * residualScale)) {
             throw std::runtime_error("Linear solve residual is too large: " + std::to_string(residual));
         }
 
@@ -474,6 +713,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             publishDisplacements();
             Eigen::SparseMatrix<double> k0;
             assembleGlobalStiffness(members, nodeIndexById, totalDof, k0);
+            k0 += kExtra;
             for (auto& member : members) {
                 member->calculateInternalForces();
                 const auto& f = member->getInternalForces();
@@ -481,10 +721,14 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             }
             Eigen::SparseMatrix<double> k1;
             assembleGlobalStiffness(members, nodeIndexById, totalDof, k1);
+            k1 += kExtra;
             for (auto& member : members) {
                 member->setGeometricAxialForce(0.0);
             }
-            const Eigen::SparseMatrix<double> kg = k1 - k0;
+            Eigen::SparseMatrix<double> kg = k1 - k0;
+            if (!shellAssembly.items.empty()) {
+                kg += assembleShellGeometric(shellAssembly, input, displacement, totalDof);
+            }
             std::vector<bool> fixedDof(static_cast<size_t>(totalDof), false);
             for (const int dof : restrainedDof) {
                 fixedDof[static_cast<size_t>(dof)] = true;
@@ -570,6 +814,18 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                             if (std::abs(mm(i, j)) > 0.0) {
                                 triplets.emplace_back(dofs[static_cast<size_t>(i)], dofs[static_cast<size_t>(j)], mm(i, j));
                             }
+                        }
+                    }
+                }
+                for (const auto& item : shellAssembly.items) {
+                    const double lumped = item.material.density * item.thickness * item.frame.area / 4.0;
+                    if (lumped <= 0.0) {
+                        continue;
+                    }
+                    for (int n = 0; n < 4; ++n) {
+                        for (int c = 0; c < 3; ++c) {
+                            const int dof = item.dofs[static_cast<size_t>(6 * n + c)];
+                            triplets.emplace_back(dof, dof, lumped);
                         }
                     }
                 }
@@ -669,6 +925,10 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                     member->setGeometricAxialForce(0.5 * (f[6] - f[0]));
                 }
                 assembleGlobalStiffness(members, nodeIndexById, totalDof, fullStiffness);
+                fullStiffness += kExtra;
+                if (!shellAssembly.items.empty()) {
+                    fullStiffness += assembleShellGeometric(shellAssembly, input, displacement, totalDof);
+                }
                 stiffnessForSolve = fullStiffness;
                 loadForSolve = fullLoad;
                 applyBoundaryConditions(restrainedDof, stiffnessForSolve, loadForSolve);
@@ -700,12 +960,44 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         }
 
         const Eigen::VectorXd reactionVector = fullStiffness * displacement - fullLoad;
+        const Eigen::VectorXd springReaction = -(kSpring * displacement);
         for (const auto& node : nodes) {
             for (int localDof = 0; localDof < 6; ++localDof) {
+                const int globalDof = toGlobalDof(nodeIndexById, node->getId(), localDof);
                 if (node->isRestrained(localDof)) {
-                    const int globalDof = toGlobalDof(nodeIndexById, node->getId(), localDof);
                     node->setReaction(localDof, reactionVector(globalDof));
+                } else if (springReaction(globalDof) != 0.0) {
+                    node->setReaction(localDof, springReaction(globalDof));
                 }
+            }
+        }
+        output.shells.clear();
+        {
+            std::vector<double> uniformTemp(shellAssembly.items.size(), 0.0), gradientTemp(shellAssembly.items.size(), 0.0);
+            for (const auto& l : input.shellLoads) {
+                if (l.kind == 2) {
+                    const size_t index = static_cast<size_t>(shellAssembly.indexById.at(l.shellId));
+                    uniformTemp[index] += l.v[0];
+                    gradientTemp[index] += l.v[1];
+                }
+            }
+            for (size_t e = 0; e < shellAssembly.items.size(); ++e) {
+                const auto& item = shellAssembly.items[e];
+                fem::Vec24 ug;
+                for (int i = 0; i < 24; ++i) {
+                    ug(i) = displacement(item.dofs[static_cast<size_t>(i)]);
+                }
+                const fem::ShellResult r = fem::shellResultants(item.frame, item.material, item.thickness, 5.0 / 6.0, item.stiffness,
+                                                                item.transform * ug, uniformTemp[e], gradientTemp[e]);
+                ShellResultData out;
+                out.id = input.shells[e].id;
+                for (size_t k = 0; k < 40; ++k) {
+                    out.values[k] = r.values[k];
+                }
+                for (size_t k = 0; k < 9; ++k) {
+                    out.axes[k] = r.axes[k];
+                }
+                output.shells.push_back(out);
             }
         }
 

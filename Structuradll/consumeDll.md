@@ -1,6 +1,6 @@
-# Como Consumir a `solver_dll`
+# Como Consumir a `rds` (rds.dll)
 
-Este documento descreve como chamar a DLL gerada pelo projeto (`solver_dll.dll`) a partir de outro programa, em memoria, sem uso de arquivo `.txt`.
+Este documento descreve como chamar a DLL gerada pelo projeto (`rds.dll`) a partir de outro programa, em memoria, sem uso de arquivo `.txt`.
 
 ## Assinatura Exportada
 
@@ -161,5 +161,12 @@ int main() {
 ## Dicas de Integracao
 
 - Garanta que o chamador use o mesmo runtime/arquitetura da DLL (`x64` com `x64`, `Debug` com `Debug` durante desenvolvimento).
-- No Windows, mantenha `solver_dll.dll` acessivel no `PATH` ou na mesma pasta do executavel consumidor.
+- No Windows, mantenha `rds.dll` acessivel no `PATH` ou na mesma pasta do executavel consumidor.
 - Para C#, Python ou outras linguagens, use FFI e respeite os mesmos buffers lineares descritos acima.
+
+## Cascas acopladas (structura_set_shells)
+
+Antes de `structura_solve_v4`, `structura_set_shells(...)` registra elementos de casca Q4 (ids, 4 nos, E, nu, massa especifica, espessura), cargas por elemento (pressao nodal,
+forca de corpo, temperatura), ligacoes no-escravo (ate 8 mestres, pesos que somam 1), molas nodais (inclusive so-compressao). Os nos das cascas sao nos comuns da chamada (ids, coordenadas e
+restricoes nos mesmos arrays dos nos de barras). `structura_get_shell_results` devolve 40 valores por elemento (5 pontos x nxx nyy nxy mxx myy mxy qx qy, eixos locais) e os eixos
+(9). `structura_clear_shells()` limpa o estado (o estado e global, como em `structura_set_options`).

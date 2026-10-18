@@ -454,6 +454,66 @@ void MainWindow::createRibbon()
     designLayout->addStretch(1);
     m_ribbon->addTab(designTab, tr("Dimensionamento"));
 
+    // ── Aba Cascas ─────────────────────────────────────────────────────
+    auto shellTool = [this](const QString &text, const QString &icon, const QString &tip, Command command) {
+        auto *action = new QAction(text, this);
+        action->setIcon(Structura::UI::svgIcon(icon, QColor(QStringLiteral("#1e232b")), 64));
+        action->setToolTip(tip);
+        connect(action, &QAction::triggered, this, [this, command]() { setCommand(command); });
+        return action;
+    };
+    m_shellPolygonAction = shellTool(tr("Chapa por\ncontorno"), QStringLiteral("shell-polygon.svg"),
+                                     tr("Desenha uma chapa/laje/placa plana clicando nos vértices no plano de construção (Enter termina, C fecha)"), Command::ShellPolygon);
+    m_shellRectangleAction = shellTool(tr("Chapa\nretangular"), QStringLiteral("shell-rect.svg"), tr("Chapa retangular por dois cantos no plano de construção"), Command::ShellRectangle);
+    m_shellDiskAction = shellTool(tr("Disco /\nanel"), QStringLiteral("shell-disk.svg"), tr("Disco ou anel circular: centro e raio"), Command::ShellDisk);
+    m_shellExtrudeAction = shellTool(tr("Extrudar\nlinha"), QStringLiteral("shell-extrude.svg"),
+                                     tr("Desenha uma linha ou polilinha (aberta ou fechada) e a extruda em um vetor: paredes, cascas cilíndricas e prismáticas"), Command::ShellExtrude);
+    m_shellCylinderAction = shellTool(tr("Cilindro /\ncone"), QStringLiteral("shell-cylinder.svg"), tr("Círculo (centro e raio) extrudado em um vetor; a escala da extremidade faz cone ou tronco"), Command::ShellCylinder);
+    m_shellRevolveAction = shellTool(tr("Revolução"), QStringLiteral("shell-revolve.svg"),
+                                     tr("Desenha um perfil e o gira em torno de um eixo (dois pontos): domos, esferas, tampos de vasos, tanques e toros"), Command::ShellRevolve);
+    m_shellDeleteAction = new QAction(tr("Excluir\ncasca"), this);
+    m_shellDeleteAction->setIcon(Structura::UI::svgIcon(QStringLiteral("shell-delete.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_shellDeleteAction->setToolTip(tr("Exclui a casca selecionada na vista 3D (clique nela para selecionar)"));
+    connect(m_shellDeleteAction, &QAction::triggered, this, [this]() { deleteSelectedShell(); });
+    m_shellCoupleAction = new QAction(tr("Acoplar às\nbarras"), this);
+    m_shellCoupleAction->setCheckable(true);
+    m_shellCoupleAction->setIcon(Structura::UI::svgIcon(QStringLiteral("shell-couple.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_shellCoupleAction->setToolTip(tr("As cascas entram na análise das barras (mesma matriz de rigidez): nós coincidentes são os mesmos, nós de barras sobre a casca ficam ligados a ela e as cargas, apoios e resultados das cascas passam a fazer parte da análise do projeto"));
+    connect(m_shellCoupleAction, &QAction::toggled, this, &MainWindow::onShellCoupleToggled);
+    m_shellSplitAction = new QAction(tr("Dividir barras\nnos nós"), this);
+    m_shellSplitAction->setIcon(Structura::UI::svgIcon(QStringLiteral("shell-split.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_shellSplitAction->setToolTip(tr("Divide as barras nos nós da malha das cascas que caem sobre o seu eixo (vigas de borda e de apoio), para que barra e casca trabalhem juntas ao longo da linha"));
+    connect(m_shellSplitAction, &QAction::triggered, this, [this]() {
+        const int done = splitBarsAtShellNodes(true);
+        showStatusMessage(done > 0 ? tr("%1 corte(s) nas barras. Ctrl+Z desfaz.").arg(done) : tr("Nenhum nó de casca cai sobre o eixo de barras: nada a dividir."), 6000);
+    });
+    m_shellAction = new QAction(tr("Editor de\ncascas"), this);
+    m_shellAction->setIcon(Structura::UI::svgIcon(QStringLiteral("shell.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_shellAction->setToolTip(tr("Propriedades, modelos paramétricos (tanques, vasos), cargas, apoios, análise por elementos finitos e verificação"));
+    connect(m_shellAction, &QAction::triggered, this, &MainWindow::onShellEditor);
+    auto *shellTab = new QWidget(this);
+    shellTab->setObjectName(QStringLiteral("RibbonPage"));
+    shellTab->setStyleSheet(QStringLiteral("#RibbonPage { background: #f2f5fa; }"));
+    auto *shellLayout = new QHBoxLayout(shellTab);
+    shellLayout->setContentsMargins(4, 20, 4, 3);
+    shellLayout->setSpacing(4);
+    auto makeShellGroup = [this, shellLayout](const QString &title, const QList<QAction *> &actions) {
+        auto *group = new QGroupBox(title, this);
+        auto *grid = new QGridLayout(group);
+        grid->setContentsMargins(4, 5, 4, 4);
+        grid->setHorizontalSpacing(30);
+        grid->setVerticalSpacing(15);
+        grid->setAlignment(Qt::AlignTop);
+        populateActionGrid(grid, actions, static_cast<int>(actions.size()));
+        shellLayout->addWidget(group, 0, Qt::AlignTop);
+    };
+    makeShellGroup(tr("Desenhar cascas"), {m_shellPolygonAction, m_shellRectangleAction, m_shellDiskAction, m_shellExtrudeAction, m_shellCylinderAction, m_shellRevolveAction});
+    makeShellGroup(tr("Casca selecionada"), {m_shellDeleteAction});
+    makeShellGroup(tr("Acoplamento às barras"), {m_shellCoupleAction, m_shellSplitAction});
+    makeShellGroup(tr("Análise"), {m_shellAction});
+    shellLayout->addStretch(1);
+    m_ribbon->addTab(shellTab, tr("Cascas"));
+
     // Inicializar o pós-processador
     m_postProcessor = std::make_unique<Structura::Visualization::PostProcessorRenderer>();
 

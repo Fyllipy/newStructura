@@ -590,9 +590,13 @@ void MainWindow::setCommand(Command command)
 
     const bool wasBarMode = (m_command == Command::InsertBarFirst || m_command == Command::InsertBarSecond);
     const bool willBeBarMode = (command == Command::InsertBarFirst || command == Command::InsertBarSecond);
+    const bool willBeShellMode = command == Command::ShellPolygon || command == Command::ShellRectangle || command == Command::ShellDisk
+        || command == Command::ShellExtrude || command == Command::ShellCylinder || command == Command::ShellRevolve || command == Command::ShellMove
+        || command == Command::ShellCopy;
     const bool willBeEditMode = (command == Command::CopyElements || command == Command::MoveElements
                                  || command == Command::RotateElements || command == Command::MirrorElements
-                                 || command == Command::InsertNode || command == Command::Measure);
+                                 || command == Command::InsertNode || command == Command::Measure || willBeShellMode);
+    m_shellDraft = ShellDraft {};
 
     if (wasBarMode && !willBeBarMode) {
         m_sceneController->clearHighlightedNode();
@@ -619,6 +623,16 @@ void MainWindow::setCommand(Command command)
             m_placement->start(Structura::UI::PlacementController::Mode::Node);
         } else if (command == Command::Measure) {
             m_placement->start(Structura::UI::PlacementController::Mode::Measure);
+        } else if (command == Command::ShellPolygon || command == Command::ShellExtrude || command == Command::ShellRevolve) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Polyline);
+        } else if (command == Command::ShellRectangle) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Rectangle);
+        } else if (command == Command::ShellDisk || command == Command::ShellCylinder) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Circle);
+        } else if (command == Command::ShellMove) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Move);
+        } else if (command == Command::ShellCopy) {
+            m_placement->start(Structura::UI::PlacementController::Mode::Copy);
         } else {
             m_placement->stop();
         }

@@ -7,6 +7,7 @@ Structura::App::SolverBridge::Result CombinationService::combine(const std::vect
     using Result = Structura::App::SolverBridge::Result;
     Result combined;
     bool initialized = false;
+    bool shellInitialized = false;
 
     for (const Term &term : terms) {
         if (!term.result) {
@@ -40,6 +41,30 @@ Structura::App::SolverBridge::Result CombinationService::combine(const std::vect
                 combined.memberResults[i].localForces[k] += term.factor * source.memberResults[i].localForces[k];
             }
         }
+        // cascas acopladas: nos proprios e resultantes dos elementos
+        if (!shellInitialized) {
+            shellInitialized = true;
+            for (auto &node : combined.shellNodeResults) {
+                node.displacements.fill(0.0);
+                node.reactions.fill(0.0);
+            }
+            for (auto &element : combined.shellResults) {
+                element.values.fill(0.0);
+            }
+        }
+        if (source.shellNodeResults.size() == combined.shellNodeResults.size() && source.shellResults.size() == combined.shellResults.size()) {
+            for (std::size_t i = 0; i < source.shellNodeResults.size(); ++i) {
+                for (std::size_t dof = 0; dof < 6; ++dof) {
+                    combined.shellNodeResults[i].displacements[dof] += term.factor * source.shellNodeResults[i].displacements[dof];
+                    combined.shellNodeResults[i].reactions[dof] += term.factor * source.shellNodeResults[i].reactions[dof];
+                }
+            }
+            for (std::size_t i = 0; i < source.shellResults.size(); ++i) {
+                for (std::size_t k = 0; k < 40; ++k) {
+                    combined.shellResults[i].values[k] += term.factor * source.shellResults[i].values[k];
+                }
+            }
+        }
     }
     return combined;
 }
@@ -68,6 +93,7 @@ Structura::App::SolverBridge::ModelData CombinationService::mergeModels(
             merged.nodalLoads.clear();
             merged.memberLoads.clear();
             merged.memberMoments.clear();
+            merged.shellLoads.clear();
             first = false;
         }
         for (auto load : term.first->nodalLoads) {
@@ -87,6 +113,12 @@ Structura::App::SolverBridge::ModelData CombinationService::mergeModels(
             moment.my *= term.second;
             moment.mz *= term.second;
             merged.memberMoments.push_back(moment);
+        }
+        for (auto load : term.first->shellLoads) {
+            for (double &v : load.v) {
+                v *= term.second;
+            }
+            merged.shellLoads.push_back(load);
         }
     }
     return merged;

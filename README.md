@@ -93,7 +93,7 @@ Notas adicionais:
   `[COMBINATIONS]`, `[MEMBER_MOMENTS]`, `[AXES]`, `[VIEW_OPTIONS]` e coluna final de caso nas cargas.
   Arquivos antigos continuam abrindo. O solver (`Structuradll`) ignora os blocos que nao conhece.
 - **Solver/DLL**: `structura_solve_v4` adiciona articulacoes de extremidade; `structura_solve_v3` adiciona giro e excentricidade da secao; `structura_solve_v2` adiciona momentos
-  distribuidos; `structura_solve` continua exportada. Recompile em `Structuradll` e copie `solver_dll.dll` para a raiz.
+  distribuidos; `structura_solve` continua exportada. Recompile em `Structuradll` e copie `rds.dll` para a raiz.
 - **Posicionamento da secao** (aba *Inicio* > *Propriedades* > *Posicionar secao*, ou o atalho no painel de propriedades da barra), modelado como no CYPE 3D:
   - *Giro da secao* (graus, regra da mao direita em torno do eixo da barra; botoes -90/+90). As inercias principais
     passam a atuar nos eixos girados (equivale a transformar Iy/Iz/Iyz por Mohr; o painel mostra Iy/Iz/Iyz nos eixos de referencia).
