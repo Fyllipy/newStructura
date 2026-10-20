@@ -37,6 +37,38 @@ const AnchorDetail &anchorFor(double db)
 
 namespace {
 
+/// Resolve o sistema linear n x n por eliminacao de Gauss com pivotamento parcial.
+std::vector<double> solveLinear(std::vector<std::vector<double>> a, std::vector<double> b)
+{
+    const std::size_t n = b.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        std::size_t p = i;
+        for (std::size_t r = i + 1; r < n; ++r) {
+            if (std::abs(a[r][i]) > std::abs(a[p][i])) {
+                p = r;
+            }
+        }
+        std::swap(a[i], a[p]);
+        std::swap(b[i], b[p]);
+        for (std::size_t r = i + 1; r < n; ++r) {
+            const double f = a[r][i] / a[i][i];
+            for (std::size_t c = i; c < n; ++c) {
+                a[r][c] -= f * a[i][c];
+            }
+            b[r] -= f * b[i];
+        }
+    }
+    std::vector<double> x(n, 0.0);
+    for (std::size_t i = n; i-- > 0;) {
+        double sum = b[i];
+        for (std::size_t c = i + 1; c < n; ++c) {
+            sum -= a[i][c] * x[c];
+        }
+        x[i] = sum / a[i][i];
+    }
+    return x;
+}
+
 Check lengthRatio(const std::string &name, const std::string &clause, double demandMm, double resistanceMm)
 {
     Check c;
@@ -54,6 +86,61 @@ double columnArea(const BasePlateInput &in)
 }
 
 } // namespace
+
+double plateMomentCoefficient(double aOverB, bool farEdgeFree, double nu)
+{
+    // Levy: w = sum_m sin(alfa x) [P + f(y)], alfa = m pi (b = 1, q = 1, D = 1), P = 4/(pi^5 m^5);
+    // f = a1 e^-u + a2 u e^-u + a3 e^-v + a4 v e^-v, u = alfa y, v = alfa (a - y): bases decrescentes (estaveis para placas esbeltas)
+    const double aob = std::clamp(aOverB, 0.05, 3.0);   // acima de 3 a placa funciona como faixa em x: o valor satura (ver abaixo)
+    const double pi = kPi;
+    struct Mode { double alpha, p, a1, a2, a3, a4; };
+    std::vector<Mode> modes;
+    for (int m = 1; m <= 199; m += 2) {
+        const double alpha = m * pi;
+        const double p = 4.0 / (std::pow(pi, 5.0) * std::pow(double(m), 5.0));
+        const double tc = alpha * aob;
+        const double e = std::exp(-tc);
+        std::vector<std::vector<double>> mat;
+        std::vector<double> rhs;
+        mat.push_back({1.0, 0.0, e, tc * e});             // w(0) = 0
+        rhs.push_back(-p);
+        mat.push_back({1.0, -2.0, e, (tc - 2.0) * e});    // My(0) = 0 (com w(0) = 0, w_yy = 0)
+        rhs.push_back(0.0);
+        if (farEdgeFree) {
+            mat.push_back({e - nu * e, (tc - 2.0) * e - nu * tc * e, 1.0 - nu, -2.0});                                   // My(a) = 0
+            rhs.push_back(nu * p);
+            mat.push_back({-e + (2.0 - nu) * e, (3.0 - tc) * e - (2.0 - nu) * (1.0 - tc) * e, 1.0 - (2.0 - nu), -3.0 + (2.0 - nu)});   // Vy(a) = 0
+            rhs.push_back(0.0);
+        } else {
+            mat.push_back({e, tc * e, 1.0, 0.0});                       // w(a) = 0
+            rhs.push_back(-p);
+            mat.push_back({e, (tc - 2.0) * e, 1.0, -2.0});              // My(a) = 0
+            rhs.push_back(0.0);
+        }
+        const auto x = solveLinear(mat, rhs);
+        modes.push_back({alpha, p, x[0], x[1], x[2], x[3]});
+    }
+    double best = 0.0;
+    const int ny = 41, nx = 25;
+    for (int j = 0; j < ny; ++j) {
+        const double y = aob * j / (ny - 1);
+        for (int i = 1; i <= nx; ++i) {
+            const double x = 0.5 * i / nx;
+            double mx = 0.0, my = 0.0;
+            for (const Mode &md : modes) {
+                const double u = md.alpha * y, tc = md.alpha * aob, v = tc - u;
+                const double eu = std::exp(-u), ev = std::exp(-v);
+                const double f = md.a1 * eu + md.a2 * u * eu + md.a3 * ev + md.a4 * v * ev;
+                const double g2 = md.a1 * eu + md.a2 * (u - 2.0) * eu + md.a3 * ev + md.a4 * (v - 2.0) * ev;
+                const double s = std::sin(md.alpha * x);
+                mx += md.alpha * md.alpha * ((md.p + f) - nu * g2) * s;
+                my += -md.alpha * md.alpha * (g2 - nu * (md.p + f)) * s;
+            }
+            best = std::max({best, std::abs(mx), std::abs(my)});
+        }
+    }
+    return aOverB > 3.0 ? std::max(best, 0.125) : best;   // mais de tres vezes o vao: faixa biapoiada em x (q b^2/8) e o valor limite
+}
 
 BasePlateGeometry basePlateGeometry(const BasePlateInput &in)
 {
@@ -189,9 +276,41 @@ std::vector<Check> checkBasePlate(const BasePlateInput &in)
         c.lines.push_back(fmtn("m = (lx - 0,95 d)/2 = %.1f; n = (ly - 0,8 bf)/2 = %.1f; n0 = raiz(d bf)/4 = %.1f mm", g.m, g.n, g.n0));
         checks.push_back(c);
     }
+    std::vector<std::string> ribLines;
+    if (in.ribs > 0) {
+        // placa enrijecida: as nervuras (perpendiculares as mesas) dividem o balanco da placa em paineis apoiados em tres bordas (mesa do pilar e duas
+        // nervuras) com a quarta borda livre (solucao de Levy da placa de Kirchhoff), mais os balancos alem da nervura extrema e alem da ponta das nervuras;
+        // a parte sob o perfil segue a 6.7 (lambda n0). Em tracao os chumbadores empurram a placa contra as nervuras (faixa entre nervuras).
+        const double ov = (g.lx - in.d) / 2.0;                    // balanco da placa alem da face externa da mesa
+        const double c = std::min(in.ribLength, ov);
+        const int perSide = std::max(1, in.ribs / 2);
+        const double span = 0.8 * in.bf;
+        const double b = perSide > 1 ? span / (perSide - 1) : 0.0;
+        const double eU = (g.ly - (perSide > 1 ? span : 0.0)) / 2.0;
+        const double sigma = std::max(sigmaSd, 0.0);
+        const double kq = std::sqrt(2.0 * sigma / fyd);
+        double tpPanel = 0.0, coef = 0.0;
+        if (perSide > 1 && sigma > 0.0) {
+            coef = plateMomentCoefficient(c / b, true);
+            tpPanel = std::sqrt(4.0 * coef * sigma * b * b / fyd);
+        }
+        const double tpCant = std::max(eU, std::max(ov - c, 0.0)) * kq;
+        const double tpInner = lambda * g.n0 * kq;
+        const double tpAnchor = ftSd > 0.0 ? std::sqrt(ftSd / fyd) : 0.0;
+        tpMin = std::max({tpPanel, tpCant, tpInner, tpAnchor});
+        lmax = std::max({eU, std::max(ov - c, 0.0), lambda * g.n0});
+        ribLines.push_back(fmtn("Com %d nervuras (%d por mesa): balanco alem da face da mesa = %.0f mm; comprimento da nervura c = %.0f mm; espacamento b = %.0f mm; balanco lateral = %.0f mm", in.ribs, perSide, ov, c, b, eU));
+        if (perSide > 1) {
+            ribLines.push_back(fmtn("Painel c x b (tres bordas apoiadas, uma livre, Levy): c/b = %.2f -> M = %.4f sigma b2 = %.1f N.mm/mm -> tp = raiz(4 M/fyd) = %.2f mm", c / b, coef, coef * sigma * b * b, tpPanel));
+        }
+        ribLines.push_back(fmtn("Balancos: max(%.0f ; %.0f) raiz(2 sigma/fyd) = %.2f mm; sob o perfil: lambda n0 = %.1f mm -> %.2f mm; chumbador contra as nervuras: raiz(Ft/fyd) = %.2f mm", eU, std::max(ov - c, 0.0), tpCant, lambda * g.n0, tpInner, tpAnchor));
+    }
     {
         Check c = lengthRatio("Placa de base: espessura minima (tp,min)", "6.7.2.2", tpMin, in.plateThickness);
         c.lines.push_back(fmtn("lc = %.1f mm; lambda = %.3f; lmax = %.1f mm; fy/ga1 = %.1f MPa", lc, lambda, lmax, fyd));
+        for (const auto &l : ribLines) {
+            c.lines.push_back(l);
+        }
         c.lines.push_back(fmtn("tp,min = %.2f mm <= tp = %.1f mm", tpMin, in.plateThickness));
         checks.push_back(c);
     }
@@ -279,6 +398,43 @@ std::vector<Check> checkBasePlate(const BasePlateInput &in)
         appendChecks(checks, checkFilletWeld(wv), "Metal", " (alma-placa, cortante)");
         appendChecks(checks, checkFilletWeld(w), "Perna", " (solda pilar-placa)");
         appendChecks(checks, checkFilletWeld(w), "Comprimento", " (solda pilar-placa)");
+    }
+    if (in.ribs > 0) {
+        const double ov = (g.lx - in.d) / 2.0;
+        const double c = std::min(in.ribLength, ov);
+        const int perSide = std::max(1, in.ribs / 2);
+        const double trib = g.ly / perSide;                        // faixa tributaria da nervura (conservador: largura da placa / nervuras do lado)
+        const double sigma = std::max(sigmaSd, 0.0);
+        const double fp = sigma * trib * c;                        // pressao do concreto sobre a faixa
+        const double mp = fp * c / 2.0;
+        const double fa = ftSd;                                    // um chumbador por nervura (conservador)
+        const double ma = fa * std::max(ov - t.a1, 1.0);           // chumbador a a1 da borda da placa
+        const double force = std::max(fp, fa);
+        const double moment = std::max(mp, ma);
+        const double te = 0.707 * in.ribWeldLeg;
+        const double h = in.ribHeight, tr = in.ribThickness;
+        const double shearRd = 0.6 * tr * h * in.plate.fy / in.gammaA1;
+        const double flexRd = tr * h * h / 6.0 * in.plate.fy / in.gammaA1;
+        {
+            Check s = ratioN("Nervura: cisalhamento", "NBR 8800:2024, 5.4.3", force, shearRd);
+            s.lines.push_back(fmtn("Pressao: Fp = sigma x faixa x c = %.2f x %.0f x %.0f = %.2f kN; chumbador: Fa = %.2f kN; adotado F = %.2f kN (%d nervuras)", sigma, trib, c, fp / 1000.0, fa / 1000.0, force / 1000.0, in.ribs));
+            checks.push_back(s);
+            Check f = ratioNmm("Nervura: flexao no engaste com a mesa do pilar (momento elastico, W fy/ga1)", "NBR 8800:2024, 5.4.2", moment, flexRd);
+            f.lines.push_back(fmtn("M = max(Fp c/2 ; Fa (balanco - a1)) = %.2f kN.m; W = t h2/6 = %.0f mm3", moment / 1e6, tr * h * h / 6.0));
+            checks.push_back(f);
+        }
+        {
+            const double lim = 0.6 * in.weldFw / in.gammaW2;
+            const double tau = force / (2.0 * te * h);
+            const double sig = 3.0 * moment / (te * h * h);          // dois filetes de altura h: modulo te h2/3
+            Check w = ratioMPa("Solda nervura - mesa do pilar (dois filetes, V + M)", "NBR 8800:2024, 6.2.5", std::hypot(tau, sig), lim);
+            w.lines.push_back(fmtn("te = 0,707 a = %.2f mm; tau = V/(2 te h) = %.1f MPa; sigma = 3 M/(te h2) = %.1f MPa; resultante contra 0,6 fw/gw2", te, tau, sig));
+            checks.push_back(w);
+            const double tauP = force / (2.0 * te * std::max(c, 1.0));
+            Check wp = ratioMPa("Solda nervura - placa de base (dois filetes)", "NBR 8800:2024, 6.2.5", tauP, lim);
+            wp.lines.push_back(fmtn("tau = F/(2 te c) = %.1f MPa", tauP));
+            checks.push_back(wp);
+        }
     }
     return checks;
 }

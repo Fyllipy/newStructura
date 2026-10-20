@@ -54,6 +54,13 @@ public:
         double fy {355.0};
         double angleDeg {90.0};   ///< angulo entre a diagonal e o eixo do banzo (0 a 90)
         bool sameSideAsFirst {true};
+        // ligacoes de no de trelica (barras de perfil laminado ou formado a frio)
+        double area {0.0};        ///< mm2
+        double legB {0.0};        ///< largura da aba ligada (mm)
+        double legT {0.0};        ///< espessura da aba (mm)
+        double ec {0.0};          ///< excentricidade do centroide (mm)
+        double fu {400.0};
+        bool alongChord {true};   ///< a barra se afasta do no no mesmo sentido do eixo do banzo (do no para dentro dele)
     };
 
     /// Combinacao de esforcos (N, N.mm) na extremidade da barra.
@@ -63,6 +70,10 @@ public:
         double axial {0.0};   ///< + tracao
         double moment {0.0};
         QVector<double> braceAxial;   ///< modulo da forca axial de cada diagonal (ligacao tubular)
+        QVector<double> braceSigned;  ///< idem, com sinal (+ tracao): ligacoes de no de trelica
+        /// Cortante no painel de alma do pilar (N) pelo equilibrio do no (mesas das vigas + cortante dos pilares, com sinal); < 0 = nao calculado
+        double panelShear {-1.0};
+        double columnAxial {0.0};     ///< esforco normal do pilar no no (N, modulo), com `panelShear`
     };
 
     struct Forces {
@@ -104,6 +115,11 @@ public:
     static Structura::App::ProjectData::NodeConnection makeTubular(const BeamInfo &chord, const QVector<BraceInfo> &braces);
 
     static Evaluation evaluate(const Structura::App::ProjectData::NodeConnection &connection, const Forces &forces);
+
+    /// Verificacao local do perfil de apoio (mesa ou alma onde a ligacao se solda), conforme `supType`/`supD`... de `connection.values`.
+    /// `lengthAlong`/`lengthTransverse`: dimensoes da area carregada (mm); `tension`/`compression`: forcas normais a face (N).
+    static void appendSupportLocal(Evaluation &evaluation, const Structura::App::ProjectData::NodeConnection &connection, const Forces &forces,
+                                   double lengthAlong, double lengthTransverse, double tension, double compression);
 
     /// Substitui geometria pela proposta mais leve que atende; false se nenhuma atende (ou a tipologia nao tem proposta automatica).
     static bool propose(Structura::App::ProjectData::NodeConnection &connection, const Forces &forces);

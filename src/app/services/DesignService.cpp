@@ -230,6 +230,16 @@ QVector<DesignService::MemberEffects> DesignService::collectEffects(const Struct
                 combo.stations.push_back(st);
             }
             me.combos.push_back(std::move(combo));
+            EndRecord end;
+            end.combo = set.name.toStdString();
+            end.x = data.element.xLocal;
+            end.y = data.element.yLocal;
+            end.z = data.element.zLocal;
+            const auto &ef = data.element.endForces;
+            const double fN = forceFactorToN;
+            end.f = {ef.N1 * fN, ef.Vy1 * fN, ef.Vz1 * fN, ef.Mt1 * momentFactor, ef.My1 * momentFactor, ef.Mz1 * momentFactor,
+                     ef.N2 * fN, ef.Vy2 * fN, ef.Vz2 * fN, ef.Mt2 * momentFactor, ef.My2 * momentFactor, ef.Mz2 * momentFactor};
+            me.ends.push_back(end);
         }
     }
     QVector<MemberEffects> result;

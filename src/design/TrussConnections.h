@@ -96,6 +96,7 @@ struct SpliceInput {
     double webEdgeH {40.0};          ///< coluna extrema - borda da tala (mm)
     double webEdgeV {35.0};
     double webPlateThickness {6.3};
+    int webPlates {2};               ///< talas de alma: 2 (uma de cada lado, perfil I) ou 1 (perfil U)
     // esforcos de calculo
     double moment {0.0};             ///< N.mm
     double shear {0.0};              ///< N

@@ -51,6 +51,12 @@ struct BasePlateInput {
     // solda pilar-placa
     double weldLeg {6.0};
     double weldFw {485.0};
+    // nervuras de enrijecimento (base rigida com chapa de enrijecimento / base engastada); 0 = sem
+    int ribs {0};                  ///< numero de nervuras (ao longo da largura da placa)
+    double ribThickness {12.5};
+    double ribHeight {150.0};      ///< altura sobre a placa (mm)
+    double ribLength {100.0};      ///< comprimento a partir da mesa do pilar (mm)
+    double ribWeldLeg {6.0};
     // esforcos de calculo
     double axial {0.0};            ///< N (+ tracao, - compressao)
     double moment {0.0};           ///< N.mm (eixo de maior inercia)
@@ -70,6 +76,12 @@ struct BasePlateGeometry {
     std::string caseName;    ///< C1, C2, C3, T1, T2 ou T3
 };
 BasePlateGeometry basePlateGeometry(const BasePlateInput &input);
+
+/// Placa retangular b x a (a = dimensao ao longo das bordas de comprimento b... ver abaixo) sob pressao uniforme q, com as bordas x = 0, x = b e y = 0
+/// simplesmente apoiadas e a borda y = a livre (`farEdgeFree`) ou simplesmente apoiada: solucao de Levy da placa de Kirchhoff (nu = 0,3).
+/// Devolve o maior momento fletor por unidade de largura, |M| / (q b^2), na placa inteira. Usada nas nervuras das bases de pilar: b = espacamento
+/// das nervuras, a = comprimento das nervuras a partir da mesa do pilar (borda y = 0), borda y = a livre.
+double plateMomentCoefficient(double aOverB, bool farEdgeFree, double nu = 0.3);
 
 std::vector<Check> checkBasePlate(const BasePlateInput &input);
 std::vector<Part> partsBasePlate(const BasePlateInput &input);

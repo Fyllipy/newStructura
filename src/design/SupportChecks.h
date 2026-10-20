@@ -30,4 +30,25 @@ struct SupportInput {
 /// (NBR 8800:2024, 5.7.2 a 5.7.5) para a ligação na mesa; flexão transversal da alma (linhas de plastificação) para a ligação na alma.
 std::vector<Check> checkSupportMember(const SupportInput &input);
 
+/// Painel de alma do pilar em ligacao rigida viga-pilar (NBR 8800:2024, 5.7.7.1): forca cortante solicitante no painel
+/// FSd = F_mesas - V_pilar contra a resistente FRd = VRd (NSd <= 0,4 Np) ou VRd (1,4 - NSd/Np) (NSd > 0,4 Np), com VRd de 5.4.3 para
+/// Aw = dc tw. Chapas de reforco de alma (5.7.7.2, dos dois lados) somam-se a espessura da alma; enrijecedores transversais alinhados as mesas da
+/// viga entram no kv (5.4.3.1.1).
+struct ColumnPanelInput {
+    double d {0.0};              ///< altura do pilar dc (mm)
+    double bf {0.0};
+    double tf {0.0};
+    double tw {0.0};
+    double radius {0.0};         ///< raio de concordancia mesa-alma (mm)
+    double fy {250.0};
+    double doubler {0.0};        ///< espessura total das chapas de reforco da alma (mm)
+    double stiffenerSpacing {0.0};   ///< a: distancia entre os enrijecedores transversais do painel (mm); 0 = sem enrijecedores (kv = 5,34)
+    double axial {0.0};          ///< NSd no pilar (N, modulo)
+    double beamForce {0.0};      ///< forca transmitida pelas mesas da viga ao painel (N)
+    double columnShear {0.0};    ///< cortante ja atuante no pilar, somado algebricamente (N); 0 = desprezado
+    double panelShear {-1.0};    ///< >= 0: FSd do equilibrio do no (mesas da viga + cortantes do pilar, com sinal); substitui beamForce - columnShear
+    double gammaA1 {1.10};
+};
+std::vector<Check> checkColumnPanel(const ColumnPanelInput &input);
+
 } // namespace Structura::Design::Connections

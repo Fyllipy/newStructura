@@ -80,6 +80,30 @@ double minimumEdgeDistance(double db)
     return 1.25 * db;
 }
 
+double boltShearResistance(const BoltedInput &in)
+{
+    const double ab = 0.25 * kPi * in.db * in.db;
+    const bool protectedThread = in.grade.highStrength && !in.threadInShearPlane;
+    const double coef = protectedThread ? 0.56 : 0.45;
+    const double excessGrip = in.pretensioned ? 0.0 : std::max(0.0, in.grip - 5.0 * in.db);
+    const double gripFactor = std::max(0.0, 1.0 - 0.01 * excessGrip / 1.5);
+    return coef * ab * in.grade.fub / in.gammaA2 * gripFactor;
+}
+
+double boltBearingResistance(const BoltedInput &in)
+{
+    const double dh = standardHoleDiameter(in.db);
+    double pitch = 1e18;
+    if (in.nx > 1) pitch = std::min(pitch, in.sx);
+    if (in.ny > 1) pitch = std::min(pitch, in.sy);
+    const double lfEdge = in.endDistance - dh / 2.0;
+    const double lfPitch = pitch < 1e17 ? pitch - dh : 1e18;
+    const double lf = std::min(lfEdge, lfPitch);
+    const double k1 = in.deformationLimit ? 1.2 : 1.5;
+    const double k2 = in.deformationLimit ? 2.4 : 3.0;
+    return std::max(0.0, std::min(k1 * lf * in.plateThickness * in.plateFu, k2 * in.db * in.plateThickness * in.plateFu) / in.gammaA2);
+}
+
 std::vector<Check> checkBolted(const BoltedInput &in)
 {
     std::vector<Check> checks;
@@ -125,7 +149,7 @@ std::vector<Check> checkBolted(const BoltedInput &in)
     // 6.3.7: pega acima de 5 db reduz Fv,Rd em 1 % por 1,5 mm adicionais (nao se aplica a parafuso protendido)
     const double excessGrip = in.pretensioned ? 0.0 : std::max(0.0, in.grip - 5.0 * in.db);
     const double gripFactor = std::max(0.0, 1.0 - 0.01 * excessGrip / 1.5);
-    const double fvRd = coef * ab * fub / g * gripFactor;
+    const double fvRd = boltShearResistance(in);
     {
         Check c = ratioCheck("Cisalhamento do parafuso", "6.3.3.2", fvSdPlane / 1000.0, fvRd / 1000.0);
         c.lines.push_back(fmt("Ab = 0,25 pi db^2 = %.1f mm2", ab));
@@ -152,7 +176,7 @@ std::vector<Check> checkBolted(const BoltedInput &in)
     const double lf = std::min(lfEdge, lfPitch);
     const double k1 = in.deformationLimit ? 1.2 : 1.5;
     const double k2 = in.deformationLimit ? 2.4 : 3.0;
-    const double fcRd = std::min(k1 * lf * in.plateThickness * in.plateFu, k2 * in.db * in.plateThickness * in.plateFu) / g;
+    const double fcRd = boltBearingResistance(in);
     {
         Check c = ratioCheck("Pressao de contato / rasgamento", "6.3.3.3", fvSd / 1000.0, std::max(0.0, fcRd) / 1000.0);
         c.lines.push_back(fmt("dh = %.1f mm; lf = min(%.1f, %.1f) mm (conservador: aplicado a todos os parafusos)", dh, lfEdge, lfPitch > 1e17 ? 0.0 : lfPitch));

@@ -44,7 +44,7 @@ class QTabWidget;
 class QToolButton;
 class QVTKOpenGLNativeWidget;
 class SceneController;
-namespace Structura::UI { class ProfileManagerDialog; class LoadsPanel; class DesignPanel; class GroupsPanel; class ViewCubeWidget; class ShellDialog; }
+namespace Structura::UI { class ProfileManagerDialog; class LoadsPanel; class DesignPanel; class GroupsPanel; class ViewCubeWidget; class ShellDialog; class RibbonPage; }
 struct DesignRunData;
 class QDockWidget;
 class QCheckBox;
@@ -158,6 +158,7 @@ private slots:
     void onNewModel();
     void onAbout();
     void onRunStructuralAnalysis();
+    bool runStructuralAnalysis(bool showReport);
     bool executeAnalysis(QString *report = nullptr);
     void onDesignSettings();
     void onVerifyDesign();
@@ -166,6 +167,10 @@ private slots:
     void focusMember(int memberId);
     void showDesignResults(bool optimized);
     bool buildDesignRun(DesignRunData &run);
+    /// Grava na ligacao as barras que chegam ao seu no (`nmCount`, `nm<i>` = id da barra, `ne<i>` = no na extremidade j): base do equilibrio do no
+    /// (cortante do pilar e esforco normal no painel de alma).
+    void storeNodeMembers(Structura::App::ProjectData::NodeConnection &connection) const;
+    void refreshConnectionNodeMembers();
     QString designCacheKey() const;
     QVector<QUuid> expandWithGroups(const QVector<QUuid> &ids) const;
     void onCreateGroup();
@@ -306,9 +311,9 @@ private:
 
     void createRibbon();
     QWidget *createQuickAccessBar();
-    QToolButton *createToolButton(QAction *action);
     bool eventFilter(QObject *obj, QEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     bool handleWindowDragEvent(QEvent *event);
@@ -321,11 +326,12 @@ private:
     void setCommand(Command command);
     void updateStatus();
     void showStatusMessage(const QString &message, int timeout = 0);
-    void populateActionGrid(QGridLayout *layout, const QList<QAction *> &actions, int columns);
     int nextMaterialExternalId() const;
     int nextSectionExternalId() const;
     int nextBarExternalId() const;
-    void updateRibbonTabButtons(int currentIndex);
+    void applyRibbonLevel();
+    void setRibbonCollapsed(bool collapsed);
+    void showCommandHelp();
     void setupCentralLayouts();
     void setupRightToolColumn();
     void ensurePropertiesPanel();
@@ -437,6 +443,12 @@ private:
     QToolButton *m_maximizeButton;
     QToolButton *m_closeButton;
     QToolButton *m_homeTabButton;
+    QToolButton *m_helpButton {nullptr};
+    QToolButton *m_ribbonCollapseButton {nullptr};
+    QVector<Structura::UI::RibbonPage *> m_ribbonPages;
+    int m_ribbonLevel {-1};
+    int m_processChoice {0};   ///< ultima escolha da janela Processar: 0 = so analise, 1 = analise + verificar, 2 = analise + dimensionar
+    bool m_ribbonCollapsed {false};
 
     QAction *m_applyNodalLoadAction;
     QAction *m_applyDistributedLoadAction;
@@ -558,7 +570,8 @@ private:
     QSet<QUuid> m_hiddenBars;
     void updatePlaneLabel();
     void positionPlaneLabel();
-    QLabel *m_planeLabel {nullptr};
+    QToolButton *m_planeLabel {nullptr};
+    QWidget *m_viewPanel {nullptr};   ///< botoes de vista flutuantes no canto da viewport
     static QString positionKey(double x, double y, double z);
     QSet<QUuid> m_effHiddenNodes;
     QSet<QString> m_offNodeKeys; ///< Posicoes de nos esmaecidos/ocultos (apoios e cargas nao sao desenhados)

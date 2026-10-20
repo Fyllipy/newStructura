@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include <QResizeEvent>
+
 #include "viz/SceneController.h"
 
 #include <QEvent>
@@ -28,6 +30,12 @@ void MainWindow::toggleMaximized()
         showMaximized();
     }
     updateMaximizeButtonIcon();
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    applyRibbonLevel();
 }
 
 void MainWindow::changeEvent(QEvent *event)

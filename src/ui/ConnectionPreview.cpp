@@ -1,5 +1,6 @@
 #include "ConnectionPreview.h"
 
+#include "app/services/ConnectionCatalog.h"
 #include "app/services/ConnectionService.h"
 #include "app/services/ConnectionSolids.h"
 
@@ -42,7 +43,7 @@ void ConnectionPreview::clear()
 void ConnectionPreview::paintConnection(QPainter &painter, const QRectF &area, const NodeConnection &connection, double eta, double yaw, double pitch, double zoom)
 {
     ConnectionSolids::Frame frame;
-    if (connection.type == NodeConnection::kBasePlate) {
+    if (connection.type == NodeConnection::kBasePlate || Structura::App::Services::ConnectionCatalog::isVertical(connection.type)) {
         frame.s = {0, 0, 1};   // pilar para cima
         frame.t = {1, 0, 0};
         frame.u = {0, 1, 0};
@@ -171,6 +172,10 @@ QPixmap ConnectionPreview::example(int type, const QSize &size)
         connection.values[QStringLiteral("d1")] = connection.values[QStringLiteral("d2")] = 80.0;
         connection.values[QStringLiteral("th1")] = connection.values[QStringLiteral("th2")] = 45.0;
         connection.values[QStringLiteral("gap")] = 30.0;
+    } else if (Structura::App::Services::ConnectionCatalog::baseType(type) == NodeConnection::kTubular) {
+        // miniatura de uma variante tubular: dimensoes de exemplo; tipo, angulos e afastamento vem da variante
+        connection.values[QStringLiteral("d0")] = 140.0;
+        connection.values[QStringLiteral("d1")] = connection.values[QStringLiteral("d2")] = 80.0;
     }
     const qreal ratio = 2.0;
     QPixmap pixmap(size * ratio);

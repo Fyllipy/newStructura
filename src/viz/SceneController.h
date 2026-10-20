@@ -150,6 +150,8 @@ public:
     // Picking API (screen to world)
     bool pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z) const;
     int viewportHeight() const;
+    /// Posiciona o indicador de eixos no canto superior esquerdo da viewport (quadrado de `sizePx`, a `marginPx` das bordas).
+    void placeOrientationMarker(int widgetWidth, int widgetHeight, int sizePx = 110, int marginPx = 10);
     bool worldPointOnPlaneZ0(int displayX, int displayY, double &x, double &y, double &z) const;
     bool worldPointOnViewPlane(int displayX, int displayY, double &x, double &y, double &z) const;
 

@@ -51,6 +51,8 @@ struct EndPlateInput {
     bool continuityPlates {false};   ///< enrijecedores horizontais alinhados com as mesas da viga (5.7.9)
     double stiffenerThickness {9.5};
     double stiffenerWidth {60.0};    ///< largura de cada enrijecedor (mm)
+    double panelShear {-1.0};        ///< FSd do painel de alma pelo equilibrio do no (N); < 0 = nao disponivel (usa as mesas da viga)
+    double colAxial {0.0};           ///< NSd do pilar (N, modulo)
     double doublerThickness {0.0};   ///< chapa de reforco da alma do painel (5.7.7.2)
 
     // esforcos de calculo (N, N.mm); axial + tracao

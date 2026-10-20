@@ -95,4 +95,53 @@ std::vector<Check> checkSupportMember(const SupportInput &in)
     return out;
 }
 
+std::vector<Check> checkColumnPanel(const ColumnPanelInput &in)
+{
+    std::vector<Check> out;
+    if (in.d <= 0.0 || in.tw <= 0.0) {
+        return out;
+    }
+    const double h = std::max(in.d - 2.0 * (in.tf + in.radius), 1.0);
+    const double tw = in.tw + in.doubler;
+    const double ah = in.stiffenerSpacing > 0.0 ? in.stiffenerSpacing / h : 0.0;
+    const double kv = (ah > 0.0 && ah <= 3.0) ? 5.0 + 5.0 / (ah * ah) : 5.34;
+    const double lambda = h / tw;
+    const double lambdaP = 1.10 * std::sqrt(kv * kModulusE / in.fy);
+    const double lambdaR = 1.37 * std::sqrt(kv * kModulusE / in.fy);
+    const double vpl = 0.60 * in.d * tw * in.fy;
+    double vrd;
+    if (lambda <= lambdaP) {
+        vrd = vpl / in.gammaA1;
+    } else if (lambda <= lambdaR) {
+        vrd = lambdaP / lambda * vpl / in.gammaA1;
+    } else {
+        vrd = 1.24 * std::pow(lambdaP / lambda, 2.0) * vpl / in.gammaA1;
+    }
+    const double r = in.radius;
+    const double ag = 2.0 * in.bf * in.tf + (in.d - 2.0 * in.tf) * in.tw + (4.0 - 3.14159265358979) * r * r;
+    const double np = ag * in.fy;
+    const double nsd = std::abs(in.axial);
+    double frd = vrd;
+    const bool reduced = nsd > 0.4 * np;
+    if (reduced) {
+        frd = vrd * std::max(1.4 - nsd / np, 0.0);
+    }
+    const bool fromNode = in.panelShear >= 0.0;
+    const double fsd = fromNode ? in.panelShear : std::max(std::abs(in.beamForce) - std::abs(in.columnShear), 0.0);
+    Check c = ratioN("Painel de alma do pilar (cisalhamento)", "NBR 8800:2024, 5.7.7.1", fsd, frd);
+    if (fromNode) {
+        c.lines.push_back(fmtn("F_Sd = %.1f kN: equilíbrio do nó com os esforços de extremidade das barras (forças nas mesas das vigas somadas algebricamente ao cortante dos pilares)", fsd / 1e3));
+    } else {
+        c.lines.push_back(fmtn("F_Sd = F_mesas - V_pilar = %.1f - %.1f = %.1f kN", std::abs(in.beamForce) / 1e3, std::abs(in.columnShear) / 1e3, fsd / 1e3));
+    }
+    c.lines.push_back(fmtn("V_Rd (5.4.3, Aw = dc tw = %.0f x %.1f mm): lambda = h/tw = %.1f; kv = %.2f; lambda_p = %.1f; lambda_r = %.1f; Vpl = %.1f kN -> V_Rd = %.1f kN",
+                           in.d, tw, lambda, kv, lambdaP, lambdaR, vpl / 1e3, vrd / 1e3));
+    c.lines.push_back(fmtn("N_Sd = %.1f kN %s 0,4 Np = %.1f kN (Np = Ag fy, Ag = %.0f mm2)%s", nsd / 1e3, reduced ? ">" : "<=", 0.4 * np / 1e3, ag, reduced ? ": F_Rd = V_Rd (1,4 - NSd/Np)" : ": F_Rd = V_Rd"));
+    if (!fromNode && in.columnShear == 0.0) {
+        c.lines.push_back("Cortante já atuante no pilar não informado (desprezado, a favor da segurança). Se não atender: chapas de reforço (5.7.7.2) ou enrijecedores diagonais (5.7.7.3).");
+    }
+    out.push_back(std::move(c));
+    return out;
+}
+
 } // namespace Structura::Design::Connections

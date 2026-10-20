@@ -65,8 +65,9 @@ void MainWindow::setupViewCube()
 
 void MainWindow::positionViewCube()
 {
-    if (m_viewCube && m_vtkWidget) {
-        m_viewCube->move(m_vtkWidget->width() - m_viewCube->width() - 12, 44);
+    // plano, cubo e barra de ferramentas ficam juntos no canto superior direito (ver positionPlaneLabel)
+    positionPlaneLabel();
+    if (m_viewCube) {
         m_viewCube->raise();
     }
 }

@@ -72,6 +72,9 @@ struct BoltedInput {
 };
 
 std::vector<Check> checkBolted(const BoltedInput &input);
+/// Resistencias de calculo de um parafuso por plano de corte (6.3.3.2) e a pressao de contato/rasgamento no furo (6.3.3.3), N.
+double boltShearResistance(const BoltedInput &input);
+double boltBearingResistance(const BoltedInput &input);
 
 /// Efeito de alavanca (NBR 8800:2024, 6.3.5): espessura da placa tracionada por parafusos (placa rigida, 6.3.5.3, e flexivel, 6.3.5.4).
 struct PryingInput {

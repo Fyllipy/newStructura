@@ -1,3 +1,4 @@
+#include "app/services/ConnectionCatalog.h"
 #include "MainWindow.h"
 
 #include "AxesPanel.h"
@@ -213,7 +214,13 @@ QVector<MainWindow::ConnectionPlacementInfo> MainWindow::connectionPlacements() 
         const bool bearsOnSupport = connection.type == Structura::App::ProjectData::NodeConnection::kShearTab
             || connection.type == Structura::App::ProjectData::NodeConnection::kDoubleAngle
             || connection.type == Structura::App::ProjectData::NodeConnection::kGusset
-            || connection.type == Structura::App::ProjectData::NodeConnection::kEndPlate;
+            || connection.type == Structura::App::ProjectData::NodeConnection::kEndPlate
+            || (Structura::App::Services::ConnectionCatalog::find(connection.type) && Structura::App::Services::ConnectionCatalog::find(connection.type)->usesSupport
+                && Structura::App::Services::ConnectionCatalog::find(connection.type)->legacyType < 0)
+            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kEndPlate
+            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kGusset
+            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kShearTab
+            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kDoubleAngle;
         if (bearsOnSupport && (supportId > 0 || supportOffset > 0.0)) {
             // chapa de cisalhamento: folga de montagem; chapa de extremidade: a viga comeca na face da chapa
             const double setback = connection.type == Structura::App::ProjectData::NodeConnection::kShearTab ? connection.values.value(QStringLiteral("setback"), 0.0)

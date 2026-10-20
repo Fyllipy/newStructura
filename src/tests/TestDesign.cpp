@@ -1,3 +1,4 @@
+#include "app/services/NodeEquilibrium.h"
 #include "app/SolverBridge.h"
 #include "app/services/AreaLoadService.h"
 #include "app/services/DesignService.h"
@@ -1225,6 +1226,73 @@ private slots:
         QVERIFY(v.VRd > 0);
     }
 
+
+    /// Esforcos de extremidade do solver: um no sem cargas esta em equilibrio com a convencao "esforco na face positiva" (base do painel de alma)
+    void nodeEquilibriumFromSolverEndForces()
+    {
+        using namespace Structura::App;
+        using Services::DesignService;
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        ProjectData::SectionInfo section;
+        section.family = "W Laminado";
+        section.geometry = {{"d", 300}, {"bf", 150}, {"tw", 8}, {"tf", 12}};
+        const auto props = Structura::Visualization::SectionShapes::properties(section.family, section.geometry);
+        QVERIFY(props.has_value());
+        SolverBridge::ModelData model;
+        model.materials.push_back({1, 2.0e8, 7.7e7});
+        model.sections.push_back({1, props->area, props->iz, props->iy, props->j});
+        SolverBridge::NodeData base;
+        base.id = 1;
+        base.restraints = {{1, 1, 1, 1, 1, 1}};
+        SolverBridge::NodeData joint;
+        joint.id = 2;
+        joint.z = 3.0;
+        SolverBridge::NodeData top;
+        top.id = 3;
+        top.z = 6.0;
+        SolverBridge::NodeData beamEnd;
+        beamEnd.id = 4;
+        beamEnd.x = 5.0;
+        beamEnd.z = 3.0;
+        beamEnd.restraints = {{1, 1, 1, 1, 1, 1}};
+        model.nodes = {base, joint, top, beamEnd};
+        model.members.push_back(SolverBridge::MemberData {1, 1, 2, 1, 1});   // pilar de baixo
+        model.members.push_back(SolverBridge::MemberData {2, 2, 3, 1, 1});   // pilar de cima
+        model.members.push_back(SolverBridge::MemberData {3, 2, 4, 1, 1});   // viga
+        SolverBridge::NodalLoadData lateral;
+        lateral.nodeId = 3;
+        lateral.values = {{30.0, 0.0, -80.0, 0.0, 0.0, 0.0}};
+        model.nodalLoads.push_back(lateral);
+        const auto result = SolverBridge(dll).solve(model);
+        DesignService::ResultSet set;
+        set.name = "ELU1";
+        set.result = &result;
+        set.terms = {{&model, 1.0}};
+        const auto effects = DesignService::collectEffects(model, {set}, 1000.0, 1000.0);
+        QCOMPARE(effects.size(), 3);
+        std::vector<Structura::App::Services::NodeEquilibrium::MemberEnd> atJoint;
+        for (const auto &me : effects) {
+            QCOMPARE(int(me.ends.size()), 1);
+            Structura::App::Services::NodeEquilibrium::MemberEnd m;
+            m.atEnd = me.memberId != 3 ? me.memberId == 1 : false;   // barra 1 termina no no 2; barras 2 e 3 comecam nele
+            m.x = me.ends[0].x; m.y = me.ends[0].y; m.z = me.ends[0].z;
+            m.f = me.ends[0].f;
+            atJoint.push_back(m);
+        }
+        const auto sum = Structura::App::Services::NodeEquilibrium::nodeResultant(atJoint);
+        double scaleF = 1.0, scaleM = 1.0;
+        for (const auto &me : effects) {
+            for (int i : {0, 1, 2}) { scaleF = std::max(scaleF, std::abs(me.ends[0].f[i])); }
+            for (int i : {3, 4, 5}) { scaleM = std::max(scaleM, std::abs(me.ends[0].f[i])); }
+        }
+        for (int i = 0; i < 3; ++i) {
+            QVERIFY2(std::abs(sum[i]) < 1e-4 * scaleF, qPrintable(QString("F%1 = %2 (escala %3)").arg(i).arg(sum[i]).arg(scaleF)));
+            QVERIFY2(std::abs(sum[3 + i]) < 1e-4 * scaleM, qPrintable(QString("M%1 = %2 (escala %3)").arg(i).arg(sum[3 + i]).arg(scaleM)));
+        }
+    }
 
     void serviceCantileverEffectsAndSigns()
     {

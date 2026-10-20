@@ -190,6 +190,7 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
     if (m_caseRuns.isEmpty()) {
         return false;
     }
+    refreshConnectionNodeMembers();
     const auto bars = m_sceneController->bars();
     run.settings = effectiveSettings(m_extras.design, bars, m_materials);
     const auto factors = DesignService::unitFactors(m_materials);

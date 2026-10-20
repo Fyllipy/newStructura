@@ -1,5 +1,6 @@
 #include "app/services/ConnectionSolids.h"
 
+#include "app/services/ConnectionCatalog.h"
 #include "design/BasePlate.h"
 
 #include <algorithm>
@@ -215,7 +216,11 @@ void splice(const NodeConnection &c, std::vector<Primitive> &out)
     const double wPitch = val(c, "wPitch", 70.0), wGauge = val(c, "wGauge", 60.0), wEdgeH = val(c, "wEdgeH", 40.0), wEdgeV = val(c, "wEdgeV", 35.0), wpT = val(c, "wpT", 6.3);
     const double wHeight = (wRows - 1) * wPitch + 2.0 * wEdgeV;
     const double wHalf = gap / 2.0 + wEdgeH + (wCols - 1) * wGauge + wEdgeH;
+    const bool oneWebPlate = val(c, "wN", 2.0) < 1.5;   // perfil U: uma tala de alma
     for (const double side : {-1.0, 1.0}) {
+        if (oneWebPlate && side < 0.0) {
+            continue;
+        }
         out.push_back(box(Role::Plate, 0.0, 0.0, side * (tw / 2.0 + wpT / 2.0), 2.0 * wHalf, wHeight, wpT));
     }
     for (const double end : {-1.0, 1.0}) {
@@ -356,6 +361,10 @@ void addContext(const NodeConnection &c, std::vector<Primitive> &out)
 std::vector<Primitive> ConnectionSolids::build(const NodeConnection &c, bool context)
 {
     std::vector<Primitive> out;
+    if (ConnectionCatalog::isCatalog(c.type)) {
+        ConnectionCatalog::solids(c, context, out);
+        return out;
+    }
     if (context) {
         addContext(c, out);
     }

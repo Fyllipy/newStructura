@@ -1,8 +1,10 @@
 #pragma once
 
+#include "app/services/ConnectionCatalog.h"
 #include "ConnectionDialog.h"
 #include "DesignRunData.h"
 #include "app/services/ConnectionService.h"
+#include "app/services/NodeEquilibrium.h"
 
 #include <algorithm>
 #include <cmath>
@@ -72,11 +74,84 @@ inline std::optional<Structura::App::Services::ConnectionService::Forces> connec
     return forces;
 }
 
+/// Cortante do painel de alma do pilar e esforco normal do pilar por combinacao (equilibrio do no): usa as barras do no gravadas na ligacao
+/// (`nmCount`, `nm<i>`, `ne<i>`) e o pilar de apoio (`supMember`). So para as ligacoes rigidas viga-pilar.
+inline void attachPanelData(Structura::App::Services::ConnectionService::Forces &forces, const DesignRunData &run,
+                            const Structura::App::ProjectData::NodeConnection &connection)
+{
+    using Structura::App::ProjectData::NodeConnection;
+    namespace Ne = Structura::App::Services::NodeEquilibrium;
+    const auto *entry = Structura::App::Services::ConnectionCatalog::find(connection.type);
+    const bool rigid = Structura::App::Services::ConnectionCatalog::baseType(connection.type) == NodeConnection::kEndPlate
+        || (entry && entry->family == Structura::App::Services::ConnectionCatalog::Family::Moment);
+    const int count = static_cast<int>(connection.values.value(QStringLiteral("nmCount"), 0.0) + 0.5);
+    const int host = static_cast<int>(connection.values.value(QStringLiteral("supMember"), 0.0) + 0.5);
+    if (!rigid || count < 2 || host <= 0) {
+        return;
+    }
+    const auto &v = connection.values;
+    const double depth = v.value(QStringLiteral("beamD"), 0.0);
+    const double flange = v.contains(QStringLiteral("tfl")) ? v.value(QStringLiteral("tfl"), 0.0) : v.value(QStringLiteral("beamTf"), 0.0);
+    if (depth <= 0.0 || flange <= 0.0 || depth <= flange) {
+        return;
+    }
+    const double lever = depth - flange;
+    for (auto &fc : forces.cases) {
+        std::vector<Ne::MemberEnd> members;
+        int beamIndex = -1, hostIndex = -1;
+        bool complete = true;
+        for (int i = 0; i < count && complete; ++i) {
+            const int id = static_cast<int>(v.value(QStringLiteral("nm%1").arg(i), 0.0) + 0.5);
+            const bool atEnd = v.value(QStringLiteral("ne%1").arg(i), 0.0) != 0.0;
+            const Structura::App::Services::DesignService::EndRecord *record = nullptr;
+            for (const auto &effects : run.effects) {
+                if (effects.memberId != id) {
+                    continue;
+                }
+                for (const auto &end : effects.ends) {
+                    if (end.combo == fc.name.toStdString()) {
+                        record = &end;
+                        break;
+                    }
+                }
+            }
+            if (!record) {
+                complete = false;
+                break;
+            }
+            Ne::MemberEnd m;
+            m.atEnd = atEnd;
+            m.x = record->x;
+            m.y = record->y;
+            m.z = record->z;
+            m.f = record->f;
+            if (id == connection.memberId && atEnd == connection.atEnd) {
+                beamIndex = static_cast<int>(members.size());
+            }
+            if (id == host && hostIndex < 0) {
+                hostIndex = static_cast<int>(members.size());
+            }
+            members.push_back(m);
+        }
+        if (!complete) {
+            continue;
+        }
+        const auto panel = Ne::panelShear(members, beamIndex, hostIndex, lever);
+        if (panel.valid) {
+            fc.panelShear = panel.panelShear;
+            fc.columnAxial = panel.columnAxial;
+        }
+    }
+}
+
 /// Esforcos de uma ligacao do modelo (com as diagonais, no caso da ligacao tubular).
 inline std::optional<Structura::App::Services::ConnectionService::Forces> connectionForces(const DesignRunData &run, const Structura::App::ProjectData::NodeConnection &connection)
 {
     auto forces = connectionForces(run, connection.memberId, connection.atEnd);
-    if (!forces || connection.type != Structura::App::ProjectData::NodeConnection::kTubular) {
+    if (forces) {
+        attachPanelData(*forces, run, connection);
+    }
+    if (!forces || connection.values.value(QStringLiteral("br1"), 0.0) <= 0.0) {
         return forces;
     }
     auto axialOf = [&run](int memberId, bool atEnd, const QString &combo) -> double {
@@ -94,14 +169,18 @@ inline std::optional<Structura::App::Services::ConnectionService::Forces> connec
     };
     const int br1 = static_cast<int>(connection.values.value(QStringLiteral("br1"), 0.0) + 0.5);
     const int br2 = static_cast<int>(connection.values.value(QStringLiteral("br2"), 0.0) + 0.5);
+    const int br3 = static_cast<int>(connection.values.value(QStringLiteral("br3"), 0.0) + 0.5);
     const bool end1 = connection.values.value(QStringLiteral("br1End"), 0.0) != 0.0;
     const bool end2 = connection.values.value(QStringLiteral("br2End"), 0.0) != 0.0;
+    const bool end3 = connection.values.value(QStringLiteral("br3End"), 0.0) != 0.0;
     for (auto &fc : forces->cases) {
-        if (br1 > 0) {
-            fc.braceAxial.append(std::abs(axialOf(br1, end1, fc.name)));
-        }
-        if (br2 > 0) {
-            fc.braceAxial.append(std::abs(axialOf(br2, end2, fc.name)));
+        const std::array<std::pair<int, bool>, 3> braces {{{br1, end1}, {br2, end2}, {br3, end3}}};
+        for (const auto &[id, atEnd] : braces) {
+            if (id > 0) {
+                const double n = axialOf(id, atEnd, fc.name);
+                fc.braceAxial.append(std::abs(n));
+                fc.braceSigned.append(n);
+            }
         }
     }
     return forces;
@@ -117,13 +196,17 @@ inline std::optional<Structura::App::Services::ConnectionService::Forces> connec
     using Structura::App::Services::ConnectionService;
     auto forces = connectionForces(run, connection);
     const int host = static_cast<int>(connection.values.value(QStringLiteral("supMember"), 0.0) + 0.5);
-    const bool usesSupport = connection.type == NodeConnection::kShearTab || connection.type == NodeConnection::kDoubleAngle || connection.type == NodeConnection::kGusset;
+    const int baseType = Structura::App::Services::ConnectionCatalog::baseType(connection.type);
+    const auto *catalogEntry = Structura::App::Services::ConnectionCatalog::find(connection.type);
+    const bool usesSupport = baseType == NodeConnection::kShearTab || baseType == NodeConnection::kDoubleAngle || baseType == NodeConnection::kGusset || (catalogEntry && catalogEntry->usesSupport && catalogEntry->legacyType < 0);
     if (!forces || host <= 0 || !usesSupport) {
         return forces;
     }
     for (const auto &other : all) {
         const bool same = other.memberId == connection.memberId && other.atEnd == connection.atEnd && other.nodeId == connection.nodeId && other.type == connection.type;
-        const bool otherUses = other.type == NodeConnection::kShearTab || other.type == NodeConnection::kDoubleAngle || other.type == NodeConnection::kGusset;
+        const int otherBase = Structura::App::Services::ConnectionCatalog::baseType(other.type);
+        const auto *otherEntry = Structura::App::Services::ConnectionCatalog::find(other.type);
+        const bool otherUses = otherBase == NodeConnection::kShearTab || otherBase == NodeConnection::kDoubleAngle || otherBase == NodeConnection::kGusset || (otherEntry && otherEntry->usesSupport && otherEntry->legacyType < 0);
         if (same || !otherUses || other.nodeId != connection.nodeId
             || static_cast<int>(other.values.value(QStringLiteral("supMember"), 0.0) + 0.5) != host) {
             continue;

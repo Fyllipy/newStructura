@@ -1,6 +1,10 @@
 #include "ViewCubeWidget.h"
 
+#include <QApplication>
+#include <QLinearGradient>
 #include <QMouseEvent>
+#include <QRadialGradient>
+#include <QTransform>
 #include <QPainter>
 #include <QPolygonF>
 #include <QSignalBlocker>
@@ -108,10 +112,21 @@ void ViewCubeWidget::paintEvent(QPaintEvent *)
         order.push_back({i, dot(faces[static_cast<std::size_t>(i)].normal, forward)});
     }
     std::sort(order.begin(), order.end(), [](const Item &a, const Item &b) { return a.depth > b.depth; });
-    QFont font = p.font();
-    font.setPointSizeF(6.5);
+    // sombra suave sob o cubo
+    {
+        QRadialGradient shadow(QPointF(center.x(), center.y() + kCube * 1.25), kCube * 1.1);
+        shadow.setColorAt(0.0, QColor(30, 50, 80, 60));
+        shadow.setColorAt(1.0, QColor(30, 50, 80, 0));
+        p.setPen(Qt::NoPen);
+        p.setBrush(shadow);
+        p.drawEllipse(QPointF(center.x(), center.y() + kCube * 1.25), kCube * 1.1, kCube * 0.28);
+    }
+    const V3 lightDir = unit({-0.45, -0.55, 0.75});   // luz de cima, vinda da frente e da esquerda
+    const double faceScale = kCube * 0.9;
+    QFont font = QApplication::font();
+    font.setPixelSize(11);
     font.setBold(true);
-    p.setFont(font);
+    font.setLetterSpacing(QFont::AbsoluteSpacing, 0.6);
     for (const Item &item : order) {
         const std::size_t i = static_cast<std::size_t>(item.index);
         if (!m_visible[i]) {
@@ -130,17 +145,56 @@ void ViewCubeWidget::paintEvent(QPaintEvent *)
         }
         m_polygons[i] = poly;
         const bool hot = m_hover == item.index;
-        const double light = 0.82 + 0.18 * std::abs(dot(n, forward));
-        QColor fill = hot ? QColor(QStringLiteral("#7cc4ee")) : QColor::fromHsvF(0.58, 0.08, std::min(1.0, light));
-        p.setBrush(fill);
-        p.setPen(QPen(QColor(QStringLiteral("#6b7c93")), 1.2));
-        p.drawPolygon(QPolygonF(QList<QPointF>(poly.begin(), poly.end())));
-        p.setPen(QColor(QStringLiteral("#1e232b")));
         QPointF c(0, 0);
         for (const QPointF &q : poly) {
             c += q / 4.0;
         }
-        p.drawText(QRectF(c.x() - 28, c.y() - 7, 56, 14), Qt::AlignCenter, faces[i].label);
+        // luz: difusa pela direcao da luz mais um brilho que acompanha o quanto a face esta voltada para o olho
+        const double diffuse = std::clamp(0.5 + 0.5 * dot(n, lightDir), 0.0, 1.0);
+        const double facing = std::abs(dot(n, forward));
+        const double t = std::clamp(0.25 + 0.55 * diffuse + 0.2 * facing, 0.0, 1.0);
+        auto mix = [](const QColor &dark, const QColor &light, double w) {
+            return QColor::fromRgbF(dark.redF() + (light.redF() - dark.redF()) * w, dark.greenF() + (light.greenF() - dark.greenF()) * w,
+                                    dark.blueF() + (light.blueF() - dark.blueF()) * w);
+        };
+        const QColor dark = hot ? QColor(QStringLiteral("#4aa3d4")) : QColor(QStringLiteral("#9db3ca"));
+        const QColor light = hot ? QColor(QStringLiteral("#b9e0f5")) : QColor(QStringLiteral("#f3f8fd"));
+        const QColor base = mix(dark, light, t);
+        QLinearGradient gradient(poly[0], poly[2]);
+        gradient.setColorAt(0.0, base.lighter(108));
+        gradient.setColorAt(1.0, base.darker(110));
+        const QPolygonF face(QList<QPointF>(poly.begin(), poly.end()));
+        p.setBrush(gradient);
+        p.setPen(QPen(QColor(hot ? QStringLiteral("#0b6da1") : QStringLiteral("#586f8c")), 1.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.drawPolygon(face);
+        // bisel: moldura interna mais clara na borda de cima/esquerda e mais escura na de baixo/direita
+        QPolygonF inner;
+        for (const QPointF &q : poly) {
+            inner << c + (q - c) * 0.84;
+        }
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(QColor(255, 255, 255, 150), 1.0));
+        p.drawPolygon(inner);
+
+        // texto no plano da face: acompanha a inclinacao (cisalhamento e escala) da face projetada
+        if (facing > 0.28) {
+            const V3 up = faces[i].up;
+            const V3 right3 = cross(up, n);
+            const QPointF zero = project({0, 0, 0});
+            const QPointF pr = project(right3) - zero, pu = project(up) - zero;
+            QTransform transform;
+            transform.translate(c.x(), c.y());
+            transform = QTransform(pr.x() / faceScale, pr.y() / faceScale, -pu.x() / faceScale, -pu.y() / faceScale, 0, 0) * transform;
+            p.save();
+            p.setTransform(transform, true);
+            p.setFont(font);
+            const double alpha = std::clamp((facing - 0.28) / 0.45, 0.0, 1.0);
+            QColor ink = hot ? QColor(QStringLiteral("#08486b")) : QColor(QStringLiteral("#2a3a50"));
+            ink.setAlphaF(0.55 + 0.45 * alpha);
+            p.setPen(ink);
+            p.drawText(QRectF(-faceScale * 0.9, -9, faceScale * 1.8, 18), Qt::AlignCenter, faces[i].label);
+            p.restore();
+        }
     }
 }
 

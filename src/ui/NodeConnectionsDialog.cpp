@@ -1,3 +1,4 @@
+#include "app/services/ConnectionCatalog.h"
 #include "NodeConnectionsDialog.h"
 
 #include "ConnectionPreview.h"
@@ -158,7 +159,9 @@ NodeConnectionsDialog::NodeConnectionsDialog(const QVector<NodeConnection> &conn
             return;
         }
         auto &c = m_connections[m_current];
-        const bool usesSupport = c.type == NodeConnection::kShearTab || c.type == NodeConnection::kDoubleAngle || c.type == NodeConnection::kGusset || c.type == NodeConnection::kEndPlate;
+        const bool usesSupport = c.type == NodeConnection::kShearTab || c.type == NodeConnection::kDoubleAngle || c.type == NodeConnection::kGusset || c.type == NodeConnection::kEndPlate
+            || (Structura::App::Services::ConnectionCatalog::find(c.type) && Structura::App::Services::ConnectionCatalog::find(c.type)->usesSupport)
+            || (Structura::App::Services::ConnectionCatalog::baseType(c.type) == NodeConnection::kShearTab);
         if (!usesSupport) {
             QMessageBox::information(this, tr("Barra de apoio"), tr("Esta tipologia de ligação não tem barra de apoio."));
             return;
@@ -353,7 +356,7 @@ void NodeConnectionsDialog::refreshForces()
         m_forces = m_callbacks.forces(m_connections.at(m_current), m_connections);
     }
     if (m_forces) {
-        const int type = m_connections.at(m_current).type;
+        const int type = Structura::App::Services::ConnectionCatalog::baseType(m_connections.at(m_current).type);
         QString text;
         if (type == NodeConnection::kGusset) {
             text = tr("Esforços de cálculo na diagonal: tração máxima = %1 kN; compressão máxima = %2 kN.").arg(m_forces->tension / 1000.0, 0, 'f', 1).arg(m_forces->compression / 1000.0, 0, 'f', 1);
@@ -454,6 +457,10 @@ void NodeConnectionsDialog::chooseType()
                                     {NodeConnection::kSplice, tr("Continuidade de viga")},
                                     {NodeConnection::kBasePlate, tr("Fundação")},
                                     {NodeConnection::kColdFormed, tr("Perfis formados a frio")}};
+    QVector<Entry> all = entries;
+    for (const auto &catalogEntry : Structura::App::Services::ConnectionCatalog::entries()) {
+        all.append({catalogEntry.id, catalogEntry.group});
+    }
     QDialog picker(this);
     picker.setWindowTitle(tr("Nova ligação"));
     picker.resize(760, 700);
@@ -463,7 +470,7 @@ void NodeConnectionsDialog::chooseType()
     list->setWordWrap(true);
     list->setSpacing(2);
     list->setIconSize(QSize(150, 100));
-    for (const auto &entry : entries) {
+    for (const auto &entry : all) {
         auto *item = new QListWidgetItem(QIcon(ConnectionPreview::example(entry.type, QSize(150, 100))), QStringLiteral("%1  ·  %2\n%3").arg(ConnectionService::typeName(entry.type), entry.group, ConnectionService::typeSummary(entry.type)));
         item->setData(Qt::UserRole, entry.type);
         item->setSizeHint(QSize(0, 108));

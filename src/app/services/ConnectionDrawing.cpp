@@ -1,6 +1,8 @@
 #include "app/services/SheetBuilderInternal.h"
 
+#include "app/services/ConnectionCatalog.h"
 #include "app/services/ConnectionService.h"
+#include "drawing/HiddenLine.h"
 #include "design/BasePlate.h"
 
 #include <algorithm>
@@ -792,6 +794,176 @@ double drawTubularDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, doub
     return scale;
 }
 
+
+// ---- detalhamento generico do catalogo: vistas frontal e superior geradas dos solidos, com linhas ocultas --------------------------------
+
+struct CatalogGeometry {
+    std::vector<Structura::Drawing::Triangle3D> faces;
+    std::vector<Structura::Drawing::Edge3D> edges;
+};
+
+void addQuad(CatalogGeometry &g, const Structura::Drawing::Vec3 &a, const Structura::Drawing::Vec3 &b, const Structura::Drawing::Vec3 &c, const Structura::Drawing::Vec3 &d)
+{
+    g.faces.push_back({a, b, c});
+    g.faces.push_back({a, c, d});
+}
+
+/// Converte os solidos (s, t, u) em faces e arestas no espaco do desenho: X = s, Y = u (profundidade da vista frontal), Z = t.
+CatalogGeometry catalogGeometry(const std::vector<ConnectionSolids::Primitive> &primitives)
+{
+    using Vec3 = Structura::Drawing::Vec3;
+    CatalogGeometry g;
+    auto P = [](double s, double t, double u) { return Vec3 {s, u, t}; };
+    for (const auto &p : primitives) {
+        const int tag = static_cast<int>(p.role);
+        auto edge = [&](const Vec3 &a, const Vec3 &b) { g.edges.push_back({a, b, tag}); };
+        if (p.kind == ConnectionSolids::Kind::Box) {
+            const double hs = p.size[0] / 2.0, ht = p.size[1] / 2.0, hu = p.size[2] / 2.0;
+            Vec3 v[8];
+            int n = 0;
+            for (const double ds : {-1.0, 1.0}) {
+                for (const double dt : {-1.0, 1.0}) {
+                    for (const double du : {-1.0, 1.0}) {
+                        v[n++] = P(p.a[0] + ds * hs, p.a[1] + dt * ht, p.a[2] + du * hu);
+                    }
+                }
+            }
+            // indices: bit2 = s, bit1 = t, bit0 = u
+            auto V = [&](int s, int t, int u) { return v[s * 4 + t * 2 + u]; };
+            addQuad(g, V(0, 0, 0), V(1, 0, 0), V(1, 1, 0), V(0, 1, 0));
+            addQuad(g, V(0, 0, 1), V(0, 1, 1), V(1, 1, 1), V(1, 0, 1));
+            addQuad(g, V(0, 0, 0), V(0, 0, 1), V(1, 0, 1), V(1, 0, 0));
+            addQuad(g, V(0, 1, 0), V(1, 1, 0), V(1, 1, 1), V(0, 1, 1));
+            addQuad(g, V(0, 0, 0), V(0, 1, 0), V(0, 1, 1), V(0, 0, 1));
+            addQuad(g, V(1, 0, 0), V(1, 0, 1), V(1, 1, 1), V(1, 1, 0));
+            for (int a = 0; a < 8; ++a) {
+                for (int bit = 0; bit < 3; ++bit) {
+                    const int b = a | (1 << bit);
+                    if (b != a) {
+                        edge(v[a], v[b]);
+                    }
+                }
+            }
+        } else if (p.kind == ConnectionSolids::Kind::Prism) {
+            const auto &poly = p.polygon;
+            const auto tri = Structura::Drawing::triangulatePolygon(poly);
+            for (std::size_t i = 0; i + 2 < tri.size(); i += 3) {
+                for (const double u : {p.u0, p.u1}) {
+                    g.faces.push_back({P(poly[static_cast<std::size_t>(tri[i])][0], poly[static_cast<std::size_t>(tri[i])][1], u),
+                                       P(poly[static_cast<std::size_t>(tri[i + 1])][0], poly[static_cast<std::size_t>(tri[i + 1])][1], u),
+                                       P(poly[static_cast<std::size_t>(tri[i + 2])][0], poly[static_cast<std::size_t>(tri[i + 2])][1], u)});
+                }
+            }
+            for (std::size_t i = 0; i < poly.size(); ++i) {
+                const auto &a = poly[i], &b = poly[(i + 1) % poly.size()];
+                addQuad(g, P(a[0], a[1], p.u0), P(b[0], b[1], p.u0), P(b[0], b[1], p.u1), P(a[0], a[1], p.u1));
+                edge(P(a[0], a[1], p.u0), P(b[0], b[1], p.u0));
+                edge(P(a[0], a[1], p.u1), P(b[0], b[1], p.u1));
+                edge(P(a[0], a[1], p.u0), P(a[0], a[1], p.u1));
+            }
+        } else {
+            // cilindro (parafuso): prisma de 8 lados ao redor do eixo
+            const std::array<double, 3> axis {p.b[0] - p.a[0], p.b[1] - p.a[1], p.b[2] - p.a[2]};
+            const double len = std::sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+            if (len < 1e-9) {
+                continue;
+            }
+            std::array<double, 3> w {axis[0] / len, axis[1] / len, axis[2] / len};
+            const std::array<double, 3> ref = std::abs(w[0]) < 0.9 ? std::array<double, 3> {1, 0, 0} : std::array<double, 3> {0, 1, 0};
+            std::array<double, 3> e1 {w[1] * ref[2] - w[2] * ref[1], w[2] * ref[0] - w[0] * ref[2], w[0] * ref[1] - w[1] * ref[0]};
+            const double l1 = std::sqrt(e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2]);
+            for (double &x : e1) {
+                x /= l1;
+            }
+            const std::array<double, 3> e2 {w[1] * e1[2] - w[2] * e1[1], w[2] * e1[0] - w[0] * e1[2], w[0] * e1[1] - w[1] * e1[0]};
+            constexpr int kSides = 8;
+            std::array<Vec3, kSides> lo, hi;
+            for (int i = 0; i < kSides; ++i) {
+                const double ang = 2.0 * 3.14159265358979 * i / kSides;
+                const double cs = std::cos(ang) * p.radius, sn = std::sin(ang) * p.radius;
+                lo[static_cast<std::size_t>(i)] = P(p.a[0] + cs * e1[0] + sn * e2[0], p.a[1] + cs * e1[1] + sn * e2[1], p.a[2] + cs * e1[2] + sn * e2[2]);
+                hi[static_cast<std::size_t>(i)] = P(p.b[0] + cs * e1[0] + sn * e2[0], p.b[1] + cs * e1[1] + sn * e2[1], p.b[2] + cs * e1[2] + sn * e2[2]);
+            }
+            for (int i = 0; i < kSides; ++i) {
+                const auto a = static_cast<std::size_t>(i), b = static_cast<std::size_t>((i + 1) % kSides);
+                addQuad(g, lo[a], lo[b], hi[b], hi[a]);
+                edge(lo[a], lo[b]);
+                edge(hi[a], hi[b]);
+                if (i % 2 == 0) {
+                    edge(lo[a], hi[a]);
+                }
+            }
+            for (int i = 1; i + 1 < kSides; ++i) {
+                g.faces.push_back({lo[0], lo[static_cast<std::size_t>(i)], lo[static_cast<std::size_t>(i + 1)]});
+                g.faces.push_back({hi[0], hi[static_cast<std::size_t>(i)], hi[static_cast<std::size_t>(i + 1)]});
+            }
+        }
+    }
+    return g;
+}
+
+double drawCatalogDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, double rx0, double ry0, double rx1, double ry1, bool notes, double fixedScale)
+{
+    const L l = layers(s);
+    const NodeConnection &c = d.connection;
+    const auto prims = ConnectionSolids::build(c, true);
+    const CatalogGeometry geo = catalogGeometry(prims);
+    const Panels p = panelsFor(rx0, ry0, rx1, ry1);
+    const double target = ConnectionSolids::extent(prims);
+    const auto front = Structura::Drawing::computeHiddenLines(Structura::Drawing::cameraFromAngles(0.0, 0.0, {0.0, 0.0, 0.0}, 4.0 * target + 1000.0), geo.faces, geo.edges, true);
+    const auto top = Structura::Drawing::computeHiddenLines(Structura::Drawing::cameraFromAngles(0.0, 90.0, {0.0, 0.0, 0.0}, 4.0 * target + 1000.0), geo.faces, geo.edges, true);
+    if (!front.ok) {
+        return 1.0;
+    }
+    const double fw = front.maxX - front.minX, fh = front.maxY - front.minY, tw = top.ok ? top.maxX - top.minX : 0.0, th = top.ok ? top.maxY - top.minY : 0.0;
+    const double leftW = p.lx1 - p.lx0, rightW = p.rx1 - p.rx0, height = p.y1 - p.y0 - 8.0;
+    const double scale = std::max(pickScaleMargin(fw + 60.0, fh + 60.0, leftW, height, 16.0, fixedScale), pickScaleMargin(tw + 60.0, th + 60.0, rightW, height, 16.0, fixedScale));
+    const double k = 1.0 / scale;
+    const double fcx = (front.minX + front.maxX) / 2.0, fcy = (front.minY + front.maxY) / 2.0;
+    const double tcx = (top.minX + top.maxX) / 2.0, tcy = (top.minY + top.maxY) / 2.0;
+    const double cxF = (p.lx0 + p.lx1) / 2.0, cyF = (p.y0 + p.y1) / 2.0 - 4.0;
+    const double cxT = (p.rx0 + p.rx1) / 2.0, cyT = cyF;
+    auto layerOf = [&](int tag) {
+        switch (static_cast<ConnectionSolids::Role>(tag)) {
+        case ConnectionSolids::Role::Plate: return l.plate;
+        case ConnectionSolids::Role::Bolt: return l.bolt;
+        case ConnectionSolids::Role::Weld: return l.weld;
+        default: return l.outline;
+        }
+    };
+    auto draw = [&](const Structura::Drawing::HiddenLineResult &view, double cx, double cy, double mx, double my) {
+        for (const auto &seg : view.segments) {
+            s.line({cx + (seg.x0 - mx) * k, cy + (seg.y0 - my) * k}, {cx + (seg.x1 - mx) * k, cy + (seg.y1 - my) * k}, seg.hidden ? l.hidden : layerOf(seg.tag));
+        }
+    };
+    s.text({p.lx0 + 6.0, p.y1}, "VISTA FRONTAL (PLANO DA LIGAÇÃO)", 3.2, l.text, TextAlign::Left, 0.0, true);
+    draw(front, cxF, cyF, fcx, fcy);
+    if (top.ok) {
+        s.text({p.rx0 + 6.0, p.y1}, "VISTA SUPERIOR", 3.2, l.text, TextAlign::Left, 0.0, true);
+        draw(top, cxT, cyT, tcx, tcy);
+    }
+    // cotas da familia (vista frontal: s horizontal, t vertical)
+    const auto *entry = ConnectionCatalog::find(c.type);
+    if (entry) {
+        const auto &ops = ConnectionCatalog::ops(entry->family);
+        if (ops.dims) {
+            for (const auto &dim : ops.dims(c)) {
+                dimLinear(s, l, {cxF + (dim.s1 - fcx) * k, cyF + (dim.t1 - fcy) * k}, {cxF + (dim.s2 - fcx) * k, cyF + (dim.t2 - fcy) * k}, dim.offset, dim.text);
+            }
+        }
+        if (notes) {
+            auto text = connectionNotes(d, "");
+            if (ops.notes) {
+                for (const auto &line : ops.notes(c)) {
+                    text.push_back(line);
+                }
+            }
+            notesFinish(s, l, rx0, ry0, text, d, "ABNT NBR 8800:2024, SEÇÕES 5, 6.2, 6.3 E 6.5 - LIGAÇÃO CONFORME CATÁLOGO.");
+        }
+    }
+    return scale;
+}
+
 } // namespace
 
 std::vector<Structura::Design::Connections::Part> connectionParts(const SheetBuilder::ConnectionDetail &d)
@@ -810,6 +982,15 @@ double drawConnectionDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, d
 {
     const L l = layers(s);
     const NodeConnection &c = d.connection;
+    if (ConnectionCatalog::isCatalog(c.type)) {
+        const auto *entry = ConnectionCatalog::find(c.type);
+        if (entry && entry->legacyType >= 0) {
+            SheetBuilder::ConnectionDetail legacy = d;
+            legacy.connection = ConnectionCatalog::asLegacy(c);
+            return drawConnectionDetail(s, legacy, rx0, ry0, rx1, ry1, notes, fixedScale, profileOutline);
+        }
+        return drawCatalogDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);
+    }
     switch (c.type) {
     case NodeConnection::kGusset: return drawGussetDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);
     case NodeConnection::kSplice: return drawSpliceDetail(s, d, rx0, ry0, rx1, ry1, notes, fixedScale);

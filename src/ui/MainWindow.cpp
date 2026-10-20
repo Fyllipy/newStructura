@@ -366,7 +366,8 @@ void MainWindow::setupCentralLayouts()
     ensurePropertiesPanel();
 
     setupRightToolColumn();
-    m_contentLayout->addWidget(m_toolColumn, 0);
+    // os botoes da antiga barra lateral (propriedades, LCS, grupos, eixos) ficam no painel flutuante da viewport (ver updatePlaneLabel)
+    m_toolColumn->hide();
 
     outerLayout->addWidget(contentWidget, 1);
     setCentralWidget(centralWidget);
@@ -396,6 +397,7 @@ void MainWindow::setupRightToolColumn()
     m_propertiesToolButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     m_propertiesToolButton->setIcon(QIcon(QStringLiteral(":/icons/properties.png")));
     m_propertiesToolButton->setIconSize(QSize(30, 30));
+    m_propertiesToolButton->setObjectName(QStringLiteral("propertiesToolButton"));
     m_propertiesToolButton->setCheckable(true);
     m_propertiesToolButton->setAutoRaise(false);
     m_propertiesToolButton->setFixedSize(36, 36);
@@ -415,26 +417,6 @@ void MainWindow::setupRightToolColumn()
     m_showBarLCSToolButton->setToolTip(tr("Mostrar Eixos Locais (LCS)"));
     layout->addWidget(m_showBarLCSToolButton, 0, Qt::AlignHCenter);
 
-    auto addShortcut = [&](const QString &icon, const QString &tip, std::function<void()> handler) {
-        auto *button = new QToolButton(m_toolColumn);
-        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
-        button->setIcon(Structura::UI::svgIcon(icon, QColor(QStringLiteral("#1e232b")), 64));
-        button->setIconSize(QSize(26, 26));
-        button->setAutoRaise(false);
-        button->setFixedSize(36, 36);
-        button->setCursor(Qt::PointingHandCursor);
-        button->setToolTip(tip);
-        layout->addWidget(button, 0, Qt::AlignHCenter);
-        connect(button, &QToolButton::clicked, this, [handler]() { handler(); });
-        return button;
-    };
-    addShortcut(QStringLiteral("groups.svg"), tr("Painel de grupos"), [this]() { onToggleGroupsPanel(); });
-    addShortcut(QStringLiteral("axes-config.svg"), tr("Eixos de referência"), [this]() {
-        if (m_axesAction) {
-            m_axesAction->trigger();
-        }
-    });
-
     layout->addStretch(1);
 
     connect(m_propertiesToolButton, &QToolButton::toggled, this, [this](bool checked) {
@@ -443,6 +425,7 @@ void MainWindow::setupRightToolColumn()
             return;
         }
         m_propertiesContainer->setVisible(checked);
+        positionPlaneLabel();
         if (checked) {
             refreshPropertiesPanel();
         }

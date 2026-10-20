@@ -343,7 +343,7 @@ std::vector<Check> checkSplice(const SpliceInput &in)
         const int wRows = std::max(1, in.webRows);
         const int wCols = std::max(1, in.webCols);
         const double eccentricity = in.gap / 2.0 + in.webEdgeH + (wCols - 1) * in.webGauge / 2.0;
-        BoltedInput b = boltGroup(in.grade, in.db, in.threadInShearPlane, 2, wRows, wCols, in.webPitch, in.webGauge, in.webThickness, in.beam, in.webEdgeV,
+        BoltedInput b = boltGroup(in.grade, in.db, in.threadInShearPlane, std::clamp(in.webPlates, 1, 2), wRows, wCols, in.webPitch, in.webGauge, in.webThickness, in.beam, in.webEdgeV,
                                   in.webEdgeH);
         b.shearY = std::abs(in.shear);
         b.shearX = 0.0;
@@ -353,23 +353,24 @@ std::vector<Check> checkSplice(const SpliceInput &in)
             checks.back().lines.push_back(fmtn("Excentricidade da alma: e = gap/2 + distancia ao grupo = %.1f mm; M = V e = %.2f kN.m", eccentricity, b.momentZ / 1e6));
         }
         BoltedInput p = b;
-        p.plateThickness = 2.0 * in.webPlateThickness;
+        p.plateThickness = std::clamp(in.webPlates, 1, 2) * in.webPlateThickness;
         p.plateFu = in.plates.fu;
         appendChecks(checks, checkBolted(p), "Pressao", " (tala de alma)");
 
         const double h = spliceWebPlateHeight(in);
-        const double agv = 2.0 * in.webPlateThickness * h;
-        const double anv = 2.0 * in.webPlateThickness * (h - wRows * hole);
+        const double nPlates = std::clamp(in.webPlates, 1, 2);
+        const double agv = nPlates * in.webPlateThickness * h;
+        const double anv = nPlates * in.webPlateThickness * (h - wRows * hole);
         const double rd = std::min(0.6 * agv * in.plates.fy / g1, 0.6 * anv * in.plates.fu / g2);
         Check c = ratioN("Talas de alma: cisalhamento", "5.4.3 / 6.5.5", std::abs(in.shear), rd);
-        c.lines.push_back(fmtn("2 talas %.1f x %.0f mm: Agv = %.0f, Anv = %.0f mm2; V,Rd = min(0,6 Agv fy/ga1 ; 0,6 Anv fu/ga2) = %.2f kN", in.webPlateThickness, h, agv, anv, rd / 1000.0));
+        c.lines.push_back(fmtn("talas %.1f x %.0f mm: Agv = %.0f, Anv = %.0f mm2; V,Rd = min(0,6 Agv fy/ga1 ; 0,6 Anv fu/ga2) = %.2f kN", in.webPlateThickness, h, agv, anv, rd / 1000.0));
         checks.push_back(c);
-        const BlockShearResult bs = blockShearRd(2.0 * in.webPlateThickness, in.plates.fy, in.plates.fu, (wRows - 1) * in.webPitch + in.webEdgeV, wRows - 0.5,
+        const BlockShearResult bs = blockShearRd(nPlates * in.webPlateThickness, in.plates.fy, in.plates.fu, (wRows - 1) * in.webPitch + in.webEdgeV, wRows - 0.5,
                                                  in.webEdgeH + (wCols - 1) * in.webGauge, wCols - 0.5, hole, g2);
         Check bsC = ratioN("Talas de alma: cisalhamento de bloco", "6.5.6", std::abs(in.shear), bs.rd);
         bsC.lines.push_back(fmtn("Rd = %.2f kN", bs.rd / 1000.0));
         checks.push_back(bsC);
-        const double z = 2.0 * in.webPlateThickness * h * h / 4.0;
+        const double z = nPlates * in.webPlateThickness * h * h / 4.0;
         Check m = ratioNmm("Talas de alma: flexao pela excentricidade", "5.4.2", std::abs(in.shear) * eccentricity, z * in.plates.fy / g1);
         m.lines.push_back(fmtn("Z = 2 t h^2/4 = %.0f mm3; Md = Z fy/ga1 = %.2f kN.m", z, z * in.plates.fy / g1 / 1e6));
         checks.push_back(m);
@@ -398,7 +399,7 @@ std::vector<Part> partsSplice(const SpliceInput &in)
     const double wh = spliceWebPlateHeight(in);
     Part web;
     web.description = fmtn("Tala de alma %.1f x %.0f x %.0f mm", in.webPlateThickness, wl, wh);
-    web.quantity = 2;
+    web.quantity = std::clamp(in.webPlates, 1, 2);
     web.massEach = plateMass(wl, wh, in.webPlateThickness);
     parts.push_back(web);
     Part fb;
@@ -409,7 +410,7 @@ std::vector<Part> partsSplice(const SpliceInput &in)
     Part wb;
     wb.description = fmtn("Parafuso d = %.0f mm da alma (+ porca e arruelas)", in.db);
     wb.quantity = 2 * std::max(1, in.webRows) * std::max(1, in.webCols);
-    wb.massEach = boltMassOf(in.db, in.webThickness + 2.0 * in.webPlateThickness);
+    wb.massEach = boltMassOf(in.db, in.webThickness + std::clamp(in.webPlates, 1, 2) * in.webPlateThickness);
     parts.push_back(wb);
     return parts;
 }

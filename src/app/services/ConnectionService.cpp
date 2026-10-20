@@ -1,4 +1,5 @@
 #include "ConnectionService.h"
+#include "ConnectionCatalog.h"
 
 #include "design/EndPlateConnection.h"
 #include "design/SupportChecks.h"
@@ -245,6 +246,7 @@ D::SpliceInput toSplice(const NodeConnection &c, double shear, double axial, dou
     in.webEdgeH = value(c, "wEdgeH", 40.0);
     in.webEdgeV = value(c, "wEdgeV", 35.0);
     in.webPlateThickness = value(c, "wpT", 6.3);
+    in.webPlates = std::clamp(static_cast<int>(value(c, "wN", 2.0) + 0.5), 1, 2);
     in.shear = shear;
     in.axial = axial;
     in.moment = moment;
@@ -292,6 +294,11 @@ D::BasePlateInput toBasePlate(const NodeConnection &c, double shear, double axia
     in.frictionCoefficient = value(c, "mu", 0.45);
     in.weldLeg = value(c, "weldLeg", 6.0);
     in.weldFw = value(c, "weldFw", 485.0);
+    in.ribs = static_cast<int>(value(c, "ribs", 0.0) + 0.5);
+    in.ribThickness = value(c, "ribT", 12.5);
+    in.ribHeight = value(c, "ribH", 150.0);
+    in.ribLength = value(c, "ribL", 100.0);
+    in.ribWeldLeg = value(c, "ribW", 6.0);
     in.shear = shear;
     in.axial = axial;
     in.moment = moment;
@@ -338,7 +345,7 @@ D::TubularJointInput toTubular(const NodeConnection &c, const ConnectionService:
 
 // ---- ligacao rigida por chapa de extremidade ------------------------------------------------------------------------
 
-D::EndPlateInput toEndPlate(const NodeConnection &c, double shear, double axial, double moment)
+D::EndPlateInput toEndPlate(const NodeConnection &c, double shear, double axial, double moment, double panelShear = -1.0, double columnAxial = 0.0)
 {
     D::EndPlateInput in;
     in.grade = gradeByName(c.grade);
@@ -379,6 +386,8 @@ D::EndPlateInput toEndPlate(const NodeConnection &c, double shear, double axial,
     in.shear = shear;
     in.axial = axial;
     in.moment = moment;
+    in.panelShear = panelShear;
+    in.colAxial = panelShear >= 0.0 ? columnAxial : value(c, "colN", 0.0) * 1000.0;
     return in;
 }
 
@@ -401,7 +410,7 @@ std::vector<D::Check> checksOf(const NodeConnection &c, const ConnectionService:
 {
     switch (c.type) {
     case NodeConnection::kEndPlate:
-        return D::checkEndPlate(toEndPlate(c, fc.shear, fc.axial, fc.moment));
+        return D::checkEndPlate(toEndPlate(c, fc.shear, fc.axial, fc.moment, fc.panelShear, fc.columnAxial));
     case NodeConnection::kSplice: {
         const auto in = toSplice(c, fc.shear, fc.axial, fc.moment);
         auto checks = D::checkSplice(in);
@@ -454,6 +463,9 @@ QString kindName(int kind)
 
 QString ConnectionService::typeName(int type)
 {
+    if (const auto *entry = ConnectionCatalog::find(type)) {
+        return entry->name;
+    }
     switch (type) {
     case NodeConnection::kDoubleAngle: return QObject::tr("Cantoneira dupla");
     case NodeConnection::kGusset: return QObject::tr("Chapa de nó (gusset)");
@@ -468,6 +480,9 @@ QString ConnectionService::typeName(int type)
 
 QString ConnectionService::typeSummary(int type)
 {
+    if (const auto *entry = ConnectionCatalog::find(type)) {
+        return entry->summary;
+    }
     switch (type) {
     case NodeConnection::kShearTab: return QObject::tr("Viga apoiada em pilar ou viga principal por chapa soldada ao apoio e parafusada na alma (ligação flexível).");
     case NodeConnection::kDoubleAngle: return QObject::tr("Viga apoiada por duas cantoneiras parafusadas na alma e no apoio.");
@@ -482,11 +497,17 @@ QString ConnectionService::typeSummary(int type)
 
 bool ConnectionService::usesBolts(int type)
 {
+    if (const auto *entry = ConnectionCatalog::find(type)) {
+        return entry->usesBolts;
+    }
     return type != NodeConnection::kTubular && type != NodeConnection::kBasePlate && type != NodeConnection::kColdFormed;
 }
 
 QPair<QString, QString> ConnectionService::steelKeys(int type)
 {
+    if (ConnectionCatalog::isCatalog(type)) {
+        return ConnectionCatalog::steelKeys(type);
+    }
     switch (type) {
     case NodeConnection::kDoubleAngle: return {QStringLiteral("angleFy"), QStringLiteral("angleFu")};
     case NodeConnection::kGusset: return {QStringLiteral("gFy"), QStringLiteral("gFu")};
@@ -501,11 +522,17 @@ QPair<QString, QString> ConnectionService::steelKeys(int type)
 
 bool ConnectionService::hasProposal(int type)
 {
+    if (ConnectionCatalog::isCatalog(type)) {
+        return ConnectionCatalog::hasProposal(type);
+    }
     return type != NodeConnection::kTubular && type != NodeConnection::kColdFormed && type != NodeConnection::kEndPlate;
 }
 
 QVector<ConnectionService::FieldDef> ConnectionService::fields(int type)
 {
+    if (ConnectionCatalog::isCatalog(type)) {
+        return ConnectionCatalog::fields(type);
+    }
     QVector<FieldDef> list;
     QString group;
     auto section = [&group](const QString &title) { group = title; };
@@ -793,6 +820,9 @@ QVector<ConnectionService::FieldDef> ConnectionService::fields(int type)
 
 NodeConnection ConnectionService::makeDefault(int type, const BeamInfo &beam, double plateFy, double plateFu)
 {
+    if (ConnectionCatalog::isCatalog(type)) {
+        return ConnectionCatalog::makeDefault(type, beam, plateFy, plateFu);
+    }
     NodeConnection c;
     c.type = type;
     c.grade = QString::fromStdString(D::boltGrades()[2].name);
@@ -921,6 +951,22 @@ std::pair<double, double> ConnectionService::supportDemand(const NodeConnection 
 /// Verificacao local do perfil de apoio (mesa ou alma onde a chapa esta soldada), quando a ligacao informa o perfil.
 static void appendSupportChecks(ConnectionService::Evaluation &e, const NodeConnection &c, const ConnectionService::Forces &f)
 {
+    double along = 0.0, transverse = 0.0;
+    if (c.type == NodeConnection::kGusset) {
+        along = value(c, "gWidth", 200.0);
+        transverse = value(c, "gT", 9.5) + 2.0 * value(c, "weldLeg", 6.0);
+    } else {
+        const double height = (count(c, "rows", 3) - 1) * value(c, "pitch", 70.0) + 2.0 * value(c, "edgeV", 35.0);
+        along = std::max(0.5 * height, 1.0);
+        const double plate = c.type == NodeConnection::kDoubleAngle ? 2.0 * value(c, "angleT", 9.5) : value(c, "plateT", 9.5);
+        transverse = plate + 2.0 * value(c, "weldLeg", 6.0);
+    }
+    const auto own = ConnectionService::supportDemand(c, f);
+    ConnectionService::appendSupportLocal(e, c, f, along, transverse, own.first, own.second);
+}
+
+void ConnectionService::appendSupportLocal(Evaluation &e, const NodeConnection &c, const Forces &f, double lengthAlong, double lengthTransverse, double tension, double compression)
+{
     const int face = static_cast<int>(value(c, "supType", 0.0) + 0.5);
     if (face != 1 && face != 2) {
         return;
@@ -936,19 +982,11 @@ static void appendSupportChecks(ConnectionService::Evaluation &e, const NodeConn
     in.fu = value(c, "supFu", 400.0);
     in.atMemberEnd = value(c, "supEnd", 1.0) != 0.0;
     in.unbracedLength = value(c, "supLb", 0.0);
-    if (c.type == NodeConnection::kGusset) {
-        in.lengthAlong = value(c, "gWidth", 200.0);
-        in.lengthTransverse = value(c, "gT", 9.5) + 2.0 * value(c, "weldLeg", 6.0);
-    } else {
-        const double height = (count(c, "rows", 3) - 1) * value(c, "pitch", 70.0) + 2.0 * value(c, "edgeV", 35.0);
-        in.lengthAlong = std::max(0.5 * height, 1.0);
-        const double plate = c.type == NodeConnection::kDoubleAngle ? 2.0 * value(c, "angleT", 9.5) : value(c, "plateT", 9.5);
-        in.lengthTransverse = plate + 2.0 * value(c, "weldLeg", 6.0);
-    }
-    const auto own = ConnectionService::supportDemand(c, f);
+    in.lengthAlong = lengthAlong;
+    in.lengthTransverse = lengthTransverse;
     // as demais ligacoes que chegam a mesma barra de apoio no mesmo no carregam o mesmo perfil: somam-se (conservador)
-    in.tension = own.first + f.hostTension;
-    in.compression = own.second + f.hostCompression;
+    in.tension = tension + f.hostTension;
+    in.compression = compression + f.hostCompression;
     for (auto &check : D::checkSupportMember(in)) {
         if (f.hostConnections > 0) {
             check.name += QObject::tr(" (com mais %1 ligação(ões) na barra de apoio)").arg(f.hostConnections).toStdString();
@@ -959,6 +997,9 @@ static void appendSupportChecks(ConnectionService::Evaluation &e, const NodeConn
 
 ConnectionService::Evaluation ConnectionService::evaluate(const NodeConnection &c, const Forces &f)
 {
+    if (ConnectionCatalog::isCatalog(c.type)) {
+        return ConnectionCatalog::evaluate(c, f);
+    }
     Evaluation e;
     switch (c.type) {
     case NodeConnection::kDoubleAngle: {
@@ -1047,6 +1088,9 @@ ConnectionService::Evaluation ConnectionService::evaluate(const NodeConnection &
 
 bool ConnectionService::propose(NodeConnection &c, const Forces &f)
 {
+    if (ConnectionCatalog::isCatalog(c.type)) {
+        return ConnectionCatalog::propose(c, f);
+    }
     switch (c.type) {
     case NodeConnection::kDoubleAngle: {
         const auto result = D::proposeDoubleAngle(toDoubleAngle(c, f));
@@ -1114,6 +1158,9 @@ bool ConnectionService::propose(NodeConnection &c, const Forces &f)
 
 QString ConnectionService::describe(const NodeConnection &c)
 {
+    if (ConnectionCatalog::isCatalog(c.type)) {
+        return ConnectionCatalog::describe(c);
+    }
     const int rows = static_cast<int>(c.values.value(QStringLiteral("rows"), 0.0) + 0.5);
     const QString bolts = QObject::tr("%1 parafuso(s) d%2 %3").arg(rows).arg(c.values.value(QStringLiteral("db")), 0, 'f', 0).arg(c.grade);
     auto v = [&c](const char *key) { return c.values.value(QString::fromLatin1(key), 0.0); };

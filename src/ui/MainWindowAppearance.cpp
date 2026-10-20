@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 #include "DesignColors.h"
+#include "SvgIcons.h"
+#include "ViewCubeWidget.h"
 
 #include "SelectionModel.h"
 #include "ViewOptionsBar.h"
@@ -10,10 +12,13 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMenu>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QVTKOpenGLNativeWidget.h>
 
 #include <array>
+#include <functional>
 #include <cmath>
 
 namespace {
@@ -289,26 +294,126 @@ void MainWindow::updatePlaneLabel()
     if (!m_vtkWidget || !m_sceneController || !m_sceneController->constructionScene()) {
         return;
     }
+    auto *construction = m_sceneController->constructionScene();
+    using Structura::Construction::PlaneMode;
     if (!m_planeLabel) {
-        m_planeLabel = new QLabel(m_vtkWidget);
+        m_planeLabel = new QToolButton(m_vtkWidget);
         m_planeLabel->setObjectName(QStringLiteral("planeLabel"));
-        m_planeLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+        m_planeLabel->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        m_planeLabel->setPopupMode(QToolButton::InstantPopup);
+        m_planeLabel->setCursor(Qt::PointingHandCursor);
+        m_planeLabel->setFocusPolicy(Qt::NoFocus);
+        m_planeLabel->setToolTip(tr("Plano de construção: define o plano em que barras, nós e cascas são desenhados"));
         m_planeLabel->setStyleSheet(QStringLiteral(
-            "QLabel#planeLabel { background: rgba(255, 255, 255, 215); color: #0d7fb9; border: 1px solid #cbd4e2;"
-            "  border-radius: 10px; padding: 3px 12px; font-weight: 700; font-size: 12px; }"));
+            "QToolButton#planeLabel { background: rgba(255, 255, 255, 235); color: #0b6da1; border: 1px solid #cbd4e2;"
+            "  border-radius: 6px; padding: 4px 24px 4px 12px; font-weight: 600; font-size: 12px; }"
+            "QToolButton#planeLabel:hover { background: #e6f2fa; border-color: #9fc4de; }"
+            "QToolButton#planeLabel::menu-indicator { subcontrol-origin: padding; subcontrol-position: center right; right: 8px; width: 9px; height: 9px; }"));
+        auto *menu = new QMenu(m_planeLabel);
+        const struct {
+            PlaneMode mode;
+            const char *text;
+        } planes[] = {{PlaneMode::XY, "Plano X-Y"}, {PlaneMode::XZ, "Plano X-Z"}, {PlaneMode::YZ, "Plano Y-Z"}};
+        for (const auto &plane : planes) {
+            const PlaneMode mode = plane.mode;
+            menu->addAction(tr(plane.text), this, [this, mode]() {
+                if (m_sceneController && m_sceneController->constructionScene()) {
+                    m_sceneController->constructionScene()->setPlaneMode(mode);
+                }
+            });
+        }
+        m_planeLabel->setMenu(menu);
+
+        // botoes de vista flutuantes (ajustar a tela, visao inicial, vista em planta) sob o seletor de plano
+        m_viewPanel = new QFrame(m_vtkWidget);
+        m_viewPanel->setObjectName(QStringLiteral("viewPanel"));
+        m_viewPanel->setStyleSheet(QStringLiteral(
+            "QFrame#viewPanel { background: rgba(255, 255, 255, 235); border: 1px solid #cbd4e2; border-radius: 8px; }"
+            "QFrame#viewPanel QToolButton { background: transparent; border: none; border-radius: 6px; }"
+            "QFrame#viewPanel QToolButton:hover { background: #dfe8f3; }"
+            "QFrame#viewPanel QToolButton:pressed { background: #cdd8e7; }"
+            "QFrame#viewPanel QToolButton:checked { background: rgba(19, 147, 214, 0.20); }"));
+        auto *panelLayout = new QVBoxLayout(m_viewPanel);
+        panelLayout->setContentsMargins(4, 4, 4, 4);
+        panelLayout->setSpacing(2);
+        // propriedades, eixos locais, painel de grupos e eixos de referencia (funcoes da antiga barra lateral)
+        auto prepare = [](QToolButton *button, int icon) {
+            button->setIconSize(QSize(icon, icon));
+            button->setFixedSize(36, 36);
+            button->setCursor(Qt::PointingHandCursor);
+            button->setFocusPolicy(Qt::NoFocus);
+        };
+        if (m_propertiesToolButton) {
+            prepare(m_propertiesToolButton, 24);
+            panelLayout->addWidget(m_propertiesToolButton);
+        }
+        if (m_showBarLCSToolButton) {
+            prepare(m_showBarLCSToolButton, 24);
+            m_showBarLCSToolButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+            panelLayout->addWidget(m_showBarLCSToolButton);
+        }
+        auto addShortcut = [this, panelLayout, &prepare](const QString &icon, const QString &tip, std::function<void()> handler) {
+            auto *button = new QToolButton(m_viewPanel);
+            button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+            button->setIcon(Structura::UI::svgIcon(icon, QColor(QStringLiteral("#1e232b")), 64));
+            button->setToolTip(tip);
+            prepare(button, 22);
+            connect(button, &QToolButton::clicked, this, [handler]() { handler(); });
+            panelLayout->addWidget(button);
+        };
+        addShortcut(QStringLiteral("groups.svg"), tr("Painel de grupos"), [this]() { onToggleGroupsPanel(); });
+        addShortcut(QStringLiteral("axes-config.svg"), tr("Eixos de referência"), [this]() {
+            if (m_axesAction) {
+                m_axesAction->trigger();
+            }
+        });
+        if (m_toolColumn) {
+            m_toolColumn->deleteLater();
+            m_toolColumn = nullptr;
+        }
+        m_viewPanel->adjustSize();
     }
-    const QString name = Structura::Construction::planeName(m_sceneController->constructionScene()->planeMode());
+    const QString name = Structura::Construction::planeName(construction->planeMode());
     m_planeLabel->setText(tr("Plano %1-%2").arg(name.at(0)).arg(name.at(1)));
     m_planeLabel->adjustSize();
     positionPlaneLabel();
     m_planeLabel->show();
     m_planeLabel->raise();
+    if (m_viewPanel) {
+        m_viewPanel->show();
+        m_viewPanel->raise();
+    }
 }
 
 void MainWindow::positionPlaneLabel()
 {
-    if (m_planeLabel && m_vtkWidget) {
-        // Fica a esquerda do triedro de eixos, no canto superior direito da viewport.
-        m_planeLabel->move(m_vtkWidget->width() - m_planeLabel->width() - 120, 14);
+    if (!m_vtkWidget) {
+        return;
     }
+    // Canto superior direito, da direita para a esquerda: barra de ferramentas (a direita do cubo), cubo de vistas e, acima dos dois, o seletor de plano.
+    const int margin = 12;
+    int right = m_vtkWidget->width() - margin;
+    if (m_propertiesContainer) {
+        // painel de propriedades flutuante: encosta no lado direito, em toda a altura, e os controles passam para a esquerda dele
+        m_propertiesContainer->setGeometry(m_vtkWidget->width() - m_propertiesContainer->width(), 0, m_propertiesContainer->width(), m_vtkWidget->height());
+        m_propertiesContainer->raise();
+        if (m_propertiesContainer->isVisible()) {
+            right -= m_propertiesContainer->width();
+        }
+    }
+    const int rightEdge = right;
+    int left = right;
+    if (m_viewPanel) {
+        m_viewPanel->move(right - m_viewPanel->width(), 44);
+        right = m_viewPanel->x() - 6;
+        left = m_viewPanel->x();
+    }
+    if (m_viewCube) {
+        m_viewCube->move(right - m_viewCube->width(), 44);
+        left = m_viewCube->x();
+    }
+    if (m_planeLabel) {
+        m_planeLabel->move(rightEdge - m_planeLabel->width(), 10);
+    }
+    Q_UNUSED(left)
 }

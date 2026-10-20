@@ -98,6 +98,13 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         m_selectionModel->clear();
         return true;
     }
+    if (obj == m_quickBar && event->type() == QEvent::Resize && m_titleLabel && m_helpButton && m_homeTabButton) {
+        // titulo centralizado em relacao a barra, sem invadir os botoes da esquerda nem os da direita
+        const int leftEdge = m_homeTabButton->parentWidget()->geometry().right() + 8;
+        const int rightEdge = m_quickBar->width() - m_helpButton->x() + 8;
+        const int margin = std::max(leftEdge, rightEdge);
+        m_titleLabel->setGeometry(margin, 0, std::max(0, m_quickBar->width() - 2 * margin), m_quickBar->height());
+    }
     if (obj == m_quickBar || obj == m_titleLabel || (obj && obj->property("dragRegion").toBool())) {
         const bool handled = handleWindowDragEvent(event);
         if (handled) {
@@ -108,6 +115,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
     if (obj == m_vtkWidget && m_sceneController && event->type() == QEvent::Resize) {
         positionPlaneLabel();
         positionViewCube();
+        m_sceneController->placeOrientationMarker(m_vtkWidget->width(), m_vtkWidget->height());
         if (m_labelOverlay) {
             m_labelOverlay->resizeToParent();
             m_labelOverlay->sync(m_sceneController->compositeMatrix());

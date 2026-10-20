@@ -27,28 +27,6 @@ double extensionBottom(const EndPlateInput &in)
     return in.firstRow + (std::max(1, in.shearRows) - 1) * in.pitch + in.edgeVertical;
 }
 
-/// Cortante resistente do painel de alma do pilar (5.7.7.1 com 5.4.3.1.1, kv = 5,34).
-double panelShearResistance(const EndPlateInput &in, double &lambda, double &lambdaP, double &lambdaR, double &vpl)
-{
-    const double h = std::max(in.colDepth - 2.0 * (in.colFlangeThickness + in.colRadius), 1.0);
-    const double tw = in.colWebThickness + in.doublerThickness;
-    const double fy = in.column.fy;
-    const double kv = 5.34;
-    lambda = h / tw;
-    lambdaP = 1.10 * std::sqrt(kv * kModulusE / fy);
-    lambdaR = 1.37 * std::sqrt(kv * kModulusE / fy);
-    vpl = 0.60 * in.colDepth * tw * fy;
-    double v;
-    if (lambda <= lambdaP) {
-        v = vpl;
-    } else if (lambda <= lambdaR) {
-        v = lambdaP / lambda * vpl;
-    } else {
-        v = 1.24 * sq(lambdaP / lambda) * vpl;
-    }
-    return v / in.gammaA1;
-}
-
 } // namespace
 
 double endPlateHeight(const EndPlateInput &in)
@@ -215,16 +193,23 @@ std::vector<Check> checkEndPlate(const EndPlateInput &in)
             }
         }
     }
-    // painel de alma do pilar: cisalhamento (5.7.7.1), cortante do pilar desprezado a favor da seguranca
+    // painel de alma do pilar: cisalhamento (5.7.7.1)
     {
-        double lambda, lambdaP, lambdaR, vpl;
-        const double vrd = panelShearResistance(in, lambda, lambdaP, lambdaR, vpl);
-        const double fsd = mAbs / z;
-        Check c = ratioN("Painel de alma do pilar (cisalhamento)", "NBR 8800:2024, 5.7.7.1", fsd, vrd);
-        c.lines.push_back(fmtn("F_Sd = M/(d - tf) = %.1f kN (cortante do pilar desprezado); V_Rd com Aw = dc (tw + td) = %.0f x %.1f mm", fsd / 1e3, in.colDepth, in.colWebThickness + in.doublerThickness));
-        c.lines.push_back(fmtn("lambda = h/tw = %.1f; lambda_p = %.1f; lambda_r = %.1f (kv = 5,34); Vpl = %.1f kN -> V_Rd = %.1f kN", lambda, lambdaP, lambdaR, vpl / 1e3, vrd / 1e3));
-        c.lines.push_back("Sem esforco axial no pilar considerado (N <= 0,4 Npl). Se nao atender, use chapa de reforco da alma (5.7.7.2) ou enrijecedores diagonais (5.7.7.3).");
-        out.push_back(std::move(c));
+        ColumnPanelInput pi;
+        pi.d = in.colDepth;
+        pi.bf = in.colFlangeWidth;
+        pi.tf = in.colFlangeThickness;
+        pi.tw = in.colWebThickness;
+        pi.radius = in.colRadius;
+        pi.fy = in.column.fy;
+        pi.doubler = in.doublerThickness;
+        pi.beamForce = std::max(ft, fc);
+        pi.panelShear = in.panelShear;
+        pi.axial = in.colAxial;
+        pi.gammaA1 = in.gammaA1;
+        for (Check c : checkColumnPanel(pi)) {
+            out.push_back(std::move(c));
+        }
     }
     return out;
 }

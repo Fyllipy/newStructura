@@ -1,5 +1,17 @@
 #include "MainWindow.h"
 
+#include <QVBoxLayout>
+
+#include <QRadioButton>
+
+#include <QPushButton>
+
+#include <QLabel>
+
+#include <QDialogButtonBox>
+
+#include <QDialog>
+
 #include "ShellDialog.h"
 
 #include "TemporaryAnalysisResultsDialog.h"
@@ -226,7 +238,7 @@ void MainWindow::showResultView(int index)
 
 // ── onRunStructuralAnalysis ───────────────────────────────────────────────────
 
-void MainWindow::onRunStructuralAnalysis()
+bool MainWindow::runStructuralAnalysis(bool showReport)
 {
     if (m_sceneController) {
         const auto issues = checkModel();
@@ -236,7 +248,7 @@ void MainWindow::onRunStructuralAnalysis()
             connect(&dialog, &Structura::UI::ModelCheckDialog::focusRequested, this,
                     [this](Structura::App::Services::ModelCheckService::TargetKind kind, int id) { focusCheckTarget(static_cast<int>(kind), id); });
             if (dialog.exec() != QDialog::Accepted) {
-                return;
+                return false;
             }
         } else if (!issues.isEmpty()) {
             showStatusMessage(tr("Checagem do modelo: %1 aviso(s)/informação(ões) (Ferramentas > Checar modelo).").arg(issues.size()), 6000);
@@ -244,14 +256,63 @@ void MainWindow::onRunStructuralAnalysis()
     }
     QString report;
     if (!executeAnalysis(&report)) {
-        return;
+        return false;
     }
-    Structura::UI::TemporaryAnalysisResultsDialog dialog(report, this);
-    dialog.exec();
+    if (showReport) {
+        Structura::UI::TemporaryAnalysisResultsDialog dialog(report, this);
+        dialog.exec();
+    }
 
     // ── Integração com o pós-processador ──────────────────────────────────
     if (m_postProcessor) {
         showResultView(m_viewOptionsBar ? std::max(0, m_viewOptionsBar->currentResultView()) : 0);
+    }
+    return true;
+}
+
+/// Processar: pergunta o que fazer depois da analise (so analisar, analisar e verificar os perfis, analisar e dimensionar os perfis).
+void MainWindow::onRunStructuralAnalysis()
+{
+    QDialog dialog(this, Qt::Dialog | Qt::WindowTitleHint | Qt::WindowCloseButtonHint);
+    dialog.setWindowTitle(tr("Processar"));
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(18, 16, 18, 14);
+    layout->setSpacing(8);
+    auto *question = new QLabel(tr("O que deseja fazer?"), &dialog);
+    QFont bold = question->font();
+    bold.setBold(true);
+    question->setFont(bold);
+    layout->addWidget(question);
+    const QStringList options = {tr("Apenas fazer a análise"), tr("Fazer a análise e verificar os perfis"), tr("Fazer a análise e dimensionar os perfis")};
+    QVector<QRadioButton *> radios;
+    for (int i = 0; i < options.size(); ++i) {
+        auto *radio = new QRadioButton(options.at(i), &dialog);
+        radio->setChecked(i == m_processChoice);
+        layout->addWidget(radio);
+        radios.append(radio);
+    }
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("Processar"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(tr("Cancelar"));
+    layout->addSpacing(4);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    for (int i = 0; i < radios.size(); ++i) {
+        if (radios.at(i)->isChecked()) {
+            m_processChoice = i;
+        }
+    }
+    if (!runStructuralAnalysis(m_processChoice == 0)) {
+        return;
+    }
+    if (m_processChoice == 1) {
+        onVerifyDesign();
+    } else if (m_processChoice == 2) {
+        onOptimizeDesign();
     }
 }
 

@@ -1,3 +1,4 @@
+#include "app/services/ConnectionCatalog.h"
 #include "MainWindow.h"
 #include "ViewOptionsBar.h"
 
@@ -137,12 +138,14 @@ void MainWindow::onCheckConnections()
     };
 
     NodeConnectionsDialog::Callbacks callbacks;
-    callbacks.forces = [currentRun](const NodeConnection &connection, const QVector<NodeConnection> &all) -> std::optional<ConnectionService::Forces> {
+    callbacks.forces = [this, currentRun](const NodeConnection &connection, const QVector<NodeConnection> &all) -> std::optional<ConnectionService::Forces> {
         const auto run = currentRun();
         if (!run) {
             return std::nullopt;
         }
-        return Structura::UI::connectionForces(*run, connection, all);
+        NodeConnection withNode = connection;   // copia em edicao no dialogo: acrescenta as barras do no para o equilibrio
+        storeNodeMembers(withNode);
+        return Structura::UI::connectionForces(*run, withNode, all);
     };
     callbacks.focus = [this](const NodeConnection &connection) {
         for (const auto &bar : m_sceneController->bars()) {
@@ -213,6 +216,7 @@ void MainWindow::onCheckConnections()
             continues = continues || (u[0] * supportDir[0] + u[1] * supportDir[1] + u[2] * supportDir[2]) < -0.985;
         }
         const auto info = memberInfo(section, supportMemberId);
+        storeNodeMembers(connection);
         v[QStringLiteral("supMember")] = supportMemberId;
         v[QStringLiteral("supD")] = d;
         v[QStringLiteral("supBf")] = bf;
@@ -312,8 +316,9 @@ void MainWindow::onCheckConnections()
         }
         return false;
     };
-    callbacks.create = [this, barsAtNode, sectionInfoOf, memberInfo, chooseSupport](int type) -> NodeConnection {
+    callbacks.create = [this, barsAtNode, sectionInfoOf, memberInfo, chooseSupport](int catalogType) -> NodeConnection {
         NodeConnection none;
+        const int type = Structura::App::Services::ConnectionCatalog::baseType(catalogType);   // tipologia de calculo das variantes
         const auto selected = m_selectionModel ? m_selectionModel->selectedBars() : QSet<QUuid>();
         QUuid barId;
         for (const auto &bar : m_sceneController->bars()) {
@@ -323,7 +328,8 @@ void MainWindow::onCheckConnections()
             }
         }
         if (barId.isNull()) {
-            const QString what = type == NodeConnection::kGusset ? tr("a diagonal ou o contraventamento")
+            const QString what = Structura::App::Services::ConnectionCatalog::usesBraces(catalogType) ? tr("o banzo (barra principal do nó de treliça)")
+                               : type == NodeConnection::kGusset ? tr("a diagonal ou o contraventamento")
                                : type == NodeConnection::kBasePlate ? tr("o pilar")
                                : type == NodeConnection::kTubular ? tr("o banzo (tubo circular)")
                                : type == NodeConnection::kColdFormed ? tr("a barra de perfil formado a frio")
@@ -380,7 +386,8 @@ void MainWindow::onCheckConnections()
             const double plateFy = defaultSteel ? defaultSteel->fy : 250.0, plateFu = defaultSteel ? defaultSteel->fu : 400.0;
             const int nodeId = nodeExternal.value(atEnd ? bar.endNodeId : bar.startNodeId);
             NodeConnection connection;
-            if (type == NodeConnection::kTubular) {
+            const bool trussNode = Structura::App::Services::ConnectionCatalog::usesBraces(catalogType);
+            if (type == NodeConnection::kTubular || trussNode) {
                 // diagonais: barras que chegam ao no e nao sao a continuacao do banzo
                 const auto refs = barsAtNode(nodeId);
                 const EndRef *chordRef = nullptr;
@@ -407,6 +414,7 @@ void MainWindow::onCheckConnections()
                         brace.memberId = r.memberId;
                         brace.atEnd = r.atEnd;
                         brace.angleDeg = std::acos(std::min(1.0, std::abs(dot))) * 180.0 / 3.14159265358979;
+                        brace.alongChord = dot > 0.0;
                         // lado do banzo em que a diagonal esta (componente perpendicular)
                         const std::array<double, 3> perp {r.dx / l - dot * axis[0], r.dy / l - dot * axis[1], r.dz / l - dot * axis[2]};
                         if (braces.isEmpty()) {
@@ -419,16 +427,45 @@ void MainWindow::onCheckConnections()
                                 const auto sec = sectionInfoOf(b2.sectionId);
                                 brace.d = sec.geometry.value(QStringLiteral("D"), sec.geometry.value(QStringLiteral("d"), 0.0));
                                 brace.t = sec.geometry.value(QStringLiteral("t"), 4.0);
-                                brace.fy = memberInfo(sec, r.memberId).fy;
+                                const auto info = memberInfo(sec, r.memberId);
+                                brace.fy = info.fy;
+                                brace.fu = info.fu;
+                                brace.area = info.area;
+                                const auto &g = sec.geometry;
+                                brace.legB = g.value(QStringLiteral("b"), std::max(g.value(QStringLiteral("bf"), 0.0), g.value(QStringLiteral("d"), 0.0) > 0.0 && !g.contains(QStringLiteral("bf")) ? g.value(QStringLiteral("d"), 0.0) : 0.0));
+                                brace.legT = g.value(QStringLiteral("t"), g.value(QStringLiteral("tf"), 0.0));
+                                if (brace.legB > 0.0 && brace.legT > 0.0) {
+                                    // cantoneira: distancia do centroide a face da aba ligada
+                                    brace.ec = (brace.legB * brace.legB + brace.legB * brace.legT - brace.legT * brace.legT) / (2.0 * (2.0 * brace.legB - brace.legT));
+                                }
                             }
                         }
                         braces.append(brace);
-                        if (braces.size() == 2) {
+                        if (braces.size() == (trussNode ? 3 : 2)) {
                             break;
                         }
                     }
                 }
+                if (trussNode) {
+                    connection = Structura::App::Services::ConnectionCatalog::makeDefaultWithBraces(catalogType, beam, plateFy, plateFu, braces);
+                    if (braces.isEmpty()) {
+                        QMessageBox::information(this, tr("Nó de treliça"),
+                                                 tr("Nenhuma outra barra chega a este nó além do banzo; os dados das barras foram preenchidos com valores padrão e podem ser editados."));
+                    }
+                } else {
                 connection = ConnectionService::makeTubular(beam, braces);
+                if (catalogType != type) {
+                    // variante tubular do catalogo: aplica os valores da variante sobre os das diagonais encontradas
+                    const auto variant = ConnectionService::makeDefault(catalogType, beam, plateFy, plateFu);
+                    for (const auto *entry = Structura::App::Services::ConnectionCatalog::find(catalogType); entry;) {
+                        for (auto it = entry->preset.constBegin(); it != entry->preset.constEnd(); ++it) {
+                            connection.values[it.key()] = it.value();
+                        }
+                        break;
+                    }
+                    (void)variant;
+                    connection.type = catalogType;
+                }
                 connection.values["br1"] = braces.size() > 0 ? braces[0].memberId : 0;
                 connection.values["br1End"] = braces.size() > 0 && braces[0].atEnd ? 1.0 : 0.0;
                 connection.values["br2"] = braces.size() > 1 ? braces[1].memberId : 0;
@@ -437,9 +474,11 @@ void MainWindow::onCheckConnections()
                     QMessageBox::information(this, tr("Ligação tubular"),
                                              tr("Nenhuma diagonal chega a este nó além do banzo; os dados da diagonal foram preenchidos com valores padrão e podem ser editados."));
                 }
+                }
             } else {
-                connection = ConnectionService::makeDefault(type, beam, plateFy, plateFu);
-                if (type == NodeConnection::kShearTab || type == NodeConnection::kDoubleAngle || type == NodeConnection::kGusset || type == NodeConnection::kEndPlate) {
+                connection = ConnectionService::makeDefault(catalogType, beam, plateFy, plateFu);
+                if (type == NodeConnection::kShearTab || type == NodeConnection::kDoubleAngle || type == NodeConnection::kGusset || type == NodeConnection::kEndPlate
+                    || Structura::App::Services::ConnectionCatalog::find(type) != nullptr) {
                     if (!chooseSupport(connection, bar, nodeId)) {
                         return none;
                     }
@@ -499,4 +538,43 @@ void MainWindow::onOpenConnectionCalculator()
         return env;
     }, this);
     dialog.exec();
+}
+
+void MainWindow::storeNodeMembers(Structura::App::ProjectData::NodeConnection &connection) const
+{
+    auto &v = connection.values;
+    for (int i = 0; i < 16; ++i) {
+        v.remove(QStringLiteral("nm%1").arg(i));
+        v.remove(QStringLiteral("ne%1").arg(i));
+    }
+    v.remove(QStringLiteral("nmCount"));
+    if (!m_sceneController) {
+        return;
+    }
+    QUuid nodeUuid;
+    for (const auto &node : m_sceneController->nodeInfos()) {
+        if (node.externalId == connection.nodeId) {
+            nodeUuid = node.id;
+        }
+    }
+    if (nodeUuid.isNull()) {
+        return;
+    }
+    int count = 0;
+    for (const auto &bar : m_sceneController->bars()) {
+        if ((bar.startNodeId != nodeUuid && bar.endNodeId != nodeUuid) || count >= 16) {
+            continue;
+        }
+        v[QStringLiteral("nm%1").arg(count)] = bar.externalId;
+        v[QStringLiteral("ne%1").arg(count)] = bar.endNodeId == nodeUuid ? 1.0 : 0.0;
+        ++count;
+    }
+    v[QStringLiteral("nmCount")] = count;
+}
+
+void MainWindow::refreshConnectionNodeMembers()
+{
+    for (auto &connection : m_extras.connections) {
+        storeNodeMembers(connection);
+    }
 }

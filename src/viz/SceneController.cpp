@@ -811,6 +811,15 @@ bool SceneController::pickWorldPoint(int displayX, int displayY, double &x, doub
     return false;
 }
 
+void SceneController::placeOrientationMarker(int widgetWidth, int widgetHeight, int sizePx, int marginPx)
+{
+    if (!m_orientationMarker || widgetWidth < 50 || widgetHeight < 50) {
+        return;
+    }
+    const double w = widgetWidth, h = widgetHeight;
+    m_orientationMarker->SetViewport(marginPx / w, 1.0 - (marginPx + sizePx) / h, (marginPx + sizePx) / w, 1.0 - marginPx / h);
+}
+
 int SceneController::viewportHeight() const
 {
     if (!m_renderWindow) return 0;

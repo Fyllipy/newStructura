@@ -1,4 +1,6 @@
 #include "MainWindow.h"
+
+#include <QVTKOpenGLNativeWidget.h>
 #include "app/UndoRedoService.h"
 #include "AxesPanel.h"
 #include "SectionPlacementPanel.h"
@@ -60,12 +62,13 @@ void MainWindow::ensurePropertiesPanel()
         return;
     }
 
-    QWidget *parentWidget = m_contentLayout->parentWidget();
-    m_propertiesContainer = new QWidget(parentWidget);
+    // flutuante: filho da viewport, no lado direito, sem empurrar a visualizacao (ver positionPlaneLabel)
+    m_propertiesContainer = new QWidget(static_cast<QWidget *>(m_vtkWidget));
     m_propertiesContainer->setObjectName(QStringLiteral("PropertiesContainer"));
     m_propertiesContainer->setFixedWidth(320);
     m_propertiesContainer->setStyleSheet(QStringLiteral(
         "#PropertiesContainer { background: #f5f7fb; border-left: 1px solid #d6dde8; }"));
+    m_propertiesContainer->setAttribute(Qt::WA_StyledBackground, true);
 
     auto *panelLayout = new QVBoxLayout(m_propertiesContainer);
     panelLayout->setContentsMargins(12, 12, 12, 12);
@@ -76,7 +79,6 @@ void MainWindow::ensurePropertiesPanel()
     panelLayout->addStretch(1);
 
     m_propertiesContainer->hide();
-    m_contentLayout->addWidget(m_propertiesContainer, 0);
 
     connect(m_propertiesPanel, &PropertiesPanel::nodeCoordinateEdited,
             this, &MainWindow::onNodeCoordinateEdited);

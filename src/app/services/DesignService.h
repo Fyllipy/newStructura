@@ -62,10 +62,18 @@ public:
     static std::vector<ElementData> buildElements(const Structura::App::SolverBridge::ModelData &geometry, const ResultSet &set);
 
     /// Esforcos de uma barra em todas as combinacoes selecionadas, ja em N e mm.
+    /// Forcas nas extremidades da barra (eixos locais N, Vy, Vz, Mt, My, Mz do no i e do no j; N e N.mm) e os eixos locais no sistema global:
+    /// convencao do avaliador de esforcos internos (esforco na face positiva da secao). Permitem o equilibrio do no (painel de alma do pilar).
+    struct EndRecord {
+        std::string combo;
+        std::array<double, 3> x {}, y {}, z {};
+        std::array<double, 12> f {};
+    };
     struct MemberEffects {
         int memberId {0};
         double lengthMm {0.0};
         std::vector<Structura::Design::ComboEffects> combos;
+        std::vector<EndRecord> ends;
     };
 
     /// Converte os resultados do solver em esforcos por barra. `geometry` fornece nos e barras.

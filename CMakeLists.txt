@@ -146,6 +146,18 @@ set(APP_SOURCES
     src/design/ColdFormedConnections.cpp
     src/design/EndPlateConnection.h
     src/design/EndPlateConnection.cpp
+    src/design/WebShearConnection.h
+    src/design/WebShearConnection.cpp
+    src/design/TrussNodeConnection.h
+    src/design/TrussNodeConnection.cpp
+    src/design/CoverSplice.h
+    src/design/CoverSplice.cpp
+    src/design/MomentConnection.h
+    src/design/MomentConnection.cpp
+    src/design/FlexEndPlate.h
+    src/design/FlexEndPlate.cpp
+    src/design/CompositeConnection.h
+    src/design/CompositeConnection.cpp
     src/design/TubularJoints.h
     src/design/TubularJoints.cpp
     src/design/CompositeFloor.h
@@ -191,6 +203,8 @@ set(UI_SOURCES
     src/ui/MainWindow.h
     src/ui/MainWindow.cpp
     src/ui/MainWindowRibbon.cpp
+    src/ui/RibbonWidgets.h
+    src/ui/RibbonWidgets.cpp
     src/ui/MainWindowEventFilter.cpp
     src/ui/MainWindowViewportInteraction.cpp
     src/ui/MainWindowGridStatus.cpp
@@ -261,6 +275,19 @@ set(UI_SOURCES
     src/ui/TrussDialog.cpp
     src/app/services/ConnectionSolids.h
     src/app/services/ConnectionSolids.cpp
+    src/app/services/ConnectionCatalog.h
+    src/app/services/ConnectionCatalog.cpp
+    src/app/services/ConnectionCatalogInternal.h
+    src/app/services/ConnectionCatalogWebShear.cpp
+    src/app/services/ConnectionCatalogTruss.cpp
+    src/app/services/ConnectionCatalogEndPlateSplice.cpp
+    src/app/services/ConnectionCatalogSplices.cpp
+    src/app/services/ConnectionCatalogMoment.cpp
+    src/app/services/ConnectionCatalogFlexEndPlate.cpp
+    src/app/services/ConnectionCatalogComposite.cpp
+    src/app/services/NodeEquilibrium.h
+    src/app/services/NodeEquilibrium.cpp
+    src/app/services/ConnectionCatalogVariants.cpp
     src/viz/structure/ConnectionRenderer.h
     src/viz/structure/ConnectionRenderer.cpp
     src/viz/structure/ShellRenderer.h

@@ -1,6 +1,8 @@
 #include "ui/MainWindow.h"
 
 #include <QApplication>
+#include <QTabWidget>
+#include <QToolButton>
 #include <QTimer>
 #include <QElapsedTimer>
 #include <QFont>
@@ -83,9 +85,24 @@ int main(int argc, char *argv[])
 
     splash.setProgress(25, QObject::tr("Carregando o motor gráfico e os catálogos de perfis…"));
     MainWindow mainWindow;
-    mainWindow.resize(1280, 720);
+    {
+        // tamanho inicial (a variavel STRUCTURA_WINDOW_SIZE=LxA serve a verificacao automatizada da interface em varias larguras)
+        const QStringList size = qEnvironmentVariable("STRUCTURA_WINDOW_SIZE").split(QLatin1Char('x'));
+        const int w = size.size() == 2 ? size.at(0).toInt() : 0, h = size.size() == 2 ? size.at(1).toInt() : 0;
+        mainWindow.resize(w >= 640 && h >= 480 ? QSize(w, h) : QSize(1280, 720));
+    }
     splash.setProgress(80, QObject::tr("Montando a interface…"));
     mainWindow.show();
+    if (qEnvironmentVariableIntValue("STRUCTURA_OPEN_PROPERTIES") > 0) {
+        if (auto *button = mainWindow.findChild<QToolButton *>(QStringLiteral("propertiesToolButton"))) {
+            button->setChecked(true);   // verificacao automatizada: abre o painel de propriedades
+        }
+    }
+    if (const int tab = qEnvironmentVariableIntValue("STRUCTURA_RIBBON_TAB"); tab > 0) {
+        if (auto *ribbon = mainWindow.findChild<QTabWidget *>(QStringLiteral("mainRibbon"))) {
+            ribbon->setCurrentIndex(tab);   // verificacao automatizada: abre a guia indicada
+        }
+    }
 
     const QStringList arguments = app.arguments();
     if (arguments.size() > 1) {
