@@ -88,6 +88,8 @@ public:
 
     /// Abre um modelo .dat (usado tambem ao iniciar com um arquivo como argumento).
     bool openModelFile(const QString &filePath) { return loadFromDat(filePath); }
+    /// Verificacao automatizada (variavel STRUCTURA_AUTOSHOT): analisa o modelo aberto, exibe os diagramas e grava capturas da tela em `directory`.
+    void automatedCapture(const QString &directory);
     void offerRecovery();
 
 private slots:
@@ -368,6 +370,7 @@ private:
     bool coupledShellResults(const QStringList &cases, bool runAnalysis, Structura::Shell::Results &out, std::string &error);
     QAction *m_shellCoupleAction {nullptr};
     QAction *m_shellSplitAction {nullptr};
+    QAction *m_shellMonolithicAction {nullptr};
     void onCompareResults();
     void setupViewCube();
     void positionViewCube();

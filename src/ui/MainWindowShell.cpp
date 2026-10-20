@@ -25,6 +25,9 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTimer>
+#include <QElapsedTimer>
+#include <QGuiApplication>
+#include <QScreen>
 
 #include <algorithm>
 #include <cmath>
@@ -192,6 +195,10 @@ void MainWindow::onShellCoupleToggled(bool on)
 
 void MainWindow::refreshShellVisuals(bool force)
 {
+    if (m_shellMonolithicAction && m_shellMonolithicAction->isChecked() != m_extras.shell.monolithic) {
+        const QSignalBlocker blocker(m_shellMonolithicAction);
+        m_shellMonolithicAction->setChecked(m_extras.shell.monolithic);
+    }
     if (m_shellCoupleAction && m_shellCoupleAction->isChecked() != m_extras.shell.coupled) {
         const QSignalBlocker blocker(m_shellCoupleAction);
         m_shellCoupleAction->setChecked(m_extras.shell.coupled);
@@ -396,15 +403,9 @@ bool MainWindow::commitShell(Object o, const QString &undoText)
     if (!askShellProperties(this, m_extras.shell, o, m_lastShellThickness, m_lastShellMaterial, undoText)) {
         return false;
     }
-    bool autoCoupled = false;
     {
         StateGuard guard(this, undoText);
         m_extras.shell.objects.push_back(o);
-        // projeto com barras: a casca nasce acoplada, para que suas cargas cheguem as vigas (quinhoes) na analise
-        if (!m_extras.shell.coupled && m_sceneController && !m_sceneController->bars().empty()) {
-            m_extras.shell.coupled = true;
-            autoCoupled = true;
-        }
         m_selectedShellObject = id;
         m_shellResultsShown = false;
         refreshShellVisuals(true);
@@ -414,8 +415,7 @@ bool MainWindow::commitShell(Object o, const QString &undoText)
         }
         markModified();
     }
-    showStatusMessage(autoCoupled ? tr("%1 criada e acoplada às barras (as cargas da casca chegam às vigas). Use \"Dividir barras nos nós\" para ligar as vigas de borda.").arg(QString::fromStdString(o.name))
-                                  : tr("%1 criada. Use o editor de cascas para cargas, apoios, análise e verificação.").arg(QString::fromStdString(o.name)), 8000);
+    showStatusMessage(tr("%1 criada. Cargas superficiais de chapas apoiadas em barras chegam às vigas por quinhões (divida as vigas para quinhões mais fiéis); \"Acoplar às barras\" usa o MEF.").arg(QString::fromStdString(o.name)), 9000);
     return true;
 }
 
@@ -672,4 +672,47 @@ void MainWindow::showShellContextMenu(const QPoint &globalPos)
     menu.addSeparator();
     menu.addAction(tr("Excluir"), this, [this]() { deleteSelectedShell(); });
     menu.exec(globalPos);
+}
+
+void MainWindow::automatedCapture(const QString &directory)
+{
+    QDir().mkpath(directory);
+    auto settle = [](int ms) {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < ms) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        }
+    };
+    auto shot = [&](const QString &name) {
+        settle(1200);
+        const QPixmap pixmap = QGuiApplication::primaryScreen()->grabWindow(0, x(), y(), width(), height());
+        pixmap.save(QDir(directory).filePath(name));
+    };
+    settle(500);
+    if (m_sceneController) {
+        const double position[3] = {14.0, -9.0, 11.0}, target[3] = {3.0, 3.0, 3.0}, up[3] = {0.0, 0.0, 1.0};
+        m_sceneController->setCameraState(position, target, up, 30.0, false);
+    }
+    shot(QStringLiteral("1_modelo.png"));
+    QString report;
+    const bool ok = executeAnalysis(&report);
+    QFile log(QDir(directory).filePath(QStringLiteral("analise.txt")));
+    if (log.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        log.write(QStringLiteral("analise ok = %1\n").arg(ok).toUtf8());
+        log.write(report.toUtf8());
+    }
+    if (!ok) {
+        return;
+    }
+    if (m_postProcessor) {
+        showResultView(0);
+    }
+    if (m_showDiagramsAction) {
+        m_showDiagramsAction->trigger();
+    }
+    for (int index = 3; index <= 6 && m_diagramCombo; ++index) {
+        m_diagramCombo->setCurrentIndex(index);
+        shot(QStringLiteral("2_diagrama_%1.png").arg(m_diagramCombo->itemText(index)));
+    }
 }

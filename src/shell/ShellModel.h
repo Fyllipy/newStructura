@@ -102,6 +102,12 @@ struct Model {
     std::vector<Support> supports;
     /// true: as cascas entram na analise das barras (mesma matriz de rigidez; nos coincidentes e ligacoes por interpolacao).
     bool coupled {false};
+    /// false (padrao): a casca APOIA nas barras (so translacoes ligadas: a laje transmite reacoes/quinhoes de carga, nao momentos);
+    /// true: ligacao monolitica (translacoes e rotacoes compartilhadas, a viga recebe tambem torcao e momento da laje).
+    bool monolithic {false};
+    /// true (padrao): sem acoplamento por MEF, as cargas superficiais das chapas planas apoiadas em barras chegam as barras por quinhoes
+    /// (envoltoria: cada ponto descarrega na aresta apoiada mais proxima), como cargas distribuidas nas barras (diagramas parabolicos).
+    bool tributary {true};
     bool empty() const { return objects.empty(); }
 };
 
@@ -156,6 +162,8 @@ inline std::string fingerprint(const Model &model)
         }
     }
     out += model.coupled ? "|C|" : "|U|";
+    out += model.monolithic ? "M|" : "A|";
+    out += model.tributary ? "T|" : "N|";
     for (const Load &l : model.loads) {
         out += l.caseName + ',' + std::to_string(l.object) + ',' + std::to_string(static_cast<int>(l.type)) + ',';
         for (const double v : l.v) {

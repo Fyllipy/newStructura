@@ -391,6 +391,8 @@ set(SHELL_SOURCES
     src/shell/ShellModel.h
     src/shell/ShellMesh.h
     src/shell/ShellMesh.cpp
+    src/shell/ShellTributary.h
+    src/shell/ShellTributary.cpp
     src/shell/ShellFactory.h
     src/shell/ShellFactory.cpp
     src/shell/ShellJob.h

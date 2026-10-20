@@ -1,5 +1,7 @@
 #include "app/services/ShellCouplingService.h"
 
+#include "shell/ShellTributary.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -173,15 +175,37 @@ std::shared_ptr<const ShellCouplingService::Mapping> ShellCouplingService::mappi
         std::map<int, std::array<int, 6>> barRestraint;
         int nextId = maxId + 1;
         std::vector<char> merged(m.mesh.nodes.size(), 0);
+        std::unordered_map<int, char> mergedBar;
         for (std::size_t n = 0; n < m.mesh.nodes.size(); ++n) {
             const int barId = findBarNode(m.mesh.nodes[n]);
             if (barId != 0) {
-                m.nodeIdOfMeshNode[n] = barId;
                 merged[n] = 1;
+                mergedBar[barId] = 1;
                 ++m.mergedNodes;
-                auto &flags = barRestraint[barId];
-                for (std::size_t c = 0; c < 6; ++c) {
-                    flags[c] = std::max(flags[c], job.nodes[n].fixed[c]);
+                if (shell.monolithic) {
+                    // ligacao monolitica: o no da malha e o no da barra (6 graus de liberdade)
+                    m.nodeIdOfMeshNode[n] = barId;
+                    auto &flags = barRestraint[barId];
+                    for (std::size_t c = 0; c < 6; ++c) {
+                        flags[c] = std::max(flags[c], job.nodes[n].fixed[c]);
+                    }
+                } else {
+                    // casca APOIADA na barra: no proprio da casca ligado ao da barra so nas translacoes (as rotacoes ficam livres,
+                    // a laje transmite reacoes e nao momentos); os quinhoes de carga chegam a viga como forcas nodais
+                    SolverBridge::ShellNodeData node;
+                    node.id = nextId++;
+                    node.x = m.mesh.nodes[n][0];
+                    node.y = m.mesh.nodes[n][1];
+                    node.z = m.mesh.nodes[n][2];
+                    node.restraints = job.nodes[n].fixed;
+                    m.nodeIdOfMeshNode[n] = node.id;
+                    part->nodes.push_back(node);
+                    SolverBridge::ShellTieData tie;
+                    tie.slave = node.id;
+                    tie.masters = {barId};
+                    tie.weights = {1.0};
+                    tie.dofMask = 7;
+                    part->ties.push_back(std::move(tie));
                 }
             } else {
                 SolverBridge::ShellNodeData node;
@@ -225,13 +249,6 @@ std::shared_ptr<const ShellCouplingService::Mapping> ShellCouplingService::mappi
             part->ties.push_back(std::move(tie));
         }
         // nos de barras sobre o plano de elementos de casca
-        std::vector<char> isMergedBarNode(0);
-        std::unordered_map<int, char> mergedBar;
-        for (std::size_t n = 0; n < m.mesh.nodes.size(); ++n) {
-            if (merged[n]) {
-                mergedBar[m.nodeIdOfMeshNode[n]] = 1;
-            }
-        }
         for (const auto &bn : model.nodes) {
             if (mergedBar.count(bn.id)) {
                 continue;
@@ -242,6 +259,7 @@ std::shared_ptr<const ShellCouplingService::Mapping> ShellCouplingService::mappi
             }
             SolverBridge::ShellTieData tie;
             tie.slave = bn.id;
+            tie.dofMask = shell.monolithic ? 63 : 7;
             for (std::size_t i = 0; i < host->masters.size(); ++i) {
                 tie.masters.push_back(m.nodeIdOfMeshNode[static_cast<std::size_t>(host->masters[i])]);
                 tie.weights.push_back(host->weights[i]);
@@ -336,6 +354,66 @@ std::shared_ptr<const ShellCouplingService::Mapping> ShellCouplingService::attac
         }
     }
     return map;
+}
+
+int ShellCouplingService::attachTributary(SolverBridge::ModelData &model, const Structura::Shell::Model &shell, const std::string &loadCase, double forceUnit,
+                                          std::vector<std::string> *warnings)
+{
+    using namespace Structura::Shell;
+    if (shell.objects.empty() || model.members.empty()) {
+        return 0;
+    }
+    std::unordered_map<int, Vec3> position;
+    for (const auto &n : model.nodes) {
+        position[n.id] = {n.x, n.y, n.z};
+    }
+    std::vector<TributaryBar> bars;
+    for (const auto &m : model.members) {
+        const auto a = position.find(m.nodeI), b = position.find(m.nodeJ);
+        if (a != position.end() && b != position.end()) {
+            bars.push_back({m.id, a->second, b->second});
+        }
+    }
+    const double unit = forceUnit > 0.0 ? forceUnit : 1.0;
+    std::map<int, Vec3> total;
+    for (const Object &plate : shell.objects) {
+        if (!plate.visible || plate.kind != Kind::Plate) {
+            continue;
+        }
+        Vec3 force {0.0, 0.0, 0.0};
+        bool any = false;
+        for (const Load &load : shell.loads) {
+            if (load.caseName != loadCase || (load.object != 0 && load.object != plate.id)) {
+                continue;
+            }
+            Vec3 f {};
+            if (surfaceForce(shell, plate, load, f)) {
+                for (std::size_t k = 0; k < 3; ++k) {
+                    force[k] += f[k];
+                }
+                any = true;
+            }
+        }
+        if (!any) {
+            continue;
+        }
+        for (const TributaryLoad &q : tributaryLoads(plate, force, bars, kPlaneTol * 2.0, warnings)) {
+            Vec3 &sum = total[q.barId];
+            for (std::size_t k = 0; k < 3; ++k) {
+                sum[k] += q.q[k] / unit;
+            }
+        }
+    }
+    for (const auto &[barId, q] : total) {
+        SolverBridge::MemberLoadData load;
+        load.memberId = barId;
+        load.coordSystem = SolverBridge::MemberLoadCoordSystem::Global;
+        load.qx = q[0];
+        load.qy = q[1];
+        load.qz = q[2];
+        model.memberLoads.push_back(load);
+    }
+    return static_cast<int>(total.size());
 }
 
 Structura::Shell::CaseResult ShellCouplingService::caseResult(const Mapping &mapping, const SolverBridge::Result &result, const std::string &name)

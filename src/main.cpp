@@ -1,6 +1,7 @@
 #include "ui/MainWindow.h"
 
 #include <QApplication>
+#include <QTimer>
 #include <QElapsedTimer>
 #include <QFont>
 #include <QIcon>
@@ -99,5 +100,12 @@ int main(int argc, char *argv[])
         mainWindow.offerRecovery();
     }
 
+    const QString autoShot = qEnvironmentVariable("STRUCTURA_AUTOSHOT");
+    if (!autoShot.isEmpty()) {
+        QTimer::singleShot(2500, &mainWindow, [&mainWindow, autoShot]() {
+            mainWindow.automatedCapture(autoShot);
+            QCoreApplication::quit();
+        });
+    }
     return app.exec();
 }

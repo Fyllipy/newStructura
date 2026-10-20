@@ -261,6 +261,10 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
     if (extras.shell.coupled && !extras.shell.objects.empty() && result.errors.isEmpty()) {
         const double forceUnit = DesignService::unitFactors(materials).first;
         ShellCouplingService::attach(model, extras.shell, (loadCase.isEmpty() ? defaultCase : loadCase).toStdString(), forceUnit);
+    } else if (extras.shell.tributary && !extras.shell.objects.empty() && result.errors.isEmpty()) {
+        // sem MEF acoplado: quinhoes de carga das chapas apoiadas em barras (cargas distribuidas nas barras)
+        const double forceUnit = DesignService::unitFactors(materials).first;
+        ShellCouplingService::attachTributary(model, extras.shell, (loadCase.isEmpty() ? defaultCase : loadCase).toStdString(), forceUnit);
     }
 
     result.success = result.errors.isEmpty();

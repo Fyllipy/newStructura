@@ -43,6 +43,11 @@ public:
     /// (nulo se nao ha cascas visiveis).
     static std::shared_ptr<const Mapping> attach(SolverBridge::ModelData &model, const Structura::Shell::Model &shell, const std::string &loadCase, double forceUnit);
 
+    /// Quinhoes de carga: sem acoplamento por MEF, as cargas superficiais (pressao, peso proprio, carga de area) das chapas planas apoiadas
+    /// em barras viram cargas distribuidas nas barras do modelo de `loadCase`. Devolve o numero de barras carregadas.
+    static int attachTributary(SolverBridge::ModelData &model, const Structura::Shell::Model &shell, const std::string &loadCase, double forceUnit,
+                               std::vector<std::string> *warnings = nullptr);
+
     /// Resultados das cascas de um caso (ou combinacao) no formato do modulo de cascas, em SI.
     [[nodiscard]] static Structura::Shell::CaseResult caseResult(const Mapping &mapping, const SolverBridge::Result &result, const std::string &name);
 

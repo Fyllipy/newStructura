@@ -230,7 +230,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
     using ClearShellsFn = void (*)();
     using SetShellsFn = int (*)(int, const int *, const int *, const double *, const double *, const double *, const double *,
                                 int, const int *, const int *, const double *,
-                                int, const int *, const int *, const int *, const double *,
+                                int, const int *, const int *, const int *, const double *, const int *,
                                 int, const int *, const double *, const int *, const double *);
     using GetShellResultsFn = int (*)(int, double *, double *);
     auto clearShells = reinterpret_cast<ClearShellsFn>(solverLibrary.resolve("structura_clear_shells"));
@@ -245,7 +245,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         clearShells();
     }
     if (hasShells) {
-        std::vector<int> shellIds, shellNodes4, loadShells, loadKinds, tieSlaves, tieCounts, tieMasters, springNodes, springCompression;
+        std::vector<int> shellIds, shellNodes4, loadShells, loadKinds, tieSlaves, tieCounts, tieMasters, tieMasks, springNodes, springCompression;
         std::vector<double> shellE, shellNu, shellDensity, shellThickness, loadValues, tieWeights, springK, springNormals;
         for (const auto &e : model.shell->elements) {
             shellIds.push_back(e.id);
@@ -265,6 +265,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
             tieCounts.push_back(static_cast<int>(t.masters.size()));
             tieMasters.insert(tieMasters.end(), t.masters.begin(), t.masters.end());
             tieWeights.insert(tieWeights.end(), t.weights.begin(), t.weights.end());
+            tieMasks.push_back(t.dofMask);
         }
         for (const auto &s : model.shell->springs) {
             springNodes.push_back(s.node);
@@ -274,7 +275,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         }
         const int code = setShells(static_cast<int>(shellIds.size()), shellIds.data(), shellNodes4.data(), shellE.data(), shellNu.data(), shellDensity.data(),
                                    shellThickness.data(), static_cast<int>(loadShells.size()), loadShells.data(), loadKinds.data(), loadValues.data(),
-                                   static_cast<int>(tieSlaves.size()), tieSlaves.data(), tieCounts.data(), tieMasters.data(), tieWeights.data(),
+                                   static_cast<int>(tieSlaves.size()), tieSlaves.data(), tieCounts.data(), tieMasters.data(), tieWeights.data(), tieMasks.data(),
                                    static_cast<int>(springNodes.size()), springNodes.data(), springK.data(), springCompression.data(), springNormals.data());
         if (code != 0) {
             throw SolverBridgeError("Dados de cascas invalidos para o solver.");

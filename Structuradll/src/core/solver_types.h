@@ -94,6 +94,7 @@ struct TieData {
     int slaveId = 0;
     std::vector<int> masterIds;
     std::vector<double> weights;
+    int dofMask = 63;   // bits 0..5 = ux uy uz rx ry rz ligados (7 = so translacoes: apoio articulado de casca em barra)
 };
 
 // Mola nodal (apoio elastico); compressionOnly: k[0] = rigidez normal, k[1] = tangencial; normal aponta do apoio para a estrutura.

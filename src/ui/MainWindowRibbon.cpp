@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "ShellDialog.h"
 #include "SvgIcons.h"
 
 #include "viz/postprocessor/PostProcessorRenderer.h"
@@ -487,6 +488,21 @@ void MainWindow::createRibbon()
         const int done = splitBarsAtShellNodes(true);
         showStatusMessage(done > 0 ? tr("%1 corte(s) nas barras. Ctrl+Z desfaz.").arg(done) : tr("Nenhum nó de casca cai sobre o eixo de barras: nada a dividir."), 6000);
     });
+    m_shellMonolithicAction = new QAction(tr("Ligação\nmonolítica"), this);
+    m_shellMonolithicAction->setCheckable(true);
+    m_shellMonolithicAction->setIcon(Structura::UI::svgIcon(QStringLiteral("shell-couple.svg"), QColor(QStringLiteral("#1e232b")), 64));
+    m_shellMonolithicAction->setToolTip(tr("Desligado (padrão): a casca APOIA nas barras (só translações ligadas; a laje transmite reações e quinhões de carga, sem momentos nas vigas). Ligado: translações e rotações compartilhadas (laje monolítica com a viga, que recebe também torção e momento)"));
+    connect(m_shellMonolithicAction, &QAction::toggled, this, [this](bool on) {
+        if (m_extras.shell.monolithic == on) {
+            return;
+        }
+        StateGuard guard(this, on ? tr("Ligação monolítica casca-barra") : tr("Casca apoiada nas barras"));
+        m_extras.shell.monolithic = on;
+        markModified();
+        if (m_shellDialog) {
+            m_shellDialog->setModel(m_extras.shell);
+        }
+    });
     m_shellAction = new QAction(tr("Editor de\ncascas"), this);
     m_shellAction->setIcon(Structura::UI::svgIcon(QStringLiteral("shell.svg"), QColor(QStringLiteral("#1e232b")), 64));
     m_shellAction->setToolTip(tr("Propriedades, modelos paramétricos (tanques, vasos), cargas, apoios, análise por elementos finitos e verificação"));
@@ -509,7 +525,7 @@ void MainWindow::createRibbon()
     };
     makeShellGroup(tr("Desenhar cascas"), {m_shellPolygonAction, m_shellRectangleAction, m_shellDiskAction, m_shellExtrudeAction, m_shellCylinderAction, m_shellRevolveAction});
     makeShellGroup(tr("Casca selecionada"), {m_shellDeleteAction});
-    makeShellGroup(tr("Acoplamento às barras"), {m_shellCoupleAction, m_shellSplitAction});
+    makeShellGroup(tr("Acoplamento às barras"), {m_shellCoupleAction, m_shellMonolithicAction, m_shellSplitAction});
     makeShellGroup(tr("Análise"), {m_shellAction});
     shellLayout->addStretch(1);
     m_ribbon->addTab(shellTab, tr("Cascas"));

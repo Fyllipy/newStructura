@@ -74,6 +74,7 @@ QString ResultsPersistence::fingerprint(const std::vector<const SolverBridge::Mo
             }
             for (const auto &t : model->shell->ties) {
                 put(bytes, t.slave);
+                put(bytes, t.dofMask);
                 for (std::size_t i = 0; i < t.masters.size(); ++i) {
                     put(bytes, t.masters[i]);
                     put(bytes, t.weights[i]);

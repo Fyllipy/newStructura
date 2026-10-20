@@ -212,6 +212,9 @@ void assembleTies(const SolverInput& input, const std::unordered_map<int, int>& 
             masters.push_back(it->second);
         }
         for (int c = 0; c < 6; ++c) {
+            if (((tie.dofMask >> c) & 1) == 0) {
+                continue;
+            }
             const double diagonal = std::abs(base.coeff(6 * slave->second + c, 6 * slave->second + c));
             const double kp = 1.0e7 * (diagonal > 1e-12 * maxDiagonal ? diagonal : maxDiagonal * 1e-6);
             std::vector<std::pair<int, double>> entries;

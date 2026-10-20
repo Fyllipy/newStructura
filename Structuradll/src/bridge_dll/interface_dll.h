@@ -40,7 +40,7 @@ SOLVER_DLL_API int structura_get_modal(int maxModes, int nodeCount, double* omeg
 //  shells: ids, 4 node ids each (counter-clockwise seen from the positive normal), E, nu, density, thickness.
 //  loads: per shell, kind 0 = nodal pressure (4 values, positive along the normal), 1 = global body force (3 values),
 //         2 = temperature (uniform, gradient).
-//  ties: slave node tied to up to 8 master nodes (weights sum to 1) in all 6 DOFs.
+//  ties: slave node tied to up to 8 master nodes (weights sum to 1); tieDofMasks (may be null = all): bits 0..5 = DOFs tied (7 = translations only, a hinged support).
 //  springs: nodal elastic supports; compressionOnly != 0: k6[0] normal, k6[1] tangential, normal (3 values) from support to structure.
 SOLVER_DLL_API void structura_clear_shells();
 SOLVER_DLL_API int structura_set_shells(
@@ -60,6 +60,7 @@ SOLVER_DLL_API int structura_set_shells(
     const int* tieMasterCounts,
     const int* tieMasterIds,
     const double* tieWeights,
+    const int* tieDofMasks,
     int springCount,
     const int* springNodeIds,
     const double* springK6,

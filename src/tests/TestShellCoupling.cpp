@@ -5,6 +5,7 @@
 #include "app/services/ShellCouplingService.h"
 #include "shell/ShellMesh.h"
 #include "shell/ShellModel.h"
+#include "shell/ShellTributary.h"
 
 #include <cmath>
 #include <map>
@@ -150,7 +151,7 @@ private slots:
         for (const auto &r : both.shellNodeResults) {
             reaction += r.reactions[2];
         }
-        QVERIFY(std::abs(reaction - P) / P < 1e-6);
+        QVERIFY2(std::abs(reaction - P) / P < 1e-4, qPrintable(QString::number(reaction)));   // ligacoes por penalidade: erro ~1e-6
         const auto result = ShellCouplingService::caseResult(*mapping, both, "Q");
         QCOMPARE(result.displacement.size(), mapping->mesh.nodes.size());
         QCOMPARE(result.elements.size(), mapping->mesh.quads.size());
@@ -171,6 +172,7 @@ private slots:
         pressure.v = {-q, 0, 0, 0};   // contra a normal (+z): para baixo
         shell.loads = {pressure};
         shell.coupled = true;
+        shell.monolithic = true;   // pilar em um unico ponto: precisa de continuidade de rotacao (articulado seria mecanismo)
         const auto mapping = ShellCouplingService::attach(model, shell, "Q", 1.0);
         QVERIFY(mapping != nullptr);
         QCOMPARE(mapping->mergedNodes, 0);
@@ -233,6 +235,7 @@ private slots:
         clamp.fixed = {{1, 1, 1, 1, 1, 1}};
         shell.supports = {clamp};
         shell.coupled = true;
+        shell.monolithic = true;   // acao composta exige continuidade de rotacao
         SolverBridge::NodalLoadData load;
         load.nodeId = n + 1;
         load.values = {{0, 0, -P, 0, 0, 0}};
@@ -298,6 +301,33 @@ private slots:
         }
         const double triangular = q * a * a * a / 24.0;   // viga carregada por quinhao triangular (pico q a / 2)
         QVERIFY2(midMoment > 0.5 * triangular && midMoment < 1.2 * triangular, qPrintable(QString::number(midMoment) + " vs " + QString::number(triangular)));
+        // laje apoiada: nenhum momento concentrado entra nas vigas nos nos (equilibrio de momentos de cada no da viga, sem carga externa)
+        {
+            std::map<int, std::vector<std::pair<const SolverBridge::MemberData *, const SolverBridge::MemberResult *>>> byNode;
+            for (std::size_t i = 0; i < model.members.size(); ++i) {
+                byNode[model.members[i].nodeI].push_back({&model.members[i], &r.memberResults[i]});
+                byNode[model.members[i].nodeJ].push_back({&model.members[i], &r.memberResults[i]});
+            }
+            double worst = 0.0, scale = 1.0;
+            for (const auto &[nodeId, list] : byNode) {
+                if (list.size() != 2) {
+                    continue;   // so nos intermediarios de uma mesma viga reta
+                }
+                const auto &a = list[0], &b = list[1];
+                // barras colineares ao longo de x ou de y: eixos locais iguais; soma dos momentos de extremidade = 0
+                const bool aEnd = a.first->nodeJ == nodeId, bEnd = b.first->nodeJ == nodeId;
+                if (aEnd == bEnd) {
+                    continue;
+                }
+                for (const int k : {3, 4, 5}) {
+                    const double ma = a.second->localForces[static_cast<std::size_t>(aEnd ? k + 6 : k)];
+                    const double mb = b.second->localForces[static_cast<std::size_t>(bEnd ? k + 6 : k)];
+                    worst = std::max(worst, std::abs(ma + mb));
+                    scale = std::max(scale, std::abs(ma) + std::abs(mb));
+                }
+            }
+            QVERIFY2(worst < 1e-3 * scale, qPrintable(QString::number(worst) + " vs " + QString::number(scale)));
+        }
         // equilibrio: reacoes nos cantos = carga total
         double reaction = 0.0;
         for (const auto &nr : r.nodeResults) {
@@ -306,6 +336,70 @@ private slots:
         QVERIFY(std::abs(reaction - q * a * a) / (q * a * a) < 1e-6);
         // forca cortante total absorvida pelas vigas = reacoes (a carga passa pela viga): soma das forcas verticais nas barras que chegam aos cantos
         qWarning("momento maximo nas vigas %g (quinhao triangular %g)", midMoment, triangular);
+    }
+
+    void tributaryLoadsFollowTheEnvelopeAndGiveParabolicDiagrams()
+    {
+        // laje 6 x 6 m sobre 4 vigas (cada uma dividida em 6 barras de 1 m): quinhoes triangulares, pico p a / 2
+        const double a = 6.0, q = 5000.0;
+        const int n = 6;
+        SolverBridge::ModelData model = baseModel();
+        model.sections[0].area = 4.9e-3;
+        model.sections[0].iy = model.sections[0].iz = 1.6e-4;
+        int nextId = 1;
+        std::map<std::pair<int, int>, int> ids;
+        auto at = [&](int i, int j) {
+            const auto key = std::make_pair(i, j);
+            if (!ids.count(key)) {
+                const bool corner = (i == 0 || i == n) && (j == 0 || j == n);
+                ids[key] = nextId;
+                SolverBridge::NodeData nd = node(nextId++, a * i / n, a * j / n, 0.0);
+                if (corner) {
+                    nd.restraints = {{1, 1, 1, 0, 0, 0}};
+                }
+                model.nodes.push_back(nd);
+            }
+            return ids[key];
+        };
+        int memberId = 1;
+        for (int k = 0; k < n; ++k) {
+            model.members.push_back(member(memberId++, at(k, 0), at(k + 1, 0)));
+            model.members.push_back(member(memberId++, at(k, n), at(k + 1, n)));
+            model.members.push_back(member(memberId++, at(0, k), at(0, k + 1)));
+            model.members.push_back(member(memberId++, at(n, k), at(n, k + 1)));
+        }
+        Shell::Model shell;
+        shell.objects = {plate(1, {{0, 0, 0}, {a, 0, 0}, {a, a, 0}, {0, a, 0}}, 0.12, 0.5)};
+        Shell::Load pressure;
+        pressure.caseName = "Q";
+        pressure.type = Shell::Load::Pressure;
+        pressure.v = {-q, 0, 0, 0};
+        shell.loads = {pressure};
+        QCOMPARE(ShellCouplingService::attachTributary(model, shell, "Q", 1.0), 4 * n);
+        // a carga total transferida = p x area
+        double total = 0.0;
+        for (const auto &l : model.memberLoads) {
+            total += l.qz * 1.0;   // barras de 1 m
+        }
+        QVERIFY2(std::abs(total + q * a * a) / (q * a * a) < 0.01, qPrintable(QString::number(total)));
+        const auto r = SolverBridge(solverLibrary()).solve(model);
+        // a viga de borda y = 0 (membros 1, 5, 9, ...): momento no meio = q_pico L^2 / 12 com q_pico = p a / 2
+        const double expected = (q * a / 2.0) * a * a / 12.0;
+        const double mid = r.memberResults[static_cast<std::size_t>(4 * (n / 2 - 1))].localForces[11];
+        QVERIFY2(std::abs(std::abs(mid) - expected) / expected < 0.06, qPrintable(QString::number(mid) + " vs " + QString::number(expected)));
+        // momento nulo nos apoios e simetria
+        QVERIFY(std::abs(r.memberResults[0].localForces[5]) < 1e-6 * expected);
+        // retangulo 4 x 8: nas vigas longas o quinhao e trapezoidal (plateau = p b / 2 com b = 4)
+        Shell::Object rect = plate(1, {{0, 0, 0}, {8, 0, 0}, {8, 4, 0}, {0, 4, 0}}, 0.12, 0.5);
+        std::vector<Shell::TributaryBar> bars = {{1, {0, 0, 0}, {8, 0, 0}}, {2, {8, 4, 0}, {0, 4, 0}}, {3, {0, 0, 0}, {0, 4, 0}}, {4, {8, 0, 0}, {8, 4, 0}}};
+        const auto loads = Shell::tributaryLoads(rect, {0, 0, -q}, bars, 1e-3);
+        QCOMPARE(static_cast<int>(loads.size()), 4);
+        double sumLong = 0.0, sumShort = 0.0;
+        for (const auto &l : loads) {
+            (l.barId <= 2 ? sumLong : sumShort) += -l.q[2] * (l.barId <= 2 ? 8.0 : 4.0);
+        }
+        QVERIFY(std::abs(sumLong + sumShort - q * 32.0) / (q * 32.0) < 0.01);
+        QVERIFY(std::abs(sumLong - 2.0 * (q * 2.0 * (8.0 + 4.0) / 2.0)) / sumLong < 0.01);   // 2 trapezios: p b/2 x (L + L - b)/2
     }
 
     void plateBucklingUsesTheShellGeometricStiffness()

@@ -454,7 +454,11 @@ bool DatModelIoService::load(const QString &filePath,
                 }
                 return nullptr;
             };
-            if (key == QLatin1String("COUPLED") && parts.size() >= 2) {
+            if (key == QLatin1String("TRIBUTARY") && parts.size() >= 2) {
+                shellTmp.tributary = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("MONOLITHIC") && parts.size() >= 2) {
+                shellTmp.monolithic = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("COUPLED") && parts.size() >= 2) {
                 shellTmp.coupled = toInt(parts[1], &ok) != 0;
             } else if (key == QLatin1String("MAT") && parts.size() >= 10) {
                 Structura::Shell::Material m;
@@ -1465,6 +1469,12 @@ bool DatModelIoService::save(const QString &filePath,
         stream << "# MAT idx nome concreto E nu pesoEsp alfa fy fu | OBJ id nome tipo material malha visivel | PARAM id chave valor | POLY id x y z\n";
         if (sm.coupled) {
             stream << "COUPLED 1\n";
+        }
+        if (sm.monolithic) {
+            stream << "MONOLITHIC 1\n";
+        }
+        if (!sm.tributary) {
+            stream << "TRIBUTARY 0\n";
         }
         stream << "# LOAD caso objeto tipo v0 v1 v2 v3 | SUPPORT objeto seletor eixo v v2 v3 tol pernas inicio limEixo limValor limAbaixo f1..f6 mola so_compressao nx ny nz\n";
         for (std::size_t i = 0; i < sm.materials.size(); ++i) {

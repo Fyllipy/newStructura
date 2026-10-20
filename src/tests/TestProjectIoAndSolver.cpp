@@ -1954,13 +1954,14 @@ private slots:
             return analysis.buildModel(&gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, loadCase);
         };
         shell.coupled = false;
+        shell.tributary = false;   // sem quinhoes: a laje nao carrega as barras
         const auto bare = build(QStringLiteral("SC"));
         QVERIFY(bare.success && !bare.model.shell);
         shell.coupled = true;
         const auto coupled = build(QStringLiteral("SC"));
         QVERIFY2(coupled.success, qPrintable(coupled.errors.join(QLatin1Char(';'))));
         QVERIFY(coupled.model.shell && coupled.model.shell->elements.size() == 8);
-        QVERIFY(coupled.model.shell->nodes.empty());   // todos os nos da laje coincidem com nos de barras
+        QCOMPARE(static_cast<int>(coupled.model.shell->nodes.size()), 15);   // nos da laje, apoiados (so translacoes) nos nos de barras coincidentes
         QCOMPARE(static_cast<int>(coupled.model.shellLoads.size()), 8);
 
         const SolverBridge solver(dll);

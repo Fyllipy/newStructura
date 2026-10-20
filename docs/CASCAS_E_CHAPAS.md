@@ -4,6 +4,15 @@ Módulo de elementos finitos de casca com solver em DLL própria (`Femdll/` → 
 Aba **Cascas → Cascas e chapas** do programa.
 
 
+## 0.0 Chapas apoiadas em barras: quinhões de carga (padrão)
+
+Sem **Acoplar às barras**, as cargas superficiais (pressão, peso próprio, carga de área) das **chapas planas** desenhadas sobre barras chegam às barras por **quinhões**: cada ponto da chapa
+descarrega na aresta apoiada (com barra) mais próxima (envoltoria; em retângulos resultam os triângulos e trapézios a 45°). A carga de cada barra é uma carga distribuída (média do quinhão no trecho que
+ela cobre), de modo que os diagramas das barras são **parabólicos**. Divida as vigas de borda (**Dividir barras nos nós**) para que o triângulo/trapézio seja representado por mais trechos.
+Arestas sem barra não apoiam (a carga vai às arestas apoiadas). A carga total transferida é *p × área* (testado, 1 %). O **MEF acoplado** continua disponível (e distribui a carga pela rigidez real,
+com reações nodais oscilantes e diagramas poligonais).
+Para ver o modelo na interface sem usar o mouse: `STRUCTURA_AUTOSHOT=<pasta> Structura.exe modelo.dat` analisa o modelo, exibe os diagramas e grava capturas.
+
 ## 0. Modelagem direta no 3D (aba Cascas)
 
 As cascas são desenhadas na vista 3D com as mesmas ferramentas de lançamento das barras (plano de construção ativo XY/XZ/YZ e nível, snap de malha e de pontos, caixa de coordenadas com Tab,
@@ -38,6 +47,7 @@ Botão **Cascas → Acoplar às barras** (grava-se no `.dat`: `COUPLED 1`). Com 
 esforços de interação com as cascas.
 
 * **Nós coincidentes** (1·10⁻⁵ m) de barra e malha de casca são o mesmo nó (continuidade total, 6 graus de liberdade).
+* **Casca apoiada x monolítica:** por padrão a casca **apoia** nas barras: cada nó da malha sobre uma barra é um nó próprio da casca ligado ao da barra só nas **translações** (rotações livres). A laje transmite às vigas as reações — os quinhões de carga, como forças nodais — e não momentos (diagramas das vigas sem saltos de momento concentrado). O botão **Ligação monolítica** compartilha também as rotações (a viga passa a receber torção e momento da laje; necessário para ação composta e para laje apoiada em um único ponto, que de outro modo seria mecanismo).
 * **Nó de barra sobre uma casca** (borda ou face de elemento, afastamento até 1 mm) fica **ligado** ao elemento por interpolação.
 * **Barra ao longo de uma borda ou linha de apoio da casca:** os nós da malha que caem sobre o eixo da barra só se conectam a ela se a barra for dividida neles. O botão **Dividir barras nos nós**
   faz isso (com desfazer) e a análise oferece fazê-lo quando detecta nós pendentes. Dica: escolha a malha da casca de modo que os nós caiam nos pontos desejados das vigas.

@@ -35,7 +35,7 @@ extern "C" void structura_clear_shells() {
 extern "C" int structura_set_shells(
     int shellCount, const int* shellIds, const int* shellNodeIds4, const double* shellE, const double* shellNu, const double* shellDensity,
     const double* shellThickness, int loadCount, const int* loadShellIds, const int* loadKinds, const double* loadValues4, int tieCount,
-    const int* tieSlaveIds, const int* tieMasterCounts, const int* tieMasterIds, const double* tieWeights, int springCount,
+    const int* tieSlaveIds, const int* tieMasterCounts, const int* tieMasterIds, const double* tieWeights, const int* tieDofMasks, int springCount,
     const int* springNodeIds, const double* springK6, const int* springCompressionOnly, const double* springNormals3) {
     structura_clear_shells();
     if (shellCount < 0 || loadCount < 0 || tieCount < 0 || springCount < 0) {
@@ -71,6 +71,7 @@ extern "C" int structura_set_shells(
             t.weights.push_back(tieWeights[cursor + k]);
         }
         cursor += tieMasterCounts[i];
+        t.dofMask = tieDofMasks != nullptr ? tieDofMasks[i] : 63;
         g_ties.push_back(std::move(t));
     }
     for (int i = 0; i < springCount; ++i) {

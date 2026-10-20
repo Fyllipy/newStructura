@@ -487,8 +487,8 @@ bool MainWindow::executeAnalysis(QString *reportOut)
     }
     rebuildResultViews();
 
-    if (!m_extras.shell.coupled && !m_extras.shell.objects.empty()) {
-        statusBar()->showMessage(tr("Analise concluida. Atenção: as cascas NÃO estão acopladas às barras (suas cargas não chegam às vigas): ative \"Acoplar às barras\"."), 12000);
+    if (!m_extras.shell.coupled && !m_extras.shell.objects.empty() && !m_extras.shell.tributary) {
+        statusBar()->showMessage(tr("Analise concluida. Atenção: as cascas NÃO estão acopladas às barras e os quinhões estão desligados (suas cargas não chegam às vigas)."), 12000);
     } else {
         statusBar()->showMessage(tr("Analise concluida com sucesso."), 5000);
     }
