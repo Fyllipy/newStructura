@@ -54,7 +54,7 @@ void MainWindow::syncAreaPanelVisuals()
     }
     std::vector<Structura::Visualization::AreaPanelRenderer::Panel> panels;
     for (const auto &record : m_extras.areaLoads) {
-        if (!m_extras.activeLoadCase.isEmpty() && record.loadCase != m_extras.activeLoadCase) {
+        if (!loadCaseShown(record.loadCase)) {
             continue;
         }
         Structura::Visualization::AreaPanelRenderer::Panel panel;
@@ -82,6 +82,15 @@ void MainWindow::syncLoadVisuals()
     }
     syncAreaPanelVisuals();
 
+    // a carga destacada pode ter deixado de existir (desfazer, exclusao, troca de caso): descarta o destaque
+    if (const auto selected = m_sceneController->highlightedLoad(); selected.valid()) {
+        const bool exists = (selected.kind == 0 && selected.index < m_nodalLoads.size()) || (selected.kind == 1 && selected.index < m_memberLoads.size())
+            || (selected.kind == 2 && selected.index < m_extras.memberMoments.size()) || selected.kind == 3;
+        if (!exists) {
+            m_sceneController->setHighlightedLoad({});
+        }
+    }
+
     Structura::Viz::LoadSupportVisualMapper::LoadContext context;
     context.nodalLoads = &m_nodalLoads;
     context.memberLoads = &m_memberLoads;
@@ -91,6 +100,8 @@ void MainWindow::syncLoadVisuals()
     context.placements = &m_extras.placements;
     context.loadCases = &m_extras.loadCases;
     context.activeCase = m_extras.activeLoadCase;
+    context.filterVisibleCases = m_filterVisibleLoadCases;
+    context.visibleCases = m_visibleLoadCases;
 
     // Elementos esmaecidos/ocultos (isolar nivel, ocultar) nao mostram cargas nem apoios.
     auto nodalVisuals = Structura::Viz::LoadSupportVisualMapper::mapNodalLoadVisuals(m_sceneController, context);
@@ -133,19 +144,20 @@ void MainWindow::syncSupportVisuals()
 
 void MainWindow::updateLoadActionsEnabled()
 {
-    const bool hasSelection = (m_selectionModel != nullptr);
-    const bool hasNodeSelection = hasSelection && !m_selectionModel->selectedNodes().isEmpty();
-    const bool hasBarSelection = hasSelection && !m_selectionModel->selectedBars().isEmpty();
-    if (m_applyNodalLoadAction) {
-        m_applyNodalLoadAction->setEnabled(hasNodeSelection);
-    }
-    if (m_applyDistributedLoadAction) {
-        m_applyDistributedLoadAction->setEnabled(hasBarSelection);
+    // sem selecao previa o comando escolhe os alvos na viewport (Enter ou botao direito concluem), por isso fica sempre habilitado
+    for (QAction *action : {m_applyNodalLoadAction, m_applyDistributedLoadAction, m_applyMemberMomentAction}) {
+        if (action) {
+            action->setEnabled(true);
+        }
     }
 }
 
 void MainWindow::onApplyNodalLoad()
 {
+    if (m_selectionModel && m_selectionModel->selectedNodes().isEmpty()) {
+        beginLoadPick(LoadPick::Nodal);
+        return;
+    }
     StateGuard guard(this, tr("Carga nodal"));
     if (!m_selectionModel || !m_sceneController) {
         return;
@@ -238,6 +250,10 @@ void MainWindow::onApplyNodalLoad()
 
 void MainWindow::onApplyDistributedLoad()
 {
+    if (m_selectionModel && m_selectionModel->selectedBars().isEmpty()) {
+        beginLoadPick(LoadPick::Distributed);
+        return;
+    }
     StateGuard guard(this, tr("Carga distribuída"));
     if (!m_selectionModel || !m_sceneController) {
         return;
@@ -347,6 +363,10 @@ QString MainWindow::dialogLoadCase() const
 
 void MainWindow::onApplyMemberMoment()
 {
+    if (m_selectionModel && m_selectionModel->selectedBars().isEmpty()) {
+        beginLoadPick(LoadPick::Moment);
+        return;
+    }
     StateGuard guard(this, tr("Momento distribuído"));
     if (!m_selectionModel || !m_sceneController) {
         return;

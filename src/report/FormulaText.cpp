@@ -535,6 +535,31 @@ bool looksLikeProse(const std::string &inner)
 
 } // namespace
 
+std::vector<std::string> identifiersIn(const std::string &expression)
+{
+    static const std::set<std::string> ignored = {"sqrt", "min", "max", "x", "e", "de", "da", "do", "em", "na", "no", "ou", "os", "as", "para", "com", "sem", "que", "se", "por"};
+    std::vector<std::string> out;
+    for (const Token &t : tokenize(expression)) {
+        if (t.kind != Token::Kind::Ident || ignored.count(t.text) || unitNames().count(t.text)) {
+            continue;
+        }
+        if (std::find(out.begin(), out.end(), t.text) == out.end()) {
+            out.push_back(t.text);
+        }
+    }
+    return out;
+}
+
+std::vector<std::string> splitTopLevelText(const std::string &text, const std::string &separator)
+{
+    return splitTopLevel(text, separator);
+}
+
+std::string trimText(const std::string &text)
+{
+    return trim(text);
+}
+
 std::string expressionToLatex(const std::string &expression)
 {
     ExprParser parser(tokenize(expression));
@@ -659,14 +684,42 @@ std::vector<FormulaPiece> convertCalculationLine(const std::string &line)
                 continue;
             }
         }
-        // segmentos separados por ", " cujo todos tem '='
-        std::vector<std::string> segments = splitTopLevel(clause, ", ");
-        const bool allAssign = std::all_of(segments.begin(), segments.end(), [](const std::string &s) { return s.find('=') != std::string::npos || s.find("<=") != std::string::npos; });
-        if (!allAssign) {
-            segments = {clause};
+        // segmentos separados por ", " e " -> ": cada um e equacao (tem '=' e o lado esquerdo nao e prosa) ou texto
+        std::vector<std::string> segments;
+        for (const std::string &commaPart : splitTopLevel(clause, ", ")) {
+            for (const std::string &arrowPart : splitTopLevel(commaPart, " -> ")) {
+                segments.push_back(arrowPart);
+            }
         }
         for (std::string segment : segments) {
             segment = trim(segment);
+            if (segment.empty()) {
+                continue;
+            }
+            {
+                const bool relation = segment.find('=') != std::string::npos;
+                bool proseLhs = false;
+                if (relation) {
+                    std::string lhs = segment.substr(0, segment.find_first_of("=<>"));
+                    std::string stripped;
+                    int depth = 0;
+                    for (const char ch : lhs) {
+                        if (ch == '(') {
+                            ++depth;
+                        } else if (ch == ')') {
+                            --depth;
+                        } else if (depth == 0) {
+                            stripped.push_back(ch);
+                        }
+                    }
+                    static const std::regex proseWords(R"(\b(os|as|de|da|do|dos|das|com|para|todos|todas|sem|ou|por|nao|que|em|quando|se|e|limites|limite)\b)");
+                    proseLhs = std::regex_search(stripped, proseWords);
+                }
+                if (!relation || proseLhs) {
+                    pieces.push_back({FormulaPiece::Kind::Text, restoreAccents(decimalComma(segment))});
+                    continue;
+                }
+            }
             // nota final entre parenteses
             std::string note;
             if (!segment.empty() && segment.back() == ')') {

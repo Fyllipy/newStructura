@@ -1309,8 +1309,9 @@ ShearData shear(const DesignSection &s, const SteelGrade &steel, Axis direction,
         per = 0.905 * E * kv * t * t * t / h / o.gammaFlexure;
     }
     v.VRd = webs * per;
-    v.lines.push_back(fmt("Cortante (9.8.3): h/t = %.1f, kv = %.1f, limites %.1f e %.1f -> V_Rd por alma = %s x %.2f alma(s) = %s", lambda, kv, l1, l2, kn(per).c_str(), webs,
-                          kn(v.VRd).c_str()));
+    v.lines.push_back(fmt("Cortante (9.8.3): h = %.1f mm, t = %.2f mm, h/t = %.1f, kv = %.1f", h, t, lambda, kv));
+    v.lines.push_back(fmt("Limites de esbeltez: lambda_p = 1,08 sqrt(E kv / fy) = %.1f, lambda_r = 1,40 sqrt(E kv / fy) = %.1f", l1, l2));
+    v.lines.push_back(fmt("V_Rd,alma = %s (resistencia de uma alma); V_Rd = V_Rd,alma x %.2f = %s", kn(per).c_str(), webs, kn(v.VRd).c_str()));
     return v;
 }
 

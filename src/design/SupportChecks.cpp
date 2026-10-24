@@ -23,6 +23,19 @@ std::vector<Check> checkSupportMember(const SupportInput &in)
     const double ft = in.tension, fc = in.compression;
     const double fmax = std::max(ft, fc);
 
+    // instabilidade da alma por compressao (5.7.6): par de forcas opostas em ambas as mesas da mesma secao
+    if (in.pairForce > 0.0) {
+        const double h = std::max(in.d - 2.0 * k, 1.0);   // entre as faces internas das mesas menos os raios de concordancia
+        double rd = 24.0 * in.tw * in.tw * in.tw * std::sqrt(kModulusE * in.fy) / (g * h);
+        Check c = ratioN("Apoio: instabilidade da alma por compressao (par de forcas)", "NBR 8800:2024, 5.7.6", in.pairForce, in.atMemberEnd ? 0.5 * rd : rd);
+        c.lines.push_back(fmtn("h = d - 2k = %.1f - 2 x %.1f = %.1f mm; F_Rd = 24 tw^3 sqrt(E fy) / (gama_a1 h) = 24 x %.1f^3 x sqrt(%.0f x %.0f) / (%.2f x %.1f) = %.1f kN", in.d, k, h, in.tw, kModulusE, in.fy, g, h, rd / 1e3));
+        if (in.atMemberEnd) {
+            c.lines.push_back(fmtn("Par de forcas a menos de d/2 da extremidade da barra: F_Rd reduzida a metade (5.7.6.3) = %.1f kN.", 0.5 * rd / 1e3));
+        }
+        c.lines.push_back("Se a forca solicitante superar a resistente: enrijecedor transversal em um dos lados da alma (5.7.9) ou chapas de reforco de alma (5.7.7.2), 5.7.6.4.");
+        out.push_back(std::move(c));
+    }
+
     if (in.face == SupportInput::Flange) {
         // flexao local da mesa (so para tracao; dispensada se a carga atua em menos de 0,15 bf transversalmente)
         {

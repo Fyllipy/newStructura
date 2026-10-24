@@ -37,3 +37,12 @@ QIcon svgIcon(const QString &name, const QColor &color, int size, const QColor &
 }
 
 } // namespace Structura::UI
+
+namespace Structura::UI {
+
+QIcon actionIcon(const QString &name)
+{
+    return svgIcon(name, QColor(QStringLiteral("#1e232b")), 64);
+}
+
+} // namespace Structura::UI

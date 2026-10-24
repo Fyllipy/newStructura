@@ -10,10 +10,7 @@
 #include <array>
 #include <QColor>
 #include <QPair>
-#include <QPair>
 #include "app/SceneDataTypes.h"
-#include <QColor>
-#include <QPair>
 #include "SelectionFilterDialog.h"
 #include "viz/structure/ElementAppearance.h"
 #include <functional>
@@ -23,6 +20,7 @@
 #include "app/GeometrySnapshot.h"
 #include "app/services/ReportService.h"
 #include "app/services/ModelCheckService.h"
+#include "app/services/ConnectionService.h"
 #include "shell/ShellMesh.h"
 #include "shell/ShellResults.h"
 #include <optional>
@@ -51,6 +49,7 @@ class QCheckBox;
 class QSlider;
 class QGridLayout;
 class QLabel;
+class QFrame;
 class QComboBox;
 class MaterialDialog;
 class BarPropertiesDialog;
@@ -98,6 +97,7 @@ private slots:
     void onApplyNodalLoad();
     void onApplyDistributedLoad();
     void onApplyMemberMoment();
+    void onLoadCaseVisibility();
     void onEditLoadCases();
     void onGenerateCombinations();
     void onBucklingAnalysis();
@@ -134,6 +134,8 @@ private slots:
     void ensureDefaultMaterial();
     void syncConnectionVisuals();
     QString friendlySolverMessage(const QString &raw) const;
+    /// Aviso do solver (texto da DLL, em ingles) em portugues.
+    QString friendlySolverWarning(const QString &raw) const;
     void reportActionableError(const QString &title, const QString &raw);
     bool isModelDirty() const;
     void markModified();
@@ -170,12 +172,14 @@ private slots:
     /// Grava na ligacao as barras que chegam ao seu no (`nmCount`, `nm<i>` = id da barra, `ne<i>` = no na extremidade j): base do equilibrio do no
     /// (cortante do pilar e esforco normal no painel de alma).
     void storeNodeMembers(Structura::App::ProjectData::NodeConnection &connection) const;
+    void onCopyConnections();
     void refreshConnectionNodeMembers();
     QString designCacheKey() const;
     QVector<QUuid> expandWithGroups(const QVector<QUuid> &ids) const;
     void onCreateGroup();
     void onToggleGroupsPanel();
     void onCheckModel();
+    void onStructuralIntegrity();
     void onNewFromTemplate();
     QVector<Structura::App::Services::ModelCheckService::Issue> checkModel();
     void focusCheckTarget(int kind, int id);
@@ -197,6 +201,8 @@ private slots:
     void onNodeCoordinateEdited(const QVector<QUuid> &ids, char axis, double value);
     void onBarMaterialEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &materialId);
     void onBarSectionEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &sectionId);
+    void onBarCompositeGapEdited(const QVector<QUuid> &ids, double gapMm);
+    void onBarCompositeEdited(const QVector<QUuid> &ids, double spacingMm, bool welded);
     void onBarPlacementEdited(const QVector<QUuid> &ids,
                               const Structura::App::ProjectData::MemberPlacementPatch &patch);
     void onTogglePlacementPanel();
@@ -309,6 +315,7 @@ private:
     void flipSelectedShell();
     void showShellContextMenu(const QPoint &globalPos);
 
+    void createActions();
     void createRibbon();
     QWidget *createQuickAccessBar();
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -372,6 +379,8 @@ private:
     void onSplitBars();
     /// Divide as barras nos nos das cascas que caem sobre o seu eixo (pre-requisito da continuidade barra-casca). Devolve o numero de cortes.
     int splitBarsAtShellNodes(bool apply = true);
+    /// Divide as barras indicadas nos nos ja existentes sobre o seu eixo (barra criada passando por um no intermediario). Devolve o numero de barras divididas.
+    int splitBarsAtIntermediateNodes(const QVector<QUuid> &barIds);
     void onShellCoupleToggled(bool on);
     bool coupledShellResults(const QStringList &cases, bool runAnalysis, Structura::Shell::Results &out, std::string &error);
     QAction *m_shellCoupleAction {nullptr};
@@ -385,6 +394,22 @@ private:
     void deleteSavedView(int index);
     void onMeasure();
     bool applyMeasure(const std::array<double, 3> &from, const std::array<double, 3> &to);
+    /// Extremidade de barra que chega a um no (direcao saindo do no) - base das ligacoes viga-apoio.
+    struct ConnectionEndRef {
+        int memberId {0};
+        bool atEnd {false};
+        QUuid barId;
+        double dx {0.0}, dy {0.0}, dz {0.0};
+    };
+    std::vector<ConnectionEndRef> connectionBarsAtNode(int nodeExternalId) const;
+    Structura::App::ProjectData::SectionInfo connectionSectionInfo(const QUuid &sectionId) const;
+    std::optional<std::array<std::array<double, 3>, 3>> connectionBarAxes(const Structura::App::SceneBarInfo &bar) const;
+    Structura::App::Services::ConnectionService::BeamInfo connectionBeamInfo(const Structura::App::ProjectData::SectionInfo &section, int memberId) const;
+    /// Grava na ligacao a barra de apoio escolhida: face (mesa ou alma), dimensoes do perfil e o numero da barra (supMember = 0 remove o apoio).
+    void attachConnectionToSupport(Structura::App::ProjectData::NodeConnection &connection, const Structura::App::SceneBarInfo &beamBar, int nodeId,
+                                   int supportMemberId) const;
+    /// Ligacao de no de trelica (usesBraces) ou tubular para o banzo `bar` no no `nodeId`: identifica as diagonais que chegam ao no; `announce` avisa quando nao ha nenhuma.
+    Structura::App::ProjectData::NodeConnection makeBracedConnection(int catalogType, const Structura::App::SceneBarInfo &bar, int nodeId, bool announce);
     struct SplitPlan {
         std::size_t barIndex {0};
         std::vector<std::pair<double, QUuid>> cuts;   ///< (fracao do comprimento, no)
@@ -411,6 +436,7 @@ private:
     bool isBarHidden(const QUuid &id) const;
     void applyAppearance();
     void updateLegend(const QString &title, const QVector<QPair<QString, QColor>> &entries);
+    void positionLegend();
     void onSelectionFilter();
     void onOpenProfileManager();
     void ensureProfileManager();
@@ -476,6 +502,7 @@ private:
     QAction *m_insertBarAction;
     QAction *m_insertNodeAction {nullptr};
     QAction *m_splitBarsAction {nullptr};
+    QAction *m_copyConnectionsAction {nullptr};
     QAction *m_generateTrussAction {nullptr};
     QAction *m_compareAction {nullptr};
     QAction *m_measureAction {nullptr};
@@ -505,7 +532,8 @@ private:
     QWidget *m_toolColumn {nullptr};
     QToolButton *m_propertiesToolButton {nullptr};
     QToolButton *m_showBarLCSToolButton {nullptr};
-    QWidget *m_propertiesContainer {nullptr};
+    QFrame *m_propertiesContainer {nullptr};
+    bool m_adjustingProperties {false};
     PropertiesPanel *m_propertiesPanel {nullptr};
     QHBoxLayout *m_contentLayout {nullptr};
 
@@ -519,10 +547,12 @@ private:
     QAction *m_verifyDesignAction {nullptr};
     QAction *m_createGroupAction {nullptr};
     QAction *m_checkModelAction {nullptr};
+    QAction *m_integrityAction {nullptr};
     QAction *m_templateAction {nullptr};
     QAction *m_reportAction {nullptr};
     QString m_projectName;
     QAction *m_areaLoadAction {nullptr};
+    QAction *m_loadCaseVisibilityAction {nullptr};
     QAction *m_deleteLoadsAction {nullptr};
     QAction *m_windLoadAction {nullptr};
     QAction *m_groupsPanelAction {nullptr};
@@ -544,6 +574,9 @@ private:
         bool isCombination {false};
         Structura::App::SolverBridge::Result result;
         std::vector<std::pair<QString, double>> terms;
+        /// Estrutura nt da combinacao (Anexo C.2.1; so na analise de 1a ordem com B1/B2): nos dos andares impedidos de se deslocar horizontalmente.
+        Structura::App::SolverBridge::Result resultNt;
+        bool hasNt {false};
     };
     QMap<QString, CaseRun> m_caseRuns;
     QString m_analysisFingerprint;   ///< modelo analisado em m_caseRuns (gravado junto dos resultados)
@@ -587,6 +620,21 @@ private:
     QVector<NodalLoad> m_nodalLoads;
     QVector<MemberLoad> m_memberLoads;
     Structura::App::ProjectData::ProjectExtras m_extras;
+    // Casos de carregamento exibidos (janela "Casos visiveis"): so a exibicao muda, a analise usa todos
+    bool m_filterVisibleLoadCases {false};
+    QSet<QString> m_visibleLoadCases;
+    bool loadCaseShown(const QString &loadCase) const;
+    // Comando de carga sem selecao previa: os alvos sao escolhidos na viewport e o comando conclui com Enter ou botao direito
+    enum class LoadPick { None, Nodal, Distributed, Moment };
+    LoadPick m_loadPick {LoadPick::None};
+    void beginLoadPick(LoadPick kind);
+    void cancelLoadPick();
+    void finishLoadPick();
+    bool handleLoadPickKey(class QKeyEvent *event);
+    // Selecao individual de cargas na viewport (destaque + exclusao)
+    bool trySelectLoadAt(const QPoint &widgetPos);
+    void clearSelectedLoad();
+    bool deleteSelectedLoad();
     NodalLoadPreset m_lastNodalPreset;
     DistributedLoadPreset m_lastDistributedPreset;
 

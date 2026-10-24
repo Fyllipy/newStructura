@@ -23,6 +23,7 @@ struct SupportInput {
     double lengthAlong {0.0};      ///< comprimento de atuação ao longo do perfil de apoio, n (mm)
     double lengthTransverse {0.0}; ///< dimensão da área carregada transversal ao perfil (mm), p.ex. espessura da chapa mais soldas
     double unbracedLength {0.0};   ///< ℓ: maior comprimento destravado lateralmente na seção da força (mm); 0 = mesas contidas (5.7.5 dispensada)
+    double pairForce {0.0};        ///< par de forcas de compressao opostas nas duas mesas da mesma secao (vigas dos dois lados), valor de cada forca (N): 5.7.6; 0 = nao ha
     double gammaA1 {1.10};
 };
 

@@ -2,6 +2,7 @@
 
 #include <QBrush>
 #include <QCheckBox>
+#include <cmath>
 #include <QColor>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -78,7 +79,16 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     e.lb = spin(0.0, 1000.0, 0.0, 3, 0.5, tr(" m"));
     e.lb->setSpecialValueText(tr("L / trechos"));
     e.braced = new QCheckBox(tr("Mesa comprimida contida continuamente (sem flambagem lateral)"));
-    e.cbOne = new QCheckBox(tr("Adotar Cb = 1,0 (ex.: balanço)"));
+    e.cbOne = new QCheckBox(tr("Adotar Cb = 1,0"));
+    e.cbOne->setToolTip(tr("Balanços com a extremidade livre sem contenção já adotam Cb = 1,0 automaticamente (NBR 8800:2024, 5.4.2.3-b)."));
+    e.oneFlange = new QComboBox;
+    e.oneFlange->addItem(tr("Nenhuma"), 0);
+    e.oneFlange->addItem(tr("Mesa superior (lado +) contida continuamente"), 1);
+    e.oneFlange->addItem(tr("Mesa inferior (lado −) contida continuamente"), 2);
+    e.oneFlange->setToolTip(tr("NBR 8800:2024, 5.4.2.4 (I, U, H, caixão e tubulares retangulares): uma mesa livre para se deslocar lateralmente e a outra com contenção "
+                               "contínua (ex.: terça com telha na mesa superior). O Cb passa a seguir 5.4.2.4 e os momentos que comprimem a mesa contida não sofrem FLT."));
+    e.forceAway = new QCheckBox(tr("Forças transversais orientadas no sentido oposto à mesa livre (ex.: sucção do vento)"));
+    e.forceAway->setToolTip(tr("Desmarcado: forças no sentido da mesa livre (ex.: gravidade com a mesa contida em cima) — 5.4.2.4-a."));
     e.b2 = spin(1.0, 5.0, 1.0, 3, 0.05);
     e.netArea = spin(0.1, 1.0, 1.0, 3, 0.05);
     e.defl = new QSpinBox;
@@ -109,6 +119,82 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     e.openingNeighbourD = spin(0.0, 5000.0, 0.0, 0, 10.0, tr(" mm"));
     e.openingNeighbourD->setSpecialValueText(tr("não há"));
     e.openingSpacing = spin(0.0, 1e6, 0.0, 0, 50.0, tr(" mm"));
+    e.ctMode = new QComboBox;
+    e.ctMode->addItem(tr("Ct = 1,0 e An/Ag informado"), 0);
+    e.ctMode->addItem(tr("5.2.5-c: Ct = 1 − ec/ℓc (parafusos ou soldas longitudinais em parte dos elementos)"), 1);
+    e.ctMode->addItem(tr("5.2.5-b: soldas transversais, Ct = Ac/Ag"), 2);
+    e.ctMode->setToolTip(tr("Coeficiente de redução da área líquida (NBR 8800:2024, 5.2.5). Ct = 1,0 quando a força é transmitida diretamente a todos os elementos da seção."));
+    e.ctEc = spin(0.0, 1e5, 0.0, 1, 5.0, tr(" mm"));
+    e.ctLc = spin(0.0, 1e6, 0.0, 0, 10.0, tr(" mm"));
+    e.ctAc = spin(0.0, 1.0, 0.0, 3, 0.05);
+    e.ctAc->setSpecialValueText(tr("não informado"));
+    e.holeDb = spin(0.0, 100.0, 0.0, 1, 1.0, tr(" mm"));
+    e.holeDb->setSpecialValueText(tr("sem furos (usa An/Ag)"));
+    e.holeDb->setToolTip(tr("Diâmetro dos parafusos da cadeia de ruptura: largura do furo = db + 1,5 mm (furo padrão, 6.3.6) + 2,0 mm (5.2.4.1-a)."));
+    e.holeCount = new QSpinBox;
+    e.holeCount->setRange(0, 200);
+    e.holeT = spin(0.0, 500.0, 0.0, 2, 0.5, tr(" mm"));
+    e.staggerS = spin(0.0, 1e4, 0.0, 0, 5.0, tr(" mm"));
+    e.staggerG = spin(0.0, 1e4, 0.0, 0, 5.0, tr(" mm"));
+    e.staggerLinks = new QSpinBox;
+    e.staggerLinks->setRange(0, 200);
+    e.compositeSpacing = spin(0.0, 1e5, 0.0, 0, 10.0, tr(" mm"));
+    e.compositeSpacing->setSpecialValueText(tr("duas ligações intermediárias (ℓ = L/3)"));
+    e.compositeSpacing->setToolTip(tr("Barras compostas (NBR 8800:2024, 5.3.6): distância ℓ entre as ligações (chapas espaçadoras com parafusos ou soldas) que unem os dois perfis. "
+                                      "Exige ℓ/rmin ≤ 3/4 (L/r)0 e pelo menos duas ligações intermediárias."));
+    e.compositeWelded = new QCheckBox(tr("Ligações intermediárias soldadas ou com parafusos protendidos (5.3.6.3-b)"));
+    e.compositeWelded->setToolTip(tr("Desmarcado: parafusos com aperto normal (5.3.6.3-a, penaliza mais a flambagem)."));
+    e.threadedEnds = new QCheckBox(tr("Barra redonda com extremidades rosqueadas (5.2.7)"));
+    e.threadedEnds->setToolTip(tr("Tração: menor entre o escoamento da seção bruta e a ruptura da parte rosqueada, Abe fu/γa2 com Abe = 0,75 Ab (6.3.2.2 e 6.3.3.1)."));
+    e.webWeldLeg = spin(0.0, 50.0, 0.0, 1, 0.5, tr(" mm"));
+    e.webWeldLeg->setSpecialValueText(tr("não verificar"));
+    e.webWeldLeg->setToolTip(tr("NBR 8800:2024, 5.4.5: perfil soldado, perna do filete mesa–alma (dois lados). Verifica o cisalhamento horizontal da flexão (V Q / I) somado às forças aplicadas diretamente na mesa."));
+    e.webWeldFw = spin(300.0, 700.0, 485.0, 0, 5.0, tr(" MPa"));
+    e.flangeLineLoad = spin(0.0, 1e5, 0.0, 1, 1.0, tr(" N/mm"));
+    e.flangeLineLoad->setToolTip(tr("Força aplicada diretamente na mesa por unidade de comprimento (carga distribuída sobre a mesa superior), transmitida à alma pela solda."));
+    e.coverB = spin(0.0, 2000.0, 0.0, 0, 5.0, tr(" mm"));
+    e.coverB->setSpecialValueText(tr("sem lamela"));
+    e.coverB->setToolTip(tr("NBR 8800:2024, 5.4.4: chapa de reforço sobreposta à(s) mesa(s) com comprimento inferior ao vão. A seção de transição e o prolongamento são verificados; as propriedades da seção da barra "
+                            "são as do perfil sem a lamela, e a lamela entra na tensão da seção de transição."));
+    e.coverT = spin(0.0, 200.0, 0.0, 1, 0.5, tr(" mm"));
+    e.coverStart = spin(0.0, 1e6, 0.0, 0, 50.0, tr(" mm"));
+    e.coverEnd = spin(0.0, 1e6, 0.0, 0, 50.0, tr(" mm"));
+    e.coverFlanges = new QComboBox;
+    e.coverFlanges->addItem(tr("Duas mesas"), 2);
+    e.coverFlanges->addItem(tr("Só a mesa superior"), 1);
+    e.coverWeldLeg = spin(0.0, 50.0, 0.0, 1, 0.5, tr(" mm"));
+    e.coverEndWeld = new QCheckBox(tr("Solda de filete contínua também na extremidade da lamela (5.4.4.2)"));
+    e.coverEndWeld->setChecked(true);
+    e.plasticAnalysis = new QCheckBox(tr("Viga contínua com análise rígido-plástica (4.11)"));
+    e.plasticAnalysis->setToolTip(tr("Verifica o comprimento destravado da mesa comprimida entre rótulas plásticas (4.11.5): Lpd = [0,12 + 0,076 M1/M2] E/fy ry em seções I, ≥ nos casos de simetria exigida. "
+                                     "Exige seção compacta e contenção lateral adequada (4.11.3)."));
+    e.mixType = new QComboBox;
+    e.mixType->addItem(tr("Barra de aço"), 0);
+    e.mixType->addItem(tr("Pilar misto: perfil I/H totalmente revestido"), 1);
+    e.mixType->addItem(tr("Pilar misto: perfil I/H parcialmente revestido"), 2);
+    e.mixType->addItem(tr("Pilar misto: tubular preenchido com concreto"), 3);
+    e.mixType->setToolTip(tr("NBR 8800:2024, Anexo M (método simplificado). O perfil de aço é o da seção da barra; informe o concreto e a armadura abaixo."));
+    e.mixModel = new QComboBox;
+    e.mixModel->addItem(tr("Modelo I (M.5.2): interação de 5.5.1"), 1);
+    e.mixModel->addItem(tr("Modelo II (M.5.3): seções compactas, momentos totais"), 2);
+    e.mixModel->addItem(tr("Modelo III (M.5.4): tubulares preenchidos"), 3);
+    e.mixHc = spin(0.0, 5000.0, 0.0, 0, 10.0, tr(" mm"));
+    e.mixHc->setSpecialValueText(tr("altura do perfil"));
+    e.mixBc = spin(0.0, 5000.0, 0.0, 0, 10.0, tr(" mm"));
+    e.mixBc->setSpecialValueText(tr("largura do perfil"));
+    e.mixFck = spin(20.0, 90.0, 30.0, 0, 5.0, tr(" MPa"));
+    e.mixFsk = spin(250.0, 600.0, 500.0, 0, 50.0, tr(" MPa"));
+    e.mixBarArea = spin(0.0, 5000.0, 0.0, 1, 10.0, tr(" mm²"));
+    e.mixBarArea->setSpecialValueText(tr("sem armadura"));
+    e.mixBarsH = new QSpinBox;
+    e.mixBarsH->setRange(0, 64);
+    e.mixBarsH->setToolTip(tr("Revestidos: barras em cada face superior e inferior (com os cantos). Tubo circular: total de barras na circunferência."));
+    e.mixBarsV = new QSpinBox;
+    e.mixBarsV->setRange(0, 64);
+    e.mixCover = spin(0.0, 500.0, 0.0, 0, 5.0, tr(" mm"));
+    e.mixCover->setToolTip(tr("Distância do centro das barras à face do concreto (revestidos) ou à face interna do tubo (preenchidos)."));
+    e.mixAlphaE = spin(0.5, 1.5, 1.0, 2, 0.1, QString());
+    e.mixAlphaE->setToolTip(tr("αE do agregado (NBR 6118): 1,2 basalto/diabásio; 1,0 granito/gnaisse; 0,9 calcário; 0,7 arenito."));
     e.bearing = spin(0.0, 1000.0, 0.0, 0, 5.0, tr(" mm"));
     e.bearing->setSpecialValueText(tr("só aviso (50 mm)"));
     e.bearing->setToolTip(tr("NBR 14762, Anexo D (perfis U, Z e cartola): com o comprimento de apoio c informado (mínimo 20 mm), a reação de extremidade "
@@ -143,6 +229,8 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     form->addRow(tr("Lb informado"), e.lb);
     form->addRow(QString(), e.braced);
     form->addRow(QString(), e.cbOne);
+    form->addRow(tr("Uma mesa com contenção lateral contínua (5.4.2.4)"), e.oneFlange);
+    form->addRow(QString(), e.forceAway);
     form->addRow(tr("Amplificação global B2"), e.b2);
     form->addRow(tr("An / Ag na ligação (tração)"), e.netArea);
     form->addRow(tr("Limite de flecha (ELS)"), e.defl);
@@ -157,6 +245,41 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     form->addRow(tr("Abertura: excentricidade em relação à meia altura"), e.openingOffset);
     form->addRow(tr("Abertura adjacente: diâmetro"), e.openingNeighbourD);
     form->addRow(tr("Abertura adjacente: distância entre centros"), e.openingSpacing);
+    form->addRow(tr("Tração: coeficiente Ct (5.2.5)"), e.ctMode);
+    form->addRow(tr("Ct: excentricidade da ligação ec"), e.ctEc);
+    form->addRow(tr("Ct: comprimento da ligação ℓc"), e.ctLc);
+    form->addRow(tr("Ct: área dos elementos conectados / Ag"), e.ctAc);
+    form->addRow(tr("Área líquida (5.2.4): diâmetro dos parafusos db"), e.holeDb);
+    form->addRow(tr("Área líquida: furos na cadeia de ruptura"), e.holeCount);
+    form->addRow(tr("Área líquida: espessura do elemento furado"), e.holeT);
+    form->addRow(tr("Área líquida, zigue-zague: espaçamento s"), e.staggerS);
+    form->addRow(tr("Área líquida, zigue-zague: gabarito g"), e.staggerG);
+    form->addRow(tr("Área líquida, zigue-zague: linhas entre furos (s²/4g)"), e.staggerLinks);
+    form->addRow(tr("Barra composta: espaçamento ℓ entre as ligações dos perfis"), e.compositeSpacing);
+    form->addRow(QString(), e.compositeWelded);
+    form->addRow(QString(), e.threadedEnds);
+    form->addRow(tr("Perfil soldado: perna do filete mesa–alma (5.4.5)"), e.webWeldLeg);
+    form->addRow(tr("Perfil soldado: fw do filete mesa–alma"), e.webWeldFw);
+    form->addRow(tr("Perfil soldado: força aplicada diretamente na mesa"), e.flangeLineLoad);
+    form->addRow(tr("Lamela (5.4.4): largura"), e.coverB);
+    form->addRow(tr("Lamela: espessura"), e.coverT);
+    form->addRow(tr("Lamela: extremidade inicial (a partir do início da barra)"), e.coverStart);
+    form->addRow(tr("Lamela: extremidade final"), e.coverEnd);
+    form->addRow(tr("Lamela: mesas reforçadas"), e.coverFlanges);
+    form->addRow(tr("Lamela: perna do filete"), e.coverWeldLeg);
+    form->addRow(QString(), e.coverEndWeld);
+    form->addRow(QString(), e.plasticAnalysis);
+    form->addRow(tr("Pilar misto (Anexo M)"), e.mixType);
+    form->addRow(tr("Pilar misto: modelo de cálculo"), e.mixModel);
+    form->addRow(tr("Pilar misto: altura do concreto hc"), e.mixHc);
+    form->addRow(tr("Pilar misto: largura do concreto bc"), e.mixBc);
+    form->addRow(tr("Pilar misto: fck"), e.mixFck);
+    form->addRow(tr("Pilar misto: fyk da armadura"), e.mixFsk);
+    form->addRow(tr("Pilar misto: área de cada barra"), e.mixBarArea);
+    form->addRow(tr("Pilar misto: barras por face horizontal"), e.mixBarsH);
+    form->addRow(tr("Pilar misto: barras intermediárias por face lateral"), e.mixBarsV);
+    form->addRow(tr("Pilar misto: centro das barras à face"), e.mixCover);
+    form->addRow(tr("Pilar misto: αE do agregado"), e.mixAlphaE);
     return widget;
 }
 
@@ -174,6 +297,8 @@ void DesignSettingsDialog::load(ParamEditors &e, const DesignMemberParams &p)
     e.lb->setValue(p.lb);
     e.braced->setChecked(p.braced);
     e.cbOne->setChecked(p.cbOne);
+    e.oneFlange->setCurrentIndex(std::clamp(p.oneFlangeBraced, 0, 2));
+    e.forceAway->setChecked(p.forceAwayFromFreeFlange);
     e.b2->setValue(p.b2);
     e.netArea->setValue(p.netAreaRatio);
     e.defl->setValue(p.deflDenominator);
@@ -188,6 +313,41 @@ void DesignSettingsDialog::load(ParamEditors &e, const DesignMemberParams &p)
     e.openingOffset->setValue(p.openingOffset);
     e.openingNeighbourD->setValue(p.openingNeighbourD);
     e.openingSpacing->setValue(p.openingSpacing);
+    e.ctMode->setCurrentIndex(std::clamp(p.ctMode, 0, 2));
+    e.ctEc->setValue(p.ctEccentricity);
+    e.ctLc->setValue(p.ctLength);
+    e.ctAc->setValue(p.ctConnectedAreaRatio);
+    e.holeDb->setValue(p.holeBoltDiameter);
+    e.holeCount->setValue(p.holesInChain);
+    e.holeT->setValue(p.holeThickness);
+    e.staggerS->setValue(p.staggerPitch);
+    e.staggerG->setValue(p.staggerGauge);
+    e.staggerLinks->setValue(p.staggerLinks);
+    e.compositeSpacing->setValue(p.compositeSpacing);
+    e.compositeWelded->setChecked(p.compositeWelded);
+    e.threadedEnds->setChecked(p.threadedEnds);
+    e.webWeldLeg->setValue(p.webWeldLeg);
+    e.webWeldFw->setValue(p.webWeldFw);
+    e.flangeLineLoad->setValue(p.flangeLineLoad);
+    e.coverB->setValue(p.coverB);
+    e.coverT->setValue(p.coverT);
+    e.coverStart->setValue(p.coverStart);
+    e.coverEnd->setValue(p.coverEnd);
+    e.coverFlanges->setCurrentIndex(p.coverFlanges == 1 ? 1 : 0);
+    e.coverWeldLeg->setValue(p.coverWeldLeg);
+    e.coverEndWeld->setChecked(p.coverEndWeld);
+    e.plasticAnalysis->setChecked(p.plasticAnalysis);
+    e.mixType->setCurrentIndex(std::max(0, e.mixType->findData(p.mixType)));
+    e.mixModel->setCurrentIndex(std::max(0, e.mixModel->findData(p.mixModel)));
+    e.mixHc->setValue(p.mixHc);
+    e.mixBc->setValue(p.mixBc);
+    e.mixFck->setValue(p.mixFck);
+    e.mixFsk->setValue(p.mixFsk);
+    e.mixBarArea->setValue(p.mixBarArea);
+    e.mixBarsH->setValue(p.mixBarsH);
+    e.mixBarsV->setValue(p.mixBarsV);
+    e.mixCover->setValue(p.mixCover);
+    e.mixAlphaE->setValue(p.mixAlphaE);
 }
 
 DesignMemberParams DesignSettingsDialog::read(const ParamEditors &e)
@@ -204,6 +364,8 @@ DesignMemberParams DesignSettingsDialog::read(const ParamEditors &e)
     p.lb = e.lb->value();
     p.braced = e.braced->isChecked();
     p.cbOne = e.cbOne->isChecked();
+    p.oneFlangeBraced = e.oneFlange->currentData().toInt();
+    p.forceAwayFromFreeFlange = e.forceAway->isChecked();
     p.b2 = e.b2->value();
     p.netAreaRatio = e.netArea->value();
     p.deflDenominator = e.defl->value();
@@ -218,6 +380,41 @@ DesignMemberParams DesignSettingsDialog::read(const ParamEditors &e)
     p.openingOffset = e.openingOffset->value();
     p.openingNeighbourD = e.openingNeighbourD->value();
     p.openingSpacing = e.openingSpacing->value();
+    p.ctMode = e.ctMode->currentData().toInt();
+    p.ctEccentricity = e.ctEc->value();
+    p.ctLength = e.ctLc->value();
+    p.ctConnectedAreaRatio = e.ctAc->value();
+    p.holeBoltDiameter = e.holeDb->value();
+    p.holesInChain = e.holeCount->value();
+    p.holeThickness = e.holeT->value();
+    p.staggerPitch = e.staggerS->value();
+    p.staggerGauge = e.staggerG->value();
+    p.staggerLinks = e.staggerLinks->value();
+    p.compositeSpacing = e.compositeSpacing->value();
+    p.compositeWelded = e.compositeWelded->isChecked();
+    p.threadedEnds = e.threadedEnds->isChecked();
+    p.webWeldLeg = e.webWeldLeg->value();
+    p.webWeldFw = e.webWeldFw->value();
+    p.flangeLineLoad = e.flangeLineLoad->value();
+    p.coverB = e.coverB->value();
+    p.coverT = e.coverT->value();
+    p.coverStart = e.coverStart->value();
+    p.coverEnd = e.coverEnd->value();
+    p.coverFlanges = e.coverFlanges->currentData().toInt();
+    p.coverWeldLeg = e.coverWeldLeg->value();
+    p.coverEndWeld = e.coverEndWeld->isChecked();
+    p.plasticAnalysis = e.plasticAnalysis->isChecked();
+    p.mixType = e.mixType->currentData().toInt();
+    p.mixModel = e.mixModel->currentData().toInt();
+    p.mixHc = e.mixHc->value();
+    p.mixBc = e.mixBc->value();
+    p.mixFck = e.mixFck->value();
+    p.mixFsk = e.mixFsk->value();
+    p.mixBarArea = e.mixBarArea->value();
+    p.mixBarsH = e.mixBarsH->value();
+    p.mixBarsV = e.mixBarsV->value();
+    p.mixCover = e.mixCover->value();
+    p.mixAlphaE = e.mixAlphaE->value();
     return p;
 }
 
@@ -246,8 +443,12 @@ DesignSettingsDialog::DesignSettingsDialog(const DesignSettings &settings, const
     }
     m_defaultSteel->setCurrentIndex(std::max(0, m_defaultSteel->findData(settings.defaultSteel)));
     m_tubeStandard = new QComboBox;
-    m_tubeStandard->addItem(tr("NBR 14762 (formados a frio)"), QStringLiteral("NBR14762"));
-    m_tubeStandard->addItem(tr("NBR 8800 (laminados / tubos pesados)"), QStringLiteral("NBR8800"));
+    m_tubeStandard->addItem(tr("Automático (laminado × formado a frio)"), QStringLiteral("AUTO"));
+    m_tubeStandard->addItem(tr("Sempre NBR 14762 (formados a frio)"), QStringLiteral("NBR14762"));
+    m_tubeStandard->addItem(tr("Sempre NBR 8800 (laminados / tubos pesados)"), QStringLiteral("NBR8800"));
+    m_tubeStandard->setToolTip(tr("Automático: tubulares retangulares de parede fina (espessura < 6 mm, séries formadas a frio) seguem a NBR 14762; os de parede grossa "
+                                  "(≥ 6 mm, séries acabadas a quente) seguem a NBR 8800. Os demais perfis já seguem a norma do seu tipo (laminados e soldados: NBR 8800; "
+                                  "dobrados: NBR 14762)."));
     m_tubeStandard->setCurrentIndex(std::max(0, m_tubeStandard->findData(settings.rectTubeStandard)));
     m_amplify = new QCheckBox(tr("Amplificar momentos pelo efeito P-δ local (B1, Anexo C da NBR 8800)"));
     m_amplify->setChecked(settings.amplifyB1);
@@ -264,6 +465,29 @@ DesignSettingsDialog::DesignSettingsDialog(const DesignSettings &settings, const
     m_secondOrder = new QCheckBox(tr("Análise de 2ª ordem (P-Δ e P-δ) nas combinações — dispensa B1/B2"));
     m_secondOrder->setChecked(settings.secondOrder);
     m_secondOrder->setToolTip(tr("Cada combinação é resolvida com rigidez geométrica (não há superposição). Requer refazer a análise."));
+    m_stability = new QCheckBox(tr("Funções de estabilidade (Livesley) na 2ª ordem — P-δ exato em cada barra, sem subdividi-la"));
+    m_stability->setChecked(settings.stabilityFunctions);
+    m_stability->setToolTip(tr("Substitui a rigidez geométrica consistente (aproximação cúbica, que pede barras subdivididas quando a força axial é alta) pelas funções de "
+                               "estabilidade da barra comprimida/tracionada (Euler-Bernoulli). Com a deformação por cortante ligada, vale a rigidez geométrica."));
+    m_shear = new QCheckBox(tr("Deformação por cortante (Timoshenko) nas barras"));
+    m_shear->setChecked(settings.shearDeformation);
+    m_shear->setToolTip(tr("Usa as áreas de cisalhamento das seções (alma nos perfis I/U/T/tubos retangulares; A/2 em tubos circulares; 5/6 A em maciços retangulares). "
+                           "Importa em vigas curtas e de alma esbelta. Seções sem área de cisalhamento (cantoneiras e não suportadas) ficam rígidas ao cortante. Requer refazer a análise."));
+    m_warping = new QCheckBox(tr("Torção com empenamento (Vlasov) nas barras de seção I/H"));
+    m_warping->setChecked(settings.warpingTorsion);
+    m_warping->setToolTip(tr("Acrescenta o empenamento (θ′) como sétimo grau de liberdade das barras de seção I/H laminada ou soldada: o torque se divide entre torção "
+                             "de Saint-Venant e flexo-torção, aparecem o bimomento e as tensões normais de empenamento, e a verificação da NBR 8800 (5.5.2.3) passa a ser feita. "
+                             "Empenamento impedido nos nós totalmente engastados, contínuo entre barras colineares e livre nos demais (condições de apoio de garfo). "
+                             "Não é combinado com flambagem/modal. Requer refazer a análise."));
+    m_loadSteps = new QSpinBox;
+    m_loadSteps->setRange(0, 200);
+    m_loadSteps->setValue(settings.loadSteps);
+    m_loadSteps->setSpecialValueText(tr("automático"));
+    m_loadSteps->setToolTip(tr("Passos de carga da 2ª ordem: automático = iteração direta e, se divergir, incrementos (com estimativa do fator crítico); n > 1 = sempre em n passos."));
+    m_rigidZone = spin(0.0, 1.0, settings.rigidZoneFactor, 2, 0.05);
+    m_rigidZone->setSpecialValueText(tr("desligado"));
+    m_rigidZone->setToolTip(tr("Zonas rígidas nas extremidades das barras (trecho do eixo dentro do perfil que as recebe): fator 0 = desligado, 1 = trecho todo rígido. "
+                               "O comprimento é a fração do caminho do eixo da barra até a face do perfil do outro lado do nó. Os esforços são fornecidos nos nós. Requer refazer a análise."));
     m_reduction = spin(0.5, 1.0, settings.stiffnessReduction, 2, 0.05);
     m_reduction->setToolTip(tr("Redução de EA e EI nas combinações últimas (NBR 8800, 4.10.5: 0,8)"));
     m_autoB2 = new QCheckBox(tr("Calcular B2 por andar (Anexo C) na análise de 1ª ordem"));
@@ -273,6 +497,11 @@ DesignSettingsDialog::DesignSettingsDialog(const DesignSettings &settings, const
     m_singleStorey = new QCheckBox(tr("Galpão / edificação de um pavimento (limite de topo H/300; senão H/400)"));
     m_singleStorey->setChecked(settings.singleStorey);
     analysisForm->addRow(m_secondOrder);
+    analysisForm->addRow(m_stability);
+    analysisForm->addRow(tr("Passos de carga (2ª ordem)"), m_loadSteps);
+    analysisForm->addRow(m_shear);
+    analysisForm->addRow(m_warping);
+    analysisForm->addRow(tr("Zonas rígidas nas extremidades (fator)"), m_rigidZone);
     analysisForm->addRow(tr("Fator de redução de rigidez (2ª ordem)"), m_reduction);
     analysisForm->addRow(m_autoB2);
     analysisForm->addRow(tr("Rs (Anexo C)"), m_rs);
@@ -281,7 +510,17 @@ DesignSettingsDialog::DesignSettingsDialog(const DesignSettings &settings, const
     m_notional->setChecked(settings.notionalLoads);
     m_notional->setToolTip(tr("Cada combinação última gera quatro variantes (±X, ±Y) com forças horizontais nodais proporcionais às cargas verticais "
                               "da combinação, para considerar imperfeições geométricas. Requer refazer a análise."));
+    m_geometric = new QCheckBox(tr("Imperfeição geométrica inicial direta (desaprumo H/n) na 2ª ordem, no lugar das forças nocionais"));
+    m_geometric->setChecked(settings.geometricImperfection);
+    m_geometric->setToolTip(tr("NBR 8800, 4.9.7.1: as combinações últimas da análise de 2ª ordem geram quatro variantes (±X, ±Y) com os nós deslocados de "
+                               "(altura acima da base)/n. Vale só com a 2ª ordem ligada e substitui as forças nocionais. Requer refazer a análise."));
+    m_imperfectionDenominator = new QSpinBox;
+    m_imperfectionDenominator->setRange(100, 2000);
+    m_imperfectionDenominator->setValue(static_cast<int>(std::lround(1.0 / std::max(settings.imperfectionRatio, 1e-6))));
+    m_imperfectionDenominator->setPrefix(QStringLiteral("H / "));
     m_notionalFactor = spin(0.0005, 0.02, settings.notionalFactor, 4, 0.0005);
+    analysisForm->addRow(m_geometric);
+    analysisForm->addRow(tr("Desaprumo da imperfeição geométrica"), m_imperfectionDenominator);
     analysisForm->addRow(m_notional);
     analysisForm->addRow(tr("Fator das forças nocionais"), m_notionalFactor);
     root->addWidget(analysis);
@@ -343,11 +582,18 @@ DesignSettings DesignSettingsDialog::settings() const
     s.amplifyB1 = m_amplify->isChecked();
     s.slendernessGoverns = m_slenderness->isChecked();
     s.secondOrder = m_secondOrder->isChecked();
+    s.stabilityFunctions = m_stability->isChecked();
+    s.shearDeformation = m_shear->isChecked();
+    s.warpingTorsion = m_warping->isChecked();
+    s.rigidZoneFactor = m_rigidZone->value();
+    s.loadSteps = m_loadSteps->value();
     s.stiffnessReduction = m_reduction->value();
     s.autoB2 = m_autoB2->isChecked();
     s.rs = m_rs->value();
     s.singleStorey = m_singleStorey->isChecked();
     s.notionalLoads = m_notional->isChecked();
+    s.geometricImperfection = m_geometric->isChecked();
+    s.imperfectionRatio = 1.0 / m_imperfectionDenominator->value();
     s.notionalFactor = m_notionalFactor->value();
     s.groupByFamily = m_groupByFamily->isChecked();
     s.targetEta = m_target->value();

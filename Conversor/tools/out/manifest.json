@@ -1,0 +1,181 @@
+{
+ "ed3dlib.dll": {
+  "txt": "closure.txt",
+  "names": []
+ },
+ "ghipocal.dll": {
+  "txt": "ext_ghipocal.txt",
+  "names": [
+   "hipocal_graba"
+  ]
+ },
+ "dathipfle.dll": {
+  "txt": "ext_dathipfle.txt",
+  "names": [
+   "dathipfle_graba"
+  ]
+ },
+ "pilargeo.dll": {
+  "txt": "ext_pilargeo.txt",
+  "names": [
+   "eppilob_graba",
+   "epseccion_graba"
+  ]
+ },
+ "seccviga.dll": {
+  "txt": "ext_seccviga.txt",
+  "names": [
+   "svforjcype_graba",
+   "svseccion_graba"
+  ]
+ },
+ "piezamet.dll": {
+  "txt": "ext_piezamet.txt",
+  "names": [
+   "pzmetstr_graba"
+  ]
+ },
+ "pzmadera.dll": {
+  "txt": "ext_pzmadera.txt",
+  "names": [
+   "pzmadasgclaser_graba",
+   "pzmadinc_graba",
+   "pzmadob_graba"
+  ]
+ },
+ "ambiente.dll": {
+  "txt": "ext_ambiente.txt",
+  "names": [
+   "ambhorm_graba"
+  ]
+ },
+ "rstfuego.dll": {
+  "txt": "ext_rstfuego.txt",
+  "names": [
+   "rfdatmet_graba",
+   "rfdathorm_graba"
+  ]
+ },
+ "secgenelelin.dll": {
+  "txt": "ext_secgenelelin.txt",
+  "names": [
+   "sghormsgen_graba",
+   "sgusoseccion_graba"
+  ]
+ },
+ "pilararm.dll": {
+  "txt": "ext_pilararm.txt",
+  "names": [
+   "aparmado_graba"
+  ]
+ },
+ "forchapa.dll": {
+  "txt": "ext_forchapa.txt",
+  "names": [
+   "frcpanyo_graba"
+  ]
+ },
+ "elemgeo.dll": {
+  "txt": "ext_elemgeo.txt",
+  "names": [
+   "egtensadm_graba"
+  ]
+ },
+ "vgmixta.dll": {
+  "txt": "ext_vgmixta.txt",
+  "names": [
+   "vgmixta_graba"
+  ]
+ },
+ "arcelor.dll": {
+  "txt": "ext_arcelor.txt",
+  "names": [
+   "arcpieza_graba"
+  ]
+ },
+ "bibperf3.dll": {
+  "txt": "ext_bibperf3.txt",
+  "names": [
+   "bp3perfil_graba"
+  ]
+ },
+ "pztipos.dll": {
+  "txt": "ext_pztipos.txt",
+  "names": [
+   "cantovar_graba",
+   "cartela_graba",
+   "losahorm_graba",
+   "methorm_graba",
+   "plataban_graba",
+   "presilla_graba",
+   "rigalma_graba",
+   "separvar_graba",
+   "sepdoble_graba",
+   "soldlong_graba",
+   "tipotubo_graba",
+   "uniongen_graba",
+   "vigaboyd_graba"
+  ]
+ },
+ "ehe.dll": {
+  "txt": "ext_ehe.txt",
+  "names": [
+   "ehe08ambiente_graba"
+  ]
+ },
+ "eurocod.dll": {
+  "txt": "ext_eurocod.txt",
+  "names": [
+   "ec2ambiente_graba",
+   "ec2ntcambiente_graba"
+  ]
+ },
+ "nb1.dll": {
+  "txt": "ext_nb1.txt",
+  "names": [
+   "nb2ambiente_graba"
+  ]
+ },
+ "india.dll": {
+  "txt": "ext_india.txt",
+  "names": [
+   "ishambiente_graba"
+  ]
+ },
+ "bael.dll": {
+  "txt": "ext_bael.txt",
+  "names": [
+   "baelambiente_graba"
+  ]
+ },
+ "rusia.dll": {
+  "txt": "ext_rusia.txt",
+  "names": [
+   "rsambhorm_graba"
+  ]
+ },
+ "ntc.dll": {
+  "txt": "ext_ntc.txt",
+  "names": [
+   "ntc04ambiente_graba"
+  ]
+ },
+ "british.dll": {
+  "txt": "ext_british.txt",
+  "names": [
+   "bshambiente_graba"
+  ]
+ },
+ "uniones.dll": {
+  "txt": "ext_uniones.txt",
+  "names": [
+   "ununioned_graba"
+  ]
+ },
+ "combs3.dll": {
+  "txt": "ext_combs3.txt",
+  "names": [
+   "cb3hipusr_graba"
+  ]
+ }
+}

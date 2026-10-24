@@ -1,4 +1,7 @@
+#include "core/math/Vec3Ops.h"
 #include "DesignService.h"
+#include "design/CompositeColumn.h"
+#include "design/TaperedMember.h"
 
 #include <array>
 #include <atomic>
@@ -15,6 +18,7 @@
 #include <QRegularExpression>
 
 #include <algorithm>
+#include <cstdio>
 #include <cmath>
 #include <unordered_map>
 
@@ -25,14 +29,12 @@ namespace {
 using Structura::Visualization::SectionCatalog;
 using Structura::Visualization::SectionShapes;
 
+using Structura::Math::cross;
+using Structura::Math::dot;
+
 using Vec3 = std::array<double, 3>;
 
-Vec3 cross(const Vec3 &a, const Vec3 &b)
-{
-    return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
-}
 
-double dot(const Vec3 &a, const Vec3 &b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 
 Vec3 normalized(const Vec3 &v, const Vec3 &fallback)
 {
@@ -64,6 +66,41 @@ std::optional<DesignService::SteelOption> DesignService::findSteel(const QString
     return std::nullopt;
 }
 
+std::pair<double, double> DesignService::shearAreasMm2(const Structura::Design::DesignSection &section)
+{
+    using Structura::Design::SectionKind;
+    const double d = section.d, bf = section.bf, tw = section.tw, tf = section.tf, t = section.t;
+    switch (section.kind) {
+    case SectionKind::I:
+    case SectionKind::Channel:
+        return {d * tw, 2.0 * bf * tf};
+    case SectionKind::Tee:
+        return {d * tw, bf * tf};
+    case SectionKind::RectTube: {
+        const double h = std::max(0.0, d - 2.0 * t), w = std::max(0.0, bf - 2.0 * t);
+        return {2.0 * h * t, 2.0 * w * t};
+    }
+    case SectionKind::RoundTube:
+        return {section.g.area / 2.0, section.g.area / 2.0};
+    case SectionKind::DoubleAngleT:
+        return {2.0 * section.leg * t, 2.0 * section.leg * t};
+    case SectionKind::DoubleChannelBack:
+    case SectionKind::DoubleChannelBox:
+        return {2.0 * d * tw, 4.0 * 0.5 * (bf - section.gapE) * tf};
+    case SectionKind::SolidRound:
+        return {0.9 * section.g.area, 0.9 * section.g.area};
+    case SectionKind::SolidRect:
+        return {5.0 / 6.0 * section.g.area, 5.0 / 6.0 * section.g.area};
+    case SectionKind::ColdChannel:
+    case SectionKind::ColdLippedChannel:
+    case SectionKind::ColdZ:
+    case SectionKind::ColdHat:
+        return {d * t, 2.0 * bf * t};
+    default:
+        return {0.0, 0.0};
+    }
+}
+
 std::pair<double, double> DesignService::unitFactors(const QVector<MaterialInfo> &materials)
 {
     double e = 0.0;
@@ -75,16 +112,72 @@ std::pair<double, double> DesignService::unitFactors(const QVector<MaterialInfo>
     return {forceFactor, 1000.0};
 }
 
-void DesignService::applyB2(QVector<MemberEffects> &effects, const QMap<QString, QMap<int, double>> &b2)
+void DesignService::applyB2(QVector<MemberEffects> &effects, const QMap<QString, QMap<int, double>> &b2, double stiffnessFactor)
 {
     for (auto &member : effects) {
         for (auto &combo : member.combos) {
+            combo.bStiffness = stiffnessFactor;
             const auto it = b2.constFind(QString::fromStdString(combo.name));
             if (it != b2.constEnd()) {
                 combo.b2 = it->value(member.memberId, 1.0);
             }
         }
     }
+}
+
+void DesignService::tensionConnection(const DesignMemberParams &params, double grossArea, double &netAreaRatio, double &ct, std::vector<std::string> &notes)
+{
+    auto fmt = [](const char *format, auto... args) {
+        char buffer[400];
+        std::snprintf(buffer, sizeof(buffer), format, args...);
+        return std::string(buffer);
+    };
+    if (params.holeBoltDiameter > 0.0 && params.holesInChain > 0 && params.holeThickness > 0.0 && grossArea > 0.0) {
+        // 5.2.4.1-a: largura do furo = dimensao maxima do furo (6.3.6: db + 1,5 mm) + 2,0 mm; b: + s^2/(4g) para cada linha entre furos em zigue-zague
+        const double width = params.holeBoltDiameter + 1.5 + 2.0;
+        double an = grossArea - params.holesInChain * width * params.holeThickness;
+        std::string chain = fmt("An = Ag - n d t = %.0f - %d x %.1f x %.2f", grossArea, params.holesInChain, width, params.holeThickness);
+        if (params.staggerLinks > 0 && params.staggerGauge > 0.0 && params.staggerPitch > 0.0) {
+            const double add = params.staggerLinks * params.holeThickness * params.staggerPitch * params.staggerPitch / (4.0 * params.staggerGauge);
+            an += add;
+            chain += fmt(" + %d t s2/(4g) = + %d x %.2f x %.0f2/(4 x %.0f)", params.staggerLinks, params.staggerLinks, params.holeThickness, params.staggerPitch, params.staggerGauge);
+        }
+        an = std::clamp(an, 0.0, grossArea);
+        netAreaRatio = an / grossArea;
+        notes.push_back(fmt("Area liquida (5.2.4): %s = %.0f mm2 (An/Ag = %.3f)", chain.c_str(), an, netAreaRatio));
+    }
+    switch (params.ctMode) {
+    case 1: {
+        if (params.ctLength > 0.0) {
+            double value = 1.0 - params.ctEccentricity / params.ctLength;
+            std::string note = fmt("Ct (5.2.5-c) = 1 - ec/lc = 1 - %.1f/%.0f = %.3f", params.ctEccentricity, params.ctLength, value);
+            if (params.ctConnectedAreaRatio > 0.0 && value < params.ctConnectedAreaRatio) {
+                value = params.ctConnectedAreaRatio;   // Ct nao precisa ser menor que Ac/Ag
+                note += fmt("; adotado Ac/Ag = %.3f (limite inferior de 5.2.5)", value);
+            }
+            ct = std::clamp(value, 0.05, 1.0);
+            notes.push_back(note);
+        } else {
+            notes.push_back("Ct (5.2.5-c): informe o comprimento da ligacao lc; adotado Ct = 1,0.");
+        }
+        break;
+    }
+    case 2:
+        if (params.ctConnectedAreaRatio > 0.0) {
+            ct = std::clamp(params.ctConnectedAreaRatio, 0.05, 1.0);
+            notes.push_back(fmt("Ct (5.2.5-b, soldas transversais) = Ac/Ag = %.3f", ct));
+        } else {
+            notes.push_back("Ct (5.2.5-b): informe Ac/Ag; adotado Ct = 1,0.");
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+bool DesignService::isExceptionalCombination(const QString &name)
+{
+    return name.startsWith(QLatin1String("EXC"), Qt::CaseInsensitive);
 }
 
 QStringList DesignService::defaultUltimateCombinations(const QStringList &allNames)
@@ -181,6 +274,12 @@ std::vector<DesignService::ElementData> DesignService::buildElements(const Struc
         const auto mrg = moments.equal_range(mr.memberId);
         for (auto it = mrg.first; it != mrg.second; ++it) {
             ber.distributedMoments.push_back(it->second);
+            data.torqueLoad += it->second.isLocalSystem ? it->second.mx : dot(Vec3 {it->second.mx, it->second.my, it->second.mz}, ber.xLocal);
+        }
+        if (mr.hasWarping) {
+            data.warping = true;
+            data.psiI = mr.warpingRate[0];
+            data.psiJ = mr.warpingRate[1];
         }
         elements.push_back(std::move(data));
     }
@@ -201,18 +300,103 @@ QVector<DesignService::MemberEffects> DesignService::collectEffects(const Struct
             ties.insert(member.id);
         }
     }
+    // balancos: barras com uma extremidade livre (no sem apoio onde so ela chega)
+    QHash<int, int> attached;
+    QSet<int> restrainedNodes;
+    for (const auto &member : geometry.members) {
+        ++attached[member.nodeI];
+        ++attached[member.nodeJ];
+    }
+    for (const auto &node : geometry.nodes) {
+        if (std::any_of(node.restraints.begin(), node.restraints.end(), [](int r) { return r != 0; })) {
+            restrainedNodes.insert(node.id);
+        }
+    }
+    if (geometry.shell) {
+        for (const auto &element : geometry.shell->elements) {
+            for (const int id : element.nodes) {
+                attached[id] += 2;   // no ligado a casca nao e extremidade livre
+            }
+        }
+    }
+    QSet<int> torsionStart, torsionEnd;
+    for (const auto &member : geometry.members) {
+        if (member.releases[3] != 0) {
+            torsionStart.insert(member.id);
+        }
+        if (member.releases[9] != 0) {
+            torsionEnd.insert(member.id);
+        }
+    }
+    QSet<int> cantilevers;
+    for (const auto &member : geometry.members) {
+        const bool freeI = attached.value(member.nodeI) == 1 && !restrainedNodes.contains(member.nodeI);
+        const bool freeJ = attached.value(member.nodeJ) == 1 && !restrainedNodes.contains(member.nodeJ);
+        if (freeI != freeJ && !member.tensionOnly) {
+            cantilevers.insert(member.id);
+        }
+    }
     for (const ResultSet &set : sets) {
+        // estrutura nt da combinacao (Anexo C.2.1): mesmas cargas e geometria, resultado com os nos dos andares contidos
+        std::vector<ElementData> ntElements;
+        std::unordered_map<int, const ElementData *> ntById;
+        if (set.nt) {
+            ResultSet ntSet = set;
+            ntSet.result = set.nt;
+            ntElements = buildElements(geometry, ntSet);
+            for (const ElementData &item : ntElements) {
+                ntById[item.element.externalId] = &item;
+            }
+        }
         for (const ElementData &data : buildElements(geometry, set)) {
             UniformLoadForceEvaluator evaluator(data.element);
             const double length = evaluator.length();
+            const auto ntIt = ntById.find(data.element.externalId);
+            std::optional<UniformLoadForceEvaluator> ntEvaluator;
+            if (ntIt != ntById.end()) {
+                ntEvaluator.emplace(ntIt->second->element);
+            }
+            // Torcao com empenamento (Vlasov): psi = theta' = T(x)/GJ + h(x), h = a exp(-k x) + b exp(-k (L - x)) (solucao da equacao E Cw psi'' - GJ psi = -T(x),
+            // com T(x) = T1 - m x e psi nas duas extremidades dados pelo solver); B = -E Cw psi' e Tw = -GJ h
+            struct WarpingLaw {
+                bool valid {false};
+                double k {0.0}, a {0.0}, b {0.0}, m {0.0}, EIw {0.0}, GJ {0.0}, L {0.0};
+            } warp;
+            if (data.warping) {
+                const auto memberIt = std::find_if(geometry.members.begin(), geometry.members.end(), [&](const auto &m) { return m.id == data.element.externalId; });
+                if (memberIt != geometry.members.end()) {
+                    const auto sectionIt = std::find_if(geometry.sections.begin(), geometry.sections.end(), [&](const auto &s) { return s.id == memberIt->sectionId; });
+                    const auto materialIt = std::find_if(geometry.materials.begin(), geometry.materials.end(), [&](const auto &m) { return m.id == memberIt->materialId; });
+                    if (sectionIt != geometry.sections.end() && materialIt != geometry.materials.end() && sectionIt->warpingConstant > 0.0 && sectionIt->j > 0.0) {
+                        warp.EIw = materialIt->e * sectionIt->warpingConstant;
+                        warp.GJ = materialIt->g * sectionIt->j;
+                        warp.L = length;
+                        warp.k = std::sqrt(warp.GJ / warp.EIw);
+                        warp.m = data.torqueLoad;
+                        const double t0 = data.element.endForces.Mt1;
+                        const double h0 = data.psiI - t0 / warp.GJ;
+                        const double hL = data.psiJ - (t0 - warp.m * length) / warp.GJ;
+                        const double q = std::exp(-warp.k * length);
+                        const double denominator = 1.0 - q * q;
+                        warp.a = (h0 - hL * q) / denominator;
+                        warp.b = (hL - h0 * q) / denominator;
+                        warp.valid = denominator > 1e-12;
+                    }
+                }
+            }
             MemberEffects &me = byMember[data.element.externalId];
             me.memberId = data.element.externalId;
+            me.warping = me.warping || warp.valid;
             me.lengthMm = length * lengthFactorToMm;
+            me.cantilever = cantilevers.contains(me.memberId);
+            me.torsionReleasedStart = torsionStart.contains(me.memberId);
+            me.torsionReleasedEnd = torsionEnd.contains(me.memberId);
 
             Structura::Design::ComboEffects combo;
             combo.name = set.name.toStdString();
             combo.transverseLoadX = std::abs(data.qy) > 1e-9;
             combo.transverseLoadY = std::abs(data.qz) > 1e-9;
+            combo.hasNt = ntEvaluator.has_value();
             for (int i = 0; i < stations; ++i) {
                 const double x = length * i / std::max(1, stations - 1);
                 const InternalForces f = evaluator.evaluate(x);
@@ -227,6 +411,21 @@ QVector<DesignService::MemberEffects> DesignService::collectEffects(const Struct
                 st.e.Vy = f.Vy * forceFactorToN;
                 st.e.Vz = f.Vz * forceFactorToN;
                 st.e.T = f.Mt * momentFactor;
+                if (warp.valid) {
+                    const double eA = std::exp(-warp.k * x), eB = std::exp(-warp.k * (length - x));
+                    const double psiPrime = -warp.m / warp.GJ + warp.k * (-warp.a * eA + warp.b * eB);
+                    st.e.B = -warp.EIw * psiPrime * forceFactorToN * lengthFactorToMm * lengthFactorToMm;
+                    st.e.Tw = -warp.GJ * (warp.a * eA + warp.b * eB) * momentFactor;
+                }
+                if (ntEvaluator) {
+                    const InternalForces g = ntEvaluator->evaluate(x);
+                    st.nt.N = g.N * forceFactorToN;
+                    st.nt.Mx = g.Mz * momentFactor;
+                    st.nt.My = -g.My * momentFactor;
+                    st.nt.Vy = g.Vy * forceFactorToN;
+                    st.nt.Vz = g.Vz * forceFactorToN;
+                    st.nt.T = g.Mt * momentFactor;
+                }
                 combo.stations.push_back(st);
             }
             me.combos.push_back(std::move(combo));
@@ -274,7 +473,9 @@ Structura::Design::DesignSection DesignService::makeSection(const SectionInfo &s
     for (const auto &loop : shape->loops) {
         loops.emplace_back(loop.begin(), loop.end());
     }
-    const Standard tube = rectTubeStandard.compare(QLatin1String("NBR8800"), Qt::CaseInsensitive) == 0 ? Standard::NBR8800 : Standard::NBR14762;
+    // "NBR8800" / "NBR14762" forcam a norma; qualquer outro valor (padrao "AUTO") reconhece pela serie do tubo (laminado a quente x formado a frio)
+    const Standard tube = rectTubeStandard.compare(QLatin1String("NBR8800"), Qt::CaseInsensitive) == 0 ? Standard::NBR8800
+        : (rectTubeStandard.compare(QLatin1String("NBR14762"), Qt::CaseInsensitive) == 0 ? Standard::NBR14762 : automaticRectTubeStandard(spec));
     const double jMm4 = section.j * 1e12;
 
     // Eixos principais (giro nos mesmos eixos locais do solver): escolhe o sinal que anula Ixy.
@@ -283,7 +484,7 @@ Structura::Design::DesignSection DesignService::makeSection(const SectionInfo &s
     if (principal.valid && principal.inclined) {
         double best = 1e300;
         for (const double candidate : {principal.thetaDeg, -principal.thetaDeg}) {
-            const DesignSection trial = makeDesignSection(spec, loops, jMm4, tube, candidate);
+            const DesignSection trial = makeDesignSection(spec, loops, jMm4, tube, candidate, shape->outerCount);
             if (!trial.supported()) {
                 continue;
             }
@@ -294,7 +495,7 @@ Structura::Design::DesignSection DesignService::makeSection(const SectionInfo &s
             }
         }
     }
-    DesignSection s = makeDesignSection(spec, loops, jMm4, tube, angle);
+    DesignSection s = makeDesignSection(spec, loops, jMm4, tube, angle, shape->outerCount);
     s.name = section.name.toStdString();
     return s;
 }
@@ -352,10 +553,32 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
     in.compressionFlangeBraced = params.braced;
     in.lbOverride = params.lb * 1000.0;
     in.cbEqualsOne = params.cbOne;
+    in.cantilever = effects.cantilever;
+    in.oneFlangeBraced = params.oneFlangeBraced;
+    in.forceAwayFromFreeFlange = params.forceAwayFromFreeFlange;
     in.amplifyB1 = settings.amplifyB1 && !settings.secondOrder;
     in.b2 = params.b2;
     in.slendernessGoverns = settings.slendernessGoverns;
     in.netAreaRatio = params.netAreaRatio;
+    in.ct = 1.0;
+    tensionConnection(params, ds.g.area, in.netAreaRatio, in.ct, in.tensionNotes);
+    in.compositeSpacing = params.compositeSpacing;
+    in.compositeWelded = params.compositeWelded;
+    in.threadedEnds = params.threadedEnds;
+    in.webWeldLeg = params.webWeldLeg;
+    in.webWeldFw = params.webWeldFw;
+    in.flangeLineLoad = params.flangeLineLoad;
+    in.coverB = params.coverB;
+    in.coverT = params.coverT;
+    in.coverStart = params.coverStart;
+    in.coverEnd = params.coverEnd;
+    in.coverFlanges = params.coverFlanges;
+    in.coverWeldLeg = params.coverWeldLeg;
+    in.coverEndWeld = params.coverEndWeld;
+    in.plasticAnalysis = params.plasticAnalysis;
+    in.warping = effects.warping;
+    in.torsionReleasedStart = effects.torsionReleasedStart;
+    in.torsionReleasedEnd = effects.torsionReleasedEnd;
     in.stiffenerSpacing = params.stiffenerSpacing;
     in.panelTensionFlange = params.panelTensionFlange;
     in.coldWork = params.coldWork;
@@ -374,7 +597,7 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
         for (const auto &c : in.combos) {
             QString name = QString::fromStdString(c.name);
             // variantes com forcas nocionais ("ELU1 +NX") seguem a selecao da combinacao de origem
-            static const QRegularExpression variant(QStringLiteral(" [+-]N[XY]$"));
+            static const QRegularExpression variant(QStringLiteral(" [+-][NI][XY]$"));
             if (settings.combinations.contains(name) || settings.combinations.contains(name.remove(variant))) {
                 filtered.push_back(c);
             }
@@ -382,7 +605,141 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
         in.combos = std::move(filtered);
     }
     verdict.supported = true;
-    verdict.output = Structura::Design::designBar(in);
+    // Pilar misto (Anexo M): perfil de aco da propria secao da barra, revestimento/preenchimento de concreto e armadura dos parametros
+    Structura::Design::CompositeColumnSection mixed;
+    if (params.mixType > 0) {
+        using Type = Structura::Design::CompositeColumnSection::Type;
+        const Structura::Design::SectionKind kind = ds.kind;
+        bool ok = true;
+        if (params.mixType == 3 && kind == Structura::Design::SectionKind::RectTube) {
+            mixed.type = Type::FilledRectangular;
+            mixed.b1 = ds.d;
+            mixed.b2 = ds.bf;
+            mixed.t = ds.t;
+            mixed.innerRadius = ds.t;   // raio interno adotado igual a t (os perfis tubulares da biblioteca nao informam o raio de dobra)
+        } else if (params.mixType == 3 && kind == Structura::Design::SectionKind::RoundTube) {
+            mixed.type = Type::FilledCircular;
+            mixed.b1 = mixed.b2 = ds.D;
+            mixed.t = ds.t;
+        } else if ((params.mixType == 1 || params.mixType == 2) && kind == Structura::Design::SectionKind::I) {
+            mixed.type = params.mixType == 1 ? Type::FullyEncased : Type::PartiallyEncased;
+            mixed.d = ds.d;
+            mixed.bf = ds.bf;
+            mixed.tw = ds.tw;
+            mixed.tf = ds.tf;
+            mixed.hc = params.mixHc > 0.0 ? params.mixHc : ds.d;
+            mixed.bc = params.mixBc > 0.0 ? params.mixBc : ds.bf;
+        } else {
+            ok = false;
+        }
+        if (!ok) {
+            verdict.output.warnings.push_back("Pilar misto: o tipo escolhido nao corresponde ao perfil da secao (I/H para revestido, tubular para preenchido).");
+            return verdict;
+        }
+        mixed.fck = params.mixFck;
+        mixed.fsk = params.mixFsk;
+        mixed.alphaE = params.mixAlphaE;
+        if (params.mixBarArea > 0.0 && params.mixBarsH >= 2) {
+            if (mixed.filled()) {
+                // tubo preenchido: armadura em anel dentro do tubo (distancia do eixo da barra a face interna do tubo informada em `mixCover`)
+                mixed.bc = mixed.b2 - 2.0 * mixed.t;
+                mixed.hc = mixed.b1 - 2.0 * mixed.t;
+            }
+            if (mixed.circular()) {
+                // tubo circular: `mixBarsH` barras igualmente espacadas numa circunferencia a `mixCover` da face interna
+                const double ring = mixed.bc / 2.0 - params.mixCover;
+                for (int i = 0; i < params.mixBarsH; ++i) {
+                    const double angle = 2.0 * Structura::Design::kPi * i / params.mixBarsH;
+                    mixed.bars.push_back({params.mixBarArea, ring * std::cos(angle), ring * std::sin(angle)});
+                }
+            } else {
+                mixed.ringOfBars(params.mixBarsH, params.mixBarsV, params.mixBarArea, params.mixCover);
+            }
+        }
+        mixed.finalize();
+        in.compositeColumn = &mixed;
+        const int model = std::clamp(params.mixModel, 1, 3);
+        // as combinacoes filtradas seguem a mesma regra; o gama_c e o gama_s das combinacoes normais (1,4 e 1,15) estao em `designCompositeColumn`
+        verdict.output = Structura::Design::designCompositeColumn(in, model);
+        return verdict;
+    }
+    // Barra de secao I de alma variavel (Anexo G): secao a secao, com as propriedades de cada altura
+    const bool tapered = section.family == QLatin1String("I Alma Variavel");
+    auto runDesign = [&](const Structura::Design::BarDesignInput &input) -> Structura::Design::BarDesignOutput {
+        if (!tapered || input.combos.empty() || input.combos.front().stations.empty()) {
+            return Structura::Design::designBar(input);
+        }
+        const auto &g = section.geometry;
+        Structura::Design::TaperedGeometry geometry {g.value(QStringLiteral("d1")), g.value(QStringLiteral("d2")), g.value(QStringLiteral("bf")), g.value(QStringLiteral("tw")), g.value(QStringLiteral("tf"))};
+        auto sectionAtDepth = [&](double depth) {
+            SectionInfo slice = section;
+            slice.family = QStringLiteral("W Laminado");
+            slice.geometry = {{QStringLiteral("d"), depth}, {QStringLiteral("bf"), geometry.bf}, {QStringLiteral("tw"), geometry.tw}, {QStringLiteral("tf"), geometry.tf}, {QStringLiteral("r"), 0.0}};
+            const double web = std::max(depth - 2.0 * geometry.tf, 0.0);
+            slice.j = (2.0 * geometry.bf * std::pow(geometry.tf, 3) + web * std::pow(geometry.tw, 3)) / 3.0 * 1e-12;
+            return makeSection(slice, settings.rectTubeStandard);
+        };
+        std::vector<Structura::Design::DesignSection> stations;
+        for (const auto &st : input.combos.front().stations) {
+            stations.push_back(sectionAtDepth(geometry.depthAt(st.x, input.length)));
+        }
+        const auto smallest = sectionAtDepth(std::min(geometry.d1, geometry.d2));
+        const auto largest = sectionAtDepth(std::max(geometry.d1, geometry.d2));
+        return Structura::Design::designTaperedBar(input, geometry, stations, smallest, largest);
+    };
+    // Tabela 3 da NBR 8800:2024: nas combinacoes excepcionais gama_a1 = 1,00 e gama_a2 = 1,15 (aco laminado e tubulares circulares); cada grupo e verificado com os seus
+    // coeficientes e prevalece a pior razao de cada verificacao.
+    std::vector<Structura::Design::ComboEffects> normal, exceptional;
+    for (const auto &c : in.combos) {
+        const bool exc = !ds.supported() ? false : (ds.standard == Structura::Design::Standard::NBR8800 && isExceptionalCombination(QString::fromStdString(c.name)));
+        (exc ? exceptional : normal).push_back(c);
+    }
+    if (exceptional.empty()) {
+        verdict.output = runDesign(in);
+        return verdict;
+    }
+    Structura::Design::BarDesignOutput merged;
+    bool haveMerged = false;
+    if (!normal.empty()) {
+        Structura::Design::BarDesignInput a = in;
+        a.combos = normal;
+        merged = runDesign(a);
+        haveMerged = true;
+    }
+    Structura::Design::BarDesignInput b = in;
+    b.combos = exceptional;
+    b.opt8800.gammaA1 = 1.00;
+    b.opt8800.gammaA2 = 1.15;
+    Structura::Design::BarDesignOutput second = runDesign(b);
+    if (!haveMerged) {
+        merged = std::move(second);
+    } else {
+        const double secondMax = second.maxRatio;
+        const std::string secondGoverning = second.governingCheck, secondCombo = second.governingCombo;
+        const double secondX = second.governingX;
+        for (auto &check : second.checks) {
+            auto it = std::find_if(merged.checks.begin(), merged.checks.end(), [&](const Structura::Design::CheckResult &c) { return c.id == check.id; });
+            if (it == merged.checks.end()) {
+                merged.checks.push_back(std::move(check));
+            } else if (check.ratio > it->ratio) {
+                *it = std::move(check);
+            }
+        }
+        for (auto &w : second.warnings) {
+            if (std::find(merged.warnings.begin(), merged.warnings.end(), w) == merged.warnings.end()) {
+                merged.warnings.push_back(std::move(w));
+            }
+        }
+        // a verificacao governante, a combinacao e a posicao vem do grupo de maior razao
+        if (secondMax > merged.maxRatio) {
+            merged.maxRatio = secondMax;
+            merged.governingCheck = secondGoverning;
+            merged.governingCombo = secondCombo;
+            merged.governingX = secondX;
+        }
+    }
+    merged.summaryLines.push_back("Combinacoes excepcionais (nome iniciado por EXC): gama_a1 = 1,00 e gama_a2 = 1,15 (NBR 8800:2024, Tabela 3).");
+    verdict.output = std::move(merged);
     return verdict;
 }
 

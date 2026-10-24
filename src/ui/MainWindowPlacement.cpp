@@ -120,7 +120,11 @@ void MainWindow::setupPlacement()
             return false;
         }
         m_sceneController->setBarExternalId(barId, nextBarExternalId());
-        showStatusMessage(tr("Barra criada. Clique no ponto inicial da proxima barra."), 3000);
+        // nos ja existentes sobre o eixo da nova barra a dividem em trechos
+        const bool divided = splitBarsAtIntermediateNodes({barId}) > 0;
+        showStatusMessage(divided ? tr("Barra criada e dividida nos nós intermediários. Clique no ponto inicial da proxima barra.")
+                                  : tr("Barra criada. Clique no ponto inicial da proxima barra."),
+                          3000);
         refreshPropertiesPanel();
         return true;
     };

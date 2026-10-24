@@ -25,6 +25,15 @@ QString defaultCaseOf(const QVector<Structura::App::ProjectData::LoadCase> *case
     return (cases && !cases->isEmpty()) ? cases->first().name : Structura::App::ProjectData::defaultLoadCaseName();
 }
 
+bool isCaseShown(const QString &loadCase, const LoadSupportVisualMapper::LoadContext &context, const QString &defaultCase)
+{
+    // a lista de casos visiveis (janela "Casos visiveis") tem precedencia sobre o caso ativo da barra de vista
+    if (context.filterVisibleCases) {
+        return context.visibleCases.contains(loadCase.isEmpty() ? defaultCase : loadCase);
+    }
+    return inActiveCase(loadCase, context.activeCase, defaultCase);
+}
+
 } // namespace
 
 QVector<SceneController::NodalLoadVisual> LoadSupportVisualMapper::mapNodalLoadVisuals(const SceneController *sceneController,
@@ -42,8 +51,9 @@ QVector<SceneController::NodalLoadVisual> LoadSupportVisualMapper::mapNodalLoadV
             [](const SceneController::NodeInfo &info) { return info.externalId; });
 
     const QString defaultCase = defaultCaseOf(context.loadCases);
-    for (const auto &load : *context.nodalLoads) {
-        if (!inActiveCase(load.loadCase, context.activeCase, defaultCase)) {
+    for (int loadIndex = 0; loadIndex < context.nodalLoads->size(); ++loadIndex) {
+        const auto &load = (*context.nodalLoads)[loadIndex];
+        if (!isCaseShown(load.loadCase, context, defaultCase)) {
             continue;
         }
         const auto it = nodesByExternal.constFind(load.nodeId);
@@ -55,6 +65,8 @@ QVector<SceneController::NodalLoadVisual> LoadSupportVisualMapper::mapNodalLoadV
         visual.position = QVector3D(static_cast<float>(it->x), static_cast<float>(it->y), static_cast<float>(it->z));
         visual.force = QVector3D(static_cast<float>(load.fx), static_cast<float>(load.fy), static_cast<float>(load.fz));
         visual.moment = QVector3D(static_cast<float>(load.mx), static_cast<float>(load.my), static_cast<float>(load.mz));
+        visual.sourceKind = 0;
+        visual.sourceIndex = loadIndex;
         nodalVisuals.append(visual);
     }
 
@@ -126,8 +138,9 @@ QVector<SceneController::MemberActionVisual> LoadSupportVisualMapper::mapMemberA
     };
 
     if (context.memberLoads) {
-        for (const auto &load : *context.memberLoads) {
-            if (!inActiveCase(load.loadCase, context.activeCase, defaultCase)) {
+        for (int loadIndex = 0; loadIndex < context.memberLoads->size(); ++loadIndex) {
+            const auto &load = (*context.memberLoads)[loadIndex];
+            if (!isCaseShown(load.loadCase, context, defaultCase)) {
                 continue;
             }
             SceneController::MemberActionVisual visual;
@@ -137,6 +150,8 @@ QVector<SceneController::MemberActionVisual> LoadSupportVisualMapper::mapMemberA
             visual.values = QVector3D(static_cast<float>(load.qx), static_cast<float>(load.qy), static_cast<float>(load.qz));
             visual.local = Structura::App::isLocalMemberLoadSystem(load.system);
             visual.moment = false;
+            visual.sourceKind = 1;
+            visual.sourceIndex = loadIndex;
             if (!visual.values.isNull()) {
                 visuals.append(visual);
             }
@@ -144,8 +159,9 @@ QVector<SceneController::MemberActionVisual> LoadSupportVisualMapper::mapMemberA
     }
 
     if (context.memberMoments) {
-        for (const auto &moment : *context.memberMoments) {
-            if (!inActiveCase(moment.loadCase, context.activeCase, defaultCase)) {
+        for (int loadIndex = 0; loadIndex < context.memberMoments->size(); ++loadIndex) {
+            const auto &moment = (*context.memberMoments)[loadIndex];
+            if (!isCaseShown(moment.loadCase, context, defaultCase)) {
                 continue;
             }
             SceneController::MemberActionVisual visual;
@@ -155,6 +171,8 @@ QVector<SceneController::MemberActionVisual> LoadSupportVisualMapper::mapMemberA
             visual.values = QVector3D(static_cast<float>(moment.mx), static_cast<float>(moment.my), static_cast<float>(moment.mz));
             visual.local = Structura::App::isLocalMemberLoadSystem(moment.system);
             visual.moment = true;
+            visual.sourceKind = 2;
+            visual.sourceIndex = loadIndex;
             if (!visual.values.isNull()) {
                 visuals.append(visual);
             }
@@ -165,7 +183,7 @@ QVector<SceneController::MemberActionVisual> LoadSupportVisualMapper::mapMemberA
     if (context.loadCases && context.materials && context.sections) {
         int selfWeightCases = 0;
         for (const auto &loadCase : *context.loadCases) {
-            if (loadCase.selfWeight && (context.activeCase.isEmpty() || loadCase.name == context.activeCase)) {
+            if (loadCase.selfWeight && isCaseShown(loadCase.name, context, defaultCase)) {
                 ++selfWeightCases;
             }
         }
@@ -191,6 +209,8 @@ QVector<SceneController::MemberActionVisual> LoadSupportVisualMapper::mapMemberA
                 visual.values = QVector3D(0.0f, 0.0f, static_cast<float>(-weight));
                 visual.local = false;
                 visual.selfWeight = true;
+                visual.sourceKind = 3;
+                visual.sourceIndex = bar.externalId;
                 visuals.append(visual);
             }
         }

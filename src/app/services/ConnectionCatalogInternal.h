@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/services/ConnectionCatalog.h"
+#include "design/Connections.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,6 +11,25 @@ namespace Structura::App::Services::catalog {
 
 using Role = ConnectionSolids::Role;
 using Kind = ConnectionSolids::Kind;
+
+/// Parafuso pelo nome gravado na ligacao; nome desconhecido = o terceiro da tabela (A325), ou o primeiro se a tabela for menor.
+inline Structura::Design::Connections::BoltGrade gradeByName(const QString &name)
+{
+    const auto &grades = Structura::Design::Connections::boltGrades();
+    for (const auto &g : grades) {
+        if (QString::fromStdString(g.name) == name) {
+            return g;
+        }
+    }
+    return grades.size() > 2 ? grades[2] : grades.front();
+}
+
+/// Nome do parafuso padrao das ligacoes novas.
+inline QString defaultBoltGradeName()
+{
+    const auto &grades = Structura::Design::Connections::boltGrades();
+    return QString::fromStdString(grades.size() > 2 ? grades[2].name : grades.front().name);
+}
 
 inline double val(const Structura::App::ProjectData::NodeConnection &c, const char *key, double fallback = 0.0)
 {
@@ -134,6 +154,15 @@ ConnectionCatalog::Evaluation endPlateSpliceEvaluate(const Structura::App::Proje
 QString endPlateSpliceDescribe(const Structura::App::ProjectData::NodeConnection &c);
 void endPlateSpliceSolids(const Structura::App::ProjectData::NodeConnection &c, bool context, std::vector<ConnectionSolids::Primitive> &out);
 QPair<QString, QString> endPlateSpliceSteelKeys();
+
+// ---- familia Pin (chapa ligada por pino, 5.2.6 e 6.4) ---------------------------------------------------------------------------------
+QVector<ConnectionCatalog::FieldDef> pinFields(const ConnectionCatalog::Entry &entry);
+Structura::App::ProjectData::NodeConnection pinDefault(const ConnectionCatalog::Entry &entry, const ConnectionCatalog::BeamInfo &beam, double plateFy, double plateFu);
+ConnectionCatalog::Evaluation pinEvaluate(const Structura::App::ProjectData::NodeConnection &c, const ConnectionCatalog::Forces &f);
+QString pinDescribe(const Structura::App::ProjectData::NodeConnection &c);
+void pinSolids(const Structura::App::ProjectData::NodeConnection &c, bool context, std::vector<ConnectionCatalog::Primitive> &out);
+std::vector<std::string> pinNotes(const Structura::App::ProjectData::NodeConnection &c);
+QPair<QString, QString> pinSteelKeys();
 
 // ---- familia TrussNode ----------------------------------------------------------------------------------------------------------------
 QVector<ConnectionCatalog::FieldDef> trussNodeFields(const ConnectionCatalog::Entry &entry);

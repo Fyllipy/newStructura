@@ -1,0 +1,196 @@
+{
+ "ed3dlib.dll": {
+  "txt": "lee_closure.txt",
+  "names": []
+ },
+ "arrays2.dll": {
+  "txt": "leeext_arrays2.txt",
+  "names": [
+   "ebaarray_nousar_lee_apunorde_con_1_dato_extra",
+   "ebaarray_nousar_lee_apunorde_con_2_datos_extra",
+   "ebaarray_nousar_lee_apunorde_con_3_datos_extra",
+   "ebaarray_nousar_lee_apunorde_con_5_datos_extra"
+  ]
+ },
+ "pilargeo.dll": {
+  "txt": "leeext_pilargeo.txt",
+  "names": [
+   "eppilob_lee",
+   "epseccion_lee"
+  ]
+ },
+ "pzmadera.dll": {
+  "txt": "leeext_pzmadera.txt",
+  "names": [
+   "pzmadasgclaser_lee",
+   "pzmadinc_lee",
+   "pzmadmat_lee",
+   "pzmadob_lee"
+  ]
+ },
+ "dathipfle.dll": {
+  "txt": "leeext_dathipfle.txt",
+  "names": [
+   "dathipfle_lee"
+  ]
+ },
+ "ambiente.dll": {
+  "txt": "leeext_ambiente.txt",
+  "names": [
+   "ambhorm_lee"
+  ]
+ },
+ "ghipocal.dll": {
+  "txt": "leeext_ghipocal.txt",
+  "names": [
+   "hipocal_lee"
+  ]
+ },
+ "seccviga.dll": {
+  "txt": "leeext_seccviga.txt",
+  "names": [
+   "svforjcype_lee",
+   "svseccion_lee"
+  ]
+ },
+ "piezamet.dll": {
+  "txt": "leeext_piezamet.txt",
+  "names": [
+   "pzmetstr_lee"
+  ]
+ },
+ "rstfuego.dll": {
+  "txt": "leeext_rstfuego.txt",
+  "names": [
+   "rfdathorm_lee",
+   "rfdatmet_lee"
+  ]
+ },
+ "geom2d.dll": {
+  "txt": "leeext_geom2d.txt",
+  "names": [
+   "Cnt2D_leeContorno2D"
+  ]
+ },
+ "secgenelelin.dll": {
+  "txt": "leeext_secgenelelin.txt",
+  "names": [
+   "sghormsgen_lee",
+   "sgusoseccion_lee"
+  ]
+ },
+ "pilararm.dll": {
+  "txt": "leeext_pilararm.txt",
+  "names": [
+   "aparmado_lee"
+  ]
+ },
+ "ehe.dll": {
+  "txt": "leeext_ehe.txt",
+  "names": [
+   "ehe08ambiente_lee"
+  ]
+ },
+ "eurocod.dll": {
+  "txt": "leeext_eurocod.txt",
+  "names": [
+   "ec2ambiente_lee",
+   "ec2ntcambiente_lee"
+  ]
+ },
+ "nb1.dll": {
+  "txt": "leeext_nb1.txt",
+  "names": [
+   "nb2ambiente_lee"
+  ]
+ },
+ "india.dll": {
+  "txt": "leeext_india.txt",
+  "names": [
+   "ishambiente_lee"
+  ]
+ },
+ "bael.dll": {
+  "txt": "leeext_bael.txt",
+  "names": [
+   "baelambiente_lee"
+  ]
+ },
+ "rusia.dll": {
+  "txt": "leeext_rusia.txt",
+  "names": [
+   "rsambhorm_lee"
+  ]
+ },
+ "ntc.dll": {
+  "txt": "leeext_ntc.txt",
+  "names": [
+   "ntc04ambiente_lee"
+  ]
+ },
+ "british.dll": {
+  "txt": "leeext_british.txt",
+  "names": [
+   "bshambiente_lee"
+  ]
+ },
+ "forchapa.dll": {
+  "txt": "leeext_forchapa.txt",
+  "names": [
+   "frcpanyo_lee"
+  ]
+ },
+ "elemgeo.dll": {
+  "txt": "leeext_elemgeo.txt",
+  "names": [
+   "egtensadm_lee"
+  ]
+ },
+ "vgmixta.dll": {
+  "txt": "leeext_vgmixta.txt",
+  "names": [
+   "vgmixta_lee"
+  ]
+ },
+ "arcelor.dll": {
+  "txt": "leeext_arcelor.txt",
+  "names": [
+   "arcpieza_lee"
+  ]
+ },
+ "bibperf3.dll": {
+  "txt": "leeext_bibperf3.txt",
+  "names": [
+   "bp3perfil_lee",
+   "bp3perfil_lee_antiguo",
+   "bp3perfil_lee_antiguo_version_antigua"
+  ]
+ },
+ "pztipos.dll": {
+  "txt": "leeext_pztipos.txt",
+  "names": [
+   "cantovar_lee",
+   "cantovar_lee_antiguo",
+   "cartela_lee",
+   "losahorm_lee",
+   "methorm_lee",
+   "plataban_lee",
+   "presilla_lee",
+   "presilla_lee_antigua",
+   "presilla_lee_perfil2",
+   "rigalma_lee",
+   "separvar_lee",
+   "sepdoble_lee",
+   "soldlong_lee",
+   "tipotubo_lee",
+   "uniongen_lee",
+   "vigaboyd_lee"
+  ]
+ },
+ "uniones.dll": {
+  "txt": "leeext_uniones.txt",
+  "names": [
+   "ununioned_lee"
+  ]
+ }
+}

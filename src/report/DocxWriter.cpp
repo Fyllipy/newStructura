@@ -412,6 +412,129 @@ private:
         return x;
     }
 
+    // Ficha de calculo (verificacao de norma): faixa de titulo, descricao, passos com "Onde:" e resultado
+    static std::string accentOf(CellStatus s)
+    {
+        return s == CellStatus::Fail ? "C0392B" : (s == CellStatus::Warn ? "E0A100" : "2E9E5B");
+    }
+
+    static std::string cellXml(int width, const std::string &fill, const std::string &borders, const std::string &inner)
+    {
+        std::string x = "<w:tc><w:tcPr><w:tcW w:w=\"" + std::to_string(width) + "\" w:type=\"dxa\"/>";
+        if (!borders.empty()) {
+            x += "<w:tcBorders>" + borders + "</w:tcBorders>";
+        }
+        if (!fill.empty()) {
+            x += "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"" + fill + "\"/>";
+        }
+        x += "<w:vAlign w:val=\"center\"/></w:tcPr>" + inner + "</w:tc>";
+        return x;
+    }
+
+    static std::string tableOpen(const std::vector<int> &widths, bool borderless)
+    {
+        std::string x = "<w:tbl><w:tblPr><w:tblW w:w=\"" + std::to_string(kPageWidthDxa) + "\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/>";
+        if (borderless) {
+            x += "<w:tblBorders><w:top w:val=\"nil\"/><w:left w:val=\"nil\"/><w:bottom w:val=\"nil\"/><w:right w:val=\"nil\"/><w:insideH w:val=\"nil\"/><w:insideV w:val=\"nil\"/></w:tblBorders>";
+        }
+        x += "<w:tblCellMar><w:top w:w=\"30\" w:type=\"dxa\"/><w:left w:w=\"90\" w:type=\"dxa\"/><w:bottom w:w=\"30\" w:type=\"dxa\"/><w:right w:w=\"90\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>";
+        for (int w : widths) {
+            x += "<w:gridCol w:w=\"" + std::to_string(w) + "\"/>";
+        }
+        return x + "</w:tblGrid>";
+    }
+
+    static std::string textPara(const std::string &style, const std::string &runs, const std::string &jc = {}, bool keepNext = false)
+    {
+        std::string x = "<w:p><w:pPr>";
+        if (!style.empty()) {
+            x += "<w:pStyle w:val=\"" + style + "\"/>";
+        }
+        if (keepNext) {
+            x += "<w:keepNext/>";
+        }
+        if (!jc.empty()) {
+            x += "<w:jc w:val=\"" + jc + "\"/>";
+        }
+        return x + "</w:pPr>" + runs + "</w:p>";
+    }
+
+    static std::string plainRun(const std::string &text, bool bold, const std::string &color, int halfPoints = 0, bool italic = false)
+    {
+        Run r;
+        r.text = text;
+        r.bold = bold;
+        r.italic = italic;
+        r.color = color;
+        return runXml(r, {}, false, halfPoints);
+    }
+
+    std::string emit(const CalcCard &c) const
+    {
+        const std::string accent = accentOf(c.status);
+        const std::string fill = c.status == CellStatus::Fail ? "F8DAD6" : (c.status == CellStatus::Warn ? "FCEFCB" : "DDEFE3");
+        const std::string text = c.status == CellStatus::Fail ? "7A1E14" : (c.status == CellStatus::Warn ? "6B4500" : "1E5C34");
+        std::string x;
+        // faixa
+        const std::string left = "<w:left w:val=\"single\" w:sz=\"36\" w:space=\"0\" w:color=\"" + accent + "\"/>";
+        x += tableOpen({kPageWidthDxa}, true);
+        x += "<w:tr><w:trPr><w:cantSplit/></w:trPr>" +
+             cellXml(kPageWidthDxa, fill, left,
+                     textPara("", plainRun(c.title, true, text, 23) + (c.clause.empty() ? std::string() : plainRun("   (" + c.clause + ")", false, text, 19)), {}, true)) +
+             "</w:tr></w:tbl>";
+        if (!c.location.empty()) {
+            x += textPara("Pequeno", plainRun("Seção crítica: " + c.location, false, "5A6472", 18, true), {}, true);
+        }
+        if (!c.description.empty()) {
+            x += textPara("", plainRun(c.description, false, "3A4352", 20), "both", true);
+        } else {
+            x += "<w:p><w:pPr><w:spacing w:after=\"20\"/></w:pPr></w:p>";
+        }
+        const std::vector<int> varWidths = {1900, kPageWidthDxa - 1900 - 2100, 2100};
+        for (const CalcStep &step : c.steps) {
+            if (!step.label.empty()) {
+                x += textPara("", plainRun("▸ " + step.label, true, "1F4E79", 20), {}, true);
+            }
+            for (const std::string &eq : step.equations) {
+                x += emit(Equation {eq});
+            }
+            for (const std::string &note : step.notes) {
+                x += textPara("Pequeno", plainRun(note, false, {}, 0, true));
+            }
+            if (!step.variables.empty()) {
+                x += textPara("", plainRun("Onde:", true, "404B5A", 19), {}, true);
+                x += tableOpen(varWidths, true);
+                const std::string rule = "<w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"B7C3D4\"/>";
+                for (const CalcVariable &v : step.variables) {
+                    const std::string symbol = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\"/><w:jc w:val=\"right\"/></w:pPr><m:oMath>" + emitNode(parseLatex(v.latex)) + "</m:oMath></w:p>";
+                    const std::string meaning = textPara("Tabela", plainRun(v.meaning, false, "2A3340", 18));
+                    std::string value;
+                    if (!v.value.empty()) {
+                        value = textPara("Tabela", plainRun(v.value, true, "1F4E79", 19) + (v.unit.empty() ? std::string() : plainRun(" " + v.unit, false, "5A6472", 18)), "right");
+                    } else {
+                        value = textPara("Tabela", "", "right");
+                    }
+                    x += "<w:tr><w:trPr><w:cantSplit/></w:trPr>" + cellXml(varWidths[0], "", "", symbol) + cellXml(varWidths[1], "", "", meaning) +
+                         cellXml(varWidths[2], "", rule, value) + "</w:tr>";
+                }
+                x += "</w:tbl><w:p><w:pPr><w:spacing w:after=\"40\"/></w:pPr></w:p>";
+            }
+        }
+        // resultado
+        const std::vector<int> resultWidths = {kPageWidthDxa * 6 / 10, kPageWidthDxa - kPageWidthDxa * 6 / 10};
+        const std::string border = "<w:top w:val=\"single\" w:sz=\"8\" w:space=\"0\" w:color=\"" + accent + "\"/><w:bottom w:val=\"single\" w:sz=\"8\" w:space=\"0\" w:color=\"" + accent + "\"/>";
+        const std::string inequality = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\"/></w:pPr><m:oMath>" + emitNode(parseLatex(c.inequalityLatex)) + "</m:oMath></w:p>";
+        std::string right = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\"/><w:jc w:val=\"right\"/></w:pPr><m:oMath>" + emitNode(parseLatex(c.resultLabel + " :")) + "</m:oMath>" +
+                            plainRun("  " + c.resultValue + "  ", true, accent, 26) + plainRun(c.ok ? "✔" : "✘", true, accent, 30) + "</w:p>";
+        if (!c.resultDetail.empty()) {
+            right += textPara("Pequeno", plainRun(c.resultDetail, false, "5A6472", 17), "right");
+        }
+        x += tableOpen(resultWidths, true);
+        x += "<w:tr><w:trPr><w:cantSplit/></w:trPr>" + cellXml(resultWidths[0], "", border, inequality) + cellXml(resultWidths[1], "", border, right) + "</w:tr></w:tbl>";
+        x += "<w:p><w:pPr><w:pStyle w:val=\"Pequeno\"/><w:spacing w:after=\"160\"/></w:pPr></w:p>";
+        return x;
+    }
+
     std::string emit(const Table &t) const
     {
         const std::size_t cols = std::max<std::size_t>({t.header.size(), t.rows.empty() ? 0 : t.rows.front().size(), 1});

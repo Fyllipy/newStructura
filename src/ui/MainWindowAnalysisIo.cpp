@@ -33,6 +33,7 @@
 #include <QComboBox>
 #include "BusyProgress.h"
 #include "app/services/NotionalLoadService.h"
+#include "app/services/StructuralChecks.h"
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QSlider>
@@ -321,7 +322,7 @@ namespace {
 /// Modelo de segunda ordem de uma combinacao (cargas dos casos ponderadas; rigidez reduzida nas combinacoes ultimas).
 bool buildSecondOrderModel(const Structura::App::ProjectData::LoadCombination &combination,
                            const QMap<QString, Structura::App::SolverBridge::ModelData> &caseModels, double stiffnessReduction,
-                           Structura::App::SolverBridge::ModelData &out, bool secondOrder = true)
+                           Structura::App::SolverBridge::ModelData &out, bool secondOrder = true, double imperfectionRatio = 0.0)
 {
     using Structura::App::Services::CombinationService;
     std::vector<std::pair<const Structura::App::SolverBridge::ModelData *, double>> terms;
@@ -336,12 +337,29 @@ bool buildSecondOrderModel(const Structura::App::ProjectData::LoadCombination &c
     }
     out = CombinationService::mergeModels(terms);
     out.secondOrder = secondOrder;
+    if (combination.imperfectionAxis >= 0 && secondOrder) {
+        Structura::App::Services::NotionalLoadService::applyImperfection(out, combination.imperfectionAxis, combination.imperfectionSign, imperfectionRatio);
+    }
     if (secondOrder && !combination.name.startsWith(QLatin1String("ELS"), Qt::CaseInsensitive)) {
         for (auto &material : out.materials) {
             material.e *= stiffnessReduction;
         }
     }
     return true;
+}
+
+/// Modelo da estrutura "nt" (Anexo C.2.1): mesmos carregamentos, com os nos dos andares impedidos de se deslocar horizontalmente (contencoes ficticias).
+Structura::App::SolverBridge::ModelData makeNtModel(const Structura::App::SolverBridge::ModelData &caseModel, const std::vector<int> &storyNodes)
+{
+    Structura::App::SolverBridge::ModelData model = caseModel;
+    const std::unordered_set<int> restrained(storyNodes.begin(), storyNodes.end());
+    for (auto &node : model.nodes) {
+        if (restrained.count(node.id) > 0) {
+            node.restraints[0] = 1;
+            node.restraints[1] = 1;
+        }
+    }
+    return model;
 }
 
 } // namespace
@@ -351,10 +369,7 @@ void MainWindow::rebuildResultViews()
     using Structura::App::Services::CombinationService;
     const auto cases = CombinationService::effectiveCases(m_extras);
     auto combinations = CombinationService::effectiveCombinations(m_extras);
-    const bool withNotional = m_extras.design.notionalLoads;
-    if (withNotional) {
-        combinations = Structura::App::Services::NotionalLoadService::withVariants(combinations);
-    }
+    combinations = Structura::App::Services::NotionalLoadService::variantsFor(m_extras.design, combinations);
     m_resultViews.clear();
     for (const auto& combination : combinations) {
         ResultView view;
@@ -375,9 +390,24 @@ void MainWindow::rebuildResultViews()
             continue;
         }
         view.result = CombinationService::combine(terms);
+        // estrutura nt (Anexo C.2.1): so se todas as parcelas da combinacao tem o resultado nt
+        {
+            std::vector<CombinationService::Term> ntTerms;
+            for (const auto &term : combination.factors) {
+                const auto ntIt = m_caseRuns.constFind(QStringLiteral("NT:") + term.first);
+                if (ntIt != m_caseRuns.constEnd()) {
+                    ntTerms.push_back({&ntIt->result, term.second});
+                }
+            }
+            if (!ntTerms.empty() && ntTerms.size() == terms.size()) {
+                view.resultNt = CombinationService::combine(ntTerms);
+                view.hasNt = true;
+            }
+        }
         const auto secondOrderRun = m_caseRuns.constFind(QStringLiteral("COMB:") + combination.name);
         if (secondOrderRun != m_caseRuns.constEnd()) {
             view.result = secondOrderRun->result;
+            view.hasNt = false;
             view.terms.clear();
             view.terms.emplace_back(QStringLiteral("COMB:") + combination.name, 1.0);
         }
@@ -447,9 +477,7 @@ bool MainWindow::executeAnalysis(QString *reportOut)
     // combinacoes sao somas ponderadas dos resultados dos casos.
     const auto cases = CombinationService::effectiveCases(m_extras);
     auto combinations = CombinationService::effectiveCombinations(m_extras);
-    if (m_extras.design.notionalLoads) {
-        combinations = Structura::App::Services::NotionalLoadService::withVariants(combinations);
-    }
+    combinations = Structura::App::Services::NotionalLoadService::variantsFor(m_extras.design, combinations);
 
     QMap<QString, CaseRun> runs;
     try {
@@ -474,7 +502,7 @@ bool MainWindow::executeAnalysis(QString *reportOut)
             built.append({loadCase.name, std::move(buildResult.model)});
         }
         // forcas nocionais: casos auxiliares (X e Y) proporcionais as cargas gravitacionais de cada caso
-        if (m_extras.design.notionalLoads) {
+        if (m_extras.design.notionalActive()) {
             const int original = static_cast<int>(built.size());
             for (int i = 0; i < original; ++i) {
                 for (int axis = 0; axis < 2; ++axis) {
@@ -486,6 +514,7 @@ bool MainWindow::executeAnalysis(QString *reportOut)
         // 2) solucao em segundo plano, com janela de progresso
         const bool secondOrder = m_extras.design.secondOrder;
         const double reduction = m_extras.design.stiffnessReduction;
+        const double imperfectionRatio = m_extras.design.geometricActive() ? m_extras.design.imperfectionRatio : 0.0;
         // Tirantes (so tracao) tornam a resposta nao linear: a superposicao de casos poderia deixar um tirante comprimido
         // numa combinacao; entao cada combinacao e resolvida com suas cargas ponderadas, como na segunda ordem.
         bool hasTie = false;
@@ -493,7 +522,13 @@ bool MainWindow::executeAnalysis(QString *reportOut)
             hasTie = hasTie || std::any_of(item.second.members.begin(), item.second.members.end(), [](const auto &m) { return m.tensionOnly; });
         }
         const bool nonlinearCombos = secondOrder || hasTie;
-        const int totalSteps = static_cast<int>(built.size()) + (nonlinearCombos ? static_cast<int>(combinations.size()) : 0);
+        // Anexo C: B1 e B2 pedem a separacao dos esforcos em estrutura nt (nos dos andares contidos) e lt (= original - nt)
+        std::vector<int> storyNodes;
+        if (!nonlinearCombos && m_extras.design.autoB2 && !built.isEmpty()) {
+            storyNodes = Structura::App::Services::StructuralChecks::storyLevelNodes(built.first().second);
+        }
+        const bool withNt = !storyNodes.empty();
+        const int totalSteps = static_cast<int>(built.size()) * (withNt ? 2 : 1) + (nonlinearCombos ? static_cast<int>(combinations.size()) : 0);
         runs = Structura::UI::runBusy(this, tr("Análise estrutural"), tr("Preparando o solver…"),
                                       [&](Structura::UI::BusyProgress &progress) {
             QMap<QString, CaseRun> out;
@@ -507,6 +542,16 @@ bool MainWindow::executeAnalysis(QString *reportOut)
                 out.insert(item.first, std::move(run));
                 ++step;
             }
+            if (withNt) {
+                for (auto &item : built) {
+                    progress.report(step, totalSteps, tr("Estrutura nt (Anexo C) — %1").arg(item.first));
+                    CaseRun run;
+                    run.model = makeNtModel(item.second, storyNodes);
+                    run.result = solver.solve(run.model);
+                    out.insert(QStringLiteral("NT:") + item.first, std::move(run));
+                    ++step;
+                }
+            }
             // Segunda ordem: nao ha superposicao, entao cada combinacao e resolvida com suas cargas ponderadas.
             if (nonlinearCombos) {
                 QMap<QString, Structura::App::SolverBridge::ModelData> caseModels;
@@ -517,7 +562,7 @@ bool MainWindow::executeAnalysis(QString *reportOut)
                     progress.report(step, totalSteps, tr("Combinação %1 (resolvida com tirantes/segunda ordem)").arg(combination.name));
                     ++step;
                     CaseRun run;
-                    if (!buildSecondOrderModel(combination, caseModels, reduction, run.model)) {
+                    if (!buildSecondOrderModel(combination, caseModels, reduction, run.model, secondOrder, imperfectionRatio)) {
                         continue;
                     }
                     run.result = solver.solve(run.model);
@@ -540,11 +585,12 @@ bool MainWindow::executeAnalysis(QString *reportOut)
     {
         std::vector<const Structura::App::SolverBridge::ModelData *> models;
         for (auto it = m_caseRuns.constBegin(); it != m_caseRuns.constEnd(); ++it) {
-            if (!it.key().startsWith(QLatin1String("COMB:")) && !Structura::App::Services::NotionalLoadService::isNotionalKey(it.key())) {
+            if (!it.key().startsWith(QLatin1String("COMB:")) && !it.key().startsWith(QLatin1String("NT:"))
+                && !Structura::App::Services::NotionalLoadService::isNotionalKey(it.key())) {
                 models.push_back(&it->model);
             }
         }
-        m_analysisFingerprint = Structura::App::Services::ResultsPersistence::fingerprint(models, m_extras.design.secondOrder, m_extras.design.stiffnessReduction);
+        m_analysisFingerprint = Structura::App::Services::ResultsPersistence::fingerprint(models, m_extras.design.secondOrder, m_extras.design.stiffnessReduction, m_extras.design.geometricActive() ? m_extras.design.imperfectionRatio : 0.0);
     }
     rebuildResultViews();
 
@@ -552,6 +598,25 @@ bool MainWindow::executeAnalysis(QString *reportOut)
         statusBar()->showMessage(tr("Analise concluida. Atenção: as cascas NÃO estão acopladas às barras e os quinhões estão desligados (suas cargas não chegam às vigas)."), 12000);
     } else {
         statusBar()->showMessage(tr("Analise concluida com sucesso."), 5000);
+    }
+
+    {
+        // avisos do solver (um por texto, sem repetir entre casos/combinacoes)
+        QStringList warnings;
+        for (auto it = m_caseRuns.constBegin(); it != m_caseRuns.constEnd(); ++it) {
+            for (const QString &w : it->result.warnings) {
+                const QString text = friendlySolverWarning(w);
+                if (!warnings.contains(text)) {
+                    warnings << text;
+                }
+            }
+        }
+        if (!warnings.isEmpty()) {
+            statusBar()->showMessage(tr("Análise concluída com %1 aviso(s) do solver.").arg(warnings.size()), 12000);
+            if (!qEnvironmentVariableIsSet("STRUCTURA_AUTOSHOT")) {
+                QMessageBox::warning(this, tr("Avisos do solver"), warnings.join(QStringLiteral("\n\n")));
+            }
+        }
     }
 
     QString report;
@@ -580,7 +645,7 @@ bool MainWindow::restoreStoredResults()
     if (stored.runs.isEmpty() || !m_sceneController) {
         return false;
     }
-    if (m_extras.design.notionalLoads) {
+    if (m_extras.design.hasImperfectionVariants()) {
         // os casos nocionais nao sao gravados: refaz a analise para gerar as variantes das combinacoes
         m_extras.results = {};
         showStatusMessage(tr("Forças nocionais ativas: rode a análise novamente para gerar as combinações com forças nocionais."), 9000);
@@ -603,7 +668,7 @@ bool MainWindow::restoreStoredResults()
     for (auto it = runs.constBegin(); it != runs.constEnd(); ++it) {
         models.push_back(&it->model);
     }
-    const QString current = ResultsPersistence::fingerprint(models, m_extras.design.secondOrder, m_extras.design.stiffnessReduction);
+    const QString current = ResultsPersistence::fingerprint(models, m_extras.design.secondOrder, m_extras.design.stiffnessReduction, m_extras.design.geometricActive() ? m_extras.design.imperfectionRatio : 0.0);
     if (current != stored.fingerprint) {
         m_extras.results = {};
         showStatusMessage(tr("Os resultados gravados no arquivo não correspondem mais ao modelo e foram descartados: rode a análise novamente."), 9000);
@@ -632,10 +697,31 @@ bool MainWindow::restoreStoredResults()
     for (auto it = caseModels.constBegin(); it != caseModels.constEnd(); ++it) {
         restoreHasTie = restoreHasTie || std::any_of(it->members.begin(), it->members.end(), [](const auto &m) { return m.tensionOnly; });
     }
+    if (!m_extras.design.secondOrder && !restoreHasTie && m_extras.design.autoB2 && !caseModels.isEmpty()) {
+        // estrutura nt de cada caso (Anexo C.2.1), gravada junto dos resultados; arquivos antigos nao a tem: refaz a analise
+        const auto storyNodes = Structura::App::Services::StructuralChecks::storyLevelNodes(caseModels.constBegin().value());
+        if (!storyNodes.empty()) {
+            for (auto it = caseModels.constBegin(); it != caseModels.constEnd(); ++it) {
+                CaseRun run;
+                run.model = makeNtModel(it.value(), storyNodes);
+                const auto *storedRun = find(QStringLiteral("NT:") + it.key());
+                bool ok = false;
+                if (!storedRun) {
+                    return false;
+                }
+                run.result = ResultsPersistence::fromStored(*storedRun, run.model, &ok);
+                if (!ok) {
+                    return false;
+                }
+                runs.insert(QStringLiteral("NT:") + it.key(), std::move(run));
+            }
+        }
+    }
     if (m_extras.design.secondOrder || restoreHasTie) {
         for (const auto &combination : CombinationService::effectiveCombinations(m_extras)) {
             CaseRun run;
-            if (!buildSecondOrderModel(combination, caseModels, m_extras.design.stiffnessReduction, run.model, m_extras.design.secondOrder)) {
+            if (!buildSecondOrderModel(combination, caseModels, m_extras.design.stiffnessReduction, run.model, m_extras.design.secondOrder,
+                                       m_extras.design.geometricActive() ? m_extras.design.imperfectionRatio : 0.0)) {
                 continue;
             }
             const QString key = QStringLiteral("COMB:") + combination.name;

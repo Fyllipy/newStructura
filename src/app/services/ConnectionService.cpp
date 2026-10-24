@@ -1,6 +1,8 @@
 #include "ConnectionService.h"
 #include "ConnectionCatalog.h"
 
+#include "design/ConnectionHelpers.h"
+#include "design/PinConnection.h"
 #include "design/EndPlateConnection.h"
 #include "design/SupportChecks.h"
 #include "design/BasePlate.h"
@@ -189,7 +191,8 @@ D::GussetInput toGusset(const NodeConnection &c, const ConnectionService::Forces
     in.gusset = {value(c, "gFy", 250.0), value(c, "gFu", 400.0)};
     in.weldLeg = value(c, "weldLeg", 6.0);
     in.weldFw = value(c, "weldFw", 485.0);
-    in.weldAngleDeg = value(c, "weldAngle", 90.0);
+    // diagonal/banzo inclinado em relacao a normal da face: a forca faz 90 - skew com o eixo da solda (0 = paralela)
+    in.weldAngleDeg = value(c, "skew", 0.0) > 0.5 ? 90.0 - value(c, "skew", 0.0) : value(c, "weldAngle", 90.0);
     in.supportThickness = value(c, "supT", 12.0);
     in.support = {value(c, "supFy", 250.0), value(c, "supFu", 400.0)};
     in.tension = f.tension;
@@ -380,6 +383,7 @@ D::EndPlateInput toEndPlate(const NodeConnection &c, double shear, double axial,
     in.column = {value(c, "supFy", 250.0), value(c, "supFu", 400.0)};
     in.colUnbraced = value(c, "supLb", 0.0);
     in.continuityPlates = value(c, "cont", 0.0) != 0.0;
+    in.beamOnBothSides = value(c, "bothSides", 0.0) != 0.0;
     in.stiffenerThickness = value(c, "contT", 9.5);
     in.stiffenerWidth = value(c, "contW", 60.0);
     in.doublerThickness = value(c, "doubler", 0.0);
@@ -528,10 +532,36 @@ bool ConnectionService::hasProposal(int type)
     return type != NodeConnection::kTubular && type != NodeConnection::kColdFormed && type != NodeConnection::kEndPlate;
 }
 
+QVector<ConnectionService::FieldDef> ConnectionService::fatigueFields()
+{
+    QVector<FieldDef> list;
+    const QString group = QObject::tr("Fadiga (Anexo H)");
+    auto add = [&](const char *key, const QString &label, double min, double max, int decimals, const QString &suffix, const QStringList &options = {}, const QString &tip = {}) {
+        list.append({QString::fromLatin1(key), label, min, max, decimals, suffix, group, options, tip});
+    };
+    add("fatOn", QObject::tr("Verificar fadiga"), 0, 1, 0, QString(), {QObject::tr("Não"), QObject::tr("Sim")},
+        QObject::tr("NBR 8800:2024, Anexo H: parafusos e barras rosqueadas tracionados (H.5-b, categoria G), metal-base de ligações parafusadas (H.5-a, Tabela H.1 casos 2.1 a 2.4) e chapas ligadas por pino (caso 2.4). "
+                    "Os requisitos de fabricação e montagem (H.6) aparecem no memorial."));
+    add("fatCycles", QObject::tr("Número de ciclos N (0 = vida infinita)"), 0, 1e10, 0, QString());
+    add("fatRange", QObject::tr("Faixa de variação da força axial na ligação"), 0, 1e6, 1, QObject::tr(" kN"), {},
+        QObject::tr("Tração dos parafusos (com efeito de alavanca, H.3.2) ou tração da chapa ligada por pino. 0 = alternativa de H.5: 20 % da força da combinação, com protensão inicial."));
+    add("fatBolts", QObject::tr("Parafusos que dividem a faixa de força (0 = automático)"), 0, 200, 0, QString());
+    add("fatPitch", QObject::tr("Passo da rosca (0 = série grossa ISO)"), 0, 8, 2, QObject::tr(" mm"));
+    add("fatPreload", QObject::tr("Parafusos com protensão inicial (Tabela 19) e só aço na pega"), 0, 1, 0, QString(), {QObject::tr("Não"), QObject::tr("Sim")});
+    add("fatStress", QObject::tr("Faixa de tensões no metal-base ligado (0 = não verificar)"), 0, 2000, 1, QObject::tr(" MPa"), {}, QObject::tr("H.5-a: seção líquida ou bruta do elemento ligado, junta parafusada com corte nos parafusos."));
+    add("fatCase", QObject::tr("Categoria do metal-base ligado"), 0, 1, 0, QString(), {QObject::tr("B: junta por atrito ou contato com fabricação de atrito (casos 2.1/2.2)"), QObject::tr("C: demais ligações parafusadas (caso 2.3)")});
+    return list;
+}
+
 QVector<ConnectionService::FieldDef> ConnectionService::fields(int type)
 {
     if (ConnectionCatalog::isCatalog(type)) {
-        return ConnectionCatalog::fields(type);
+        QVector<FieldDef> catalogFields = ConnectionCatalog::fields(type);
+        const auto *entry = ConnectionCatalog::find(type);
+        if (entry && entry->legacyType < 0 && (entry->usesBolts || entry->family == ConnectionCatalog::Family::Pin)) {
+            catalogFields += fatigueFields();
+        }
+        return catalogFields;
     }
     QVector<FieldDef> list;
     QString group;
@@ -551,6 +581,9 @@ QVector<ConnectionService::FieldDef> ConnectionService::fields(int type)
         add("supTw", QObject::tr("Espessura da alma tw"), 0, 60, 2, mm);
         add("supR", QObject::tr("Raio de concordância mesa–alma"), 0, 60, 1, mm);
         add("supEnd", QObject::tr("Posição da ligação no perfil de apoio"), 0, 1, 0, QString(), {QObject::tr("Intermediária (apoio contínuo)"), QObject::tr("Extremidade do perfil")});
+        add("skew", QObject::tr("Inclinação da barra em relação à normal da face do apoio"), 0, 80, 1, deg,
+            {}, QObject::tr("0° = barra perpendicular à face (viga ortogonal ao pilar). Banzo de tesoura ou viga inclinada sobre o pilar: informe a inclinação (preenchida automaticamente a partir da geometria ao escolher o apoio). "
+                            "As verificações do lado do apoio usam os esforços resolvidos no plano da face: N_n = N cos α + V sen α e V_p = N sen α + V (soma em módulo, conservador); em chapa de nó a solda recebe o ângulo 90° − α."));
         add("supLb", QObject::tr("Comprimento destravado do apoio ℓ (0 = mesas contidas)"), 0, 20000, 0, mm, {},
             QObject::tr("NBR 8800:2024, 5.7.5: flambagem lateral da alma sob compressão localizada. Informe o maior comprimento destravado das mesas na seção da força; 0 dispensa a verificação."));
     };
@@ -689,6 +722,8 @@ QVector<ConnectionService::FieldDef> ConnectionService::fields(int type)
         section(QObject::tr("Pilar: enrijecedores e reforço (5.7.7 e 5.7.9)"));
         add("cont", QObject::tr("Enrijecedores horizontais alinhados com as mesas da viga"), 0, 1, 0, QString(), {QObject::tr("Não"), QObject::tr("Sim")},
             QObject::tr("Com enrijecedores, as verificações locais da mesa e da alma (5.7.2 a 5.7.5) são substituídas pelo dimensionamento dos enrijecedores (5.7.9)."));
+        add("bothSides", QObject::tr("Viga também do outro lado do pilar (momentos de mesmo sentido)"), 0, 1, 0, QString(), {QObject::tr("Não"), QObject::tr("Sim")},
+            QObject::tr("Par de forças de compressão opostas nas duas mesas do pilar: verifica a instabilidade da alma por compressão (NBR 8800:2024, 5.7.6)."));
         add("contT", QObject::tr("Espessura do enrijecedor"), 4, 40, 1, mm);
         add("contW", QObject::tr("Largura de cada enrijecedor"), 20, 300, 1, mm);
         add("doubler", QObject::tr("Chapa de reforço da alma do pilar (0 = nenhuma)"), 0, 30, 1, mm);
@@ -815,6 +850,9 @@ QVector<ConnectionService::FieldDef> ConnectionService::fields(int type)
         break;
     }
     }
+    if (usesBolts(type)) {
+        list += fatigueFields();
+    }
     return list;
 }
 
@@ -827,7 +865,8 @@ NodeConnection ConnectionService::makeDefault(int type, const BeamInfo &beam, do
     c.type = type;
     c.grade = QString::fromStdString(D::boltGrades()[2].name);
     if (type == NodeConnection::kGusset) {
-        const bool angle = beam.family.startsWith(QLatin1String("L "));
+        const bool doubleAngle = beam.family == QLatin1String("Dupla Cantoneira T");   // duas cantoneiras com a chapa de no entre elas (corte duplo)
+        const bool angle = beam.family.startsWith(QLatin1String("L ")) || doubleAngle;
         double legT = beam.geometry.value(QStringLiteral("t"), beam.tf > 0 ? beam.tf : 6.35);
         double ec = 0.25 * std::max(beam.depth, beam.geometry.value(QStringLiteral("b"), beam.bf));
         if (angle) {
@@ -835,7 +874,7 @@ NodeConnection ConnectionService::makeDefault(int type, const BeamInfo &beam, do
             ec = (b * b + b * legT - legT * legT) / (2.0 * (2.0 * b - legT));
         }
         c.values = {{"db", 20.0}, {"thread", 1.0}, {"rows", 3.0}, {"lines", 1.0}, {"pitch", 70.0}, {"gauge", 60.0}, {"endLeg", 35.0}, {"edgeLeg", 30.0},
-                    {"endG", 35.0}, {"edgeG", 40.0}, {"bars", angle ? 2.0 : 1.0}, {"barArea", beam.area}, {"legT", legT}, {"ec", ec}, {"barFy", beam.fy},
+                    {"endG", 35.0}, {"edgeG", 40.0}, {"bars", angle ? 2.0 : 1.0}, {"barArea", doubleAngle ? 0.5 * beam.area : beam.area}, {"legT", legT}, {"ec", ec}, {"barFy", beam.fy},
                     {"barFu", beam.fu}, {"gT", 9.5}, {"gWidth", 200.0}, {"freeL", 80.0}, {"gFy", plateFy}, {"gFu", plateFu}, {"weldLeg", 6.0}, {"weldFw", 485.0},
                     {"weldAngle", 90.0}, {"supT", 12.0}, {"supFy", plateFy}, {"supFu", plateFu}};
         return c;
@@ -936,8 +975,9 @@ NodeConnection ConnectionService::makeTubular(const BeamInfo &chord, const QVect
 std::pair<double, double> ConnectionService::supportDemand(const NodeConnection &c, const Forces &f)
 {
     if (c.type == NodeConnection::kGusset) {
-        // forca da diagonal tratada como normal a face (conservador)
-        return {std::max(f.tension, std::max(f.axial, 0.0)), std::max(f.compression, std::max(-f.axial, 0.0))};
+        // componente da forca da diagonal normal a face: F cos(skew) (sem inclinacao, a forca inteira)
+        const double normalPart = std::cos(value(c, "skew", 0.0) * 3.14159265358979 / 180.0);
+        return {std::max(f.tension, std::max(f.axial, 0.0)) * normalPart, std::max(f.compression, std::max(-f.axial, 0.0)) * normalPart};
     }
     if (c.type != NodeConnection::kShearTab && c.type != NodeConnection::kDoubleAngle) {
         return {0.0, 0.0};
@@ -995,8 +1035,234 @@ void ConnectionService::appendSupportLocal(Evaluation &e, const NodeConnection &
     }
 }
 
-ConnectionService::Evaluation ConnectionService::evaluate(const NodeConnection &c, const Forces &f)
+bool ConnectionService::minimumForceApplies(const NodeConnection &c)
 {
+    if (const auto *entry = ConnectionCatalog::find(c.type); entry && entry->family == ConnectionCatalog::Family::Pin) {
+        return false;   // tirante de chapa ligada por pino: dimensionado pela tracao atuante (5.2.6)
+    }
+    const int base = ConnectionCatalog::baseType(c.type);
+    // 6.1.5.2 exclui diagonais e montantes de travejamento, tirantes de barra redonda, travessas e tercas; nos de trelica e ligacoes tubulares (diagonais) e as de
+    // perfis formados a frio (NBR 14762, 10.1) tem regra propria
+    if (base == NodeConnection::kGusset || base == NodeConnection::kTubular || base == NodeConnection::kColdFormed || ConnectionCatalog::usesBraces(c.type)) {
+        return false;
+    }
+    return true;
+}
+
+ConnectionService::Evaluation ConnectionService::evaluate(const NodeConnection &c, const Forces &forces)
+{
+    if (!minimumForceApplies(c)) {
+        return evaluateExact(c, forces);
+    }
+    auto raise = [](double &shear, double &axial) {
+        const double resultant = std::hypot(shear, axial);
+        if (resultant >= kMinimumDesignForce) {
+            return false;
+        }
+        if (resultant <= 0.0) {
+            shear = kMinimumDesignForce;   // sem esforco: a norma manda a forca minima; adota a direcao do cortante
+        } else {
+            const double k = kMinimumDesignForce / resultant;
+            shear *= k;
+            axial *= k;
+        }
+        return true;
+    };
+    Forces adjusted = forces;
+    const double original = std::hypot(forces.shear, forces.axial);
+    const bool raised = raise(adjusted.shear, adjusted.axial);
+    for (ForceCase &fc : adjusted.cases) {
+        raise(fc.shear, fc.axial);
+    }
+    Evaluation e = evaluateExact(c, adjusted);
+    if (raised) {
+        D::Check note;
+        note.name = "Forca minima de calculo da ligacao";
+        note.clause = "NBR 8800:2024, 6.1.5.2";
+        note.demand = 0.0;
+        note.resistance = kMinimumDesignForce / 1000.0;
+        note.unit = "kN";
+        note.lines.push_back(Structura::Design::Connections::detail::fmtn("Forca solicitante resultante %.2f kN < 45 kN: a ligacao e dimensionada para 45 kN, com a direcao e o sentido da forca atuante (6.1.5.2).", original / 1000.0));
+        e.checks.push_back(std::move(note));
+    }
+    return e;
+}
+
+double ConnectionService::skewDegrees(const std::array<double, 3> &beamAxis, const std::array<double, 3> &faceNormal)
+{
+    auto norm = [](const std::array<double, 3> &v) { return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); };
+    const double lb = norm(beamAxis), ln = norm(faceNormal);
+    if (lb <= 0.0 || ln <= 0.0) {
+        return 0.0;
+    }
+    const double cosine = std::abs(beamAxis[0] * faceNormal[0] + beamAxis[1] * faceNormal[1] + beamAxis[2] * faceNormal[2]) / (lb * ln);
+    return std::acos(std::min(1.0, cosine)) * 180.0 / 3.14159265358979;
+}
+
+ConnectionService::Forces ConnectionService::interfaceForces(const Forces &f, double skewDeg)
+{
+    const double ca = std::cos(skewDeg * 3.14159265358979 / 180.0), sa = std::sin(skewDeg * 3.14159265358979 / 180.0);
+    Forces out = f;
+    const double axialAbs = std::max(f.tension, f.compression);
+    out.shear = f.shear + axialAbs * sa;
+    out.tension = f.tension * ca + f.shear * sa;
+    out.compression = f.compression * ca + f.shear * sa;
+    out.axial = out.tension >= out.compression ? out.tension : -out.compression;
+    for (ForceCase &fc : out.cases) {
+        const double n = std::abs(fc.axial);
+        const double normal = n * ca + fc.shear * sa;
+        fc.shear = fc.shear + n * sa;
+        fc.axial = fc.axial >= 0.0 ? normal : -normal;
+    }
+    return out;
+}
+
+/// Passo da rosca da serie grossa ISO (mm) para o diametro nominal.
+static double coarsePitch(double db)
+{
+    static const std::pair<double, double> table[] = {{8, 1.25}, {10, 1.5}, {12, 1.75}, {14, 2.0}, {16, 2.0}, {18, 2.5}, {20, 2.5}, {22, 2.5}, {24, 3.0}, {27, 3.0}, {30, 3.5}, {33, 3.5}, {36, 4.0}, {42, 4.5}};
+    double pitch = 4.5;
+    for (const auto &row : table) {
+        if (db <= row.first + 0.01) {
+            pitch = row.second;
+            break;
+        }
+    }
+    return pitch;
+}
+
+/// Fadiga (Anexo H): parafusos tracionados (H.5-b), metal-base ligado (H.5-a) e chapa ligada por pino (caso 2.4), mais os requisitos de H.6.
+static void appendFatigue(ConnectionService::Evaluation &e, const NodeConnection &c, const ConnectionService::Forces &f)
+{
+    if (static_cast<int>(value(c, "fatOn", 0.0) + 0.5) == 0) {
+        return;
+    }
+    const double cycles = value(c, "fatCycles", 2.0e6);
+    const double range = value(c, "fatRange", 0.0) * 1000.0;   // N
+    const auto *entry = ConnectionCatalog::find(c.type);
+    const bool pin = entry && entry->family == ConnectionCatalog::Family::Pin;
+    if (pin) {
+        const double net = std::max(1.0, (value(c, "plateB", 120.0) - value(c, "holeD", 40.5)) * value(c, "plateT", 19.0));
+        D::MaterialFatigueInput in;
+        in.tableCase = 3;
+        in.cycles = cycles;
+        in.stressRange = range / net;
+        for (auto check : D::checkMaterialFatigue(in)) {
+            check.lines.push_back(Structura::Design::Connections::detail::fmtn("Faixa de forca %.2f kN sobre a secao liquida (b - dh) t = %.0f mm2 (chapas ligadas por pino: caso 2.4, categoria E).", range / 1000.0, net));
+            e.checks.push_back(std::move(check));
+        }
+    } else {
+        if (range > 0.0 || value(c, "fatPreload", 0.0) != 0.0) {
+            D::BoltFatigueInput in;
+            in.db = value(c, "db", 20.0);
+            in.pitch = value(c, "fatPitch", 0.0) > 0.0 ? value(c, "fatPitch", 0.0) : coarsePitch(in.db);
+            const int automatic = std::max(1, count(c, "rows", 1) * count(c, "lines", 1));
+            in.bolts = value(c, "fatBolts", 0.0) >= 1.0 ? static_cast<int>(value(c, "fatBolts", 0.0) + 0.5) : automatic;
+            in.forceRange = range;
+            in.cycles = cycles;
+            in.preloaded = value(c, "fatPreload", 0.0) != 0.0;
+            in.staticDesignForce = std::max(f.tension, std::max(f.axial, 0.0));
+            for (auto &check : D::checkBoltFatigue(in)) {
+                e.checks.push_back(std::move(check));
+            }
+        }
+        if (value(c, "fatStress", 0.0) > 0.0) {
+            D::MaterialFatigueInput in;
+            in.tableCase = static_cast<int>(value(c, "fatCase", 0.0) + 0.5) == 0 ? 1 : 2;
+            in.cycles = cycles;
+            in.stressRange = value(c, "fatStress", 0.0);
+            for (auto &check : D::checkMaterialFatigue(in)) {
+                e.checks.push_back(std::move(check));
+            }
+        }
+    }
+    e.checks.push_back(D::fatigueFabricationRequirements());
+    e.maxRatio = D::worstRatio(e.checks);
+    if (const auto *g = D::governing(e.checks)) {
+        e.governing = QString::fromStdString(g->name);
+    }
+}
+
+ConnectionService::Evaluation ConnectionService::evaluateExact(const NodeConnection &c, const Forces &f)
+{
+    Evaluation e = evaluateExactBeamFrame(c, f);
+    const double skew = value(c, "skew", 0.0);
+    const int base = ConnectionCatalog::baseType(c.type);
+    const bool supportSide = base != NodeConnection::kGusset && base != NodeConnection::kSplice && base != NodeConnection::kBasePlate && base != NodeConnection::kTubular &&
+                             base != NodeConnection::kColdFormed && !ConnectionCatalog::usesBraces(c.type);
+    if (skew <= 0.5 || !supportSide) {
+        appendFatigue(e, c, f);
+        return e;
+    }
+    // esforcos resolvidos no plano do apoio: cada verificacao fica com a mais desfavoravel (nunca contra a seguranca; as do lado da barra podem ficar conservadoras)
+    const Forces resolved = interfaceForces(f, skew);
+    const Evaluation other = evaluateExactBeamFrame(c, resolved);
+    for (auto &check : e.checks) {
+        for (const auto &candidate : other.checks) {
+            if (candidate.name == check.name && candidate.clause == check.clause && candidate.ratio() > check.ratio()) {
+                check = candidate;
+                check.lines.push_back(Structura::Design::Connections::detail::fmtn("Esforcos resolvidos no plano do apoio (barra inclinada %.1f graus da normal da face): prevalece sobre os esforcos nos eixos da barra.", skew));
+                break;
+            }
+        }
+    }
+    D::Check note;
+    note.name = "Ligacao com barra inclinada: esforcos no plano do apoio";
+    note.clause = "equilibrio da ligacao (estatica)";
+    note.demand = 0.0;
+    note.resistance = 1.0;
+    note.unit = "";
+    const double axialAbs = std::max(f.tension, f.compression);
+    note.lines.push_back(Structura::Design::Connections::detail::fmtn("Inclinacao da barra em relacao a normal da face do apoio: a = %.1f graus (a = 0: barra perpendicular a face).", skew));
+    note.lines.push_back(Structura::Design::Connections::detail::fmtn("N_n = |N| cos a + |V| sen a = %.2f x %.3f + %.2f x %.3f = %.2f kN (esforco normal a face: tracao dos parafusos, solda, apoio)", axialAbs / 1000.0,
+                                                                      std::cos(skew * 3.14159265358979 / 180.0), f.shear / 1000.0, std::sin(skew * 3.14159265358979 / 180.0), std::max(resolved.tension, resolved.compression) / 1000.0));
+    note.lines.push_back(Structura::Design::Connections::detail::fmtn("V_p = |N| sen a + |V| = %.2f x %.3f + %.2f = %.2f kN (cortante paralelo a face). Soma em modulo: o sentido do cortante no plano da ligacao nao e conhecido (envoltoria conservadora).",
+                                                                      axialAbs / 1000.0, std::sin(skew * 3.14159265358979 / 180.0), f.shear / 1000.0, resolved.shear / 1000.0));
+    e.checks.push_back(std::move(note));
+    e.maxRatio = D::worstRatio(e.checks);
+    if (const auto *g = D::governing(e.checks)) {
+        e.governing = QString::fromStdString(g->name);
+    }
+    appendFatigue(e, c, f);
+    return e;
+}
+
+ConnectionService::Evaluation ConnectionService::evaluateExactBeamFrame(const NodeConnection &c, const Forces &f)
+{
+    // Barra inclinada (skew = a): a viga e cortada na face do apoio, e as dimensoes medidas na altura da viga (altura, mesa, raio de concordancia) projetam-se
+    // sobre a face divididas por cos a. O comprimento das soldas da alma, a altura minima da chapa e o recorte das mesas passam a usar essas dimensoes.
+    const double skewDeg = value(c, "skew", 0.0);
+    if (skewDeg > 0.5 && skewDeg < 85.0 && c.values.value(QStringLiteral("skewGeometry"), 0.0) == 0.0) {
+        const int base = ConnectionCatalog::baseType(c.type);
+        const bool supportSide = base != NodeConnection::kGusset && base != NodeConnection::kSplice && base != NodeConnection::kBasePlate && base != NodeConnection::kTubular &&
+                                 base != NodeConnection::kColdFormed && !ConnectionCatalog::usesBraces(c.type);
+        if (supportSide) {
+            NodeConnection projected = c;
+            const double factor = 1.0 / std::cos(skewDeg * 3.14159265358979 / 180.0);
+            for (const char *key : {"beamDepth", "beamD", "beamTf", "tfl", "beamR"}) {
+                const auto it = projected.values.find(QString::fromLatin1(key));
+                if (it != projected.values.end()) {
+                    it.value() *= factor;
+                }
+            }
+            projected.values[QStringLiteral("skewGeometry")] = 1.0;
+            Evaluation e = evaluateExactBeamFrame(projected, f);
+            e.checks.push_back(D::Check {});
+            D::Check &note = e.checks.back();
+            note.name = "Ligacao com barra inclinada: geometria projetada na face do apoio";
+            note.clause = "detalhamento";
+            note.demand = 0.0;
+            note.resistance = 1.0;
+            note.lines.push_back(Structura::Design::Connections::detail::fmtn("A viga e cortada na face do apoio (inclinacao a = %.1f graus da normal): altura da viga, espessura e raio da mesa projetam-se divididos por cos a = %.3f (fator %.3f).",
+                                                                              skewDeg, std::cos(skewDeg * 3.14159265358979 / 180.0), factor));
+            note.lines.push_back("Comprimento das soldas da alma, altura minima da chapa/tala e recorte das mesas usam as dimensoes projetadas; as das mesas (largura) nao mudam. A cota da peca e a vista 3D mostram a geometria ortogonal.");
+            e.maxRatio = D::worstRatio(e.checks);
+            if (const auto *g = D::governing(e.checks)) {
+                e.governing = QString::fromStdString(g->name);
+            }
+            return e;
+        }
+    }
     if (ConnectionCatalog::isCatalog(c.type)) {
         return ConnectionCatalog::evaluate(c, f);
     }

@@ -17,4 +17,7 @@ QIcon svgIcon(const QString &name,
               int size = 24,
               const QColor &accent = QColor(QStringLiteral("#0d7fb9")));
 
+/// Icone padrao das acoes da interface: tracos escuros (#1e232b) e destaque azul, rasterizado em 64 px.
+QIcon actionIcon(const QString &name);
+
 } // namespace Structura::UI

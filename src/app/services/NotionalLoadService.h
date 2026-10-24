@@ -28,6 +28,19 @@ public:
     [[nodiscard]] static Structura::App::SolverBridge::ModelData
     notionalModel(const Structura::App::SolverBridge::ModelData &caseModel, int axis, double factor);
 
+    /// Variantes das combinacoes ultimas (nomes nao iniciados por "ELS") com imperfeicao geometrica inicial: mesmas parcelas, geometria com desaprumo
+    /// (+X, -X, +Y, -Y); resolvidas pela analise de 2a ordem de cada combinacao.
+    [[nodiscard]] static QVector<Structura::App::ProjectData::LoadCombination>
+    withGeometricVariants(const QVector<Structura::App::ProjectData::LoadCombination> &combinations);
+
+    /// Variantes conforme as opcoes do projeto: geometricas (2a ordem com imperfeicao direta) ou nocionais; sem variantes se nenhuma estiver ativa.
+    [[nodiscard]] static QVector<Structura::App::ProjectData::LoadCombination>
+    variantsFor(const Structura::App::ProjectData::DesignSettings &settings, const QVector<Structura::App::ProjectData::LoadCombination> &combinations);
+
+    /// Desaprumo inicial: cada no se desloca na direcao `axis` (0 = X, 1 = Y), no sentido `sign`, de `ratio` x (z - z da base); a base e o menor z entre os nos
+    /// com apoio (ou entre todos). Nos de casca acompanham.
+    static void applyImperfection(Structura::App::SolverBridge::ModelData &model, int axis, int sign, double ratio);
+
     /// Combinacoes originais mais as variantes com forcas nocionais das combinacoes ultimas (nomes nao iniciados por "ELS").
     [[nodiscard]] static QVector<Structura::App::ProjectData::LoadCombination>
     withVariants(const QVector<Structura::App::ProjectData::LoadCombination> &combinations);

@@ -170,3 +170,33 @@ Antes de `structura_solve_v4`, `structura_set_shells(...)` registra elementos de
 forca de corpo, temperatura), ligacoes no-escravo (ate 8 mestres, pesos que somam 1), molas nodais (inclusive so-compressao). Os nos das cascas sao nos comuns da chamada (ids, coordenadas e
 restricoes nos mesmos arrays dos nos de barras). `structura_get_shell_results` devolve 40 valores por elemento (5 pontos x nxx nyy nxy mxx myy mxy qx qy, eixos locais) e os eixos
 (9). `structura_clear_shells()` limpa o estado (o estado e global, como em `structura_set_options`).
+
+## Opcoes avancadas de analise (estado global, como `structura_set_options`; padrao = tudo desligado, resultados inalterados)
+
+- `structura_set_analysis_options(shearDeformation, stabilityFunctions, loadSteps)`
+  - `shearDeformation`: barras de Timoshenko (phi = 12EI/(G As L^2)) com as areas de `structura_set_shear_areas`; area 0 = rigida ao cortante naquela direcao.
+  - `stabilityFunctions`: segunda ordem pelas funcoes de estabilidade de Livesley (P-delta e P-delta local exatos por barra; serie para |x| < 0,5);
+    com deformacao por cortante vale a rigidez geometrica consistente (aviso emitido).
+  - `loadSteps`: 0 = iteracao direta e, se divergir, incremento de carga automatico (10 passos + bisecao ate o fator critico); n > 1 = sempre em n passos.
+    Se nao converge, a mensagem traz o fator de carga critico estimado ("between a and b").
+- `structura_set_shear_areas(count, sectionIds, Ay, Az)`: areas de cisalhamento (unidade de comprimento ao quadrado) por secao; Ay = cortante na direcao local y (flexao em torno de z).
+- `structura_set_rigid_zones(count, memberIds, lengthI, lengthJ)`: zonas rigidas (m sobre o eixo da barra a partir de cada no). Somente o trecho restante e flexivel; as cargas
+  distribuidas das zonas rigidas vao direto aos nos e os esforcos de extremidade sao os dos nos. A massa (modal) usa o comprimento total.
+- `structura_get_warnings(buffer, size)`: avisos do ultimo calculo (matriz mal condicionada, grau de liberdade sem rigidez fixado, tirantes/molas que oscilam, 2a ordem so por incrementos).
+
+## Torcao com empenamento (Vlasov, secoes abertas de paredes finas)
+
+Cada extremidade de uma barra com empenamento ganha um setimo grau de liberdade, theta' (taxa de torcao), alem dos seis do no; esses graus ficam depois dos 6 x nos (so existem nos nos
+de barras que pedem empenamento). A matriz local da barra passa a 14 x 14 com o bloco de torcao exato (solucao fechada da equacao E Cw theta'''' - G J theta'' = m), nao a G J / L.
+
+- `structura_set_warping_sections(count, sectionIds, Cw)`: constante de empenamento (unidade de comprimento a sexta) por secao; Cw = 0 ou ausente = so Saint-Venant. Substitui a lista anterior.
+- `structura_set_warping_members(count, memberIds, modeStart, modeEnd)`: barras que usam o empenamento e a condicao em cada extremidade: 0 = automatica (impedido em no totalmente engastado,
+  compartilhado entre barras colineares no no, livre nos demais), 1 = livre (bimomento nulo), 2 = impedido (theta' = 0). Substitui a lista anterior.
+- `structura_set_taper(count, memberIds, d1, d2, bf, tw, tf, segments)`: barras de secao I de alma variavel (NBR 8800, Anexo G): alturas nas extremidades I e J, largura/espessura das mesas e
+  espessura da alma (unidades do modelo) e numero de trechos prismaticos. O solver subdivide a barra em `segments` trechos com nos internos (propriedades da altura media de cada trecho) e devolve
+  os esforcos das extremidades da barra original; os nos internos nao aparecem nos resultados. Substitui a lista anterior.
+- `structura_get_warping(count, memberIds, out4)`: por barra, (theta' em I, theta' em J, forca generalizada em I, em J). As forcas generalizadas sao os bimomentos aplicados a barra
+  (+B em I, -B em J, B = -E Cw theta''). Devolve o numero de barras com empenamento.
+- Nao e combinado com flambagem linear nem modal (usa Saint-Venant nessas execucoes, com aviso em `structura_get_warnings`).
+- Torque distribuido uniforme (momento distribuido local mx) usa as forcas de engastamento exatas (torques de extremidade m L / 2 mais o par de bimomentos).
+- Teoria, validacao e limitacoes: `docs/BARRAS_COMPOSTAS_E_TORCAO_COM_EMPENAMENTO.md`.

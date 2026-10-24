@@ -47,12 +47,12 @@ DistributedLoad::CoordinateSystem DistributedLoad::getCoordinateSystem() const {
     return system;
 }
 
-std::vector<double> DistributedLoad::getEquivalentNodalForces(const Member* member) const {
+void DistributedLoad::localComponents(const Member* member, Eigen::VectorXd& localForces, Eigen::VectorXd& rigidAtNodeEnds) const {
     if (!member) {
         throw std::invalid_argument("Member pointer cannot be null");
     }
 
-    double L = member->calculateLength();
+    double L = member->calculateFlexibleLength();   // load of the flexible part; the rigid end zones are treated apart
     if (L <= 0.0) {
         throw std::invalid_argument("Member length must be positive to compute equivalent forces");
     }
@@ -74,7 +74,7 @@ std::vector<double> DistributedLoad::getEquivalentNodalForces(const Member* memb
     double qy = qLocal.y();
     double qz = qLocal.z();
 
-    Eigen::VectorXd localForces(12);
+    localForces = Eigen::VectorXd(12);
     localForces.setZero();
 
     // FORÇAS NODAIS EQUIVALENTES (aplicadas nos nós da estrutura)
@@ -93,12 +93,22 @@ std::vector<double> DistributedLoad::getEquivalentNodalForces(const Member* memb
     localForces(5) = qy * L * L / 12.0;    // Mz no nó I
     localForces(11) = -qy * L * L / 12.0;  // Mz no nó J
 
+    rigidAtNodeEnds = member->rigidStubLoads(qLocal, Eigen::Vector3d::Zero());
+}
+
+std::vector<double> DistributedLoad::getEquivalentNodalForces(const Member* member) const {
+    Eigen::VectorXd localForces, rigid;
+    localComponents(member, localForces, rigid);
 
     Eigen::VectorXd globalForces = member->localAxisForcesToGlobalNodal(localForces);
+    if (member->hasRigidZones()) {
+        globalForces.head(12) += member->calculateNodeToAxisMatrix(false).transpose() * rigid;
+    }
 
-    std::vector<double> equivalentForces(12);
-    for (int i = 0; i < 12; ++i) {
-        equivalentForces[i] = globalForces(i);
+    // 12 components; 14 when the member has torsion with warping (the last two are the equivalent loads of the warping parameters)
+    std::vector<double> equivalentForces(static_cast<size_t>(globalForces.size() == 14 ? 14 : 12));
+    for (size_t i = 0; i < equivalentForces.size(); ++i) {
+        equivalentForces[i] = globalForces(static_cast<Eigen::Index>(i));
     }
 
     return equivalentForces;
@@ -112,12 +122,12 @@ int DistributedMoment::getMemberId() const {
     return memberId;
 }
 
-std::vector<double> DistributedMoment::getEquivalentNodalForces(const Member* member) const {
+void DistributedMoment::localComponents(const Member* member, Eigen::VectorXd& localForces, Eigen::VectorXd& rigidAtNodeEnds) const {
     if (!member) {
         throw std::invalid_argument("Member pointer cannot be null");
     }
 
-    const double L = member->calculateLength();
+    const double L = member->calculateFlexibleLength();
     if (L <= 0.0) {
         throw std::invalid_argument("Member length must be positive to compute equivalent forces");
     }
@@ -137,7 +147,7 @@ std::vector<double> DistributedMoment::getEquivalentNodalForces(const Member* me
 
     // Uniform moment density m: the Hermite shape-function integrals give
     // nodal torsion m*L/2 and a shear couple (+-m) for bending moments.
-    Eigen::VectorXd localForces(12);
+    localForces = Eigen::VectorXd(12);
     localForces.setZero();
 
     localForces(3) = mLocal.x() * L / 2.0;
@@ -149,11 +159,34 @@ std::vector<double> DistributedMoment::getEquivalentNodalForces(const Member* me
     localForces(1) = -mLocal.z();
     localForces(7) = mLocal.z();
 
-    Eigen::VectorXd globalForces = member->localAxisForcesToGlobalNodal(localForces);
+    rigidAtNodeEnds = member->rigidStubLoads(Eigen::Vector3d::Zero(), mLocal);
 
-    std::vector<double> equivalentForces(12);
-    for (int i = 0; i < 12; ++i) {
-        equivalentForces[i] = globalForces(i);
+    if (member->hasWarping() && mLocal.x() != 0.0) {
+        // exact equivalent loads of a uniform torque with warping: end torques m L/2 and the bimoment couple on the warping parameters
+        const Eigen::Vector4d clamped = member->uniformTorqueFixedEnd(mLocal.x());
+        Eigen::VectorXd extended = Eigen::VectorXd::Zero(14);
+        extended.head(12) = localForces;
+        extended(3) = -clamped(0);
+        extended(9) = -clamped(2);
+        extended(12) = -clamped(1);
+        extended(13) = -clamped(3);
+        localForces = extended;
+    }
+}
+
+std::vector<double> DistributedMoment::getEquivalentNodalForces(const Member* member) const {
+    Eigen::VectorXd localForces, rigid;
+    localComponents(member, localForces, rigid);
+
+    Eigen::VectorXd globalForces = member->localAxisForcesToGlobalNodal(localForces);
+    if (member->hasRigidZones()) {
+        globalForces.head(12) += member->calculateNodeToAxisMatrix(false).transpose() * rigid;
+    }
+
+    // 12 components; 14 when the member has torsion with warping (the last two are the equivalent loads of the warping parameters)
+    std::vector<double> equivalentForces(static_cast<size_t>(globalForces.size() == 14 ? 14 : 12));
+    for (size_t i = 0; i < equivalentForces.size(); ++i) {
+        equivalentForces[i] = globalForces(static_cast<Eigen::Index>(i));
     }
     return equivalentForces;
 }

@@ -256,3 +256,38 @@ Arquivos:
 - O projeto esta bem orientado a separacao de responsabilidades.
 - O risco principal para crescimento e concentrar regra de negocio na `MainWindow`; manter a disciplina de mover regras para `app/services` evita regressao arquitetural.
 - Para expansao futura (novos tipos de elemento, novos casos de carga), manter os mapeadores (`LoadSupportVisualMapper`) como fronteira entre dado de negocio e representacao visual ajuda a preservar a manutencao.
+
+---
+
+## 7) Estado atual da arquitetura (complemento)
+
+Alem das camadas descritas acima, o codigo hoje se organiza assim (dependencias sempre de cima para baixo; `core`, `design`, `shell` e `report` nao dependem do Qt Widgets):
+
+| Pasta | Funcao |
+|---|---|
+| `src/core` | Dominio (`model/`) e utilitarios matematicos compartilhados (`math/Vec3Ops.h`: `dot`, `cross`, `sub` de vetores 3D). |
+| `src/design` | Motor de calculo das normas, independente de UI: dimensionamento de barras (`BarDesign`, `Nbr8800`, `Nbr14762`), secoes (`DesignSection`), vigas e lajes mistas (`CompositeFloor`), ligacoes (parafusos, soldas, chapas, bases, nos de trelica, emendas, ligacoes rigidas e mistas do Anexo O) e juntas tubulares (CIDECT). Todas as verificacoes devolvem `Check`/`CheckResult` com memorial de calculo. |
+| `src/app/services` | Casos de uso: analise, combinacoes, dimensionamento (`DesignService`), equilibrio de no (`NodeEquilibrium`), catalogo de ligacoes (`ConnectionCatalog*`: uma familia de calculo por arquivo, tipologias = variantes `preset`), solidos 3D e desenhos de detalhamento, quantitativos, relatorios, I/O `.dat`. |
+| `src/shell` | Cascas e chapas (malha, cargas, acoplamento com barras, verificacao). |
+| `src/report`, `src/drawing` | Memorial (DOCX, formulas) e modelo de desenho (prancha, vista oculta). |
+| `src/viz` | VTK: cena, renderizadores, interacao. |
+| `src/ui` | Qt Widgets: `MainWindow*.cpp` (um arquivo por tema; as acoes sao criadas em `MainWindowActions.cpp`), faixa de opcoes (`RibbonWidgets.*` + `MainWindowRibbon.cpp`), dialogos e paineis. |
+
+### Verificacao de refatoracoes e desempenho
+
+- `TestGoldenNumerics` despeja todos os numeros (ligacoes de todas as tipologias, dimensionamento de barras NBR 8800/14762, vigas e lajes mistas) e compara com `src/tests/golden/numerics.txt`: **qualquer mudanca de calculo reprova o teste**. Mudanca intencional de calculo: regrave o arquivo com `STRUCTURA_GOLDEN_OUT=src/tests/golden/numerics.txt` e revise o diff.
+- Ganchos de verificacao da interface (so desenvolvimento): `STRUCTURA_AUTOSHOT=<dir>` (analisa o modelo e grava capturas), `STRUCTURA_WINDOW_SIZE=LxA`, `STRUCTURA_RIBBON_TAB=n`, `STRUCTURA_OPEN_PROPERTIES=1`. Comparar capturas e `analise.txt` de duas compilacoes (antes/depois) prova que uma refatoracao nao mudou o comportamento.
+- `BenchDesign` e `BenchServices` (fora do build padrao: `cmake --build build --target BenchDesign BenchServices`) medem o dimensionamento de barras e a checagem de modelo.
+- Convencao de desempenho no dimensionamento: o memorial (texto) de uma verificacao so e montado quando ela entra no resultado (`Collector::wants`); invariantes por barra ficam em cache (`flexOf`, `shearOf`).
+
+### Barras compostas e torcao com empenamento
+
+- Barras compostas (NBR 8800, 5.3.6): tres familias em `SectionShapes` (duas curvas externas, `outerCount`), catalogo derivado em `SectionCatalog`, `DesignSection::composite()` e checagem `composite` em `BarDesign`.
+- Torcao com empenamento: setimo grau de liberdade das barras no solver (`Structuradll/src/warping.cpp`, matriz 14 x 14 em `Member`, graus de liberdade extras depois dos `6 x nos` em `SolverCore::runPass`), opcao `DesignSettings::warpingTorsion`, `B` e `Tw` por secao em `DesignService::collectEffects` e verificacao 5.5.2.3 (`warping_normal`, `warping_shear`) em `BarDesign`. Teoria e validacao: `docs/BARRAS_COMPOSTAS_E_TORCAO_COM_EMPENAMENTO.md`.
+
+### Itens complementares da NBR 8800:2024 (pinos, lamelas, integridade, Anexos G e M)
+
+- `design/PinConnection`, `design/BeamExtras`, `design/TaperedMember`, `design/CompositeColumn` ficam na camada de dimensionamento (mm, N, MPa, sem Qt); a conversao de unidades e os parametros de barra (`DesignMemberParams`: `cover*`, `webWeld*`, `threadedEnds`, `plasticAnalysis`, `mix*`) ficam em `DesignService::verifyMember` e persistem como pares chave=valor ao fim das linhas do `.dat` (`DatModelIoService`, `extraTokens`).
+- Pilar misto: `BarDesignInput::compositeColumn` aciona `designCompositeColumn` no lugar de `designBar`; a secao mista nao entra em `DesignSection`.
+- Barra de alma variavel: familia "I Alma Variavel"; o solver recebe `structura_set_taper` e subdivide a barra (nos internos fora dos resultados); o dimensionamento usa `designTaperedBar`.
+- `IntegrityService` (NBR 8800, 4.13) consome resultados de analise e `ConnectionService::evaluateExact`; interface em `ui/IntegrityDialog`. Detalhes: `docs/PILARES_MISTOS_E_COMPLEMENTOS_NBR8800.md`.

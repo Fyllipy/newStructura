@@ -15,16 +15,6 @@ using Cat = ConnectionCatalog;
 
 namespace {
 
-D::BoltGrade gradeByName(const QString &name)
-{
-    for (const auto &g : D::boltGrades()) {
-        if (QString::fromStdString(g.name) == name) {
-            return g;
-        }
-    }
-    return D::boltGrades().size() > 2 ? D::boltGrades()[2] : D::boltGrades().front();
-}
-
 int variantOf(const NodeConnection &c) { return static_cast<int>(val(c, "cmVar", 1.0) + 0.5); }
 int supportOf(const NodeConnection &c) { return static_cast<int>(val(c, "cmSup", 0.0) + 0.5); }
 
@@ -252,7 +242,7 @@ NodeConnection compositeConnDefault(const Cat::Entry &entry, const Cat::BeamInfo
     const int sub = subTypeOf(variant, support);
     NodeConnection c = sub >= 0 ? ConnectionService::makeDefault(sub, beam, plateFy, plateFu) : NodeConnection();
     if (c.grade.isEmpty()) {
-        c.grade = QString::fromStdString(D::boltGrades().size() > 2 ? D::boltGrades()[2].name : D::boltGrades().front().name);
+        c.grade = defaultBoltGradeName();
     }
     const double d = beam.depth > 0.0 ? beam.depth : 400.0, bf = beam.bf > 0.0 ? beam.bf : 180.0, tf = beam.tf > 0.0 ? beam.tf : 12.5;
     const double r = beam.geometry.value(QStringLiteral("r"), 0.0);

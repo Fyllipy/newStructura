@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "DesignColors.h"
 #include "SvgIcons.h"
+#include "AxesPanel.h"
 #include "ViewCubeWidget.h"
 
 #include "SelectionModel.h"
@@ -8,6 +9,7 @@
 #include "viz/SceneController.h"
 #include "viz/construction/ConstructionScene.h"
 
+#include <QTimer>
 #include <QColor>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -284,8 +286,20 @@ void MainWindow::updateLegend(const QString &title, const QVector<QPair<QString,
         layout->addWidget(row);
     }
     m_legend->adjustSize();
-    m_legend->move(12, m_vtkWidget->height() - m_legend->height() - 12);
     m_legend->show();
+    positionLegend();
+    // o tamanho final so e conhecido depois que o layout processa as linhas novas: reposiciona de novo no proximo ciclo
+    QTimer::singleShot(0, this, [this]() { positionLegend(); });
+}
+
+void MainWindow::positionLegend()
+{
+    if (!m_legend || !m_vtkWidget || m_legend->isHidden()) {
+        return;
+    }
+    m_legend->layout()->activate();
+    m_legend->adjustSize();
+    m_legend->move(12, std::max(12, m_vtkWidget->height() - m_legend->height() - 12));
     m_legend->raise();
 }
 
@@ -393,27 +407,44 @@ void MainWindow::positionPlaneLabel()
     // Canto superior direito, da direita para a esquerda: barra de ferramentas (a direita do cubo), cubo de vistas e, acima dos dois, o seletor de plano.
     const int margin = 12;
     int right = m_vtkWidget->width() - margin;
+    // paineis flutuantes (eixos de referencia e propriedades): cartoes no canto superior direito; propriedades fica a esquerda dos eixos quando os dois
+    // estao abertos, e os controles da viewport passam para a esquerda de ambos
+    const int panelMargin = 20;
+    int panelsLeft = m_vtkWidget->width() - panelMargin;
+    if (m_axesPanel && m_axesPanel->isVisible()) {
+        panelsLeft = std::min(panelsLeft, m_axesPanel->x());
+    }
     if (m_propertiesContainer) {
-        // painel de propriedades flutuante: encosta no lado direito, em toda a altura, e os controles passam para a esquerda dele
-        m_propertiesContainer->setGeometry(m_vtkWidget->width() - m_propertiesContainer->width(), 0, m_propertiesContainer->width(), m_vtkWidget->height());
+        const int width = m_propertiesContainer->width();
+        // altura do cartao = cabecalho + todo o conteudo do painel (o QScrollArea so rola se nao couber na viewport)
+        int content = 0;
+        if (m_propertiesPanel) {
+            if (m_propertiesPanel->layout()) {
+                m_propertiesPanel->layout()->activate();
+            }
+            content = std::max(m_propertiesPanel->sizeHint().height(), m_propertiesPanel->minimumSizeHint().height());
+        }
+        const int chrome = 34 + 8 + 10 + 2;   // cabecalho, espacamento, margem inferior e bordas
+        const int height = std::max(120, std::min(chrome + content, m_vtkWidget->height() - 24));
+        const int x = (m_axesPanel && m_axesPanel->isVisible()) ? m_axesPanel->x() - 8 - width : m_vtkWidget->width() - panelMargin - width;
+        m_propertiesContainer->setGeometry(x, 12, width, height);
         m_propertiesContainer->raise();
         if (m_propertiesContainer->isVisible()) {
-            right -= m_propertiesContainer->width();
+            panelsLeft = std::min(panelsLeft, x);
         }
     }
+    if (panelsLeft < m_vtkWidget->width() - panelMargin) {
+        right = panelsLeft - 8;
+    }
     const int rightEdge = right;
-    int left = right;
     if (m_viewPanel) {
         m_viewPanel->move(right - m_viewPanel->width(), 44);
         right = m_viewPanel->x() - 6;
-        left = m_viewPanel->x();
     }
     if (m_viewCube) {
         m_viewCube->move(right - m_viewCube->width(), 44);
-        left = m_viewCube->x();
     }
     if (m_planeLabel) {
         m_planeLabel->move(rightEdge - m_planeLabel->width(), 10);
     }
-    Q_UNUSED(left)
 }

@@ -1,3 +1,4 @@
+#include "core/math/Vec3Ops.h"
 #include "shell/ShellFactory.h"
 
 #include <algorithm>
@@ -7,8 +8,9 @@ namespace Structura::Shell {
 
 namespace {
 
+
+using Structura::Math::sub;
 double length(const Vec3 &a) { return std::sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]); }
-Vec3 sub(const Vec3 &a, const Vec3 &b) { return {a[0] - b[0], a[1] - b[1], a[2] - b[2]}; }
 
 Vec3 polygonNormal(const std::vector<Vec3> &poly)
 {

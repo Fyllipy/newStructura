@@ -609,7 +609,7 @@ void DynamicsDialog::updateSpectrumChart()
     if (m_parametric->isChecked()) {
         spectrum = DynamicsService::Spectrum::parametric(m_plateau->value(), m_sa1->value(), m_tl->value());
     } else {
-        DynamicsService::Spectrum::parse(m_table->toPlainText(), spectrum);
+        (void)DynamicsService::Spectrum::parse(m_table->toPlainText(), spectrum);   // tabela invalida: segue com o espectro vazio, como antes
     }
     LineChartWidget::Series curve;
     curve.name = tr("Sa/g");

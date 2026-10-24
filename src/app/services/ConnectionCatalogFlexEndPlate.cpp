@@ -15,16 +15,6 @@ using Cat = ConnectionCatalog;
 
 namespace {
 
-D::BoltGrade gradeByName(const QString &name)
-{
-    for (const auto &g : D::boltGrades()) {
-        if (QString::fromStdString(g.name) == name) {
-            return g;
-        }
-    }
-    return D::boltGrades().size() > 2 ? D::boltGrades()[2] : D::boltGrades().front();
-}
-
 D::FlexEndPlateInput toInput(const NodeConnection &c, double shear, double axial)
 {
     D::FlexEndPlateInput in;
@@ -109,7 +99,7 @@ QVector<Cat::FieldDef> flexEndPlateFields(const Cat::Entry &entry)
 NodeConnection flexEndPlateDefault(const Cat::Entry &entry, const Cat::BeamInfo &beam, double plateFy, double plateFu)
 {
     NodeConnection c;
-    c.grade = QString::fromStdString(D::boltGrades().size() > 2 ? D::boltGrades()[2].name : D::boltGrades().front().name);
+    c.grade = defaultBoltGradeName();
     const int support = static_cast<int>(entry.preset.value(QStringLiteral("support"), 2.0) + 0.5);
     const double d = beam.depth > 0.0 ? beam.depth : 300.0;
     const double tf = beam.tf > 0.0 ? beam.tf : 10.0;

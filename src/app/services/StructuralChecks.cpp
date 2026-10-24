@@ -190,7 +190,7 @@ QVector<StructuralChecks::DeflectionResult> StructuralChecks::deflections(const 
 
 StructuralChecks::Output StructuralChecks::stories(const Structura::App::SolverBridge::ModelData &geometry,
                                                    const std::vector<ResultSet> &sets, const DesignSettings &settings,
-                                                   double forceFactorToN, double lengthFactorToMm)
+                                                   double forceFactorToN, double lengthFactorToMm, bool ultimate)
 {
     Output out;
     std::unordered_map<int, std::array<double, 3>> pos;
@@ -258,6 +258,15 @@ StructuralChecks::Output StructuralChecks::stories(const Structura::App::SolverB
     }
 
     const double rs = std::max(0.1, settings.rs);
+    // B2 = 1 / (1 - (1/Rs)(dh/h)(SN/SH)) (C.2.3); `factor` < 1 aplica a rigidez reduzida (dh / factor)
+    auto b2Raw = [&](double driftMm, double heightMm, double sumN, double shear, double factor) {
+        if (sumN <= 0.0 || shear < 1e-6 * sumN || driftMm <= 0.0) {
+            return 1.0;
+        }
+        const double denom = 1.0 - (1.0 / rs) * (driftMm / factor / heightMm) * (sumN / shear);
+        return denom <= 0.05 ? 20.0 : std::max(1.0, 1.0 / denom);
+    };
+    auto b2Value = [&](double driftMm, const StoryResult &r, double shear) { return b2Raw(driftMm, r.heightMm, r.sumN, shear, 1.0); };
     for (const ResultSet &set : sets) {
         if (!set.result) {
             continue;
@@ -270,6 +279,17 @@ StructuralChecks::Output StructuralChecks::stories(const Structura::App::SolverB
         std::unordered_map<int, const DesignService::ElementData *> byId;
         for (const auto &e : elements) {
             byId[e.element.externalId] = &e;
+        }
+        // estrutura nt: a cortante do andar de B2 e a da estrutura lt (= original - nt), C.2.3
+        std::vector<DesignService::ElementData> ntElements;
+        std::unordered_map<int, const DesignService::ElementData *> ntById;
+        if (set.nt) {
+            DesignService::ResultSet ntSet = set;
+            ntSet.result = set.nt;
+            ntElements = DesignService::buildElements(geometry, ntSet);
+            for (const auto &e : ntElements) {
+                ntById[e.element.externalId] = &e;
+            }
         }
 
         double topDisplacement = 0.0;
@@ -287,8 +307,13 @@ StructuralChecks::Output StructuralChecks::stories(const Structura::App::SolverB
                 const auto &el = eit->second->element;
                 const auto &ef = el.endForces;
                 sumN += std::max(0.0, -0.5 * (ef.N1 + ef.N2));
-                hx += ef.Vy1 * el.yLocal[0] + ef.Vz1 * el.zLocal[0];
-                hy += ef.Vy1 * el.yLocal[1] + ef.Vz1 * el.zLocal[1];
+                double vy1 = ef.Vy1, vz1 = ef.Vz1;
+                if (const auto ntIt = ntById.find(id); ntIt != ntById.end()) {
+                    vy1 -= ntIt->second->element.endForces.Vy1;
+                    vz1 -= ntIt->second->element.endForces.Vz1;
+                }
+                hx += vy1 * el.yLocal[0] + vz1 * el.zLocal[0];
+                hy += vy1 * el.yLocal[1] + vz1 * el.zLocal[1];
                 const auto di = disp.find(eit->second->nodeI);
                 const auto dj = disp.find(eit->second->nodeJ);
                 if (di != disp.end() && dj != disp.end()) {
@@ -308,24 +333,11 @@ StructuralChecks::Output StructuralChecks::stories(const Structura::App::SolverB
             topDisplacement = std::max(topDisplacement, topDisp * lengthFactorToMm);
             r.topDisplacementMm = topDisp * lengthFactorToMm;
 
-            auto b2Of = [&](double drift, double shear) {
-                if (r.sumN <= 0.0 || shear < 1e-6 * r.sumN || drift <= 0.0) {
-                    return 1.0;
-                }
-                const double denom = 1.0 - (1.0 / rs) * (drift / r.heightMm) * (r.sumN / shear);
-                if (denom <= 0.05) {
-                    out.warnings.append(QStringLiteral("Combinacao %1, andar %2: estrutura muito flexivel (B2 > 20); use analise de segunda ordem.")
-                                            .arg(set.name).arg(story.index + 1));
-                    return 20.0;
-                }
-                return std::max(1.0, 1.0 / denom);
-            };
-            r.b2x = b2Of(r.driftXMm, r.sumHx);
-            r.b2y = b2Of(r.driftYMm, r.sumHy);
-            if (std::max(r.b2x, r.b2y) > 1.4) {
-                out.warnings.append(QStringLiteral("Combinacao %1, andar %2: B2 = %3 > 1,4 (estrutura de deslocabilidade alta, NBR 8800 4.10.2): "
-                                                   "recomenda-se analise de segunda ordem.")
-                                        .arg(set.name).arg(story.index + 1).arg(std::max(r.b2x, r.b2y), 0, 'f', 2));
+            r.b2x = b2Value(r.driftXMm, r, r.sumHx);
+            r.b2y = b2Value(r.driftYMm, r, r.sumHy);
+            if (r.b2x >= 20.0 || r.b2y >= 20.0) {
+                out.warnings.append(QStringLiteral("Combinacao %1, andar %2: estrutura muito flexivel (B2 > 20); use analise de segunda ordem.")
+                                        .arg(set.name).arg(story.index + 1));
             }
             out.storyResults.append(r);
         }
@@ -345,8 +357,82 @@ StructuralChecks::Output StructuralChecks::stories(const Structura::App::SolverB
             }
         }
     }
+    if (ultimate && !out.storyResults.isEmpty()) {
+        // Classificacao (4.10.4): maior B2 nominal entre andares e combinacoes ultimas (4.10.4.8: B2 aproxima a razao entre os deslocamentos de 2a e 1a ordem)
+        double maxB2 = 1.0;
+        for (const StoryResult &r : std::as_const(out.storyResults)) {
+            maxB2 = std::max({maxB2, r.b2x, r.b2y});
+        }
+        out.maxB2Nominal = maxB2;
+        out.swayClass = maxB2 <= 1.10 + 1e-9 ? 0 : (maxB2 <= 1.40 + 1e-9 ? 1 : 2);
+        const bool imperfections = settings.notionalActive() || settings.geometricActive();
+        const QString imperfectionNote = imperfections ? QString() : QStringLiteral(" As imperfeicoes geometricas iniciais (4.10.7.1.1: forcas nocionais de 0,3 % ou desaprumo h/333) NAO estao consideradas: ative-as em Parametros de dimensionamento.");
+        if (out.swayClass == 0) {
+            out.warnings.append(QStringLiteral("Estrutura de pequena deslocabilidade (B2 maximo %1 <= 1,10, NBR 8800, 4.10.4).%2 Os efeitos globais de 2a ordem so podem ser desprezados se N_Sd <= 50 % N_y em todas as barras que contribuem "
+                                               "para a estabilidade lateral e as imperfeicoes forem somadas a todas as combinacoes (4.10.7.1.4); aqui B1 e B2 sao aplicados de qualquer modo.")
+                                    .arg(maxB2, 0, 'f', 3).arg(imperfectionNote));
+        } else if (out.swayClass == 1) {
+            const double tau = std::clamp(settings.stiffnessReduction, 0.5, 1.0);
+            out.stiffnessFactor = tau;
+            for (StoryResult &r : out.storyResults) {
+                r.b2x = b2Raw(r.driftXMm, r.heightMm, r.sumN, r.sumHx, tau);
+                r.b2y = b2Raw(r.driftYMm, r.heightMm, r.sumN, r.sumHy, tau);
+            }
+            out.warnings.append(QStringLiteral("Estrutura de media deslocabilidade (B2 nominal maximo %1, entre 1,10 e 1,40; NBR 8800, 4.10.4): B1 e B2 calculados com a rigidez reduzida a %2 (4.10.7.1.2 e 4.10.7.1.3).%3")
+                                    .arg(maxB2, 0, 'f', 3).arg(tau, 0, 'f', 2).arg(imperfectionNote));
+        } else {
+            out.warnings.append(QStringLiteral("Estrutura de GRANDE deslocabilidade (B2 maximo %1 > 1,40, NBR 8800, 4.10.4): exige analise rigorosa com nao linearidade geometrica e de material e imperfeicoes (4.10.7.2); "
+                                               "ative a analise de 2a ordem em Parametros de dimensionamento. B1 e B2 sao apenas indicativos.").arg(maxB2, 0, 'f', 3));
+        }
+    }
+    // B2 por barra em cada combinacao (maior entre as duas direcoes)
+    out.b2.clear();
+    for (auto it = out.storyOfMember.constBegin(); it != out.storyOfMember.constEnd(); ++it) {
+        for (const StoryResult &r : std::as_const(out.storyResults)) {
+            if (r.story == it.value()) {
+                out.b2[r.combination][it.key()] = std::max(r.b2x, r.b2y);
+            }
+        }
+    }
     out.warnings.removeDuplicates();
     return out;
+}
+
+std::vector<int> StructuralChecks::storyLevelNodes(const Structura::App::SolverBridge::ModelData &geometry)
+{
+    std::unordered_map<int, std::array<double, 3>> pos;
+    for (const auto &n : geometry.nodes) {
+        pos[n.id] = {n.x, n.y, n.z};
+    }
+    std::map<long long, double> levels;
+    std::vector<std::pair<int, int>> columnNodes;
+    for (const auto &m : geometry.members) {
+        const auto &a = pos[m.nodeI];
+        const auto &b = pos[m.nodeJ];
+        const double len = std::sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]));
+        if (len < 1e-9 || std::abs(a[2] - b[2]) / len < 0.9) {
+            continue;
+        }
+        levels[NodeKey::of(std::min(a[2], b[2]))] = std::min(a[2], b[2]);
+        levels[NodeKey::of(std::max(a[2], b[2]))] = std::max(a[2], b[2]);
+        columnNodes.emplace_back(m.nodeI, m.nodeJ);
+    }
+    std::vector<int> nodes;
+    if (levels.size() < 2) {
+        return nodes;
+    }
+    const double base = levels.begin()->second;
+    // todos os nos situados nos niveis dos andares (acima da base): as contencoes ficticias impedem o deslocamento horizontal de cada andar
+    for (const auto &n : geometry.nodes) {
+        if (n.z <= base + 1e-6) {
+            continue;
+        }
+        const auto level = levels.find(NodeKey::of(n.z));
+        if (level != levels.end() && std::abs(level->second - n.z) < 1e-6) {
+            nodes.push_back(n.id);
+        }
+    }
+    return nodes;
 }
 
 } // namespace Structura::App::Services

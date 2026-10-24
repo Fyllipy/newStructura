@@ -392,6 +392,12 @@ N_ft = (N_sim + N_ez) / (2 ρ) · [ 1 − √( 1 − 4 N_sim N_ez ρ / (N_sim + 
 N_e = mín( N_outro ; N_ft )         N_sim: carga de Euler em torno do eixo de simetria;  N_outro: a do outro eixo
 ```
 
+### 5.4b Barras compostas (5.3.6)
+
+Dois perfis iguais (cantoneiras em T; U em I; U face a face) ligados a intervalos `ℓ`: `ℓ/r_mín ≤ 0,75 (L/r)₀` e ao menos duas ligações intermediárias
+(critério `composite`); `Ne,m` no lugar de `Ney` conforme parafusos de aperto normal (5.3.6.3-a) ou solda/protensão (5.3.6.3-b, `Ki = 0,50 / 0,75 / 0,86`).
+Detalhes, catálogo, flexão (D.2.4) e cortante em `BARRAS_COMPOSTAS_E_TORCAO_COM_EMPENAMENTO.md`, Parte A.
+
 ### 5.5 Seções assimétricas e cantoneira simples
 
 **Cantoneira conectada por uma aba (5.3.5.4)**, quando atendidas as condições `b/t ≤ 0,71 √(E/fy)` e `L_eq/r ≤ 200`:
@@ -718,8 +724,9 @@ lim1 < h/t ≤ lim2 : T_Rd = 0,60 W_T fy (lim1/(h/t)) / γa1
 h/t > lim2 :        T_Rd = 0,46 π² W_T E / ((h/t)² γa1)
 ```
 
-Em perfis **abertos** e maciços com momento de torção significativo (> 0,1 kN·m), o programa **não verifica**
-(empenamento exigiria análise específica) e emite um aviso.
+Em perfis **abertos** e maciços com momento de torção significativo (> 0,1 kN·m), o programa só verifica quando a torção com empenamento
+está ativada **e** a seção é I/H duplamente simétrica (critérios `warping_normal` e `warping_shear`, NBR 8800, 5.5.2.3 — ver
+`BARRAS_COMPOSTAS_E_TORCAO_COM_EMPENAMENTO.md`, Parte B). Nos demais casos (U, L, T e maciços) a torção **não é verificada** e o programa emite um aviso.
 
 ### 8.2 Efeito da torção nas interações (5.5.2.2)
 

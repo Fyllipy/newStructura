@@ -200,7 +200,10 @@ bool MainWindow::handleDefaultViewportMouseRelease(Qt::MouseButton button, const
     if (button == Qt::RightButton && m_press.right) {
         const bool moved = m_press.rightMoved;
         m_press.right = false;
-        if (!moved) {
+        if (!moved && m_loadPick != LoadPick::None) {
+            // comando de carga em andamento: o botao direito conclui a escolha dos alvos
+            QTimer::singleShot(0, this, [this]() { finishLoadPick(); });
+        } else if (!moved) {
             // Nao consome a liberacao: o interactor da camera precisa dela para encerrar a rotacao
             // iniciada no clique. O menu abre depois que o evento terminar de ser entregue.
             QTimer::singleShot(0, this, [this, widgetPos, globalPos]() { showViewportContextMenu(widgetPos, globalPos); });
@@ -212,10 +215,15 @@ bool MainWindow::handleDefaultViewportMouseRelease(Qt::MouseButton button, const
 void MainWindow::clickSelect(const QPoint &widgetPos, Qt::KeyboardModifiers modifiers)
 {
     QUuid nodeId = pickNodeAtWidgetPos(widgetPos);
-    QUuid barId = nodeId.isNull() ? pickBarAtWidgetPos(widgetPos) : QUuid();
     if (!nodeId.isNull() && isNodeHidden(nodeId)) {
         nodeId = QUuid();
     }
+    // um clique sobre o desenho de uma carga (seta, faixa ou arco) a destaca; Delete a exclui
+    if (nodeId.isNull() && trySelectLoadAt(widgetPos)) {
+        return;
+    }
+    clearSelectedLoad();
+    QUuid barId = nodeId.isNull() ? pickBarAtWidgetPos(widgetPos) : QUuid();
     if (!barId.isNull() && isBarHidden(barId)) {
         barId = QUuid();
     }
@@ -250,6 +258,7 @@ void MainWindow::selectInRect(const QRect &rect, bool crossing, Qt::KeyboardModi
     if (!m_sceneController || !m_vtkWidget) {
         return;
     }
+    clearSelectedLoad();
     const QMatrix4x4 matrix = m_sceneController->compositeMatrix();
     const double width = m_vtkWidget->width();
     const double height = m_vtkWidget->height();

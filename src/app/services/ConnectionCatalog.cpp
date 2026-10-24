@@ -2,6 +2,7 @@
 
 #include "app/services/ConnectionCatalogInternal.h"
 
+#include <QHash>
 #include <QObject>
 
 namespace Structura::App::Services {
@@ -119,6 +120,24 @@ QVector<ConnectionCatalog::Entry> buildEntries()
         list.append(composite(165, QObject::tr("Ligação mista com viga de apoio: chapa simples na alma e cantoneira na mesa inferior"), QObject::tr("Como a anterior, apoiada na alma de uma viga principal, com recorte das mesas (Figura O.3)."), 2, 1));
         list.append(composite(166, QObject::tr("Ligação mista com pilar de apoio: cantoneira apenas na mesa inferior"), QObject::tr("Somente a cantoneira da mesa inferior, que transmite também o cortante (Figura O.4)."), 3, 0));
         list.append(composite(167, QObject::tr("Ligação mista com viga de apoio: cantoneira apenas na mesa inferior"), QObject::tr("Somente a cantoneira da mesa inferior, apoiada em viga principal (Figura O.4)."), 3, 1));
+    }
+
+    // ---- ligacoes por pino (5.2.6 e 6.4) -------------------------------------------------------------------------------------------------------
+    {
+        const QString group = QObject::tr("Ligações por pino");
+        const QString base = QObject::tr("Chapa tracionada ligada por pino (NBR 8800:2024, 5.2.6, 6.4 e 6.6.2): escoamento da seção bruta, pressão de contato na área projetada do pino, ruptura da seção líquida por tração e por cisalhamento, requisitos geométricos (b, a, folga) e o pino (momento fletor com tensões de contato uniformes, cortante e esmagamento).");
+        for (const auto &spec : {std::pair<int, double>{191, 2.0}, std::pair<int, double>{192, 1.0}}) {
+            ConnectionCatalog::Entry e;
+            e.id = spec.first;
+            e.family = ConnectionCatalog::Family::Pin;
+            e.group = group;
+            e.name = spec.second > 1.5 ? QObject::tr("Chapa ligada por pino – corte duplo (entre duas chapas)") : QObject::tr("Chapa ligada por pino – corte simples");
+            e.summary = base;
+            e.preset = {{QStringLiteral("planes"), spec.second}};
+            e.usesBolts = false;
+            e.usesSupport = false;
+            list.append(e);
+        }
     }
 
     // ---- variantes de tipologias anteriores ----------------------------------------------------------------------------------------------------
@@ -256,12 +275,19 @@ const ConnectionCatalog::Entry *ConnectionCatalog::find(int type)
     if (!isCatalog(type)) {
         return nullptr;
     }
-    for (const Entry &e : entries()) {
-        if (e.id == type) {
-            return &e;
+    // indice id -> posicao (a lista e fixa); em ids repetidos vale o primeiro, como na busca linear
+    static const QHash<int, int> index = [] {
+        QHash<int, int> positions;
+        const auto &list = entries();
+        for (int i = 0; i < list.size(); ++i) {
+            if (!positions.contains(list.at(i).id)) {
+                positions.insert(list.at(i).id, i);
+            }
         }
-    }
-    return nullptr;
+        return positions;
+    }();
+    const auto it = index.constFind(type);
+    return it == index.constEnd() ? nullptr : &entries().at(it.value());
 }
 
 const ConnectionCatalog::FamilyOps &ConnectionCatalog::ops(Family family)
@@ -355,7 +381,19 @@ const ConnectionCatalog::FamilyOps &ConnectionCatalog::ops(Family family)
         o.notes = cat::webShearNotes;
         return o;
     }();
+    static const FamilyOps pinOps = [] {
+        FamilyOps o;
+        o.fields = cat::pinFields;
+        o.makeDefault = cat::pinDefault;
+        o.evaluate = cat::pinEvaluate;
+        o.describe = cat::pinDescribe;
+        o.solids = cat::pinSolids;
+        o.steelKeys = cat::pinSteelKeys;
+        o.notes = cat::pinNotes;
+        return o;
+    }();
     switch (family) {
+    case Family::Pin: return pinOps;
     case Family::WebShear: return webShearOps;
     case Family::TrussNode: return trussNodeOps;
     case Family::EndPlateSplice: return endPlateSpliceOps;

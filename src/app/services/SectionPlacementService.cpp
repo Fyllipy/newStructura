@@ -87,7 +87,7 @@ SectionPlacementService::PrincipalProperties SectionPlacementService::principalP
             twiceArea += p0[0] * p1[1] - p1[0] * p0[1];
         }
         const double orientation = twiceArea >= 0.0 ? 1.0 : -1.0;
-        const double sign = (i == 0 ? 1.0 : -1.0) * orientation;   // furos subtraem
+        const double sign = (i < shape->outerCount ? 1.0 : -1.0) * orientation;   // furos subtraem
         for (std::size_t k = 0; k < loop.size(); ++k) {
             const auto &p0 = loop[k];
             const auto &p1 = loop[(k + 1) % loop.size()];

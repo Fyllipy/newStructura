@@ -1,3 +1,4 @@
+#include "core/math/Vec3Ops.h"
 #include "app/services/NodeEquilibrium.h"
 
 #include <algorithm>
@@ -9,9 +10,10 @@ namespace {
 
 using Vec = std::array<double, 3>;
 
-double dot(const Vec &a, const Vec &b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+using Structura::Math::cross;
+using Structura::Math::dot;
 
-Vec cross(const Vec &a, const Vec &b) { return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]}; }
+
 
 Vec unit(const Vec &a)
 {

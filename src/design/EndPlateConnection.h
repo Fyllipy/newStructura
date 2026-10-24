@@ -48,6 +48,7 @@ struct EndPlateInput {
     double colRadius {10.0};
     SteelProps column;
     double colUnbraced {0.0};        ///< comprimento destravado ℓ na altura da ligacao (mm); 0 = mesas contidas (5.7.5 dispensada)
+    bool beamOnBothSides {false};    ///< viga tambem do outro lado do pilar, com momento de mesmo sentido: par de compressoes opostas (5.7.6)
     bool continuityPlates {false};   ///< enrijecedores horizontais alinhados com as mesas da viga (5.7.9)
     double stiffenerThickness {9.5};
     double stiffenerWidth {60.0};    ///< largura de cada enrijecedor (mm)

@@ -18,6 +18,13 @@ struct Options {
     double stiffenerSpacing {0.0};  ///< a entre enrijecedores transversais da alma (mm); 0 = sem enrijecedores (5.4.3.1.1)
     double maxSlendernessCompression {200.0};   ///< 5.3.7.1 (recomendacao)
     double maxSlendernessTension {300.0};       ///< 5.2.8.1 (recomendacao)
+    // Barras compostas (5.3.6): distancia entre as ligacoes dos perfis e tipo da ligacao intermediaria
+    double compositeSpacing {0.0};              ///< l (mm); 0 = nao informado (adota duas ligacoes intermediarias uniformemente espacadas, l = L/3)
+    bool compositeWelded {false};               ///< ligacoes intermediarias soldadas ou com parafusos protendidos (5.3.6.3-b); senao parafusos com aperto normal (5.3.6.3-a)
+    double barLength {0.0};                     ///< comprimento da barra L (mm)
+    const DesignSection *slendernessSection {nullptr};   ///< Anexo G (G.4.2): secao de maior altura cujas propriedades definem os parametros de esbeltez da flexao em I
+    double ixOverride {0.0};                    ///< Anexo G (G.3): inercia equivalente (mm4) para a flambagem em relacao ao eixo perpendicular a alma; 0 = a da secao
+    bool threadedRod {false};                   ///< barra redonda com extremidades rosqueadas (5.2.7): ruptura da parte rosqueada com Abe = 0,75 Ab (6.3.2.2, 6.3.3.1)
 };
 
 /// Comprimentos efetivos de flambagem (mm): flexao em relacao ao eixo X, ao eixo Y e torcao.

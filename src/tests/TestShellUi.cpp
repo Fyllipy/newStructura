@@ -1,5 +1,7 @@
 #include "shell/ShellFactory.h"
 #include "shell/ShellMesh.h"
+#include "ui/ProfilePropertiesDialog.h"
+#include "viz/structure/SectionShapes.h"
 #include "ui/ShellDialog.h"
 #include "viz/structure/ShellRenderer.h"
 
@@ -94,6 +96,56 @@ private slots:
         writer->SetInputConnection(grab->GetOutputPort());
         writer->Write();
         QVERIFY(!mesh.quads.empty());
+    }
+
+    void gapBetweenCompositeProfilesChangesSectionProperties()
+    {
+        using Structura::Visualization::SectionShapes;
+        auto params = [](double gap) {
+            SectionShapes::Parameters p;
+            for (const auto &parameter : SectionShapes::findFamily(QStringLiteral("Duplo U Costas"))->parameters) {
+                p.insert(parameter.key, parameter.defaultValue);
+            }
+            p.insert(QStringLiteral("e"), gap);
+            return p;
+        };
+        const auto narrow = SectionShapes::properties(QStringLiteral("Duplo U Costas"), params(10.0));
+        const auto wide = SectionShapes::properties(QStringLiteral("Duplo U Costas"), params(60.0));
+        QVERIFY(narrow && wide);
+        QVERIFY(std::abs(narrow->area - wide->area) < 1e-12);       // a area nao depende do afastamento
+        QVERIFY(wide->iy > narrow->iy * 1.05);                      // a inercia em torno do eixo vertical cresce (Steiner)
+        QVERIFY(std::abs(wide->iz - narrow->iz) / narrow->iz < 1e-9);
+    }
+
+    void profilePropertiesDialogListsGeometricAndEngineeringValues()
+    {
+        for (const QString &family : {QStringLiteral("W Laminado"), QStringLiteral("Duplo U Costas")}) {
+            Structura::App::ProjectData::SectionInfo section;
+            section.name = family;
+            section.family = family;
+            const auto *spec = Structura::Visualization::SectionShapes::findFamily(family);
+            QVERIFY(spec);
+            for (const auto &parameter : spec->parameters) {
+                section.geometry.insert(parameter.key, parameter.defaultValue);
+            }
+            section.area = 0.003;
+            section.iz = 1e-5;
+            section.iy = 1e-6;
+            section.j = 1e-8;
+            Structura::UI::ProfilePropertiesDialog dialog(section);
+            const auto *table = dialog.findChild<QTableWidget *>();
+            QVERIFY(table);
+            QStringList names;
+            for (int r = 0; r < table->rowCount(); ++r) {
+                names << table->item(r, 0)->text();
+            }
+            QVERIFY(table->rowCount() > 20);
+            QVERIFY(names.contains(QStringLiteral("Módulo plástico Zx")));
+            QVERIFY(names.contains(QStringLiteral("Constante de empenamento Cw (coordenada setorial)")) || family != QLatin1String("W Laminado"));
+            if (family == QLatin1String("Duplo U Costas")) {
+                QVERIFY(names.contains(QStringLiteral("Afastamento entre os perfis")));
+            }
+        }
     }
 
     void tankAnalysisAndDesignThroughTheDialog()

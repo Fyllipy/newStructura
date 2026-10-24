@@ -545,6 +545,10 @@ std::vector<Loop> rawLoops(const QString &family, const SectionShapes::Parameter
     if (family == QLatin1String("W Laminado")) {
         return sv(wPath(param(p, "d"), param(p, "bf"), param(p, "tw", 6.0), param(p, "tf", 8.0), param(p, "r", 10.0)));
     }
+    if (family == QLatin1String("I Alma Variavel")) {
+        // barra de secao variavel (NBR 8800, Anexo G): o contorno e o da altura media; as propriedades (peso, quantitativos) sao exatas pela media das alturas
+        return sv(wPath(0.5 * (param(p, "d1") + param(p, "d2")), param(p, "bf"), param(p, "tw", 6.0), param(p, "tf", 8.0), 0.01));   // wPath exige raio > 0
+    }
     if (family == QLatin1String("U Laminado") || family == QLatin1String("U Inclinado Laminado")) {
         return sv(uPath(param(p, "d"), param(p, "bf"), param(p, "tw"), param(p, "tf"), param(p, "r"), param(p, "r1"),
                         param(p, "flange_angle_deg", 2.0)));
@@ -634,6 +638,43 @@ std::vector<Loop> rawLoops(const QString &family, const SectionShapes::Parameter
         }
         return {circleLoop(param(p, "d")), circleLoop(inner)};
     }
+    if (family == QLatin1String("Dupla Cantoneira T") || family == QLatin1String("Duplo U Costas") || family == QLatin1String("Duplo U Face a Face")) {
+        // dois perfis iguais separados pelo afastamento e (chapa espacadora/chapa de no); coordenadas de desenho (y para baixo), centradas em x = 0
+        const double gap = std::max(0.0, param(p, "e", 10.0));
+        auto place = [](Loop loop, bool rotate180, bool mirror, double dx) {
+            for (Point &pt : loop) {
+                if (rotate180) {
+                    pt = {-pt[0], -pt[1]};
+                }
+                if (mirror) {
+                    pt[0] = -pt[0];
+                }
+                pt[0] += dx;
+            }
+            return loop;
+        };
+        auto mirrored = [](Loop loop) {
+            for (Point &pt : loop) {
+                pt[0] = -pt[0];
+            }
+            return loop;
+        };
+        if (family == QLatin1String("Dupla Cantoneira T")) {
+            // abas verticais costas com costas junto ao afastamento, abas horizontais para fora (T com a mesa em cima)
+            const double b = param(p, "b");
+            const Loop base = sv(lPath(b, param(p, "t"), param(p, "r1"), param(p, "r2"))).front();
+            const Loop left = place(base, true, false, -gap / 2.0 - b / 2.0);
+            return {left, mirrored(left)};
+        }
+        const double d = param(p, "d"), bf = param(p, "bf");
+        const Loop base = sv(uPath(d, bf, param(p, "tw"), param(p, "tf"), param(p, "r"), param(p, "r1"), param(p, "flange_angle_deg", 2.0))).front();
+        if (family == QLatin1String("Duplo U Costas")) {
+            // almas voltadas uma para a outra (forma de I), mesas para fora
+            return {place(base, false, true, -gap / 2.0 - bf / 2.0), place(base, false, false, gap / 2.0 + bf / 2.0)};
+        }
+        // mesas voltadas uma para a outra (caixa), almas para fora
+        return {place(base, false, false, -gap / 2.0 - bf / 2.0), place(base, false, true, gap / 2.0 + bf / 2.0)};
+    }
     throw std::runtime_error("Familia de perfil desconhecida.");
 }
 
@@ -650,6 +691,8 @@ const QVector<SectionFamily> &SectionShapes::families()
     static const QVector<SectionFamily> list = {
         {QStringLiteral("W Laminado"), QStringLiteral("Aco"),
          {P("d", "Altura d (mm)", 310), P("bf", "Mesa bf (mm)", 165), P("tw", "Alma tw (mm)", 5.8), P("tf", "Mesa tf (mm)", 9.7), P("r", "Raio r (mm)", 10)}},
+        {QStringLiteral("I Alma Variavel"), QStringLiteral("Aco"),
+         {P("d1", "Altura d1 no no inicial (mm)", 300), P("d2", "Altura d2 no no final (mm)", 500), P("bf", "Mesa bf (mm)", 200), P("tw", "Alma tw (mm)", 6.3), P("tf", "Mesa tf (mm)", 12.5)}},
         {QStringLiteral("I Laminado"), QStringLiteral("Aco"),
          {P("d", "Altura d (mm)", 203), P("bf", "Mesa bf (mm)", 101), P("tw", "Alma tw (mm)", 5.8), P("tf", "Mesa tf (mm)", 10.8),
           P("r1", "Raio interno r1 (mm)", 0, true), P("r2", "Raio da ponta r2 (mm)", 0, true), P("flange_angle_deg", "Inclinacao da mesa (graus)", 0, true)}},
@@ -664,6 +707,15 @@ const QVector<SectionFamily> &SectionShapes::families()
         {QStringLiteral("T Laminado"), QStringLiteral("Aco"),
          {P("d", "Altura d (mm)", 150), P("bf", "Mesa bf (mm)", 150), P("tw", "Alma tw (mm)", 8), P("tf", "Mesa tf (mm)", 10),
           P("r1", "Raio interno r1 (mm)", 0, true), P("r2", "Raio da ponta r2 (mm)", 0, true)}},
+        {QStringLiteral("Dupla Cantoneira T"), QStringLiteral("Aco"),
+         {P("b", "Aba b de cada cantoneira (mm)", 76), P("t", "Espessura t (mm)", 6.35), P("e", "Afastamento entre as cantoneiras e (mm)", 10),
+          P("r1", "Raio interno r1 (mm)", 0, true), P("r2", "Raio da ponta r2 (mm)", 0, true)}},
+        {QStringLiteral("Duplo U Costas"), QStringLiteral("Aco"),
+         {P("d", "Altura d (mm)", 203), P("bf", "Mesa bf (mm)", 57), P("tw", "Alma tw (mm)", 5.6), P("tf", "Mesa tf (mm)", 9.5), P("e", "Afastamento entre as almas e (mm)", 10),
+          P("r", "Raio da alma r (mm)", 0, true), P("r1", "Raio da ponta r1 (mm)", 0, true), P("flange_angle_deg", "Inclinacao da mesa (graus)", 0, true)}},
+        {QStringLiteral("Duplo U Face a Face"), QStringLiteral("Aco"),
+         {P("d", "Altura d (mm)", 203), P("bf", "Mesa bf (mm)", 57), P("tw", "Alma tw (mm)", 5.6), P("tf", "Mesa tf (mm)", 9.5), P("e", "Afastamento entre as mesas e (mm)", 10),
+          P("r", "Raio da alma r (mm)", 0, true), P("r1", "Raio da ponta r1 (mm)", 0, true), P("flange_angle_deg", "Inclinacao da mesa (graus)", 0, true)}},
         {QStringLiteral("U Formado"), QStringLiteral("Aco"), {P("d", "Altura d (mm)", 150), P("bf", "Mesa bf (mm)", 60), P("t", "Espessura t (mm)", 3)}},
         {QStringLiteral("C Formado"), QStringLiteral("Aco"),
          {P("d", "Altura d (mm)", 150), P("bf", "Mesa bf (mm)", 60), P("c", "Enrijecedor c (mm)", 20), P("t", "Espessura t (mm)", 3)}},
@@ -690,6 +742,22 @@ const QVector<SectionFamily> &SectionShapes::families()
     return list;
 }
 
+bool SectionShapes::isComposite(const QString &family)
+{
+    return !componentFamily(family).isEmpty();
+}
+
+QString SectionShapes::componentFamily(const QString &family)
+{
+    if (family == QLatin1String("Dupla Cantoneira T")) {
+        return QStringLiteral("L Laminado");
+    }
+    if (family == QLatin1String("Duplo U Costas") || family == QLatin1String("Duplo U Face a Face")) {
+        return QStringLiteral("U Laminado");
+    }
+    return {};
+}
+
 const SectionFamily *SectionShapes::findFamily(const QString &name)
 {
     for (const SectionFamily &family : families()) {
@@ -713,7 +781,8 @@ std::optional<SectionShape> SectionShapes::build(const QString &family, const Pa
             }
         }
 
-        // Centroide ponderado (contorno externo menos furos).
+        // Centroide ponderado (contornos externos menos furos); as barras compostas tem dois contornos externos.
+        const std::size_t outer = isComposite(family) ? loops.size() : 1;
         double totalArea = 0.0;
         double sumX = 0.0;
         double sumY = 0.0;
@@ -723,7 +792,7 @@ std::optional<SectionShape> SectionShapes::build(const QString &family, const Pa
                 throw std::runtime_error("O contorno possui area nula.");
             }
             const Point centroid = loopCentroid(loops[i], area);
-            const double weight = (i == 0 ? 1.0 : -1.0) * std::abs(area);
+            const double weight = (i < outer ? 1.0 : -1.0) * std::abs(area);
             totalArea += weight;
             sumX += weight * centroid[0];
             sumY += weight * centroid[1];
@@ -733,6 +802,7 @@ std::optional<SectionShape> SectionShapes::build(const QString &family, const Pa
         }
 
         SectionShape shape;
+        shape.outerCount = outer;
         shape.centroid = {sumX / totalArea, sumY / totalArea};
         bool first = true;
         for (const Loop &loop : loops) {
@@ -791,7 +861,7 @@ std::optional<SectionProperties> SectionShapes::properties(const QString &family
     double iy = 0.0; // integral de a^2 dA
     for (std::size_t i = 0; i < shape->loops.size(); ++i) {
         const Loop &loop = shape->loops[i];
-        const double sign = i == 0 ? 1.0 : -1.0;
+        const double sign = i < shape->outerCount ? 1.0 : -1.0;
         const double orientation = signedArea(loop) >= 0.0 ? 1.0 : -1.0;
         for (std::size_t k = 0; k < loop.size(); ++k) {
             const Point &p0 = loop[k];
@@ -820,10 +890,18 @@ std::optional<SectionProperties> SectionShapes::properties(const QString &family
         const double am = (w - t) * (h - t);
         const double perimeter = 2.0 * ((w - t) + (h - t));
         j = 4.0 * am * am * t / perimeter;
+    } else if (family == QLatin1String("Dupla Cantoneira T")) {
+        // dois perfis L (soma das constantes de torcao; sem acao conjunta dos perfis)
+        j = 2.0 * 2.0 * (param(p, "b") - param(p, "t") / 2.0) * std::pow(param(p, "t"), 3) / 3.0;
+    } else if (family == QLatin1String("Duplo U Costas") || family == QLatin1String("Duplo U Face a Face")) {
+        j = 2.0 * (2.0 * param(p, "bf") * std::pow(param(p, "tf"), 3) + (param(p, "d") - param(p, "tf")) * std::pow(param(p, "tw"), 3)) / 3.0;
     } else if (family == QLatin1String("Barra Quadrada")) {
         j = rectangleTorsion(param(p, "b"), param(p, "b"));
     } else if (family == QLatin1String("Barra Retangular") || family == QLatin1String("Retangular")) {
         j = rectangleTorsion(param(p, "b"), param(p, "h"));
+    } else if (family == QLatin1String("I Alma Variavel")) {
+        const double tw = param(p, "tw", 6.0), tf = param(p, "tf", 8.0), dMean = 0.5 * (param(p, "d1") + param(p, "d2"));
+        j = (2.0 * param(p, "bf") * std::pow(tf, 3) + (dMean - 2.0 * tf) * std::pow(tw, 3)) / 3.0;
     } else if (family == QLatin1String("W Laminado") || family == QLatin1String("I Laminado")) {
         const double tw = param(p, "tw", 6.0);
         const double tf = param(p, "tf", 8.0);

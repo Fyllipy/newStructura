@@ -1,3 +1,4 @@
+#include "core/math/Vec3Ops.h"
 #include "BucklingService.h"
 
 #include <algorithm>
@@ -9,11 +10,12 @@ namespace Structura::App::Services {
 using Vec3 = BucklingService::Vec3;
 
 namespace {
-Vec3 sub(const Vec3 &a, const Vec3 &b) { return {a[0] - b[0], a[1] - b[1], a[2] - b[2]}; }
+
+using Structura::Math::cross;
+using Structura::Math::dot;
+using Structura::Math::sub;
 Vec3 add(const Vec3 &a, const Vec3 &b) { return {a[0] + b[0], a[1] + b[1], a[2] + b[2]}; }
 Vec3 mul(const Vec3 &a, double s) { return {a[0] * s, a[1] * s, a[2] * s}; }
-double dot(const Vec3 &a, const Vec3 &b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-Vec3 cross(const Vec3 &a, const Vec3 &b) { return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]}; }
 } // namespace
 
 SolverBridge::Result BucklingService::run(SolverBridge::ModelData model, int modes)

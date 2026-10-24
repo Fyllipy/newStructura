@@ -44,7 +44,6 @@ std::vector<Check> checkEndPlate(const EndPlateInput &in)
     const double ab = 0.25 * kPi * sq(in.db);
     const double dh = standardHoleDiameter(in.db);
     const int tensionBolts = 2 * std::max(1, in.tensionRows);
-    const int shearBolts = 2 * std::max(1, in.shearRows);
 
     // parafusos tracionados (distribuicao igual entre as fileiras)
     const double ft0 = ft / tensionBolts;
@@ -159,6 +158,7 @@ std::vector<Check> checkEndPlate(const EndPlateInput &in)
     sup.lengthTransverse = in.flangeWidth;
     sup.unbracedLength = in.colUnbraced;
     sup.gammaA1 = in.gammaA1;
+    sup.pairForce = in.beamOnBothSides ? fc : 0.0;
     const std::vector<Check> local = checkSupportMember(sup);
     if (!in.continuityPlates) {
         detail::appendChecks(out, local, "", "");

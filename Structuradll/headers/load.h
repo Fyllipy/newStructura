@@ -43,6 +43,8 @@ public:
     CoordinateSystem getCoordinateSystem() const;
 
     std::vector<double> getEquivalentNodalForces(const Member* member) const;
+    // Local-frame load components: clamped-end forces of the flexible part and equivalent loads of the rigid end zones
+    void localComponents(const Member* member, Eigen::VectorXd& flexLocal, Eigen::VectorXd& rigidAtNodeEnds) const;
 
     static CoordinateSystem coordinateSystemFromString(const std::string& token);
     static std::string coordinateSystemToString(CoordinateSystem system);
@@ -63,4 +65,5 @@ public:
 
     int getMemberId() const;
     std::vector<double> getEquivalentNodalForces(const Member* member) const;
+    void localComponents(const Member* member, Eigen::VectorXd& flexLocal, Eigen::VectorXd& rigidAtNodeEnds) const;
 };

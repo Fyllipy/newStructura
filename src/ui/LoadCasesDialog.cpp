@@ -94,7 +94,8 @@ LoadCasesDialog::LoadCasesDialog(const QVector<LoadCase> &cases,
     // ── Aba de combinacoes ────────────────────────────────────────────────
     auto *comboPage = new QWidget(this);
     auto *comboLayout = new QVBoxLayout(comboPage);
-    auto *comboHint = new QLabel(tr("Fator aplicado ao resultado de cada caso (vazio ou 0 = nao participa)."), comboPage);
+    auto *comboHint = new QLabel(tr("Fator aplicado ao resultado de cada caso (vazio ou 0 = nao participa). Nomes iniciados por ELS sao combinacoes de servico; "
+                                      "nomes iniciados por EXC sao combinacoes ultimas excepcionais (NBR 8800, Tabela 3: gama_a1 = 1,00 e gama_a2 = 1,15)."), comboPage);
     comboHint->setWordWrap(true);
     comboLayout->addWidget(comboHint);
     m_comboTable = new QTableWidget(0, 1, comboPage);

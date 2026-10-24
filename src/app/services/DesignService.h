@@ -49,6 +49,8 @@ public:
         QString name;
         const Structura::App::SolverBridge::Result *result {nullptr};
         std::vector<std::pair<const Structura::App::SolverBridge::ModelData *, double>> terms;
+        /// Resultado da estrutura "nt" (nos dos andares impedidos de se deslocar horizontalmente, Anexo C.2.1) da mesma combinacao; nulo = sem separacao nt/lt.
+        const Structura::App::SolverBridge::Result *nt {nullptr};
     };
 
     /// Barra reconstruida para o pos-processamento (eixos locais, esforcos de extremidade e cargas) de uma combinacao.
@@ -58,6 +60,9 @@ public:
         int nodeJ {0};
         double qy {0.0};   ///< carga distribuida resultante nos eixos locais
         double qz {0.0};
+        bool warping {false};          ///< torcao com empenamento: theta' nas extremidades (1/unidade de comprimento do modelo)
+        double psiI {0.0}, psiJ {0.0};
+        double torqueLoad {0.0};       ///< torque distribuido uniforme resultante em torno de x local (forca*comprimento/comprimento)
     };
     static std::vector<ElementData> buildElements(const Structura::App::SolverBridge::ModelData &geometry, const ResultSet &set);
 
@@ -72,6 +77,10 @@ public:
     struct MemberEffects {
         int memberId {0};
         double lengthMm {0.0};
+        bool torsionReleasedStart {false};   ///< rx liberado no no I (sem restricao a rotacao em torno do eixo longitudinal)
+        bool torsionReleasedEnd {false};
+        bool warping {false};      ///< analisada com torcao com empenamento
+        bool cantilever {false};   ///< balanco: uma extremidade livre (so esta barra chega ao no, sem apoio) e a outra ligada ao resto da estrutura
         std::vector<Structura::Design::ComboEffects> combos;
         std::vector<EndRecord> ends;
     };
@@ -83,10 +92,18 @@ public:
                                                  double lengthFactorToMm, int stations = 21);
 
     /// Define o B2 de cada combinacao/barra (`b2[combinacao][barra]`); ignora combinacoes ausentes.
-    static void applyB2(QVector<MemberEffects> &effects, const QMap<QString, QMap<int, double>> &b2);
+    /// `stiffnessFactor`: reducao de rigidez (4.10.7.1.2) usada em Ne de B1 (1,0 = nominal).
+    static void applyB2(QVector<MemberEffects> &effects, const QMap<QString, QMap<int, double>> &b2, double stiffnessFactor = 1.0);
 
     /// Fatores de unidade deduzidos do modulo de elasticidade do material (Pa -> N e m; kN/m2 -> kN e m).
     static std::pair<double, double> unitFactors(const QVector<MaterialInfo> &materials);
+
+    /// Area liquida (5.2.4) e coeficiente Ct (5.2.5) a partir dos dados da ligacao tracionada; `netAreaRatio` e `ct` partem dos valores informados.
+    /// `notes` recebe a memoria de calculo. `error` (se nao vazio) descreve dados incoerentes.
+    static void tensionConnection(const DesignMemberParams &params, double grossArea, double &netAreaRatio, double &ct, std::vector<std::string> &notes);
+
+    /// Combinacao ultima excepcional (nome iniciado por "EXC"): NBR 8800:2024, Tabela 3, usa gama_a1 = 1,00 e gama_a2 = 1,15 (normais, especiais e de construcao: 1,10 e 1,35).
+    [[nodiscard]] static bool isExceptionalCombination(const QString &name);
 
     /// Nomes das combinacoes ultimas por padrao (as que nao comecam por "ELS").
     static QStringList defaultUltimateCombinations(const QStringList &allNames);
@@ -102,6 +119,10 @@ public:
 
     /// Secao de dimensionamento correspondente ao perfil (propriedades brutas nos eixos principais).
     static Structura::Design::DesignSection makeSection(const SectionInfo &section, const QString &rectTubeStandard);
+    /// Areas efetivas de cisalhamento (mm2) para a deformacao por cortante: {na direcao da altura (alma), na direcao da largura (mesas)}.
+    /// I/U/T: d.tw e 2.bf.tf (T: bf.tf); tubo retangular: 2.(d-2t).t e 2.(bf-2t).t; tubo circular: A/2; macico redondo: 9/10 A; macico retangular: 5/6 A;
+    /// formados a frio: d.t e 2.bf.t. {0, 0} = sem area definida (cantoneiras, secao nao suportada): a barra fica rigida ao cortante.
+    static std::pair<double, double> shearAreasMm2(const Structura::Design::DesignSection &section);
 
     /// Razoes Ief/I (eixos X e Y de projeto) para as flechas de ELS: secao efetiva em perfis formados a frio (momentos de servico
     /// `mxNmm`, `myNmm` em N.mm), 1,0 nos demais.

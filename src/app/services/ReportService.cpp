@@ -1,5 +1,6 @@
 #include "ReportService.h"
 
+#include "report/CalcCardBuilder.h"
 #include "report/FormulaText.h"
 #include "viz/structure/SectionShapes.h"
 
@@ -35,6 +36,20 @@ QString sci(double v, int decimals = 3)
         return t;
     }
     return num(v, v == std::floor(v) && std::abs(v) > 100 ? 0 : decimals);
+}
+
+/// 9.031e+07 -> "9,031 × 10⁷"
+QString sciPretty(double v)
+{
+    const int exponent = static_cast<int>(std::floor(std::log10(std::abs(v))));
+    const double mantissa = v / std::pow(10.0, exponent);
+    static const QString digits[] = {QStringLiteral("⁰"), QStringLiteral("¹"), QStringLiteral("²"), QStringLiteral("³"), QStringLiteral("⁴"),
+                                     QStringLiteral("⁵"), QStringLiteral("⁶"), QStringLiteral("⁷"), QStringLiteral("⁸"), QStringLiteral("⁹")};
+    QString power;
+    for (const QChar c : QString::number(exponent)) {
+        power += c == QLatin1Char('-') ? QStringLiteral("⁻") : digits[c.digitValue()];
+    }
+    return num(mantissa, 3) + QStringLiteral(" × 10") + power;
 }
 
 std::string latexNumber(double v, int decimals = 3)
@@ -187,31 +202,166 @@ QString situationOf(double eta)
     return eta > 1.0 ? QStringLiteral("Não atende") : (eta > 0.9 ? QStringLiteral("Atende (limite)") : QStringLiteral("Atende"));
 }
 
-void appendCheck(ReportDocument &doc, const Structura::Design::CheckResult &check, bool showFormulas)
+std::string descriptionFor(const std::string &id, bool cold)
 {
-    doc.heading(3, restoreAccents(check.title) + "  —  " + restoreAccents(check.clause));
+    if (id == "slenderness") {
+        return cold ? "O índice de esbeltez das barras comprimidas, tomado como a maior relação entre o comprimento de flambagem e o raio de giração, não deve ser superior a 200 (NBR 14762, 9.7.4)."
+                    : "O índice de esbeltez das barras comprimidas, tomado como a maior relação entre o comprimento de flambagem e o raio de giração, não deve ser superior a 200 (NBR 8800, 5.3.7.1).";
+    }
+    if (id == "tension") {
+        return cold ? "A força axial de tração resistente de cálculo é o menor valor entre o escoamento da seção bruta e a ruptura da seção líquida efetiva (NBR 14762, 9.6)."
+                    : "A força axial de tração resistente de cálculo é o menor valor entre o escoamento da seção bruta (γa1 = 1,10) e a ruptura da seção líquida efetiva (γa2 = 1,35), conforme a NBR 8800, 5.2.2.";
+    }
+    if (id == "compression") {
+        return cold ? "A força axial de compressão resistente de cálculo é Nc,Rd = χ Aef fy / γ, com χ da flambagem global (9.7.2: flexão, torção e flexo-torção), área efetiva Aef pela flambagem local "
+                      "(método da largura efetiva, 9.2) e verificação da flambagem distorcional (9.7.3)."
+                    : "A força axial de compressão resistente de cálculo é Nc,Rd = χ Q Ag fy / γa1. O fator χ depende do índice de esbeltez reduzido λ0, obtido da força axial de flambagem elástica Ne "
+                      "(a menor entre flexão em X, flexão em Y e torção ou flexo-torção); Q reduz a resistência pela flambagem local dos elementos esbeltos (NBR 8800, 5.3.3 a 5.3.5).";
+    }
+    if (id == "flexure_x" || id == "flexure_y") {
+        return cold ? "O momento fletor resistente de cálculo é o menor valor entre o início de escoamento da seção efetiva, a flambagem lateral com torção e a flambagem distorcional (NBR 14762, 9.8.2)."
+                    : "O momento fletor resistente de cálculo é o menor valor entre os estados-limites aplicáveis ao tipo de seção: flambagem lateral com torção (FLT), flambagem local da mesa (FLM) e "
+                      "flambagem local da alma (FLA), calculados conforme o Anexo D e limitados pela capacidade elástica de 1,5 W fy / γa1 (NBR 8800, 5.4.2).";
+    }
+    if (id == "shear_y" || id == "shear_z") {
+        return cold ? "A força cortante resistente de cálculo depende da esbeltez h/t do painel: escoamento por cisalhamento quando h/t ≤ λp e redução por flambagem por cisalhamento acima disso (NBR 14762, 9.8.3)."
+                    : "A força cortante resistente de cálculo depende da esbeltez λ do painel (alma ou mesas) comparada aos parâmetros λp e λr: plastificação por cisalhamento Vpl = 0,60 Aw fy quando λ ≤ λp e "
+                      "redução por flambagem acima disso (NBR 8800, 5.4.3).";
+    }
+    if (id == "interaction") {
+        return cold ? "Barras sob força axial e momentos fletores: NSd/NRd + Mx,Sd/Mx,Rd + My,Sd/My,Rd ≤ 1 (NBR 14762, 9.9)."
+                    : "Barras sob força axial e momentos fletores: para NSd/NRd ≥ 0,2, NSd/NRd + 8/9 (Mx,Sd/Mx,Rd + My,Sd/My,Rd) ≤ 1; para NSd/NRd < 0,2, NSd/(2 NRd) + (Mx,Sd/Mx,Rd + My,Sd/My,Rd) ≤ 1 "
+                      "(NBR 8800, 5.5.1.2).";
+    }
+    if (id == "mv_x" || id == "mv_y") {
+        return "Atuação simultânea de momento fletor e força cortante: (MSd/MRd)² + (VSd/VRd)² ≤ 1,0 (NBR 14762, 9.8.4).";
+    }
+    if (id == "torsion") {
+        return "Seções tubulares com momento de torção: TSd ≤ TRd (NBR 8800, 5.5.2.1). Quando TSd/TRd > 0,20 a torção entra nas interações com força axial, momento fletor e cortante (5.5.2.2).";
+    }
+    if (id == "warping_normal") {
+        return "Seção I/H com torção com empenamento: as tensões normais pela Teoria da Elasticidade (N/A, M/W e B ω/Cw) devem ser menores que a resistência ao escoamento e, no lado comprimido, à instabilidade "
+               "(NBR 8800, 5.5.2.3-a e 5.5.2.3-c).";
+    }
+    if (id == "warping_shear") {
+        return "Seção I/H com torção com empenamento: as tensões de cisalhamento (Saint-Venant, empenamento e força cortante) devem ser menores que 0,60 fy/γa1, com redução na alma por flambagem "
+               "(NBR 8800, 5.5.2.3-b e 5.5.2.3-d).";
+    }
+    if (id == "geometry") {
+        return "Relações largura-espessura máximas dos elementos da seção, para que o método da largura efetiva seja aplicável (NBR 14762, 9.1.2, Tabela 4).";
+    }
+    if (id == "web_flange_weld" || id == "web_flange_weld_min") {
+        return id == "web_flange_weld" ? "Solda de filete mesa–alma de perfil soldado: a força por unidade de comprimento Vs Qs/Ix (mais a força aplicada diretamente na mesa) é comparada à resistência do filete, "
+                                         "0,60 fw Aw/γw2 (NBR 8800, 5.4.5)."
+                                       : "A perna do filete mesa–alma não deve ser inferior à mínima da Tabela 10 em função da espessura do metal-base mais espesso (NBR 8800, 6.2.5 e 5.4.5).";
+    }
+    if (id.rfind("cover_plate_", 0) == 0) {
+        return "Perfil com lamela soldada à mesa: a lamela deve se prolongar além do ponto teórico de corte por a_ℓ (b, 1,5 b ou 2 b conforme a solda de extremidade) e a solda de ligação deve resistir ao "
+               "fluxo de cisalhamento Vs Qs/Ix (NBR 8800, 5.4.4).";
+    }
+    if (id == "plastic_hinge") {
+        return "Viga contínua com análise rígido-plástica: o comprimento destravado da mesa comprimida junto às rótulas plásticas não deve exceder Lpd = [0,12 + 0,076 (M1/M2)] (E/fy) ry em seções I, "
+               "e a seção deve ser compacta (NBR 8800, 4.11.5).";
+    }
+    if (id == "cc_limits") {
+        return "Limites de aplicabilidade do método simplificado para pilares mistos: dupla simetria, seção constante, fator de contribuição do aço 0,1 ≤ δ ≤ 0,9, esbeltez reduzida λ0,m ≤ 2,0, "
+               "área do aço ≥ 1 % da seção, armadura mínima de 0,4 %, cobrimentos e classificação da seção (NBR 8800:2024, M.1.3 e M.1.4).";
+    }
+    if (id == "cc_creep") {
+        return "Quando a esbeltez reduzida ultrapassa λ0,lim = (90/π) √(Np,R/(EA)e), somam-se ao momento atuante os efeitos de retração e fluência do concreto, Mcc = NSd ecc, "
+               "ecc = (MSd/NSd + L/300)(e^m − 1) (NBR 8800:2024, M.3.3).";
+    }
+    if (id == "cc_interface") {
+        return "Transferência de esforços entre o perfil de aço e o concreto: a tensão de cisalhamento nas superfícies de contato não excede τRd da Tabela M.2; caso contrário são necessários "
+               "conectores de cisalhamento na região de introdução de cargas (NBR 8800:2024, M.2).";
+    }
+    if (id == "composite") {
+        return "Barra composta: o espaçamento entre as ligações dos perfis e o número de ligações intermediárias devem atender à NBR 8800, 5.3.6.1.";
+    }
+    return {};
+}
+
+std::string inequalityFor(const std::string &id)
+{
+    if (id == "tension") return "N_{t,Sd} \\le N_{t,Rd}";
+    if (id == "compression") return "N_{c,Sd} \\le N_{c,Rd}";
+    if (id == "flexure_x") return "M_{x,Sd} \\le M_{x,Rd}";
+    if (id == "flexure_y") return "M_{y,Sd} \\le M_{y,Rd}";
+    if (id == "shear_y") return "V_{y,Sd} \\le V_{y,Rd}";
+    if (id == "shear_z") return "V_{z,Sd} \\le V_{z,Rd}";
+    if (id == "slenderness") return "\\lambda \\le \\lambda_{lim}";
+    if (id == "mv_x" || id == "mv_y") return "\\left(\\frac{M_{Sd}}{M_{Rd}}\\right)^{2} + \\left(\\frac{V_{Sd}}{V_{Rd}}\\right)^{2} \\le 1";
+    if (id == "torsion") return "T_{Sd} \\le T_{Rd}";
+    if (id == "warping_normal") return "\\sigma_{Sd} \\le \\sigma_{Rd}";
+    if (id == "warping_shear") return "\\tau_{Sd} \\le \\tau_{Rd}";
+    if (id == "composite") return "\\frac{\\ell}{r_{min}} \\le 0{,}75\\,\\left(\\frac{L}{r}\\right)_{0}";
+    if (id == "geometry") return "\\left(\\frac{b}{t}\\right) \\le \\left(\\frac{b}{t}\\right)_{max}";
+    return "\\eta \\le 1";
+}
+
+/// "NBR 8800:2024, 5.3.7" -> "ABNT NBR 8800:2024, Artigo 5.3.7"
+std::string clauseTitle(const std::string &clause)
+{
+    const auto comma = clause.find(", ");
+    if (clause.rfind("NBR", 0) != 0) {
+        return clause;
+    }
+    return "ABNT " + (comma == std::string::npos ? clause : clause.substr(0, comma) + ", Artigo " + clause.substr(comma + 2));
+}
+
+Structura::Report::CalcCard cardOf(const std::string &id, const std::string &title, const std::string &clause, double demand, double resistance, const std::string &unit, double ratio,
+                                    const std::vector<std::string> &lines, bool showFormulas, const CalcEnv &env)
+{
+    CalcCardInput in;
+    in.title = title;
+    in.clause = clauseTitle(clause);
+    const bool cold = clause.find("14762") != std::string::npos;
     if (showFormulas) {
-        appendCalculationLines(doc, check.lines);
-    }
-    // resultado
-    const QString unit = QString::fromStdString(check.unit);
-    if (check.resistance == 1.0 && check.unit.empty()) {
-        doc.equation("\\eta = " + latexNumber(check.ratio) + (check.ratio <= 1.0 ? " \\le 1{,}000" : " > 1{,}000"));
-    } else {
-        std::string unitLatex;
-        if (!unit.isEmpty()) {
-            QStringList parts = unit.split(QLatin1Char('*'));
-            QString text;
-            for (int i = 0; i < parts.size(); ++i) {
-                text += (i ? QStringLiteral("\\cdot ") : QString()) + QStringLiteral("\\mathrm{%1}").arg(parts[i]);
+        in.description = descriptionFor(id, cold);
+        if (clause.find("NBR 8800:2024, M.") != std::string::npos) {
+            // pilar misto (Anexo M): os ids de compressao, flexao e interacao reaproveitam os das barras de aco, mas com outro texto
+            if (id == "compression") {
+                in.description = "Pilar misto de aço e concreto: NRd = χ Np,Rd, com Np,Rd = Npℓ,Rd na seção compacta (Aa fyd + Ac fcd1 + As fsd) e χ da curva de 5.3.3 com o índice de esbeltez reduzido "
+                                 "λ0,m = √(Np,R/Ne), Ne = π² (EI)e/L² e (EI)e = Ea Ia + αc Ec Ic + Es Is (NBR 8800:2024, M.3 e M.4).";
+            } else if (id == "flexure_x" || id == "flexure_y") {
+                in.description = "Momento fletor resistente do pilar misto: Mpℓ,Rd = fyd (Za − Zan) + 0,5 fcd1 (Zc − Zcn) + fsd (Zs − Zsn), com a linha neutra plástica hn de M.5.5.3 (revestidos) ou M.5.5.4 (tubulares); "
+                                 "seções tubulares semicompactas e esbeltas têm Me,Rd e Mcr,Rd (NBR 8800:2024, M.5.5).";
+            } else if (id == "interaction") {
+                in.description = "Flexo-compressão do pilar misto pelo modelo de cálculo I (interação de 5.5.1, M.5.2), II (momentos totais com imperfeição L/300 e fatores μ, M.5.3) ou III (cp, cm e csr, "
+                                 "tubulares preenchidos, M.5.4) (NBR 8800:2024, Anexo M).";
             }
-            unitLatex = "\\," + S(text);
         }
-        doc.equation("\\eta = \\frac{S_{d}}{R_{d}} = \\frac{" + latexNumber(check.demand, 2) + unitLatex + "}{" + latexNumber(check.resistance, 2) + unitLatex + "} = " +
-                     latexNumber(check.ratio, 3));
+        in.lines = lines;
     }
-    const QString verdict = QStringLiteral("η = %1  —  %2").arg(etaText(check.ratio), situationOf(check.ratio));
-    doc.blocks.push_back(paragraphOf(S(verdict), check.ratio > 1.0 ? ParagraphStyle::Fail : (check.ratio > 0.9 ? ParagraphStyle::Warn : ParagraphStyle::Ok), true));
+    in.demand = demand;
+    in.resistance = resistance;
+    in.unit = unit;
+    in.ratio = ratio;
+    in.inequalityLatex = inequalityFor(id);
+    in.env = env;
+    {
+        // solicitante e resistente da propria verificacao (valores das linhas, quando houver, prevalecem)
+        static const std::map<std::string, std::pair<const char *, const char *>> names = {
+            {"tension", {"Nt,Sd", "Nt,Rd"}}, {"compression", {"Nc,Sd", "Nc,Rd"}}, {"flexure_x", {"Mx,Sd", "Mx,Rd"}}, {"flexure_y", {"My,Sd", "My,Rd"}},
+            {"shear_y", {"Vy,Sd", "VRd"}}, {"shear_z", {"Vz,Sd", "VRd"}}};
+        const auto it = names.find(id);
+        if (it != names.end()) {
+            in.env[normalizeSymbol(it->second.first)] = {formatNumber(demand, 2), unit};
+            in.env[normalizeSymbol(it->second.second)] = {formatNumber(resistance, 2), unit};
+        }
+    }
+    CalcCard card = buildCalcCard(in);
+    if (id == "slenderness") {
+        card.resultLabel = "\\lambda";
+        card.resultValue = formatNumber(demand, 1);
+        card.resultDetail = "limite " + formatNumber(resistance, 0);
+    }
+    return card;
+}
+
+void appendCheck(ReportDocument &doc, const Structura::Design::CheckResult &check, bool showFormulas, const CalcEnv &env)
+{
+    doc.blocks.push_back(cardOf(check.id, check.title, check.clause, check.demand, check.resistance, check.unit, check.ratio, check.lines, showFormulas, env));
 }
 
 } // namespace
@@ -321,11 +471,54 @@ void appendBarDetail(ReportDocument &doc, const ReportService::Input &input, con
         }
     }
 
+    CalcEnv env;
+    {
+        auto put = [&](const char *key, double value, const char *unit, int decimals = 1) {
+            if (value != 0.0) {
+                env[normalizeSymbol(key)] = {value >= 1e6 ? S(sciPretty(value)) : formatNumber(value, decimals), unit};
+            }
+        };
+        if (steel) {
+            put("fy", steel->fy, "MPa", 0);
+            put("fu", steel->fu, "MPa", 0);
+        }
+        put("E", 200000.0, "MPa", 0);
+        put("G", 77000.0, "MPa", 0);
+        put("L", v.lengthM * 1000.0, "mm", 0);
+        put("Lx", params.lx > 0.0 ? params.lx * 1000.0 : params.kx * v.lengthM * 1000.0, "mm", 0);
+        put("Ly", params.ly > 0.0 ? params.ly * 1000.0 : params.ky * v.lengthM * 1000.0, "mm", 0);
+        put("Lz", params.lz > 0.0 ? params.lz * 1000.0 : params.kz * v.lengthM * 1000.0, "mm", 0);
+        if (!section.family.isEmpty()) {
+            const auto ds = DesignService::makeSection(section, input.designSettings.rectTubeStandard);
+            if (ds.supported()) {
+                put("A", ds.g.area, "mm2");
+                put("Ag", ds.g.area, "mm2");
+                put("Ix", ds.g.Ix, "mm4");
+                put("Iy", ds.g.Iy, "mm4");
+                put("J", ds.J, "mm4");
+                put("Cw", ds.Cw, "mm6");
+                put("Wx", ds.g.Wx(), "mm3");
+                put("Wy", ds.g.Wy(), "mm3");
+                put("Zx", ds.g.Zx, "mm3");
+                put("Zy", ds.g.Zy, "mm3");
+                put("rx", ds.g.rx, "mm");
+                put("ry", ds.g.ry, "mm");
+                put("x0", ds.x0, "mm");
+                put("y0", ds.y0, "mm");
+                put("d", ds.d, "mm");
+                put("bf", ds.bf, "mm");
+                put("tw", ds.tw, "mm", 2);
+                put("tf", ds.tf, "mm", 2);
+                put("h", ds.h, "mm");
+                put("t", ds.t, "mm", 2);
+            }
+        }
+    }
     for (const auto &c : v.output.checks) {
         if (!itemIds.isEmpty() && !itemIds.contains(QString::fromStdString(c.id))) {
             continue;
         }
-        appendCheck(doc, c, showFormulas);
+        appendCheck(doc, c, showFormulas, env);
     }
     for (const std::string &w : v.output.warnings) {
         doc.blocks.push_back(paragraphOf(restoreAccents(w), ParagraphStyle::Warn));
@@ -380,8 +573,19 @@ ReportDocument ReportService::buildGlobal(const Input &input, const Options &o)
                   {"Ações do vento", "ABNT NBR 6123 — forças devidas ao vento em edificações"},
                   {"Unidades", S(QStringLiteral("Forças em %1, comprimentos em m; dimensionamento em mm, N e MPa").arg(input.forceUnit))},
                   {"Convenção de esforços", "N > 0 tração; Mx > 0 comprime a fibra superior (+y local); My > 0 comprime +z local"},
+                  {"Deformação por cortante", S(input.designSettings.shearDeformation ? QStringLiteral("Considerada (barras de Timoshenko com áreas de cisalhamento das seções)")
+                                                                                       : QStringLiteral("Desprezada (barras de Euler-Bernoulli)"))},
+                  {"Imperfeições geométricas", S(input.designSettings.geometricActive()
+                                                     ? QStringLiteral("Desaprumo inicial direto H/%1 nas combinações últimas (variantes ±X, ±Y), análise de 2ª ordem").arg(std::lround(1.0 / input.designSettings.imperfectionRatio))
+                                                     : (input.designSettings.notionalActive() ? QStringLiteral("Forças nocionais (NBR 8800, 4.9.7.2)") : QStringLiteral("Não consideradas na análise")))},
+                  {"Zonas rígidas nas extremidades", S(input.designSettings.rigidZoneFactor > 0.0
+                                                           ? QStringLiteral("Fator %1 sobre a penetração da barra no perfil que a recebe; esforços fornecidos nos nós").arg(num(input.designSettings.rigidZoneFactor, 2))
+                                                           : QStringLiteral("Não consideradas"))},
                   {"Efeitos de segunda ordem", S(input.designSettings.secondOrder
-                                                      ? QStringLiteral("Análise de 2ª ordem (P-Δ e P-δ) com redução de rigidez %1 nas combinações últimas").arg(num(input.designSettings.stiffnessReduction, 2))
+                                                      ? QStringLiteral("Análise de 2ª ordem (P-Δ e P-δ%1) com redução de rigidez %2 nas combinações últimas")
+                                                            .arg(input.designSettings.stabilityFunctions && !input.designSettings.shearDeformation
+                                                                     ? QStringLiteral(", funções de estabilidade") : QString(),
+                                                                 num(input.designSettings.stiffnessReduction, 2))
                                                       : (input.designSettings.autoB2 ? QStringLiteral("Análise de 1ª ordem com amplificação B1 e B2 (NBR 8800, Anexo C)") : QStringLiteral("Análise de 1ª ordem sem amplificação")))}};
         doc.table(t);
     }
@@ -646,8 +850,7 @@ ReportDocument ReportService::buildGlobal(const Input &input, const Options &o)
                     if (check.lines.empty()) {
                         continue;
                     }
-                    doc.blocks.push_back(paragraphOf(check.name + ":", ParagraphStyle::Label));
-                    appendCalculationLines(doc, check.lines);
+                    doc.blocks.push_back(cardOf("", check.name, check.clause, check.demand, check.resistance, check.unit, check.ratio(), check.lines, true, {}));
                 }
             }
         }

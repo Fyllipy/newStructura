@@ -116,7 +116,7 @@ double plasticModulus(const std::vector<Loop> &loops, const std::vector<double> 
 
 } // namespace
 
-GrossSection computeGrossSection(const std::vector<Loop> &input)
+GrossSection computeGrossSection(const std::vector<Loop> &input, std::size_t outerCount)
 {
     GrossSection g;
     if (input.empty()) {
@@ -127,7 +127,7 @@ GrossSection computeGrossSection(const std::vector<Loop> &input)
     std::vector<double> signs(loops.size(), 1.0);
     Moments total;
     for (std::size_t i = 0; i < loops.size(); ++i) {
-        signs[i] = (i == 0) ? 1.0 : -1.0;
+        signs[i] = (i < outerCount) ? 1.0 : -1.0;
         const Moments m = polygonMoments(loops[i]);
         const double orient = signedArea(loops[i]) >= 0.0 ? 1.0 : -1.0;
         const double s = signs[i] * orient;
@@ -158,16 +158,18 @@ GrossSection computeGrossSection(const std::vector<Loop> &input)
     g.Ixy = total.iab - total.area * ca * cb;
 
     bool first = true;
-    for (const auto &p : loops[0]) {
-        if (first) {
-            g.aMin = g.aMax = p[0];
-            g.bMin = g.bMax = p[1];
-            first = false;
-        } else {
-            g.aMin = std::min(g.aMin, p[0]);
-            g.aMax = std::max(g.aMax, p[0]);
-            g.bMin = std::min(g.bMin, p[1]);
-            g.bMax = std::max(g.bMax, p[1]);
+    for (std::size_t li = 0; li < std::max<std::size_t>(1, outerCount) && li < loops.size(); ++li) {
+        for (const auto &p : loops[li]) {
+            if (first) {
+                g.aMin = g.aMax = p[0];
+                g.bMin = g.bMax = p[1];
+                first = false;
+            } else {
+                g.aMin = std::min(g.aMin, p[0]);
+                g.aMax = std::max(g.aMax, p[0]);
+                g.bMin = std::min(g.bMin, p[1]);
+                g.bMax = std::max(g.bMax, p[1]);
+            }
         }
     }
     g.WxTop = g.Ix / std::abs(g.bMax);

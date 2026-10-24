@@ -138,6 +138,47 @@ void PropertiesPanel::buildBarGroup()
     connect(m_placementButton, &QPushButton::clicked, this, &PropertiesPanel::placementEditorRequested);
     form->addRow(m_placementButton);
 
+    // --- Barra composta (5.3.6): espacamento entre as ligacoes dos perfis ---
+    m_compositeRow = new QWidget(m_barGroup);
+    auto *compositeLayout = new QFormLayout(m_compositeRow);
+    compositeLayout->setContentsMargins(0, 0, 0, 0);
+    compositeLayout->setSpacing(6);
+    m_compositeGap = new QDoubleSpinBox(m_compositeRow);
+    m_compositeGap->setRange(0.0, 2000.0);
+    m_compositeGap->setDecimals(1);
+    m_compositeGap->setSingleStep(1.0);
+    m_compositeGap->setSuffix(tr(" mm"));
+    m_compositeGap->setToolTip(tr("Afastamento e entre os dois perfis (espessura da chapa espaçadora ou de nó). É um parâmetro da geometria da seção: ao alterá-lo, "
+                                  "área, inércias e constante de torção são recalculadas e enviadas ao cálculo (a barra passa a usar uma seção com o novo afastamento)."));
+    m_compositeSpacing = new QDoubleSpinBox(m_compositeRow);
+    m_compositeSpacing->setRange(0.0, 1e5);
+    m_compositeSpacing->setDecimals(0);
+    m_compositeSpacing->setSingleStep(50.0);
+    m_compositeSpacing->setSuffix(tr(" mm"));
+    m_compositeSpacing->setSpecialValueText(tr("L/3 (2 ligações)"));
+    m_compositeSpacing->setToolTip(tr("Barra composta (NBR 8800:2024, 5.3.6): distância ℓ entre as ligações (chapas espaçadoras com parafusos ou soldas) dos dois perfis. "
+                                      "Usada no índice de esbeltez do perfil isolado (ℓ/rmín) e na esbeltez modificada da barra. 0 = duas ligações intermediárias (ℓ = L/3)."));
+    m_compositeKind = new QComboBox(m_compositeRow);
+    m_compositeKind->addItem(tr("Parafusos com aperto normal"), false);
+    m_compositeKind->addItem(tr("Soldas ou parafusos protendidos"), true);
+    compositeLayout->addRow(tr("Afastamento e entre perfis"), m_compositeGap);
+    compositeLayout->addRow(tr("Espaçamento ℓ entre ligações"), m_compositeSpacing);
+    compositeLayout->addRow(tr("Ligações"), m_compositeKind);
+    auto emitComposite = [this]() {
+        if (!m_blockSignals && !m_currentBarIds.isEmpty()) {
+            emit barCompositeEdited(m_currentBarIds, m_compositeSpacing->value(), m_compositeKind->currentData().toBool());
+        }
+    };
+    connect(m_compositeGap, &QDoubleSpinBox::editingFinished, this, [this]() {
+        if (!m_blockSignals && !m_currentBarIds.isEmpty()) {
+            emit barCompositeGapEdited(m_currentBarIds, m_compositeGap->value());
+        }
+    });
+    connect(m_compositeSpacing, &QDoubleSpinBox::editingFinished, this, emitComposite);
+    connect(m_compositeKind, qOverload<int>(&QComboBox::currentIndexChanged), this, emitComposite);
+    form->addRow(m_compositeRow);
+    m_compositeRow->hide();
+
     auto *reportButton = new QPushButton(tr("Memorial de cálculo da barra…"), m_barGroup);
     reportButton->setCursor(Qt::PointingHandCursor);
     reportButton->setToolTip(tr("Mostra o memorial de cálculo desta barra (completo ou por item de cálculo) e permite exportar para Word."));
@@ -292,6 +333,13 @@ void PropertiesPanel::setBarEntries(const QVector<BarEntry> &entries)
         updateMaterialComboSelection(entries);
         updateSectionComboSelection(entries);
         updatePlacementSummary(entries);
+        const bool allComposite = std::all_of(entries.begin(), entries.end(), [](const BarEntry &e) { return e.compositeSection; });
+        m_compositeRow->setVisible(allComposite);
+        if (allComposite) {
+            m_compositeGap->setValue(entries.first().compositeGapMm);
+            m_compositeSpacing->setValue(entries.first().compositeSpacingMm);
+            m_compositeKind->setCurrentIndex(entries.first().compositeWelded ? 1 : 0);
+        }
     }
 
     m_blockSignals = false;

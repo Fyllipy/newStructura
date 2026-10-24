@@ -9,8 +9,10 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-# User-specific paths
-list(APPEND CMAKE_PREFIX_PATH "D:/Qt/6.9.3/msvc2022_64" "D:/src/vtk")
+# Instalacoes de Qt e VTK (padroes do ambiente de desenvolvimento; substitua com -DSTRUCTURA_QT_PREFIX=... -DSTRUCTURA_VTK_PREFIX=... ou use CMAKE_PREFIX_PATH)
+set(STRUCTURA_QT_PREFIX "D:/Qt/6.9.3/msvc2022_64" CACHE PATH "Prefixo de instalacao do Qt")
+set(STRUCTURA_VTK_PREFIX "D:/src/vtk" CACHE PATH "Prefixo de instalacao/build do VTK")
+list(APPEND CMAKE_PREFIX_PATH "${STRUCTURA_QT_PREFIX}" "${STRUCTURA_VTK_PREFIX}")
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Svg)
@@ -38,6 +40,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 # --- Source Groups ---
 
 set(CORE_SOURCES
+    src/core/math/Vec3Ops.h
     src/core/model/Vector3.h
     src/core/model/Node.h
     src/core/model/Bar.h
@@ -133,6 +136,14 @@ set(APP_SOURCES
     src/design/GrossSection.cpp
     src/design/DesignSection.h
     src/design/DesignSection.cpp
+    src/design/Sectorial.h
+    src/design/Sectorial.cpp
+    src/design/BeamExtras.h
+    src/design/BeamExtras.cpp
+    src/design/CompositeColumn.h
+    src/design/CompositeColumn.cpp
+    src/design/TaperedMember.h
+    src/design/TaperedMember.cpp
     src/design/Connections.h
     src/design/Connections.cpp
     src/design/ShearConnections.h
@@ -140,6 +151,8 @@ set(APP_SOURCES
     src/design/ConnectionHelpers.h
     src/design/TrussConnections.h
     src/design/TrussConnections.cpp
+    src/design/PinConnection.h
+    src/design/PinConnection.cpp
     src/design/BasePlate.h
     src/design/BasePlate.cpp
     src/design/ColdFormedConnections.h
@@ -176,6 +189,8 @@ set(APP_SOURCES
     src/report/MathParser.cpp
     src/report/FormulaText.h
     src/report/FormulaText.cpp
+    src/report/CalcCardBuilder.h
+    src/report/CalcCardBuilder.cpp
     src/report/MathRenderer.h
     src/report/MathRenderer.cpp
     src/report/ReportModel.h
@@ -193,6 +208,8 @@ set(APP_SOURCES
     src/app/services/UserLibrary.cpp
     src/app/services/ModelCheckService.h
     src/app/services/ModelCheckService.cpp
+    src/app/services/IntegrityService.h
+    src/app/services/IntegrityService.cpp
     src/app/services/ModelTemplateService.h
     src/app/services/ModelTemplateService.cpp
     src/app/services/StructuralChecks.h
@@ -202,6 +219,7 @@ set(APP_SOURCES
 set(UI_SOURCES
     src/ui/MainWindow.h
     src/ui/MainWindow.cpp
+    src/ui/MainWindowActions.cpp
     src/ui/MainWindowRibbon.cpp
     src/ui/RibbonWidgets.h
     src/ui/RibbonWidgets.cpp
@@ -212,6 +230,9 @@ set(UI_SOURCES
     src/ui/MainWindowWindowState.cpp
     src/ui/MainWindowProperties.cpp
     src/ui/MainWindowLoads.cpp
+    src/ui/MainWindowLoadPicking.cpp
+    src/ui/LoadCaseVisibilityDialog.h
+    src/ui/LoadCaseVisibilityDialog.cpp
     src/ui/MainWindowAnalysisIo.cpp
     src/ui/MainWindowPlacement.cpp
     src/ui/MainWindowViewOptions.cpp
@@ -227,9 +248,12 @@ set(UI_SOURCES
     src/ui/MainWindowAreaLoads.cpp
     src/ui/MainWindowUndoState.cpp
     src/ui/MainWindowModelCheck.cpp
+    src/ui/MainWindowIntegrity.cpp
     src/ui/MainWindowConnections.cpp
     src/ui/ConnectionDialog.h
     src/ui/ConnectionDialog.cpp
+    src/ui/ConnectionCopyPanel.h
+    src/ui/ConnectionCopyPanel.cpp
     src/ui/NodeConnectionsDialog.h
     src/ui/NodeConnectionsDialog.cpp
     src/ui/MainWindowModal.cpp
@@ -280,6 +304,7 @@ set(UI_SOURCES
     src/app/services/ConnectionCatalogInternal.h
     src/app/services/ConnectionCatalogWebShear.cpp
     src/app/services/ConnectionCatalogTruss.cpp
+    src/app/services/ConnectionCatalogPin.cpp
     src/app/services/ConnectionCatalogEndPlateSplice.cpp
     src/app/services/ConnectionCatalogSplices.cpp
     src/app/services/ConnectionCatalogMoment.cpp
@@ -332,6 +357,8 @@ set(UI_SOURCES
     src/app/services/BucklingService.cpp
     src/ui/ModelCheckDialog.h
     src/ui/ModelCheckDialog.cpp
+    src/ui/IntegrityDialog.h
+    src/ui/IntegrityDialog.cpp
     src/ui/TemplateDialog.h
     src/ui/TemplateDialog.cpp
     src/ui/MainWindowDeleteLoads.cpp
@@ -350,6 +377,8 @@ set(UI_SOURCES
     src/ui/DesignColors.h
     src/ui/ProfileLibrary.h
     src/ui/ProfileLibrary.cpp
+    src/ui/ProfilePropertiesDialog.h
+    src/ui/ProfilePropertiesDialog.cpp
     src/ui/ProfileManagerDialog.h
     src/ui/ProfileManagerDialog.cpp
     src/ui/SectionPreviewWidget.h
@@ -463,6 +492,19 @@ target_include_directories(StructuraLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
 vtk_module_autoinit(
     TARGETS StructuraLib
     MODULES ${VTK_LIBRARIES}
+)
+
+# Cabecalho pre-compilado so com a biblioteca padrao: os modulos de calculo, relatorio e cascas nao dependem do Qt (e os cabecalhos do Qt definem
+# macros como `emit` que conflitam com nomes desses modulos); nao altera o comportamento, so o tempo de compilacao.
+target_precompile_headers(StructuraLib PRIVATE
+    <algorithm>
+    <array>
+    <cmath>
+    <functional>
+    <map>
+    <memory>
+    <string>
+    <vector>
 )
 
 # --- Executable ---

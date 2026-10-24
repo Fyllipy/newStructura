@@ -45,8 +45,18 @@ Friendly translate(const QString &raw)
         f.what = QObject::tr("O modelo é grande demais para a extração de autovalores (limite de 2200 graus de liberdade livres).");
         f.hint = QObject::tr("Reduza a malha (menos subdivisões de barras) ou use um subconjunto do modelo.");
     } else if (has("did not converge") || has("Second-order analysis")) {
-        f.what = QObject::tr("A análise de segunda ordem não convergiu ou a estrutura é instável sob essas cargas.");
-        f.hint = QObject::tr("As cargas estão próximas da carga crítica: aumente a rigidez, reduza as cargas ou rode em primeira ordem.");
+        const bool unstable = has("unstable");
+        const QRegularExpression factorRx(QStringLiteral("between ([0-9.]+) and ([0-9.]+)"));
+        const auto factors = factorRx.match(raw);
+        if (factors.hasMatch()) {
+            f.what = unstable ? QObject::tr("A estrutura é instável sob essas cargas na análise de segunda ordem: o fator de carga crítico fica entre %1 e %2 da carga aplicada.")
+                                    .arg(factors.captured(1), factors.captured(2))
+                              : QObject::tr("A análise de segunda ordem não convergiu: a estrutura só equilibra até %1 da carga aplicada; o fator de carga crítico fica entre %1 e %2.")
+                                    .arg(factors.captured(1), factors.captured(2));
+        } else {
+            f.what = QObject::tr("A análise de segunda ordem não convergiu ou a estrutura é instável sob essas cargas.");
+        }
+        f.hint = QObject::tr("As cargas estão próximas ou acima da carga crítica: aumente a rigidez (perfis, contraventamentos), reduza as cargas ou rode em primeira ordem.");
     } else if (has("eigenvalue problem failed")) {
         f.what = QObject::tr("Não foi possível extrair os modos (rigidez singular ou instável).");
         f.hint = QObject::tr("Confira os apoios e as articulações do modelo.");
@@ -55,6 +65,35 @@ Friendly translate(const QString &raw)
 }
 
 } // namespace
+
+QString MainWindow::friendlySolverWarning(const QString &raw) const
+{
+    auto has = [&](const char *text) { return raw.contains(QLatin1String(text), Qt::CaseInsensitive); };
+    if (has("no stiffness (all members released")) {
+        const QRegularExpression rx(QStringLiteral("Node (\d+), dof (\d+)"));
+        const auto m = rx.match(raw);
+        return m.hasMatch() ? tr("Nó %1, grau de liberdade %2: sem rigidez (todas as barras articuladas nele); foi fixado automaticamente.").arg(m.captured(1), m.captured(2)) : raw;
+    }
+    if (has("Ill-conditioned")) {
+        const QRegularExpression rx(QStringLiteral("pivot ratio ([0-9.e+]+)"));
+        const auto m = rx.match(raw);
+        return tr("Matriz de rigidez mal condicionada (razão de pivôs %1): confira rigidezes muito díspares, barras muito curtas, ligações quase rígidas ou quase-mecanismos.")
+            .arg(m.hasMatch() ? m.captured(1) : QStringLiteral("> 1e12"));
+    }
+    if (has("converged only with incremental loading")) {
+        return tr("Segunda ordem: a iteração direta divergiu; o resultado foi obtido por incremento de carga. Confira a proximidade da carga crítica.");
+    }
+    if (has("Stability functions assume Euler-Bernoulli")) {
+        return tr("Funções de estabilidade pressupõem barras de Euler-Bernoulli: com a deformação por cortante ligada usou-se a rigidez geométrica consistente.");
+    }
+    if (has("oscillate between active and inactive")) {
+        return tr("Tirantes / apoios só de compressão alternam entre ativo e inativo sem estabilizar: ficou o último estado. Revise o modelo (cabos frouxos, tirantes redundantes) ou o carregamento.");
+    }
+    if (has("without settling the active set")) {
+        return tr("Tirantes / apoios só de compressão: 40 iterações sem estabilizar o conjunto ativo; mantido o último resultado.");
+    }
+    return raw;
+}
 
 QString MainWindow::friendlySolverMessage(const QString &raw) const
 {

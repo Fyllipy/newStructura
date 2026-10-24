@@ -249,7 +249,6 @@ QWidget *MainWindow::createQuickAccessBar()
 void MainWindow::createRibbon()
 {
     using Structura::UI::RibbonPage;
-    const QColor ink(QStringLiteral("#1e232b"));
     const QColor danger(QStringLiteral("#c0392b"));
 
     m_ribbon->setObjectName("mainRibbon");
@@ -316,7 +315,7 @@ void MainWindow::createRibbon()
     m_ribbon->setCornerWidget(m_ribbonCollapseButton, Qt::TopRightCorner);
 
     // ---- acoes criadas aqui -----------------------------------------------------------------------------------------------
-    auto icon = [&ink](const QString &name) { return Structura::UI::svgIcon(name, ink, 64); };
+    auto icon = [](const QString &name) { return Structura::UI::actionIcon(name); };
     m_createGroupAction = new QAction(tr("Criar\ngrupo"), this);
     m_createGroupAction->setIcon(icon(QStringLiteral("group.svg")));
     m_createGroupAction->setToolTip(tr("Cria um grupo com as barras selecionadas: perfil, posição e rotação são compartilhados"));
@@ -354,6 +353,10 @@ void MainWindow::createRibbon()
     m_checkModelAction->setIcon(icon(QStringLiteral("model-check.svg")));
     m_checkModelAction->setToolTip(tr("Procura problemas antes de analisar: nós soltos, barras duplicadas, mecanismos, apoios insuficientes, cargas e unidades"));
     connect(m_checkModelAction, &QAction::triggered, this, &MainWindow::onCheckModel);
+    m_integrityAction = new QAction(tr("Integridade") + QLatin1Char(10) + tr("estrutural"), this);
+    m_integrityAction->setIcon(icon(QStringLiteral("model-check.svg")));
+    m_integrityAction->setToolTip(tr("NBR 8800:2024, 4.13: travamento dos pilares, força de tração das contenções e ligações, e colapso progressivo por falha acidental de um pilar"));
+    connect(m_integrityAction, &QAction::triggered, this, &MainWindow::onStructuralIntegrity);
     m_templateAction = new QAction(tr("Modelo\npronto"), this);
     m_templateAction->setIcon(icon(QStringLiteral("template.svg")));
     m_templateAction->setToolTip(tr("Gera um galpão de duas águas ou um edifício de pórticos parametrizado (perfis, grupos, tirantes, cargas e combinações)"));
@@ -514,7 +517,7 @@ void MainWindow::createRibbon()
     auto *tools = new RibbonPage(this);
     tools->addGroup(tr("Geração"), {item(m_generateTrussAction, tr("Gerar treliça"), true)});
     tools->addGroup(tr("Eixos"), {item(m_axesAction, tr("Eixos de referência"), true)});
-    tools->addGroup(tr("Modelo"), {item(m_templateAction, tr("Modelo pronto"), true), item(m_checkModelAction, tr("Checar modelo"), true)});
+    tools->addGroup(tr("Modelo"), {item(m_templateAction, tr("Modelo pronto"), true), item(m_checkModelAction, tr("Checar modelo"), true), item(m_integrityAction, tr("Integridade estrutural"), true)});
     tools->addGroup(tr("Documentação"), {item(m_quantitiesAction, tr("Quantitativos"), true), item(m_exportDxfAction, tr("Exportar DXF"), true), item(m_sheetsAction, tr("Pranchas"), true)});
 
     // ---- Carregamentos ----------------------------------------------------------------------------------------------------------
@@ -522,7 +525,8 @@ void MainWindow::createRibbon()
     loads->addGroup(tr("Carregamentos"), {item(m_applyNodalLoadAction, tr("Força concentrada (nós)"), true), item(m_applyDistributedLoadAction, tr("Distribuída (barras)"), true),
                                           item(m_applyMemberMomentAction, tr("Momento distribuído"), true), item(m_areaLoadAction, tr("Carga de área"), true),
                                           item(m_windLoadAction, tr("Vento NBR 6123"), true), dangerItem(m_deleteLoadsAction, tr("Excluir cargas"), true, QStringLiteral("delete-loads.svg"))});
-    loads->addGroup(tr("Casos e combinações"), {item(m_loadCasesAction, tr("Casos e combinações"), true), item(m_genCombinationsAction, tr("Gerar combinações"), true)});
+    loads->addGroup(tr("Casos e combinações"), {item(m_loadCasesAction, tr("Casos e combinações"), true), item(m_genCombinationsAction, tr("Gerar combinações"), true),
+                                                 item(m_loadCaseVisibilityAction, tr("Casos visíveis"), true)});
 
     // ---- Visualização -----------------------------------------------------------------------------------------------------------
     auto *view = new RibbonPage(this);
@@ -536,7 +540,7 @@ void MainWindow::createRibbon()
                                    item(m_bucklingAction, tr("Flambagem elástica"), true), item(m_modalAction, tr("Análise modal"), true), item(m_dynamicsAction, tr("Dinâmica"), true)});
     calc->addGroup(tr("Dimensionamento"), {item(m_designSettingsAction, tr("Parâmetros"), true), item(m_verifyDesignAction, tr("Verificar perfis"), true),
                                            item(m_optimizeDesignAction, tr("Dimensionar perfis"), true)});
-    calc->addGroup(tr("Ligações e mistas"), {item(m_connectionsAction, tr("Ligações"), true), item(m_compositeAction, tr("Vigas e lajes mistas"), true)});
+    calc->addGroup(tr("Ligações e mistas"), {item(m_connectionsAction, tr("Ligações"), true), item(m_copyConnectionsAction, tr("Copiar ligações"), true), item(m_compositeAction, tr("Vigas e lajes mistas"), true)});
     calc->addGroup(tr("Resultados"), {item(m_showDiagramsAction, tr("Mostrar diagramas"), true), item(m_hideDiagramsAction, tr("Ocultar diagramas"), true),
                                       item(m_compareAction, tr("Comparar combinações"), true)});
     calc->addGroup(tr("Documentação"), {item(m_reportAction, tr("Memorial"), true)});

@@ -26,6 +26,15 @@ Tabela 14 (furos-padrão), Tabelas 9, 10, 11 (soldas); 6.3.3.1 a 6.3.3.4 (parafu
 | Furos na mesa tracionada (5.4.2.6) | não verificado | `M_Rd ≤ fu (Afn/Afg) Wt/γa1` quando `fu Afn < Yt fy Afg` (usa a razão `An/Ag` informada) |
 | Flechas de perfis formados a frio | inércia bruta | inércia efetiva `Ief` para a tensão de serviço (14762, 9.8.5-a) |
 
+## 3a. Barras compostas e torção em seção aberta (implementado)
+
+* **5.3.6 (barras compostas):** famílias `Dupla Cantoneira T`, `Duplo U Costas` e `Duplo U Face a Face`, catálogo derivado e criação pelo usuário; `ℓ/r_mín ≤ 0,75 (L/r)₀` e duas ligações intermediárias
+  (5.3.6.1); `Ne,m` (5.3.6.3-a e -b, `Ki` = 0,50 / 0,75 / 0,86); flexão D.2.4 para a cantoneira dupla; cortante 5.4.3.4/5.4.3.5; limite de esbeltez em tração (5.2.8.2, aviso).
+  Dois U em flexão: a norma não traz resistência — marcado como não coberto.
+* **5.5.2.3 (torção em seção aberta):** solver com sétimo grau de liberdade (empenamento, Vlasov); verificação de tensões normais (a, c) e de cisalhamento (b, d) das seções I/H duplamente simétricas.
+  Estendida a U, T, L, formados a frio (U, C, Z, L, cartola) e maciços pela linha média (ver o livro, Seção 12.3). Pendente: acoplamento flexo-torcional das seções não duplamente simétricas e a análise de flambagem da seção para `χ` (hoje envoltória dos `χ` de 5.3/5.4).
+* Detalhes em `BARRAS_COMPOSTAS_E_TORCAO_COM_EMPENAMENTO.md`.
+
 ## 3. Implementado nesta rodada (antes ausente)
 
 * **Ligação por atrito (NBR 8800, 6.3.4)** em chapa de cisalhamento, cantoneira dupla e chapa de nó (Tabela 19 de protensão).
@@ -65,9 +74,15 @@ instantâneo de rotação e o grupo combinado existem como funções de projeto,
 
 **NBR 8800:2024**
 * Projeto/verificação do enrijecedor propriamente dito (5.7.9); 5.4.3.1.3 só emite os requisitos no memorial.
-* 5.7.6 (instabilidade da alma por par de forças, vigas dos dois lados do pilar) e 5.7.8 (apoios sem restrição à rotação); 5.7.7.3 (enrijecedores diagonais).
-* Anexo G (barras de seção variável), contenção de torção (4.12.3.6 em diante) e análise plástica (4.10.2.2-b). Anexo H: só categorias de tensões normais e
-  de cisalhamento na garganta (F), sem os casos H.4-c (soldas de penetração parcial C', C'').
+* 5.7.8 (apoios sem restrição à rotação: só aviso); 5.7.7.3 (enrijecedores diagonais).
+* Contenção de torção (4.12.3.6 em diante) e análise plástica global (4.10.2.2-b). 4.11.6 e 4.11.7 (vigas mistas contínuas, flambagem distorcional L.2.5 com as Tabelas L.1 a L.3):
+  o módulo de viga mista só modela vigas biapoiadas; 4.11.5 (comprimento destravado entre rótulas plásticas) está implementado.
+* Anexo H: só categorias de tensões normais e de cisalhamento na garganta (F), sem os casos H.4-c (soldas de penetração parcial C', C'').
+* Anexo G: seção I de alma variável (altura linear, mesas constantes) verificada seção a seção; a flambagem lateral usa Cb = 1,0 e os parâmetros da seção de maior altura (sem análise
+  de estabilidade elástica), a flambagem por flexão usa inércia equivalente por Rayleigh–Ritz (3 semiondas) e o 3D/sólido mostra a altura média.
+* Anexo M (pilares mistos): método simplificado de seções duplamente simétricas (revestidas total/parcialmente e tubulares preenchidos). Não verificados: conectores de cisalhamento
+  (número e L.4.2.1), armaduras transversais/estribos (NBR 6118), seção revestida concretada com o pilar montado (M.1.3-i), pilares sob torção, M.2 com distribuição elástica de tensões na
+  interface (aqui: tensão média no perímetro de contato), momentos de primeira ordem de B1 com Cm de 5.5.1 e 0,64 (EI)e na amplificação. As verificações usam γc = 1,4 e γs = 1,15.
 * Tabela B.1: vigas de rolamento, travessas/pilares de fechamento e limites horizontais por pavimento continuam por informação do usuário
   (campo "denominador de flecha"; deslocamentos de andar na verificação de estabilidade global).
 * Chapa de extremidade: distribuição igual da tração entre as fileiras, sem método das linhas de plastificação nem fileiras entre as mesas; ligação por atrito sob momento.
@@ -79,8 +94,24 @@ instantâneo de rotação e o grupo combinado existem como funções de projeto,
 * Ligações: não há verificação do perfil de apoio (flexão local) nem da tração na seção líquida do perfil na ligação (use a razão `An/Ag` nos
   parâmetros da barra).
 
+## 4.1 Itens implementados a partir desta auditoria
+
+| Item | Onde | Observação |
+|---|---|---|
+| 5.2.6 e 6.4 (chapa e pino de ligação por pino), 6.6.2 | `design/PinConnection`, família `Pin` (ids 191 e 192) do catálogo | pressão de contato 1,8 dp t fy/γa2 (furo usinado) |
+| 5.2.7 (barra redonda rosqueada) | `Nbr8800::Options::threadedRod`, param `threadedEnds` | ruptura 0,75 Ag fu/γa2 |
+| 5.4.4 e 5.4.5 (lamela e solda mesa–alma) | `design/BeamExtras` | params de barra `cover*`, `webWeld*` |
+| 5.7.6 (instabilidade da alma, vigas dos dois lados) | `SupportChecks`, campo `bothSides` | F_Rd = 24 tw³ √(E fy)/(γa1 h) |
+| 4.11.5 (rótulas plásticas) | `BeamExtras::plasticHingeUnbracedLength` | param `plasticAnalysis` |
+| 4.13 (integridade estrutural) | `IntegrityService`, `IntegrityDialog` | 4.13.4 informativo, 4.13.7 e 4.13.8 por barra e ligação |
+| H.5 e H.6 (fadiga de parafusos e material, requisitos de fabricação) | `PinConnection::checkBoltFatigue`, `checkMaterialFatigue` | campos `fat*` das ligações parafusadas e por pino |
+| Anexo G | `design/TaperedMember`, solver (`structura_set_taper`) | família "I Alma Variavel" |
+| Anexo M | `design/CompositeColumn`, params `mix*` da barra | modelos de cálculo I, II e III |
+| Geometria de ligação com barra inclinada | `ConnectionService::evaluateExactBeamFrame` | profundidade e mesa projetadas por 1/cos(α) na face do apoio; 3D e desenho seguem ortogonais |
+
 ## 5. Como foi verificado
 
 Cada fórmula corrigida ou acrescentada tem teste com cálculo à mão em `src/tests/TestDesign.cpp`
 (`norm2024FlexureCorrections`, `coldFormedWebCripplingAndServiceInertia`, `coldFormedConnectionsMatchHandCalculation`,
-`slipCriticalBoltsFollowNorm2024`). A suíte completa (`ctest -C Release`) passa. Não há validação cruzada com outro programa.
+`slipCriticalBoltsFollowNorm2024`, `threadedRodWebFlangeWeldCoverPlateAndPlasticHinges`, `taperedMemberFollowsAnnexG`, `compositeColumnFollowsAnnexM`;
+`TestConnectionCatalog`: `pinPlateAndPinMatchHandCalculation`, `boltFatigueFollowsH5`, `webBucklingUnderOpposingForces`, `structuralIntegrityRows`). A suíte completa (`ctest -C Release`) passa. Não há validação cruzada com outro programa.

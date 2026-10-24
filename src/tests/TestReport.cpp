@@ -8,6 +8,7 @@
 #include <QPdfWriter>
 #include "design/BarDesign.h"
 #include "report/DocxWriter.h"
+#include "report/CalcCardBuilder.h"
 #include "report/ReportHtml.h"
 #include "viz/structure/SectionShapes.h"
 #include "report/MathParser.h"
@@ -282,6 +283,40 @@ private slots:
         QFile f(QDir::temp().filePath(QStringLiteral("bar_report.docx")));
         QVERIFY(f.open(QIODevice::WriteOnly));
         f.write(reinterpret_cast<const char *>(bytes.data()), static_cast<qint64>(bytes.size()));
+    }
+
+    void calcCardSplitsProseAndAssignments()
+    {
+        Structura::Report::CalcCardInput in;
+        in.title = "Cortante";
+        in.clause = "NBR 14762:2010, 9.8.3";
+        in.ratio = 0.058;
+        in.demand = 1.69;
+        in.resistance = 29.33;
+        in.unit = "kN";
+        in.lines = {"Cortante (9.8.3): h = 101.3 mm, t = 1.00 mm, h/t = 101.3, kv = 5.0",
+                    "Limites de esbeltez: lambda_p = 1,08 sqrt(E kv / fy) = 68.3, lambda_r = 1,40 sqrt(E kv / fy) = 88.5",
+                    "V_Rd,alma = 29.33 kN (resistencia de uma alma); V_Rd = V_Rd,alma x 1.00 = 29.33 kN",
+                    "V_y,Sd = 1.69 kN -> V_y,Sd / V_Rd = 0.058  (combinacao ELU1, x = 0 mm)"};
+        const auto card = Structura::Report::buildCalcCard(in);
+        QCOMPARE(card.location, std::string("Combinação ELU1, seção x = 0,000 m"));
+        QVERIFY(card.steps.size() >= 4);
+        for (const auto &step : card.steps) {
+            for (const auto &v : step.variables) {
+                QVERIFY2(!v.value.empty(), v.latex.c_str());   // sem campos vazios
+            }
+            for (const auto &eq : step.equations) {
+                QVERIFY2(eq.find("limites") == std::string::npos && eq.find("mathrm{por}") == std::string::npos, eq.c_str());
+            }
+        }
+        // h e t aparecem com valor
+        bool h = false;
+        for (const auto &step : card.steps) {
+            for (const auto &v : step.variables) {
+                h = h || (v.latex == "h" && v.value == "101,3");
+            }
+        }
+        QVERIFY(h);
     }
 
     void parserBuildsTree()

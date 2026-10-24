@@ -533,6 +533,7 @@ void MainWindow::setupViewOptions()
             &MainWindow::onBarPlacementEdited);
 
     m_axesPanel = new Structura::UI::AxesPanel(m_vtkWidget);
+    m_axesPanel->installEventFilter(this);   // reposiciona os controles da viewport ao mostrar/ocultar
     connect(m_axesPanel, &Structura::UI::AxesPanel::axesCommitted, this,
             [this, construction](const Structura::App::ProjectData::ReferenceAxes &axes) {
                 m_extras.axes = axes;
@@ -568,6 +569,10 @@ void MainWindow::setupViewOptions()
     connect(m_viewOptionsBar, &Structura::UI::ViewOptionsBar::activeCaseChanged, this,
             [this](const QString &name) {
                 m_extras.activeLoadCase = name;
+                // escolher um caso no seletor substitui a lista da janela "Casos visiveis"
+                m_filterVisibleLoadCases = false;
+                m_visibleLoadCases.clear();
+                clearSelectedLoad();
                 syncLoadVisuals();
             });
     connect(m_viewOptionsBar, &Structura::UI::ViewOptionsBar::resultViewChanged, this,

@@ -13,6 +13,86 @@
 
 namespace Structura::App::Services {
 
+namespace {
+
+/// Pares chave=valor adicionais das linhas DEFAULTS e de barra de dimensionamento (itens da NBR 8800:2024 acrescentados depois do formato posicional).
+QString extraTokens(const Structura::App::ProjectData::DesignMemberParams &p)
+{
+    const Structura::App::ProjectData::DesignMemberParams def;
+    QString out;
+    auto num = [&](const char *key, double value, double fallback) {
+        if (value != fallback) {
+            out += QString::asprintf(" %s=%g", key, value);
+        }
+    };
+    num("thr", p.threadedEnds ? 1 : 0, 0);
+    num("wwl", p.webWeldLeg, def.webWeldLeg);
+    num("wfw", p.webWeldFw, def.webWeldFw);
+    num("wll", p.flangeLineLoad, def.flangeLineLoad);
+    num("cvb", p.coverB, def.coverB);
+    num("cvt", p.coverT, def.coverT);
+    num("cvs", p.coverStart, def.coverStart);
+    num("cve", p.coverEnd, def.coverEnd);
+    num("cvn", p.coverFlanges, def.coverFlanges);
+    num("cvl", p.coverWeldLeg, def.coverWeldLeg);
+    num("cvw", p.coverEndWeld ? 1 : 0, def.coverEndWeld ? 1 : 0);
+    num("pla", p.plasticAnalysis ? 1 : 0, 0);
+    num("mxt", p.mixType, def.mixType);
+    num("mxm", p.mixModel, def.mixModel);
+    num("mxh", p.mixHc, def.mixHc);
+    num("mxb", p.mixBc, def.mixBc);
+    num("mxf", p.mixFck, def.mixFck);
+    num("mxs", p.mixFsk, def.mixFsk);
+    num("mxa", p.mixBarArea, def.mixBarArea);
+    num("mxn", p.mixBarsH, def.mixBarsH);
+    num("mxv", p.mixBarsV, def.mixBarsV);
+    num("mxc", p.mixCover, def.mixCover);
+    num("mxe", p.mixAlphaE, def.mixAlphaE);
+    return out;
+}
+
+void applyExtraTokens(Structura::App::ProjectData::DesignMemberParams &p, const QStringList &parts, int first)
+{
+    for (int i = first; i < parts.size(); ++i) {
+        const int eq = parts[i].indexOf(QLatin1Char('='));
+        if (eq <= 0) {
+            continue;
+        }
+        const QString key = parts[i].left(eq);
+        bool good = false;
+        const double v = parts[i].mid(eq + 1).toDouble(&good);
+        if (!good) {
+            continue;
+        }
+        if (key == QLatin1String("thr")) p.threadedEnds = v != 0.0;
+        else if (key == QLatin1String("wwl")) p.webWeldLeg = v;
+        else if (key == QLatin1String("wfw")) p.webWeldFw = v;
+        else if (key == QLatin1String("wll")) p.flangeLineLoad = v;
+        else if (key == QLatin1String("cvb")) p.coverB = v;
+        else if (key == QLatin1String("cvt")) p.coverT = v;
+        else if (key == QLatin1String("cvs")) p.coverStart = v;
+        else if (key == QLatin1String("cve")) p.coverEnd = v;
+        else if (key == QLatin1String("cvn")) p.coverFlanges = static_cast<int>(v);
+        else if (key == QLatin1String("cvl")) p.coverWeldLeg = v;
+        else if (key == QLatin1String("cvw")) p.coverEndWeld = v != 0.0;
+        else if (key == QLatin1String("pla")) p.plasticAnalysis = v != 0.0;
+        else if (key == QLatin1String("mxt")) p.mixType = static_cast<int>(v);
+        else if (key == QLatin1String("mxm")) p.mixModel = static_cast<int>(v);
+        else if (key == QLatin1String("mxh")) p.mixHc = v;
+        else if (key == QLatin1String("mxb")) p.mixBc = v;
+        else if (key == QLatin1String("mxf")) p.mixFck = v;
+        else if (key == QLatin1String("mxs")) p.mixFsk = v;
+        else if (key == QLatin1String("mxa")) p.mixBarArea = v;
+        else if (key == QLatin1String("mxn")) p.mixBarsH = static_cast<int>(v);
+        else if (key == QLatin1String("mxv")) p.mixBarsV = static_cast<int>(v);
+        else if (key == QLatin1String("mxc")) p.mixCover = v;
+        else if (key == QLatin1String("mxe")) p.mixAlphaE = v;
+    }
+}
+
+} // namespace
+
+
 bool DatModelIoService::load(const QString &filePath,
                              Structura::App::ISceneModelGateway *sceneController,
                              QVector<MaterialInfo> &materials,
@@ -397,6 +477,13 @@ bool DatModelIoService::load(const QString &filePath,
                 for (int i = 0; i < 3; ++i) {
                     member.auxK[static_cast<std::size_t>(i)] = toDouble(parts[14 + i], &ok);
                 }
+                if (parts.size() >= 22 && toInt(parts[17], &ok) != 0) {
+                    member.hasWarping = true;
+                    for (int i = 0; i < 2; ++i) {
+                        member.warpingRate[static_cast<std::size_t>(i)] = toDouble(parts[18 + i], &ok);
+                        member.warpingForce[static_cast<std::size_t>(i)] = toDouble(parts[20 + i], &ok);
+                    }
+                }
                 resultsTmp.runs.last().members.append(member);
             } else if (key == QLatin1String("SN") && parts.size() >= 14 && !resultsTmp.runs.isEmpty()) {
                 Structura::App::ProjectData::StoredNodeResult node;
@@ -669,6 +756,20 @@ bool DatModelIoService::load(const QString &filePath,
                 designTmp.slendernessGoverns = toInt(parts[1], &ok) != 0;
             } else if (key == QLatin1String("SECOND_ORDER")) {
                 designTmp.secondOrder = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("STABILITY_FUNCTIONS")) {
+                designTmp.stabilityFunctions = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("SHEAR_DEFORMATION")) {
+                designTmp.shearDeformation = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("WARPING_TORSION")) {
+                designTmp.warpingTorsion = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("GEOMETRIC_IMPERFECTION")) {
+                designTmp.geometricImperfection = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("IMPERFECTION_RATIO")) {
+                designTmp.imperfectionRatio = toDouble(parts[1], &ok);
+            } else if (key == QLatin1String("RIGID_ZONE_FACTOR")) {
+                designTmp.rigidZoneFactor = toDouble(parts[1], &ok);
+            } else if (key == QLatin1String("LOAD_STEPS")) {
+                designTmp.loadSteps = toInt(parts[1], &ok);
             } else if (key == QLatin1String("STIFFNESS_REDUCTION")) {
                 designTmp.stiffnessReduction = toDouble(parts[1], &ok);
             } else if (key == QLatin1String("AUTO_B2")) {
@@ -724,6 +825,27 @@ bool DatModelIoService::load(const QString &filePath,
                     d.openingNeighbourD = toDouble(parts[22], &ok);
                     d.openingSpacing = toDouble(parts[23], &ok);
                 }
+                if (parts.size() >= 26) {
+                    d.oneFlangeBraced = toInt(parts[24], &ok);
+                    d.forceAwayFromFreeFlange = toInt(parts[25], &ok) != 0;
+                }
+                if (parts.size() >= 36) {
+                    d.ctMode = toInt(parts[26], &ok);
+                    d.ctEccentricity = toDouble(parts[27], &ok);
+                    d.ctLength = toDouble(parts[28], &ok);
+                    d.ctConnectedAreaRatio = toDouble(parts[29], &ok);
+                    d.holeBoltDiameter = toDouble(parts[30], &ok);
+                    d.holesInChain = toInt(parts[31], &ok);
+                    d.holeThickness = toDouble(parts[32], &ok);
+                    d.staggerPitch = toDouble(parts[33], &ok);
+                    d.staggerGauge = toDouble(parts[34], &ok);
+                    d.staggerLinks = toInt(parts[35], &ok);
+                }
+                if (parts.size() >= 38) {
+                    d.compositeSpacing = toDouble(parts[36], &ok);
+                    d.compositeWelded = toInt(parts[37], &ok) != 0;
+                }
+                applyExtraTokens(d, parts, 38);
             }
             break;
         }
@@ -775,6 +897,27 @@ bool DatModelIoService::load(const QString &filePath,
                 p.openingNeighbourD = toDouble(parts[24], &ok);
                 p.openingSpacing = toDouble(parts[25], &ok);
             }
+            if (parts.size() >= 28) {
+                p.oneFlangeBraced = toInt(parts[26], &ok);
+                p.forceAwayFromFreeFlange = toInt(parts[27], &ok) != 0;
+            }
+            if (parts.size() >= 38) {
+                p.ctMode = toInt(parts[28], &ok);
+                p.ctEccentricity = toDouble(parts[29], &ok);
+                p.ctLength = toDouble(parts[30], &ok);
+                p.ctConnectedAreaRatio = toDouble(parts[31], &ok);
+                p.holeBoltDiameter = toDouble(parts[32], &ok);
+                p.holesInChain = toInt(parts[33], &ok);
+                p.holeThickness = toDouble(parts[34], &ok);
+                p.staggerPitch = toDouble(parts[35], &ok);
+                p.staggerGauge = toDouble(parts[36], &ok);
+                p.staggerLinks = toInt(parts[37], &ok);
+            }
+            if (parts.size() >= 40) {
+                p.compositeSpacing = toDouble(parts[38], &ok);
+                p.compositeWelded = toInt(parts[39], &ok) != 0;
+            }
+            applyExtraTokens(p, parts, 40);
             designTmp.members.append(p);
             break;
         }
@@ -1418,6 +1561,27 @@ bool DatModelIoService::save(const QString &filePath,
         stream << "AMPLIFY_B1 " << (ds.amplifyB1 ? 1 : 0) << "\n";
         stream << "SLENDERNESS " << (ds.slendernessGoverns ? 1 : 0) << "\n";
         stream << "SECOND_ORDER " << (ds.secondOrder ? 1 : 0) << "\n";
+        if (ds.stabilityFunctions) {
+            stream << "STABILITY_FUNCTIONS 1\n";
+        }
+        if (ds.shearDeformation) {
+            stream << "SHEAR_DEFORMATION 1\n";
+        }
+        if (ds.warpingTorsion) {
+            stream << "WARPING_TORSION 1\n";
+        }
+        if (ds.geometricImperfection) {
+            stream << "GEOMETRIC_IMPERFECTION 1\n";
+        }
+        if (ds.imperfectionRatio != 1.0 / 333.0) {
+            stream << "IMPERFECTION_RATIO " << ds.imperfectionRatio << "\n";
+        }
+        if (ds.rigidZoneFactor != 0.0) {
+            stream << "RIGID_ZONE_FACTOR " << ds.rigidZoneFactor << "\n";
+        }
+        if (ds.loadSteps != 0) {
+            stream << "LOAD_STEPS " << ds.loadSteps << "\n";
+        }
         stream << "STIFFNESS_REDUCTION " << ds.stiffnessReduction << "\n";
         stream << "AUTO_B2 " << (ds.autoB2 ? 1 : 0) << "\n";
         stream << "RS " << ds.rs << "\n";
@@ -1429,20 +1593,27 @@ bool DatModelIoService::save(const QString &filePath,
         for (const QString &name : ds.combinations) {
             stream << "COMBINATION " << token(name) << "\n";
         }
-        stream << QString::asprintf("DEFAULTS %g %g %g %d %g %d %d %g %g %g %g %g %g %d %d %g %d %g %g %g %g %g %g\n", ds.defaults.kx, ds.defaults.ky, ds.defaults.kz,
+        stream << QString::asprintf("DEFAULTS %g %g %g %d %g %d %d %g %g %g %g %g %g %d %d %g %d %g %g %g %g %g %g %d %d %d %g %g %g %g %d %g %g %g %d %g %d", ds.defaults.kx, ds.defaults.ky, ds.defaults.kz,
                                     ds.defaults.segments, ds.defaults.lb, ds.defaults.braced ? 1 : 0, ds.defaults.cbOne ? 1 : 0,
                                     ds.defaults.b2, ds.defaults.netAreaRatio, ds.defaults.lx, ds.defaults.ly, ds.defaults.lz, ds.defaults.stiffenerSpacing,
                                     ds.defaults.panelTensionFlange, ds.defaults.coldWork ? 1 : 0, ds.defaults.bearingLength, ds.defaults.fatigueCategory, ds.defaults.fatigueCycles,
                                     ds.defaults.openingDiameter, ds.defaults.openingPosition, ds.defaults.openingOffset, ds.defaults.openingNeighbourD,
-                                    ds.defaults.openingSpacing);
+                                    ds.defaults.openingSpacing, ds.defaults.oneFlangeBraced, ds.defaults.forceAwayFromFreeFlange ? 1 : 0,
+                                    ds.defaults.ctMode, ds.defaults.ctEccentricity, ds.defaults.ctLength, ds.defaults.ctConnectedAreaRatio, ds.defaults.holeBoltDiameter,
+                                    ds.defaults.holesInChain, ds.defaults.holeThickness, ds.defaults.staggerPitch, ds.defaults.staggerGauge, ds.defaults.staggerLinks,
+                                    ds.defaults.compositeSpacing, ds.defaults.compositeWelded ? 1 : 0)
+               << extraTokens(ds.defaults) << "\n";
         if (!ds.members.isEmpty()) {
             stream << "\n[MEMBER_DESIGN]\n";
             stream << "# Member_ID  Aco(-=padrao)  kx ky kz  trechos  Lb(m)  mesa_contida  Cb=1  B2  An/Ag  flecha_L/n(0=auto)  Lx Ly Lz (m; 0 = usa K.L)\n";
             for (const auto &p : ds.members) {
                 stream << QString::asprintf("%-10d ", p.memberId) << token(p.steel)
-                       << QString::asprintf(" %g %g %g %d %g %d %d %g %g %d %g %g %g %g %d %d %g %d %g %g %g %g %g %g\n", p.kx, p.ky, p.kz, p.segments, p.lb,
+                       << QString::asprintf(" %g %g %g %d %g %d %d %g %g %d %g %g %g %g %d %d %g %d %g %g %g %g %g %g %d %d %d %g %g %g %g %d %g %g %g %d %g %d", p.kx, p.ky, p.kz, p.segments, p.lb,
                                             p.braced ? 1 : 0, p.cbOne ? 1 : 0, p.b2, p.netAreaRatio, p.deflDenominator, p.lx, p.ly, p.lz, p.stiffenerSpacing, p.panelTensionFlange, p.coldWork ? 1 : 0, p.bearingLength, p.fatigueCategory, p.fatigueCycles, p.openingDiameter,
-                                            p.openingPosition, p.openingOffset, p.openingNeighbourD, p.openingSpacing);
+                                            p.openingPosition, p.openingOffset, p.openingNeighbourD, p.openingSpacing, p.oneFlangeBraced, p.forceAwayFromFreeFlange ? 1 : 0,
+                                            p.ctMode, p.ctEccentricity, p.ctLength, p.ctConnectedAreaRatio, p.holeBoltDiameter, p.holesInChain, p.holeThickness, p.staggerPitch,
+                                            p.staggerGauge, p.staggerLinks, p.compositeSpacing, p.compositeWelded ? 1 : 0)
+                       << extraTokens(p) << "\n";
             }
         }
     }
@@ -1580,6 +1751,15 @@ bool DatModelIoService::save(const QString &filePath,
                 }
                 for (const double v : m.auxK) {
                     stream << ' ' << QString::number(v, 'g', 12);
+                }
+                if (m.hasWarping) {
+                    stream << " 1";
+                    for (const double v : m.warpingRate) {
+                        stream << ' ' << QString::number(v, 'g', 12);
+                    }
+                    for (const double v : m.warpingForce) {
+                        stream << ' ' << QString::number(v, 'g', 12);
+                    }
                 }
                 stream << "\n";
             }

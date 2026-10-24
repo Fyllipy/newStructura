@@ -1,3 +1,4 @@
+#include "core/math/Vec3Ops.h"
 #include "ViewCubeWidget.h"
 
 #include <QApplication>
@@ -19,9 +20,10 @@ namespace {
 
 using V3 = std::array<double, 3>;
 
-V3 sub(const V3 &a, const V3 &b) { return {a[0] - b[0], a[1] - b[1], a[2] - b[2]}; }
-double dot(const V3 &a, const V3 &b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-V3 cross(const V3 &a, const V3 &b) { return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]}; }
+using Structura::Math::cross;
+using Structura::Math::dot;
+using Structura::Math::sub;
+
 V3 unit(const V3 &a)
 {
     const double n = std::sqrt(dot(a, a));
@@ -178,10 +180,10 @@ void ViewCubeWidget::paintEvent(QPaintEvent *)
 
         // texto no plano da face: acompanha a inclinacao (cisalhamento e escala) da face projetada
         if (facing > 0.28) {
-            const V3 up = faces[i].up;
-            const V3 right3 = cross(up, n);
+            const V3 faceUp = faces[i].up;
+            const V3 right3 = cross(faceUp, n);
             const QPointF zero = project({0, 0, 0});
-            const QPointF pr = project(right3) - zero, pu = project(up) - zero;
+            const QPointF pr = project(right3) - zero, pu = project(faceUp) - zero;
             QTransform transform;
             transform.translate(c.x(), c.y());
             transform = QTransform(pr.x() / faceScale, pr.y() / faceScale, -pu.x() / faceScale, -pu.y() / faceScale, 0, 0) * transform;

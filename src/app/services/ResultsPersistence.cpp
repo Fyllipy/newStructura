@@ -22,12 +22,23 @@ void put(QByteArray &bytes, int value)
 
 } // namespace
 
-QString ResultsPersistence::fingerprint(const std::vector<const SolverBridge::ModelData *> &models, bool secondOrder, double stiffnessReduction)
+QString ResultsPersistence::fingerprint(const std::vector<const SolverBridge::ModelData *> &models, bool secondOrder, double stiffnessReduction,
+                                        double imperfectionRatio)
 {
     QByteArray bytes;
     put(bytes, secondOrder ? 1 : 0);
     put(bytes, stiffnessReduction);
+    if (imperfectionRatio != 0.0) {
+        bytes += "|IMP";   // imperfeicao geometrica direta (so entra quando ativa: arquivos antigos continuam validos)
+        put(bytes, imperfectionRatio);
+    }
     for (const SolverBridge::ModelData *model : models) {
+        if (model->shearDeformation || model->stabilityFunctions || model->loadSteps > 1) {
+            // opcoes de analise avancadas (so entram na impressao digital quando ativas: arquivos antigos continuam validos)
+            put(bytes, model->shearDeformation ? 1 : 0);
+            put(bytes, model->stabilityFunctions ? 1 : 0);
+            put(bytes, model->loadSteps);
+        }
         bytes += "|M";
         for (const auto &m : model->materials) {
             put(bytes, m.id);
@@ -41,6 +52,29 @@ QString ResultsPersistence::fingerprint(const std::vector<const SolverBridge::Mo
             put(bytes, s.iz);
             put(bytes, s.iy);
             put(bytes, s.j);
+            if (model->shearDeformation) {
+                put(bytes, s.shearAreaY);
+                put(bytes, s.shearAreaZ);
+            }
+        }
+        for (const auto &m : model->members) {
+            if (m.warping) {
+                bytes += "|WP";   // torcao com empenamento (so entra quando ativa: arquivos antigos continuam validos)
+                put(bytes, m.id);
+                put(bytes, m.warpingStartMode);
+                put(bytes, m.warpingEndMode);
+                for (const auto &section : model->sections) {
+                    if (section.id == m.sectionId) {
+                        put(bytes, section.warpingConstant);
+                    }
+                }
+            }
+            if (m.rigidStart > 0.0 || m.rigidEnd > 0.0) {
+                bytes += "|RZ";
+                put(bytes, m.id);
+                put(bytes, m.rigidStart);
+                put(bytes, m.rigidEnd);
+            }
         }
         bytes += "|N";
         for (const auto &n : model->nodes) {
@@ -153,6 +187,9 @@ ProjectData::StoredRun ResultsPersistence::toStored(const QString &name, const S
         s.memberId = m.memberId;
         s.forces = m.localForces;
         s.auxK = m.auxK;
+        s.hasWarping = m.hasWarping;
+        s.warpingRate = m.warpingRate;
+        s.warpingForce = m.warpingForce;
         run.members.append(s);
     }
     for (const auto &n : result.shellNodeResults) {
@@ -205,6 +242,9 @@ SolverBridge::Result ResultsPersistence::fromStored(const ProjectData::StoredRun
         } else {
             r.localForces = (*it)->forces;
             r.auxK = (*it)->auxK;
+            r.hasWarping = (*it)->hasWarping;
+            r.warpingRate = (*it)->warpingRate;
+            r.warpingForce = (*it)->warpingForce;
         }
         result.memberResults.push_back(r);
     }

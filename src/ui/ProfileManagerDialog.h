@@ -53,6 +53,7 @@ private:
     QLabel *m_header;
     QPushButton *m_newButton;
     QPushButton *m_variationButton;
+    QPushButton *m_propertiesButton;
     QPushButton *m_addButton;
     QPushButton *m_assignButton;
     QVector<SectionInfo> m_project;

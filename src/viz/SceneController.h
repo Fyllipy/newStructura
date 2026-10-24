@@ -83,6 +83,8 @@ public:
         QVector3D position;
         QVector3D force;
         QVector3D moment;
+        int sourceKind {-1};    ///< origem nos dados do projeto (0 = carga nodal); -1 = sem origem selecionavel
+        int sourceIndex {-1};
     };
 
     /// Uma carga uniforme (forca ou momento por comprimento) em uma barra.
@@ -96,6 +98,16 @@ public:
         bool moment {false};
         bool local {false};
         bool selfWeight {false};
+        int sourceKind {-1};    ///< 1 = carga distribuida, 2 = momento distribuido, 3 = peso proprio (indice = id da barra)
+        int sourceIndex {-1};
+    };
+
+    /// Carga identificada na viewport: tipo e indice no vetor de dados do projeto (kind < 0 = nenhuma).
+    struct LoadRef {
+        int kind {-1};
+        int index {-1};
+        [[nodiscard]] bool valid() const { return kind >= 0; }
+        bool operator==(const LoadRef &o) const { return kind == o.kind && index == o.index; }
     };
 
     struct SupportVisual {
@@ -147,19 +159,20 @@ public slots:
     void focusOnBars(const QSet<QUuid> &barIds);
 
 public:
-    // Picking API (screen to world)
-    bool pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z) const;
     int viewportHeight() const;
     /// Posiciona o indicador de eixos no canto superior esquerdo da viewport (quadrado de `sizePx`, a `marginPx` das bordas).
     void placeOrientationMarker(int widgetWidth, int widgetHeight, int sizePx = 110, int marginPx = 10);
-    bool worldPointOnPlaneZ0(int displayX, int displayY, double &x, double &y, double &z) const;
-    bool worldPointOnViewPlane(int displayX, int displayY, double &x, double &y, double &z) const;
 
 
     // Loads
     void setNodalLoadVisuals(const QVector<NodalLoadVisual> &visuals);
     void setMemberActionVisuals(const QVector<MemberActionVisual> &visuals);
     void setLoadVisibility(bool nodeForces, bool nodeMoments, bool memberForces, bool memberMoments);
+    /// Destaca uma carga (cor de realce); `LoadRef {}` remove o destaque.
+    void setHighlightedLoad(const LoadRef &load);
+    [[nodiscard]] LoadRef highlightedLoad() const { return m_highlightedLoad; }
+    /// Carga sob o ponto (pixels do widget, origem no canto superior esquerdo); `tolerancePx` em torno das setas, arcos e bordas.
+    [[nodiscard]] LoadRef pickLoad(const QPointF &widgetPos, double widgetWidth, double widgetHeight, double tolerancePx = 6.0) const;
 
     /// Panos de cargas de area (superficie, setas de pressao e acao nas barras).
     void setAreaPanels(const std::vector<Structura::Visualization::AreaPanelRenderer::Panel> &panels);
@@ -293,6 +306,7 @@ private:
 
 
     // Load visualization (Vector Glyphs)
+    LoadRef m_highlightedLoad;
     QVector<NodalLoadVisual> m_nodalLoadVisuals;
     QVector<MemberActionVisual> m_memberActionVisuals;
     std::unique_ptr<Structura::Visualization::LoadActionRenderer> m_loadRenderer;

@@ -236,6 +236,7 @@ std::shared_ptr<const ShellCouplingService::Mapping> ShellCouplingService::mappi
             element.nu = material.nu;
             element.density = material.unitWeight / m.forceUnit / 9.80665;
             element.thickness = q.thickness;
+            element.alpha = material.alpha;
             part->elements.push_back(element);
         }
         // nos pendentes de malhas nao conformes

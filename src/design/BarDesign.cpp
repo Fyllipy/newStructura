@@ -1,5 +1,7 @@
 #include "design/BarDesign.h"
 
+#include "design/BeamExtras.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -23,6 +25,12 @@ struct Candidate {
 class Collector
 {
 public:
+    /// A verificacao `id` com esse aproveitamento seria guardada por `offer`? (permite montar o memorial so quando necessario)
+    [[nodiscard]] bool wants(const std::string &id, double ratio) const
+    {
+        const auto it = m_best.find(id);
+        return it == m_best.end() || ratio > it->second.check.ratio;
+    }
     void offer(CheckResult check, const std::string &combo, double x)
     {
         auto it = m_best.find(check.id);
@@ -59,6 +67,12 @@ double interpolateMoment(const std::vector<StationEffects> &st, double x, double
     return st.back().e.*member;
 }
 
+/// Aproveitamento demanda/resistencia (resistencia nula: 1e9 se ha demanda).
+double ratioOf(double demand, double resistance)
+{
+    return resistance > 0.0 ? demand / resistance : (demand > 0.0 ? 1e9 : 0.0);
+}
+
 CheckResult makeCheck(const std::string &id, const std::string &title, const std::string &clause, double demand,
                       double resistance, const char *unit, double demandScale, std::vector<std::string> lines)
 {
@@ -69,7 +83,7 @@ CheckResult makeCheck(const std::string &id, const std::string &title, const std
     c.unit = unit;
     c.demand = demand / demandScale;
     c.resistance = resistance / demandScale;
-    c.ratio = resistance > 0.0 ? demand / resistance : (demand > 0.0 ? 1e9 : 0.0);
+    c.ratio = ratioOf(demand, resistance);
     c.lines = std::move(lines);
     return c;
 }
@@ -99,6 +113,12 @@ BarDesignOutput designBar(const BarDesignInput &in)
     o8.netAreaRatio = in.netAreaRatio;
     o8.stiffenerSpacing = in.stiffenerSpacing;
     o8.ct = in.ct;
+    o8.compositeSpacing = in.compositeSpacing;
+    o8.compositeWelded = in.compositeWelded;
+    o8.barLength = in.length;
+    o8.threadedRod = in.threadedEnds;
+    o8.slendernessSection = in.slendernessSection;
+    o8.ixOverride = in.ixEquivalent;
     Nbr14762::Options o14 = in.opt14762;
     o14.netAreaRatio = in.netAreaRatio;
     o14.panelTensionFlange = in.panelTensionFlange;
@@ -114,17 +134,62 @@ BarDesignOutput designBar(const BarDesignInput &in)
     out.summaryLines.push_back(fmt("Perfil: %s (%s), A = %.0f mm2, Ix = %.3e mm4, Iy = %.3e mm4, peso = %.2f kg/m",
                                    s.name.c_str(), kindName(s.kind).c_str(), s.g.area, s.g.Ix, s.g.Iy, s.weightPerMeter()));
     out.summaryLines.push_back(fmt("Aco: %s (fy = %.0f MPa, fu = %.0f MPa, E = %.0f MPa)", in.steel.name.c_str(), in.steel.fy, in.steel.fu, E));
+    for (const std::string &note : in.tensionNotes) {
+        out.summaryLines.push_back(note);
+    }
+    if (!cold && (s.kind == SectionKind::I || s.kind == SectionKind::Channel) && (in.torsionReleasedStart || in.torsionReleasedEnd)) {
+        out.warnings.push_back(fmt("NBR 8800, 5.7.8: extremidade %s sem restricao a rotacao em relacao ao eixo longitudinal: exigem-se enrijecedores transversais no apoio (soldados as mesas e a alma, em toda a altura), "
+                                   "salvo se a alma estiver ligada a outras vigas ou pilares.", in.torsionReleasedStart && in.torsionReleasedEnd ? "inicial e final" : (in.torsionReleasedStart ? "inicial" : "final")));
+    }
     out.summaryLines.push_back(fmt("Comprimento L = %.0f mm; Lx = %.0f mm, Ly = %.0f mm, Lz = %.0f mm; Lb = %.0f mm (%d trecho(s))", L, len.Lx, len.Ly, len.Lz, lb,
                                    segments));
 
     // ---- Resistencias independentes dos esforcos ----
-    Nbr8800::TensionData tens = cold ? Nbr14762::tension(s, in.steel, o14) : Nbr8800::tension(s, in.steel, o8);
-    Nbr8800::CompressionData comp = cold ? Nbr14762::compression(s, in.steel, len, o14) : Nbr8800::compression(s, in.steel, len, o8);
+    // Anexo G: barras de secao variavel usam a secao de menor altura na tracao (G.2) e na compressao (G.3)
+    const DesignSection &sAxial = in.axialSection != nullptr ? *in.axialSection : s;
+    Nbr8800::TensionData tens = cold ? Nbr14762::tension(s, in.steel, o14) : Nbr8800::tension(sAxial, in.steel, o8);
+    Nbr8800::CompressionData comp = cold ? Nbr14762::compression(s, in.steel, len, o14) : Nbr8800::compression(sAxial, in.steel, len, o8);
 
     const double rMin = std::min(s.g.rx, s.g.ry);
     const double lambdaTension = L / rMin;
 
     Collector col;
+
+    // Barras compostas (5.3.6.1, 5.3.6.2 e 5.2.8.2)
+    if (!cold && s.composite() && s.rMin > 0.0) {
+        bool anyCompression = false, anyTension = false;
+        for (const ComboEffects &combo : in.combos) {
+            for (const StationEffects &st : combo.stations) {
+                anyCompression = anyCompression || st.e.N < -1e-9;
+                anyTension = anyTension || st.e.N > 1e-9;
+            }
+        }
+        const double spacing = in.compositeSpacing > 0.0 ? in.compositeSpacing : L / 3.0;
+        const double perMin = spacing / s.rMin;
+        const int intermediate = static_cast<int>(std::ceil(L / spacing - 1e-9)) - 1;
+        if (anyCompression) {
+            const double slender0 = comp.slenderness;   // (L/r)0: maior indice de esbeltez da barra composta atuando como unidade
+            CheckResult c;
+            c.id = "composite";
+            c.title = "Barra composta: ligacoes entre os perfis";
+            c.clause = clauseTag + ", 5.3.6.1";
+            c.demand = perMin;
+            c.resistance = 0.75 * slender0;
+            c.ratio = c.resistance > 0.0 ? perMin / c.resistance : 0.0;
+            const bool enough = intermediate >= 2;
+            if (!enough) {
+                c.ratio = std::max(c.ratio, 1.0 + 1e-6);
+            }
+            c.lines.push_back(fmt("l = %.0f mm (%s), rmin do perfil componente = %.1f mm -> l/rmin = %.1f; limite 3/4 (L/r)0 = 0,75 x %.1f = %.1f (5.3.6.1)", spacing,
+                                  in.compositeSpacing > 0.0 ? "informado" : "duas ligacoes intermediarias, l = L/3", s.rMin, perMin, slender0, c.resistance));
+            c.lines.push_back(fmt("Ligacoes intermediarias ao longo do comprimento: %d (minimo 2, uniformemente espacadas, 5.3.6.1)%s", intermediate, enough ? "" : " - INSUFICIENTE"));
+            c.lines.push_back("As ligacoes de extremidade devem ser soldadas ou com parafusos protendidos contra superficies de contato Classe A ou B (5.3.6.2).");
+            col.offer(std::move(c), "-", 0.0);
+        }
+        if (anyTension && perMin > o8.maxSlendernessTension) {
+            out.warnings.push_back(fmt("Barra composta tracionada: l/rmin = %.0f acima do limite recomendado de %.0f entre ligacoes adjacentes (NBR 8800, 5.2.8.2).", perMin, o8.maxSlendernessTension));
+        }
+    }
 
     // Placa de torcao em tubulares
     Nbr8800::TorsionData torsion;
@@ -134,6 +199,13 @@ BarDesignOutput designBar(const BarDesignInput &in)
 
     bool anyTorsionIgnored = false;
     bool slendernessWarned = false;
+    // torcao em secoes abertas de paredes finas (5.5.2.3): tensoes pela Teoria da Elasticidade a partir da linha media (coordenada setorial,
+    // centro de cisalhamento e Cw); o empenamento so entra quando a barra foi analisada com o 7o grau de liberdade (`in.warping`)
+    const bool thinOpenCheck = !s.composite() && s.sectorial.valid && s.J > 0.0 && !s.sectorial.samples.empty();
+    // secoes macicas: tensao de cisalhamento elastica de Saint-Venant
+    const bool solidCheck = (s.kind == SectionKind::SolidRound && s.D > 0.0) || (s.kind == SectionKind::SolidRect && s.bf > 0.0 && s.d > 0.0);
+    const bool warpingCheck = thinOpenCheck;
+    bool anyOpenWithoutWarping = false;
 
     std::map<std::tuple<int, bool, long long, long long>, Nbr8800::FlexureData> flexCache;
     auto flexOf = [&](Axis ax, bool pos, double lbv, double cbv) -> const Nbr8800::FlexureData & {
@@ -192,8 +264,9 @@ BarDesignOutput designBar(const BarDesignInput &in)
             if (transverse) {
                 return 1.0;
             }
-            const double ma = combo.stations.front().e.*member;
-            const double mb = combo.stations.back().e.*member;
+            // M1/M2: momentos de extremidade da estrutura nt (Anexo C.2.2); sem separacao nt/lt, os da analise original
+            const double ma = combo.hasNt ? combo.stations.front().nt.*member : combo.stations.front().e.*member;
+            const double mb = combo.hasNt ? combo.stations.back().nt.*member : combo.stations.back().e.*member;
             const double m2 = std::max(std::abs(ma), std::abs(mb));
             if (m2 < 1e-9) {
                 return 1.0;
@@ -205,12 +278,56 @@ BarDesignOutput designBar(const BarDesignInput &in)
         };
         const double cmX = cmFor(&Effects::Mx, combo.transverseLoadX);
         const double cmY = cmFor(&Effects::My, combo.transverseLoadY);
-        const double nexPlane = sq(kPi) * E * s.g.Ix / sq(L);
-        const double neyPlane = sq(kPi) * E * s.g.Iy / sq(L);
+        // Ne de B1: comprimento real da barra e rigidez reduzida nas estruturas de media deslocabilidade (C.2.2, 4.10.7.1.2)
+        const double nexPlane = sq(kPi) * E * (in.ixEquivalent > 0.0 ? in.ixEquivalent : s.g.Ix) / sq(L) * combo.bStiffness;
+        const double neyPlane = sq(kPi) * E * s.g.Iy / sq(L) * combo.bStiffness;
 
         // Cb por trecho destravado
         std::vector<double> cbSegment(segments, 1.0);
-        if (!in.cbEqualsOne && lb > 0.0) {
+        std::vector<std::string> cbNote(static_cast<std::size_t>(segments));
+        const bool oneFlange = !cold && in.oneFlangeBraced != 0 && (s.kind == SectionKind::I || s.kind == SectionKind::Channel || s.kind == SectionKind::RectTube)
+                               && in.section->symmetricAboutX;
+        const bool bracedPositive = in.oneFlangeBraced == 1;
+        if (in.cantilever && lb > 0.0 && !in.cbEqualsOne) {
+            // 5.4.2.3-b: balanco com a extremidade livre sem contencao lateral: Cb = 1,0 (nos demais balancos a norma pede analise de estabilidade;
+            // Cb = 1,0 e o limite inferior e fica a favor da seguranca)
+            for (std::size_t k = 0; k < cbSegment.size(); ++k) {
+                cbNote[k] = "Balanco (5.4.2.3-b): Cb = 1,00";
+            }
+        } else if (oneFlange && lb > 0.0 && !in.cbEqualsOne) {
+            // 5.4.2.4: uma mesa livre e a outra com contencao lateral continua. Momentos positivos = traciona a mesa livre.
+            auto freeSigned = [&](double x) {
+                const double m = interpolateMoment(combo.stations, x, &Effects::Mx);
+                return bracedPositive ? m : -m;
+            };
+            for (int k = 0; k < segments; ++k) {
+                const double x0 = k * L / segments, x1 = (k + 1) * L / segments;
+                const double f0 = freeSigned(x0), f1 = freeSigned(x1), fc = freeSigned(0.5 * (x0 + x1));
+                const double m1 = std::min(f0, f1);                // maior momento que comprime a mesa livre nas extremidades (negativo)
+                const double m2 = f0 <= f1 ? f1 : f0;              // momento na outra extremidade
+                double cbk = 1.0;
+                std::string text;
+                const bool transverse = combo.transverseLoadX;
+                if (m1 >= 0.0) {
+                    if (in.forceAwayFromFreeFlange && transverse) {
+                        cbk = 2.0;
+                        text = "5.4.2.4-b: momentos nulos ou que tracionam a mesa livre nas extremidades, carga transversal oposta a mesa livre: Cb = 2,00";
+                    } else {
+                        text = "5.4.2.4-c: Cb = 1,00";
+                    }
+                } else if (in.forceAwayFromFreeFlange) {
+                    text = "5.4.2.4-c: forcas transversais no sentido oposto a mesa livre: Cb = 1,00";
+                } else {
+                    const double second = (2.0 / 3.0) * m2 / m1;
+                    const double third = m2 <= 0.0 ? (8.0 / 3.0) * fc / (m1 + m2) : 0.0;
+                    cbk = std::min(3.0, 3.0 - second - third);
+                    text = fmt("5.4.2.4-a: Cb = 3,00 - (2/3) M2/M1 - (8/3) MCL/(M1+M2) = 3,00 - %.3f - %.3f = %.2f (M1 = %.2f, M2 = %.2f, MCL = %.2f kN*m; negativo = comprime a mesa livre)",
+                               second, third, cbk, m1 / kKnm, m2 / kKnm, fc / kKnm);
+                }
+                cbSegment[static_cast<std::size_t>(k)] = cbk;
+                cbNote[static_cast<std::size_t>(k)] = text;
+            }
+        } else if (!in.cbEqualsOne && lb > 0.0) {
             for (int k = 0; k < segments; ++k) {
                 const double x0 = k * L / segments;
                 const double x1 = (k + 1) * L / segments;
@@ -228,9 +345,13 @@ BarDesignOutput designBar(const BarDesignInput &in)
             }
         }
 
-        for (const StationEffects &st : combo.stations) {
+        for (std::size_t stIndex = 0; stIndex < combo.stations.size(); ++stIndex) {
+            const StationEffects &st = combo.stations[stIndex];
+            if (in.onlyStation >= 0 && static_cast<int>(stIndex) != in.onlyStation) {
+                continue;
+            }
             Effects e = st.e;
-            const std::string where = fmt("combinacao %s, x = %.0f mm", combo.name.c_str(), st.x);
+            const auto whereOf = [&]() { return fmt("combinacao %s, x = %.0f mm", combo.name.c_str(), st.x); };
 
             // Amplificacao dos momentos (Anexo C)
             double b1x = 1.0;
@@ -240,8 +361,23 @@ BarDesignOutput designBar(const BarDesignInput &in)
                 b1x = nc >= nexPlane ? 1e6 : std::max(1.0, cmX / (1.0 - nc / nexPlane));
                 b1y = nc >= neyPlane ? 1e6 : std::max(1.0, cmY / (1.0 - nc / neyPlane));
             }
-            const double mxSd = e.Mx * b1x * in.b2 * combo.b2;
-            const double mySd = e.My * b1y * in.b2 * combo.b2;
+            const double b2All = in.b2 * combo.b2;
+            double mxSd, mySd;
+            std::string ampNote;
+            if (combo.hasNt) {
+                // Anexo C.2.1: M_Sd = B1 M_nt + B2 M_lt e N_Sd = N_nt + B2 N_lt (lt = estrutura original - nt)
+                const Effects &nt = st.nt;
+                mxSd = b1x * nt.Mx + b2All * (e.Mx - nt.Mx);
+                mySd = b1y * nt.My + b2All * (e.My - nt.My);
+                const double nSdAmp = nt.N + b2All * (e.N - nt.N);
+                ampNote = fmt("Anexo C: M_Sd = B1 M_nt + B2 M_lt (Mx: %.2f x %.2f + %.3f x %.2f kN*m); N_Sd = N_nt + B2 N_lt = %.2f + %.3f x %.2f = %.2f kN (B1x = %.3f, B2 = %.3f%s)",
+                              b1x, nt.Mx / kKnm, b2All, (e.Mx - nt.Mx) / kKnm, nt.N / kKn, b2All, (e.N - nt.N) / kKn, nSdAmp / kKn, b1x, b2All,
+                              combo.bStiffness < 1.0 ? fmt("; rigidez reduzida a %.2f em Ne (4.10.7.1.2)", combo.bStiffness).c_str() : "");
+                e.N = nSdAmp;
+            } else {
+                mxSd = e.Mx * b1x * b2All;
+                mySd = e.My * b1y * b2All;
+            }
             const double absMx = std::abs(mxSd);
             const double absMy = std::abs(mySd);
 
@@ -251,29 +387,37 @@ BarDesignOutput designBar(const BarDesignInput &in)
             if (e.N > 0.0) {
                 nRd = tens.NtRd;
                 nSd = e.N;
-                std::vector<std::string> lines = tens.lines;
-                lines.push_back(fmt("N_t,Sd = %s -> N_t,Sd / N_t,Rd = %.3f  (%s)", fmt("%.2f kN", nSd / kKn).c_str(), nSd / tens.NtRd, where.c_str()));
-                col.offer(makeCheck("tension", "Tracao axial", cold ? clauseTag + ", 9.6" : clauseTag + ", 5.2", nSd, tens.NtRd, "kN", kKn, lines), combo.name, st.x);
+                if (col.wants("tension", ratioOf(nSd, tens.NtRd))) {
+                    std::vector<std::string> lines = tens.lines;
+                    lines.push_back(fmt("N_t,Sd = %s -> N_t,Sd / N_t,Rd = %.3f  (%s)", fmt("%.2f kN", nSd / kKn).c_str(), nSd / tens.NtRd, whereOf().c_str()));
+                    col.offer(makeCheck("tension", "Tracao axial", cold ? clauseTag + ", 9.6" : clauseTag + ", 5.2", nSd, tens.NtRd, "kN", kKn, std::move(lines)), combo.name, st.x);
+                }
             } else if (e.N < 0.0) {
                 nSd = -e.N;
-                std::vector<std::string> lines = comp.lines;
-                lines.push_back(fmt("N_c,Sd = %.2f kN -> N_c,Sd / N_c,Rd = %.3f  (%s)", nSd / kKn, nSd / comp.NcRd, where.c_str()));
-                col.offer(makeCheck("compression", "Compressao axial", cold ? clauseTag + ", 9.7" : clauseTag + ", 5.3", nSd, comp.NcRd, "kN", kKn, lines), combo.name, st.x);
+                if (col.wants("compression", ratioOf(nSd, comp.NcRd))) {
+                    std::vector<std::string> lines = comp.lines;
+                    lines.push_back(fmt("N_c,Sd = %.2f kN -> N_c,Sd / N_c,Rd = %.3f  (%s)", nSd / kKn, nSd / comp.NcRd, whereOf().c_str()));
+                    col.offer(makeCheck("compression", "Compressao axial", cold ? clauseTag + ", 9.7" : clauseTag + ", 5.3", nSd, comp.NcRd, "kN", kKn, std::move(lines)), combo.name, st.x);
+                }
             }
 
             // --- esbeltez ---
             if (e.N < 0.0 && in.slendernessGoverns) {
                 const double limit = cold ? o14.maxSlendernessCompression : o8.maxSlendernessCompression;
-                CheckResult c;
-                c.id = "slenderness";
-                c.title = "Limitacao de esbeltez (compressao)";
-                c.clause = cold ? clauseTag + ", 9.7.4" : clauseTag + ", 5.3.7";
-                c.demand = comp.slenderness;
-                c.resistance = limit;
-                c.ratio = comp.slenderness / limit;
-                c.unit = "";
-                c.lines.push_back(fmt("KL/r maximo = %.1f; limite = %.0f (%s)", comp.slenderness, limit, where.c_str()));
-                col.offer(c, combo.name, st.x);
+                const double slenderRatio = comp.slenderness / limit;
+                if (col.wants("slenderness", slenderRatio)) {
+                    CheckResult c;
+                    c.id = "slenderness";
+                    c.title = "Limitacao de esbeltez (compressao)";
+                    c.clause = cold ? clauseTag + ", 9.7.4" : clauseTag + ", 5.3.7";
+                    c.demand = comp.slenderness;
+                    c.resistance = limit;
+                    c.ratio = slenderRatio;
+                    c.unit = "";
+                    c.lines.push_back(fmt("lambda = KL / r = %.1f (maior indice de esbeltez entre os eixos)  (%s)", comp.slenderness, whereOf().c_str()));
+                    c.lines.push_back(fmt("lambda <= %.0f (limite da norma)", limit));
+                    col.offer(std::move(c), combo.name, st.x);
+                }
             } else if (e.N > 0.0 && in.slendernessGoverns) {
                 const double limit = cold ? o14.maxSlendernessTension : o8.maxSlendernessTension;
                 if (lambdaTension > limit && !slendernessWarned) {
@@ -287,6 +431,7 @@ BarDesignOutput designBar(const BarDesignInput &in)
             // Segmento destravado
             const int seg = std::min(segments - 1, static_cast<int>(st.x / (L / segments) - 1e-9 < 0 ? 0 : static_cast<int>(st.x / (L / segments) - 1e-9)));
             const double cb = cbSegment[static_cast<std::size_t>(std::max(0, seg))];
+            const std::string &cbExplain = cbNote[static_cast<std::size_t>(std::max(0, seg))];
 
             // --- flexao ---
             double mxRd = 0.0;
@@ -296,13 +441,26 @@ BarDesignOutput designBar(const BarDesignInput &in)
                 const double mxMax = absMx;
                 const double myMax = absMy;
                 if (mxMax > 1e-9) {
-                    const auto &f = flexOf(Axis::X, mxSd > 0.0, lb, cb);
+                    // uma mesa com contencao continua: o momento que comprime essa mesa nao sofre FLT
+                    const bool compressesBracedFlange = oneFlange && ((mxSd > 0.0) == bracedPositive);
+                    const auto &f = flexOf(Axis::X, mxSd > 0.0, compressesBracedFlange ? 0.0 : lb, compressesBracedFlange ? 1.0 : cb);
                     flexCovered = flexCovered && f.covered;
                     if (f.covered) {
                         mxRd = f.MRd;
-                        std::vector<std::string> lines = f.lines;
-                        lines.push_back(fmt("M_x,Sd = %.2f kN*m (B1 = %.3f) -> M_x,Sd / M_x,Rd = %.3f; governa: %s  (%s)", mxMax / kKnm, b1x, mxMax / f.MRd, f.governing.c_str(), where.c_str()));
-                        col.offer(makeCheck("flexure_x", "Flexao em torno do eixo X (maior inercia)", cold ? clauseTag + ", 9.8.2" : clauseTag + ", 5.4.2 e Anexo D", mxMax, f.MRd, "kN*m", kKnm, lines), combo.name, st.x);
+                        if (col.wants("flexure_x", ratioOf(mxMax, f.MRd))) {
+                            std::vector<std::string> lines = f.lines;
+                            if (!cbExplain.empty()) {
+                                lines.push_back(cbExplain);
+                            }
+                            if (!ampNote.empty()) {
+                                lines.push_back(ampNote);
+                            }
+                            if (compressesBracedFlange) {
+                                lines.push_back("Momento que comprime a mesa com contencao lateral continua (5.4.2.4): sem FLT.");
+                            }
+                            lines.push_back(fmt("M_x,Sd = %.2f kN*m (B1 = %.3f) -> M_x,Sd / M_x,Rd = %.3f; governa: %s  (%s)", mxMax / kKnm, b1x, mxMax / f.MRd, f.governing.c_str(), whereOf().c_str()));
+                            col.offer(makeCheck("flexure_x", "Flexao em torno do eixo X (maior inercia)", cold ? clauseTag + ", 9.8.2" : clauseTag + ", 5.4.2 e Anexo D", mxMax, f.MRd, "kN*m", kKnm, std::move(lines)), combo.name, st.x);
+                        }
                     }
                 }
                 if (myMax > 1e-9) {
@@ -310,9 +468,11 @@ BarDesignOutput designBar(const BarDesignInput &in)
                     flexCovered = flexCovered && f.covered;
                     if (f.covered) {
                         myRd = f.MRd;
-                        std::vector<std::string> lines = f.lines;
-                        lines.push_back(fmt("M_y,Sd = %.2f kN*m (B1 = %.3f) -> M_y,Sd / M_y,Rd = %.3f; governa: %s  (%s)", myMax / kKnm, b1y, myMax / f.MRd, f.governing.c_str(), where.c_str()));
-                        col.offer(makeCheck("flexure_y", "Flexao em torno do eixo Y (menor inercia)", cold ? clauseTag + ", 9.8.2" : clauseTag + ", 5.4.2 e Anexo D", myMax, f.MRd, "kN*m", kKnm, lines), combo.name, st.x);
+                        if (col.wants("flexure_y", ratioOf(myMax, f.MRd))) {
+                            std::vector<std::string> lines = f.lines;
+                            lines.push_back(fmt("M_y,Sd = %.2f kN*m (B1 = %.3f) -> M_y,Sd / M_y,Rd = %.3f; governa: %s  (%s)", myMax / kKnm, b1y, myMax / f.MRd, f.governing.c_str(), whereOf().c_str()));
+                            col.offer(makeCheck("flexure_y", "Flexao em torno do eixo Y (menor inercia)", cold ? clauseTag + ", 9.8.2" : clauseTag + ", 5.4.2 e Anexo D", myMax, f.MRd, "kN*m", kKnm, std::move(lines)), combo.name, st.x);
+                        }
                     }
                 }
             }
@@ -324,18 +484,22 @@ BarDesignOutput designBar(const BarDesignInput &in)
                 const auto &v = shearOf(Axis::Y);
                 if (v.covered) {
                     vyRd = v.VRd;
-                    std::vector<std::string> lines = v.lines;
-                    lines.push_back(fmt("V_y,Sd = %.2f kN -> V_y,Sd / V_Rd = %.3f  (%s)", std::abs(e.Vy) / kKn, std::abs(e.Vy) / v.VRd, where.c_str()));
-                    col.offer(makeCheck("shear_y", "Cortante na direcao da altura (alma)", cold ? clauseTag + ", 9.8.3" : clauseTag + ", 5.4.3", std::abs(e.Vy), v.VRd, "kN", kKn, lines), combo.name, st.x);
+                    if (col.wants("shear_y", ratioOf(std::abs(e.Vy), v.VRd))) {
+                        std::vector<std::string> lines = v.lines;
+                        lines.push_back(fmt("V_y,Sd = %.2f kN -> V_y,Sd / V_Rd = %.3f  (%s)", std::abs(e.Vy) / kKn, std::abs(e.Vy) / v.VRd, whereOf().c_str()));
+                        col.offer(makeCheck("shear_y", "Cortante na direcao da altura (alma)", cold ? clauseTag + ", 9.8.3" : clauseTag + ", 5.4.3", std::abs(e.Vy), v.VRd, "kN", kKn, std::move(lines)), combo.name, st.x);
+                    }
                 }
             }
             if (std::abs(e.Vz) > 1e-9) {
                 const auto &v = shearOf(Axis::X);
                 if (v.covered) {
                     vzRd = v.VRd;
-                    std::vector<std::string> lines = v.lines;
-                    lines.push_back(fmt("V_z,Sd = %.2f kN -> V_z,Sd / V_Rd = %.3f  (%s)", std::abs(e.Vz) / kKn, std::abs(e.Vz) / v.VRd, where.c_str()));
-                    col.offer(makeCheck("shear_z", "Cortante na direcao da largura (mesas)", cold ? clauseTag + ", 9.8.3" : clauseTag + ", 5.4.3", std::abs(e.Vz), v.VRd, "kN", kKn, lines), combo.name, st.x);
+                    if (col.wants("shear_z", ratioOf(std::abs(e.Vz), v.VRd))) {
+                        std::vector<std::string> lines = v.lines;
+                        lines.push_back(fmt("V_z,Sd = %.2f kN -> V_z,Sd / V_Rd = %.3f  (%s)", std::abs(e.Vz) / kKn, std::abs(e.Vz) / v.VRd, whereOf().c_str()));
+                        col.offer(makeCheck("shear_z", "Cortante na direcao da largura (mesas)", cold ? clauseTag + ", 9.8.3" : clauseTag + ", 5.4.3", std::abs(e.Vz), v.VRd, "kN", kKn, std::move(lines)), combo.name, st.x);
+                    }
                 }
             }
 
@@ -345,41 +509,51 @@ BarDesignOutput designBar(const BarDesignInput &in)
                 const double mRatioY = (absMy > 1e-9 && myRd > 0.0) ? absMy / myRd : 0.0;
                 const double nRatio = nRd > 0.0 ? nSd / nRd : 0.0;
                 double ratio;
-                std::string expr;
                 if (cold) {
                     ratio = nRatio + mRatioX + mRatioY;
-                    expr = fmt("NBR 14762, 9.9: N_Sd/N_Rd + Mx,Sd/Mx,Rd + My,Sd/My,Rd = %.3f + %.3f + %.3f = %.3f", nRatio, mRatioX, mRatioY, ratio);
                 } else if (nRatio >= 0.2) {
                     ratio = nRatio + 8.0 / 9.0 * (mRatioX + mRatioY);
-                    expr = fmt("NBR 8800, 5.5.1.2-a: N_Sd/N_Rd + 8/9 (Mx,Sd/Mx,Rd + My,Sd/My,Rd) = %.3f + 8/9 (%.3f + %.3f) = %.3f", nRatio, mRatioX, mRatioY, ratio);
                 } else {
                     ratio = nRatio / 2.0 + (mRatioX + mRatioY);
-                    expr = fmt("NBR 8800, 5.5.1.2-b: N_Sd/(2 N_Rd) + (Mx,Sd/Mx,Rd + My,Sd/My,Rd) = %.3f/2 + (%.3f + %.3f) = %.3f", nRatio, mRatioX, mRatioY, ratio);
                 }
-                CheckResult c;
-                c.id = "interaction";
-                c.title = e.N == 0.0 ? "Flexao composta (momentos)" : (e.N > 0.0 ? "Flexo-tracao" : "Flexo-compressao");
-                c.clause = cold ? clauseTag + ", 9.9" : clauseTag + ", 5.5.1.2";
-                c.demand = ratio;
-                c.resistance = 1.0;
-                c.ratio = ratio;
-                c.lines.push_back(expr + fmt("  (%s)", where.c_str()));
-                col.offer(c, combo.name, st.x);
+                if (col.wants("interaction", ratio)) {
+                    std::string expr;
+                    if (cold) {
+                        expr = fmt("NBR 14762, 9.9: N_Sd/N_Rd + Mx,Sd/Mx,Rd + My,Sd/My,Rd = %.3f + %.3f + %.3f = %.3f", nRatio, mRatioX, mRatioY, ratio);
+                    } else if (nRatio >= 0.2) {
+                        expr = fmt("NBR 8800, 5.5.1.2-a: N_Sd/N_Rd + 8/9 (Mx,Sd/Mx,Rd + My,Sd/My,Rd) = %.3f + 8/9 (%.3f + %.3f) = %.3f", nRatio, mRatioX, mRatioY, ratio);
+                    } else {
+                        expr = fmt("NBR 8800, 5.5.1.2-b: N_Sd/(2 N_Rd) + (Mx,Sd/Mx,Rd + My,Sd/My,Rd) = %.3f/2 + (%.3f + %.3f) = %.3f", nRatio, mRatioX, mRatioY, ratio);
+                    }
+                    CheckResult c;
+                    c.id = "interaction";
+                    c.title = e.N == 0.0 ? "Flexao composta (momentos)" : (e.N > 0.0 ? "Flexo-tracao" : "Flexo-compressao");
+                    c.clause = cold ? clauseTag + ", 9.9" : clauseTag + ", 5.5.1.2";
+                    c.demand = ratio;
+                    c.resistance = 1.0;
+                    c.ratio = ratio;
+                    c.lines.push_back(expr + fmt("  (%s)", whereOf().c_str()));
+                    col.offer(std::move(c), combo.name, st.x);
+                }
             }
 
             // --- momento e cortante combinados (14762, 9.8.4) ---
             if (cold) {
                 auto mv = [&](double m, double mrd, double v, double vrd, const char *id, const char *title) {
                     if (m > 1e-9 && mrd > 0.0 && v > 1e-9 && vrd > 0.0) {
+                        const double combined = sq(m / mrd) + sq(v / vrd);
+                        if (!col.wants(id, combined)) {
+                            return;
+                        }
                         CheckResult c;
                         c.id = id;
                         c.title = title;
                         c.clause = clauseTag + ", 9.8.4";
-                        c.demand = sq(m / mrd) + sq(v / vrd);
+                        c.demand = combined;
                         c.resistance = 1.0;
                         c.ratio = c.demand;
-                        c.lines.push_back(fmt("(M_Sd/M_Rd)^2 + (V_Sd/V_Rd)^2 = (%.3f)^2 + (%.3f)^2 = %.3f  (%s)", m / mrd, v / vrd, c.ratio, where.c_str()));
-                        col.offer(c, combo.name, st.x);
+                        c.lines.push_back(fmt("(M_Sd/M_Rd)^2 + (V_Sd/V_Rd)^2 = (%.3f)^2 + (%.3f)^2 = %.3f  (%s)", m / mrd, v / vrd, c.ratio, whereOf().c_str()));
+                        col.offer(std::move(c), combo.name, st.x);
                     }
                 };
                 mv(absMx, mxRd, std::abs(e.Vy), vyRd, "mv_x", "Momento fletor e forca cortante combinados (eixo X)");
@@ -390,30 +564,201 @@ BarDesignOutput designBar(const BarDesignInput &in)
             if (std::abs(e.T) > 1e-9) {
                 if (torsion.covered) {
                     const double tRatio = std::abs(e.T) / torsion.TRd;
-                    CheckResult c;
-                    c.id = "torsion";
-                    c.title = "Torcao";
-                    c.clause = clauseTag + ", 5.5.2";
-                    c.demand = std::abs(e.T) / kKnm;
-                    c.resistance = torsion.TRd / kKnm;
-                    c.unit = "kN*m";
                     double ratio = tRatio;
-                    c.lines = torsion.lines;
+                    double nr = 0.0, mr = 0.0, vr = 0.0;
                     if (tRatio > 0.20) {
-                        const double nr = nRd > 0.0 ? nSd / nRd : 0.0;
-                        const double mr = (mxRd > 0.0 ? absMx / mxRd : 0.0) + (myRd > 0.0 ? absMy / myRd : 0.0);
-                        const double vr = (vyRd > 0.0 ? std::abs(e.Vy) / vyRd : 0.0) + (vzRd > 0.0 ? std::abs(e.Vz) / vzRd : 0.0);
+                        nr = nRd > 0.0 ? nSd / nRd : 0.0;
+                        mr = (mxRd > 0.0 ? absMx / mxRd : 0.0) + (myRd > 0.0 ? absMy / myRd : 0.0);
+                        vr = (vyRd > 0.0 ? std::abs(e.Vy) / vyRd : 0.0) + (vzRd > 0.0 ? std::abs(e.Vz) / vzRd : 0.0);
                         ratio = (nr + mr) + sq(vr + tRatio);
-                        c.lines.push_back(fmt("T_Sd/T_Rd = %.3f > 0,20: (N/NRd + M/MRd) + (V/VRd + T/TRd)^2 = (%.3f + %.3f) + (%.3f + %.3f)^2 = %.3f  (%s)", tRatio, nr, mr, vr, tRatio, ratio, where.c_str()));
-                    } else {
-                        c.lines.push_back(fmt("T_Sd/T_Rd = %.3f <= 0,20: efeito da torcao desprezado nas interacoes (5.5.2.2)  (%s)", tRatio, where.c_str()));
                     }
-                    c.ratio = ratio;
-                    col.offer(c, combo.name, st.x);
-                } else if (std::abs(e.T) > 1e5) {
+                    if (col.wants("torsion", ratio)) {
+                        CheckResult c;
+                        c.id = "torsion";
+                        c.title = "Torcao";
+                        c.clause = clauseTag + ", 5.5.2";
+                        c.demand = std::abs(e.T) / kKnm;
+                        c.resistance = torsion.TRd / kKnm;
+                        c.unit = "kN*m";
+                        c.lines = torsion.lines;
+                        if (tRatio > 0.20) {
+                            c.lines.push_back(fmt("T_Sd/T_Rd = %.3f > 0,20: (N/NRd + M/MRd) + (V/VRd + T/TRd)^2 = (%.3f + %.3f) + (%.3f + %.3f)^2 = %.3f  (%s)", tRatio, nr, mr, vr, tRatio, ratio, whereOf().c_str()));
+                        } else {
+                            c.lines.push_back(fmt("T_Sd/T_Rd = %.3f <= 0,20: efeito da torcao desprezado nas interacoes (5.5.2.2)  (%s)", tRatio, whereOf().c_str()));
+                        }
+                        c.ratio = ratio;
+                        col.offer(std::move(c), combo.name, st.x);
+                    }
+                } else if (std::abs(e.T) > 1e5 && !warpingCheck && !solidCheck) {
                     anyTorsionIgnored = true;
                 }
             }
+
+            // --- torcao em secoes abertas (5.5.2.3): tensoes normais e de cisalhamento pela Teoria da Elasticidade ---
+            if (warpingCheck && (std::abs(e.T) > 1e-9 || std::abs(e.B) > 1e-9)) {
+                const double gammaStress = cold ? o14.gammaFlexure : o8.gammaA1;
+                const double fyd = in.steel.fy / gammaStress;
+                const SectorialData &sec = s.sectorial;
+                const bool withWarping = in.warping && sec.Cw > 0.0;
+                if (!in.warping && std::abs(e.T) > 1e5) {
+                    anyOpenWithoutWarping = true;
+                }
+                const double bimoment = withWarping ? e.B : 0.0;
+                const double tw = withWarping ? e.Tw : 0.0;
+                // tensao normal em todos os pontos de amostragem: sigma = N/A - Mz y/Iz + My z/Iy + B omega/Cw (eixos locais; Mz = Mx de projeto, My local = -My de projeto)
+                double sigmaTension = -1e300, sigmaCompression = -1e300, sigmaWarpMax = 0.0;
+                for (const SectorialData::Sample &p : sec.samples) {
+                    const double sigmaW = withWarping ? bimoment * p.omega / sec.Cw : 0.0;
+                    const double sigma = e.N / s.g.area - mxSd * p.y / s.g.Ix - mySd * p.z / s.g.Iy + sigmaW;
+                    sigmaTension = std::max(sigmaTension, sigma);
+                    sigmaCompression = std::max(sigmaCompression, -sigma);
+                    sigmaWarpMax = std::max(sigmaWarpMax, std::abs(sigmaW));
+                }
+                // chi: menor fator entre os estados-limite de instabilidade ja avaliados (5.3 e 5.4), adotado para a tensao normal de compressao
+                double chi = 1.0;
+                std::string chiNote = "chi = 1,00 (sem compressao)";
+                if (sigmaCompression > 0.0) {
+                    std::string governing = "escoamento";
+                    auto take = [&](double value, const char *name) {
+                        if (value > 0.0 && value < chi) {
+                            chi = value;
+                            governing = name;
+                        }
+                    };
+                    if (e.N < 0.0 && comp.NcRd > 0.0) {
+                        take(comp.NcRd / (s.g.area * fyd), "compressao axial");
+                    }
+                    if (absMx > 0.0 && mxRd > 0.0) {
+                        take(mxRd / (s.g.Wx() * fyd), "flexao eixo X");
+                    }
+                    if (absMy > 0.0 && myRd > 0.0) {
+                        take(myRd / (s.g.Wy() * fyd), "flexao eixo Y");
+                    }
+                    chi = std::min(chi, 1.0);
+                    chiNote = fmt("chi = %.3f (menor fator entre os estados-limite de instabilidade ja avaliados: %s)", chi, governing.c_str());
+                }
+                const double ratioNormal = std::max(sigmaTension / fyd, sigmaCompression / (chi * fyd));
+                if (col.wants("warping_normal", ratioNormal)) {
+                    CheckResult c;
+                    c.id = "warping_normal";
+                    c.title = in.warping ? "Torcao com empenamento: tensoes normais" : "Torcao: tensoes normais";
+                    c.clause = clauseTag + ", 5.5.2.3-a e 5.5.2.3-c";
+                    c.demand = std::max(sigmaTension, sigmaCompression);
+                    c.resistance = fyd;
+                    c.unit = "MPa";
+                    c.ratio = ratioNormal;
+                    c.lines.push_back(fmt("Linha media da secao (paredes finas): Cw = %.4g mm6; omega_max = %.0f mm2; centro de cisalhamento a (y_s, z_s) = (%.1f, %.1f) mm do centroide", sec.Cw, sec.omegaMax, sec.ys, sec.zs));
+                    if (withWarping) {
+                        c.lines.push_back(fmt("Bimomento B = %.4g kN*m2; sigma_w = B omega/Cw = %.1f MPa (maximo); N = %.2f kN, Mx = %.2f kN*m, My = %.2f kN*m", bimoment / 1e9, sigmaWarpMax, e.N / kKn,
+                                              mxSd / kKnm, mySd / kKnm));
+                    } else {
+                        c.lines.push_back(fmt("Barra analisada sem empenamento (so Saint-Venant): tensoes de empenamento desprezadas; N = %.2f kN, Mx = %.2f kN*m, My = %.2f kN*m", e.N / kKn, mxSd / kKnm, mySd / kKnm));
+                    }
+                    c.lines.push_back(fmt("sigma_Sd,max: tracao %.1f MPa, compressao %.1f MPa; fy/gamma = %.1f MPa (escoamento, 5.5.2.3-a)", sigmaTension, sigmaCompression, fyd));
+                    c.lines.push_back(chiNote + fmt("; compressao: sigma_Sd/(chi fy/gamma) = %.3f  (%s)", sigmaCompression / (chi * fyd), whereOf().c_str()));
+                    col.offer(std::move(c), combo.name, st.x);
+                }
+                // tensoes de cisalhamento em todos os pontos de amostragem; parcelas somadas em modulo (sentidos relativos nao conhecidos): envoltoria conservadora
+                const double tsv = e.T - tw;
+                const double aw = (s.kind == SectionKind::I || s.kind == SectionKind::Channel) ? s.d * s.tw : s.g.area;
+                const double chiV = (vyRd > 0.0 && aw > 0.0 && (s.kind == SectionKind::I || s.kind == SectionKind::Channel)) ? std::min(1.0, vyRd / (0.60 * fyd * aw)) : 1.0;
+                double ratioShear = 0.0, tauMax = 0.0, tauSvAt = 0.0, tauVAt = 0.0, tauWAt = 0.0, limitAt = 0.60 * fyd;
+                for (const SectorialData::Sample &p : sec.samples) {
+                    const double tauSv = std::abs(tsv) * p.t / s.J;
+                    const double tauV = std::abs(e.Vy) * std::abs(p.sy) / (s.g.Ix * p.t) + std::abs(e.Vz) * std::abs(p.sz) / (s.g.Iy * p.t);
+                    const double tauW = withWarping ? std::abs(tw) * std::abs(p.sw) / (sec.Cw * p.t) : 0.0;
+                    const double tau = tauSv + tauV + tauW;
+                    const double limit = 0.60 * fyd * (p.alignedY > 0.7 ? chiV : 1.0);
+                    if (tau / limit > ratioShear) {
+                        ratioShear = tau / limit;
+                        tauMax = tau;
+                        tauSvAt = tauSv;
+                        tauVAt = tauV;
+                        tauWAt = tauW;
+                        limitAt = limit;
+                    }
+                }
+                if (col.wants("warping_shear", ratioShear)) {
+                    CheckResult c;
+                    c.id = "warping_shear";
+                    c.title = in.warping ? "Torcao com empenamento: tensoes de cisalhamento" : "Torcao: tensoes de cisalhamento";
+                    c.clause = clauseTag + ", 5.5.2.3-b e 5.5.2.3-d";
+                    c.demand = tauMax;
+                    c.resistance = limitAt;
+                    c.unit = "MPa";
+                    c.ratio = ratioShear;
+                    c.lines.push_back(fmt("T = %.2f kN*m = T_sv + T_w = %.2f + %.2f kN*m (T_w: parcela de empenamento)", e.T / kKnm, tsv / kKnm, tw / kKnm));
+                    c.lines.push_back(fmt("Ponto mais solicitado: tau = tau_sv (T_sv t/J = %.1f) + tau_w (T_w S_w/(Cw t) = %.1f) + tau_V (V S/(I t) = %.1f) = %.1f MPa", tauSvAt, tauWAt, tauVAt, tauMax));
+                    c.lines.push_back(fmt("Limite: 0,60 chi fy/gamma = %.1f MPa (chi = %.3f da flambagem por cisalhamento da alma, VRd/Vpl, nas paredes paralelas ao eixo y, 5.5.2.3-d)  (%s)", limitAt, chiV, whereOf().c_str()));
+                    col.offer(std::move(c), combo.name, st.x);
+                }
+            }
+
+            // --- torcao em secoes macicas (5.5.2.3): tensao de cisalhamento elastica de Saint-Venant ---
+            if (solidCheck && std::abs(e.T) > 1e-9) {
+                const double fyd = in.steel.fy / (cold ? o14.gammaFlexure : o8.gammaA1);
+                double tauT, tauV, area, factor;
+                std::string how;
+                if (s.kind == SectionKind::SolidRound) {
+                    tauT = 16.0 * std::abs(e.T) / (kPi * s.D * s.D * s.D);
+                    area = kPi * s.D * s.D / 4.0;
+                    factor = 4.0 / 3.0;
+                    how = fmt("tau_T = 16 T/(pi D^3) = %.1f MPa", tauT);
+                } else {
+                    const double bShort = std::min(s.bf, s.d), hLong = std::max(s.bf, s.d);
+                    const double ratio = hLong / bShort;
+                    // coeficiente alpha de torcao de retangulos macicos (Timoshenko): h/b = 1; 1,5; 2; 3; 4; 6; 10; infinito
+                    static const double kRatio[] = {1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0, 1e9};
+                    static const double kAlpha[] = {0.208, 0.231, 0.246, 0.267, 0.282, 0.299, 0.312, 0.333};
+                    double alpha = kAlpha[7];
+                    for (int k = 0; k < 7; ++k) {
+                        if (ratio <= kRatio[k + 1]) {
+                            alpha = kAlpha[k] + (kAlpha[k + 1] - kAlpha[k]) * (std::min(ratio, kRatio[k + 1]) - kRatio[k]) / (kRatio[k + 1] - kRatio[k]);
+                            break;
+                        }
+                    }
+                    tauT = std::abs(e.T) / (alpha * hLong * bShort * bShort);
+                    area = s.bf * s.d;
+                    factor = 1.5;
+                    how = fmt("tau_T = T/(alpha h b^2) = %.1f MPa (alpha = %.3f para h/b = %.2f)", tauT, alpha, ratio);
+                }
+                tauV = factor * std::hypot(e.Vy, e.Vz) / area;
+                const double tau = tauT + tauV;
+                const double ratioT = tau / (0.60 * fyd);
+                if (col.wants("torsion", ratioT)) {
+                    CheckResult c;
+                    c.id = "torsion";
+                    c.title = "Torcao em secao macica: tensoes de cisalhamento";
+                    c.clause = clauseTag + ", 5.5.2.3-b";
+                    c.demand = tau;
+                    c.resistance = 0.60 * fyd;
+                    c.unit = "MPa";
+                    c.ratio = ratioT;
+                    c.lines.push_back(how);
+                    c.lines.push_back(fmt("tau_V = %.2f V/A = %.1f MPa; tau = tau_T + tau_V = %.1f MPa (soma em modulo, envoltoria); limite 0,60 fy/gamma = %.1f MPa  (%s)", factor, tauV, tau, 0.60 * fyd, whereOf().c_str()));
+                    col.offer(std::move(c), combo.name, st.x);
+                }
+            }
+        }
+    }
+
+    // --- NBR 8800: solda mesa-alma (5.4.5), lamelas (5.4.4) e comprimento destravado entre rotulas plasticas (4.11.5) ---
+    if (!cold && (in.webWeldLeg > 0.0 || in.coverB > 0.0 || in.plasticAnalysis)) {
+        BeamExtraContext ctx;
+        ctx.length = L;
+        ctx.segments = segments;
+        ctx.lb = in.lbOverride > 0.0 ? in.lbOverride : L / std::max(1, segments);
+        ctx.gammaA1 = o8.gammaA1;
+        ctx.gammaA2 = o8.gammaA2;
+        ctx.clauseTag = clauseTag;
+        if (s.kind == SectionKind::I) {
+            const auto &fx = flexOf(Axis::X, true, in.compressionFlangeBraced ? 0.0 : ctx.lb, in.cbEqualsOne ? 1.0 : 1.0);
+            ctx.mxRdBare = fx.covered ? fx.MRd : 0.0;
+        }
+        for (CheckResult &extra : beamExtraChecks(in, ctx)) {
+            const std::string id = extra.id;
+            col.offer(std::move(extra), "envoltoria", 0.0);
+            (void)id;
         }
     }
 
@@ -620,7 +965,10 @@ BarDesignOutput designBar(const BarDesignInput &in)
         }
     }
     if (anyTorsionIgnored) {
-        out.warnings.push_back("Ha momento de torcao em perfil aberto/macico: a verificacao de torcao nao e coberta (requer analise de empenamento).");
+        out.warnings.push_back("Ha momento de torcao em perfil sem verificacao de torcao disponivel (composto ou secao nao tratada).");
+    }
+    if (anyOpenWithoutWarping) {
+        out.warnings.push_back("Torcao em perfil aberto verificada so por Saint-Venant: as tensoes de empenamento foram desprezadas. Ative \"Torcao com empenamento\" nos parametros de dimensionamento para considera-las.");
     }
     if (out.checks.empty()) {
         out.warnings.push_back("Sem esforcos nas combinacoes selecionadas: execute a analise e selecione combinacoes ultimas.");

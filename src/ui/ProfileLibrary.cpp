@@ -82,7 +82,7 @@ QStringList ProfileLibrary::families()
 
 QList<ProfileLibrary::Category> ProfileLibrary::categories()
 {
-    return {Category::Laminado, Category::MoldadoAFrio, Category::Concreto, Category::SemGeometria};
+    return {Category::Laminado, Category::Composta, Category::MoldadoAFrio, Category::Concreto, Category::SemGeometria};
 }
 
 QString ProfileLibrary::categoryName(Category category)
@@ -92,6 +92,7 @@ QString ProfileLibrary::categoryName(Category category)
     case Category::MoldadoAFrio: return QObject::tr("Aço moldado a frio");
     case Category::Concreto: return QObject::tr("Concreto");
     case Category::SemGeometria: return QObject::tr("Só propriedades");
+    case Category::Composta: return QObject::tr("Barras compostas");
     }
     return {};
 }
@@ -104,6 +105,9 @@ ProfileLibrary::Category ProfileLibrary::categoryOf(const QString &family)
     }
     if (info->material == QLatin1String("Concreto")) {
         return Category::Concreto;
+    }
+    if (SectionShapes::isComposite(family)) {
+        return Category::Composta;   // dois perfis laminados iguais trabalhando em conjunto (NBR 8800, 5.3.6)
     }
     // Perfis "formados" e tubulares (conformados a frio) vs. laminados a quente (W, I, U, L, T e barras).
     if (family.endsWith(QLatin1String("Formado")) || family.startsWith(QLatin1String("Tubular"))) {

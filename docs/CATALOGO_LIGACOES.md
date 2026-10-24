@@ -43,3 +43,18 @@ e deslizamento (ligação por atrito) opcional. Dupla tala: corte duplo nos para
 Automático a partir da análise: o cortante do painel de alma (5.7.7.1) e o NSd do pilar vêm do equilíbrio do nó (esforços de extremidade com sinal: mesas das vigas + cortante dos pilares de cima e de baixo; `NodeEquilibrium`), e o M+Rd da viga mista (campo 0 = automático) é calculado pela L.2.3.1 com o perfil, a laje, os conectores do vão e βvm.
 
 Hipóteses declaradas (conservadoras ou dependentes de dado do usuário): momento do nó adotado na emenda 148 sem alívio do cortante; sem análise, o cortante/NSd do pilar vêm dos campos manuais (padrão 0); εsu da armadura e flambagem por distorção (O.3.2-d) informados/verificados pelo projetista; rigidez ki das cantoneiras segue a redação literal de O.2.5.2.3.1.
+
+## Barras inclinadas sobre o apoio (banzo de tesoura sobre pilar, vigas inclinadas) e perfis em ângulo
+
+* **Inclinação (`skew`, graus):** ângulo entre o eixo da barra e a **normal da face do apoio** (0° = perpendicular). Ao escolher a barra de apoio, o programa a calcula da geometria
+  (`ConnectionService::skewDegrees`; face da mesa: eixo y do apoio; face da alma: eixo z) e grava em `skew`; o campo é editável na seção "Perfil de apoio" do formulário.
+* **Esforços no plano do apoio** (`interfaceForces`): `N_n = |N| cos α + |V| sen α` (normal à face: tração dos parafusos/solda, local do apoio) e `V_p = |N| sen α + |V|` (paralelo à face).
+  Soma em módulo — o sentido do cortante no plano da ligação não é conhecido —, portanto **conservador**; para α = 0 reproduz os esforços da barra.
+* **Tipologias da barra com apoio** (chapa de cisalhamento, cantoneiras, chapa de extremidade, famílias do catálogo): cada verificação é calculada com os esforços da barra e com os resolvidos
+  no plano do apoio e fica com a **mais desfavorável**; as do lado da barra podem ficar conservadoras. Um item informativo "Ligação com barra inclinada" registra α, `N_n` e `V_p`.
+* **Chapa de nó (diagonal, banzo de tesoura em cantoneira simples ou dupla):** a solda ao apoio recebe o ângulo `90° − α` entre a força e o eixo da solda, e a demanda no perfil de apoio é só a componente
+  normal à face, `F cos α`.
+* **Perfis em ângulo:** a chapa de nó trata cantoneira simples (1 peça) e dupla (2 peças, corte duplo; inclui a barra composta "Dupla Cantoneira T"), com excentricidade `e_c` do centroide à face ligada,
+  `C_t`, cisalhamento de bloco, seção de Whitmore e solda. Nós de treliça (banzo + diagonais) usam o ângulo de cada barra com o banzo; a inclinação do próprio banzo não altera esses ângulos relativos.
+* **Limitações declaradas:** as dimensões do detalhe (corte inclinado da extremidade, comprimento das soldas e alturas projetadas) **não** são recalculadas pela inclinação (ficam as da barra ortogonal,
+  o que é conservador para soldas); o plano de inclinação é suposto o que contém o eixo do apoio e a normal da face (pórticos e tesouras planos).

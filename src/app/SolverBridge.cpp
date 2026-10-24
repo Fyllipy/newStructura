@@ -3,6 +3,7 @@
 #include <QLibrary>
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace Structura::App {
@@ -115,6 +116,104 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
     }
     if (setOptions) {
         setOptions(model.secondOrder ? 1 : 0, 0, 0.0);
+    }
+    using SetAnalysisFn = void (*)(int, int, int);
+    auto setAnalysis = reinterpret_cast<SetAnalysisFn>(solverLibrary.resolve("structura_set_analysis_options"));
+    using SetShearAreasFn = void (*)(int, const int *, const double *, const double *);
+    auto setShearAreas = reinterpret_cast<SetShearAreasFn>(solverLibrary.resolve("structura_set_shear_areas"));
+    if ((model.shearDeformation || model.stabilityFunctions || model.loadSteps > 1) && (!setAnalysis || (model.shearDeformation && !setShearAreas))) {
+        throw SolverBridgeError("A DLL do solver nao suporta deformacao por cortante/funcoes de estabilidade (structura_set_analysis_options ausente). "
+                                "Recompile Structuradll e copie rds.dll para a raiz.");
+    }
+    if (setAnalysis) {
+        setAnalysis(model.shearDeformation ? 1 : 0, model.stabilityFunctions ? 1 : 0, model.loadSteps);
+    }
+    if (setShearAreas) {
+        std::vector<int> shearIds;
+        std::vector<double> shearY, shearZ;
+        if (model.shearDeformation) {
+            for (const auto &section : model.sections) {
+                shearIds.push_back(section.id);
+                shearY.push_back(section.shearAreaY);
+                shearZ.push_back(section.shearAreaZ);
+            }
+        }
+        setShearAreas(static_cast<int>(shearIds.size()), shearIds.data(), shearY.data(), shearZ.data());
+    }
+    {
+        using SetWarpingSectionsFn = void (*)(int, const int *, const double *);
+        using SetWarpingMembersFn = void (*)(int, const int *, const int *, const int *);
+        auto setWarpingSections = reinterpret_cast<SetWarpingSectionsFn>(solverLibrary.resolve("structura_set_warping_sections"));
+        auto setWarpingMembers = reinterpret_cast<SetWarpingMembersFn>(solverLibrary.resolve("structura_set_warping_members"));
+        std::vector<int> sectionIds, memberIds, modeStart, modeEnd;
+        std::vector<double> constants;
+        for (const auto &member : model.members) {
+            if (member.warping) {
+                memberIds.push_back(member.id);
+                modeStart.push_back(member.warpingStartMode);
+                modeEnd.push_back(member.warpingEndMode);
+            }
+        }
+        if (!memberIds.empty()) {
+            for (const auto &section : model.sections) {
+                if (section.warpingConstant > 0.0) {
+                    sectionIds.push_back(section.id);
+                    constants.push_back(section.warpingConstant);
+                }
+            }
+        }
+        if (!memberIds.empty() && (!setWarpingSections || !setWarpingMembers)) {
+            throw SolverBridgeError("A DLL do solver nao suporta torcao com empenamento (structura_set_warping_* ausente). "
+                                    "Recompile Structuradll e copie rds.dll para a raiz.");
+        }
+        if (setWarpingSections && setWarpingMembers) {
+            setWarpingSections(static_cast<int>(sectionIds.size()), sectionIds.data(), constants.data());
+            setWarpingMembers(static_cast<int>(memberIds.size()), memberIds.data(), modeStart.data(), modeEnd.data());
+        }
+    }
+    {
+        using SetTaperFn = void (*)(int, const int *, const double *, const double *, const double *, const double *, const double *, const int *);
+        auto setTaper = reinterpret_cast<SetTaperFn>(solverLibrary.resolve("structura_set_taper"));
+        std::vector<int> ids, segments;
+        std::vector<double> d1, d2, bf, tw, tf;
+        for (const auto &member : model.members) {
+            if (member.taper) {
+                ids.push_back(member.id);
+                d1.push_back(member.taperD1);
+                d2.push_back(member.taperD2);
+                bf.push_back(member.taperBf);
+                tw.push_back(member.taperTw);
+                tf.push_back(member.taperTf);
+                segments.push_back(member.taperSegments);
+            }
+        }
+        if (!ids.empty() && !setTaper) {
+            throw SolverBridgeError("A DLL do solver nao suporta barras de secao variavel (structura_set_taper ausente). "
+                                    "Recompile Structuradll e copie rds.dll para a raiz.");
+        }
+        if (setTaper) {
+            setTaper(static_cast<int>(ids.size()), ids.data(), d1.data(), d2.data(), bf.data(), tw.data(), tf.data(), segments.data());
+        }
+    }
+    using SetRigidZonesFn = void (*)(int, const int *, const double *, const double *);
+    auto setRigidZones = reinterpret_cast<SetRigidZonesFn>(solverLibrary.resolve("structura_set_rigid_zones"));
+    {
+        std::vector<int> rigidIds;
+        std::vector<double> rigidStart, rigidEnd;
+        for (const auto &member : model.members) {
+            if (member.rigidStart > 0.0 || member.rigidEnd > 0.0) {
+                rigidIds.push_back(member.id);
+                rigidStart.push_back(member.rigidStart);
+                rigidEnd.push_back(member.rigidEnd);
+            }
+        }
+        if (!rigidIds.empty() && !setRigidZones) {
+            throw SolverBridgeError("A DLL do solver nao suporta zonas rigidas (structura_set_rigid_zones ausente). "
+                                    "Recompile Structuradll e copie rds.dll para a raiz.");
+        }
+        if (setRigidZones) {
+            setRigidZones(static_cast<int>(rigidIds.size()), rigidIds.data(), rigidStart.data(), rigidEnd.data());
+        }
     }
     using SetBucklingFn = void (*)(int);
     auto setBuckling = reinterpret_cast<SetBucklingFn>(solverLibrary.resolve("structura_set_buckling"));
@@ -279,6 +378,18 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
                                    static_cast<int>(springNodes.size()), springNodes.data(), springK.data(), springCompression.data(), springNormals.data());
         if (code != 0) {
             throw SolverBridgeError("Dados de cascas invalidos para o solver.");
+        }
+        using SetShellAlphaFn = int (*)(int, const double *);
+        auto setShellAlpha = reinterpret_cast<SetShellAlphaFn>(solverLibrary.resolve("structura_set_shell_alpha"));
+        std::vector<double> shellAlpha;
+        for (const auto &e : model.shell->elements) {
+            shellAlpha.push_back(e.alpha);
+        }
+        if (setShellAlpha) {
+            setShellAlpha(static_cast<int>(shellAlpha.size()), shellAlpha.data());
+        } else if (std::any_of(shellAlpha.begin(), shellAlpha.end(), [](double a) { return std::abs(a - 1.2e-5) > 1e-12; })) {
+            throw SolverBridgeError("A DLL do solver nao aceita o coeficiente de dilatacao das cascas (structura_set_shell_alpha ausente). "
+                                    "Recompile Structuradll e copie rds.dll para a raiz.");
         }
     }
 
@@ -468,6 +579,30 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         }
     }
 
+    {
+        std::vector<int> warpIds;
+        std::vector<std::size_t> warpIndex;
+        for (std::size_t i = 0; i < model.members.size(); ++i) {
+            if (model.members[i].warping) {
+                warpIds.push_back(model.members[i].id);
+                warpIndex.push_back(i);
+            }
+        }
+        using GetWarpingFn = int (*)(int, const int *, double *);
+        auto getWarping = reinterpret_cast<GetWarpingFn>(solverLibrary.resolve("structura_get_warping"));
+        if (!warpIds.empty() && getWarping) {
+            std::vector<double> values(warpIds.size() * 4U, 0.0);
+            const bool used = getWarping(static_cast<int>(warpIds.size()), warpIds.data(), values.data()) > 0;
+            for (std::size_t k = 0; k < warpIds.size(); ++k) {
+                auto &memberResult = result.memberResults[warpIndex[k]];
+                const double *v = values.data() + k * 4U;
+                memberResult.hasWarping = used;
+                memberResult.warpingRate = {v[0], v[1]};
+                memberResult.warpingForce = {v[2], v[3]};
+            }
+        }
+    }
+
     if (model.bucklingModes > 0 && !model.secondOrder) {
         using GetBucklingFn = int (*)(int, int, double *, double *);
         auto getBuckling = reinterpret_cast<GetBucklingFn>(solverLibrary.resolve("structura_get_buckling"));
@@ -499,6 +634,14 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
                 const auto begin = shapes.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(m) * totalNodeCount * 6U);
                 result.modalShapes.emplace_back(begin, begin + static_cast<std::ptrdiff_t>(model.nodes.size() * 6U));
             }
+        }
+    }
+
+    using GetWarningsFn = int (*)(char *, int);
+    if (auto getWarnings = reinterpret_cast<GetWarningsFn>(solverLibrary.resolve("structura_get_warnings"))) {
+        std::vector<char> text(8192, '\0');
+        if (getWarnings(text.data(), static_cast<int>(text.size())) > 0) {
+            result.warnings = QString::fromUtf8(text.data()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         }
     }
 

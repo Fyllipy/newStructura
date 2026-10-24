@@ -1,3 +1,4 @@
+#include "core/math/Vec3Ops.h"
 #include "viz/loads/LoadActionRenderer.h"
 
 #include <vtkCellArray.h>
@@ -18,6 +19,8 @@ namespace {
 
 using Vec3 = LoadActionRenderer::Vec3;
 
+using Structura::Math::sub;
+
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kMaxHeight = 1.0;
 constexpr double kMinHeight = 0.1;
@@ -30,9 +33,9 @@ constexpr double kMomentSpacing = 1.0;
 constexpr Vec3 kGlobalColor {0xcf / 255.0, 0x22 / 255.0, 0x2e / 255.0};
 constexpr Vec3 kLocalColor {0x09 / 255.0, 0x69 / 255.0, 0xda / 255.0};
 constexpr Vec3 kSelfWeightColor {0x2d / 255.0, 0xa4 / 255.0, 0x4e / 255.0};
+constexpr Vec3 kHighlightColor {1.0, 0.55, 0.0};   // carga selecionada na viewport
 
 Vec3 add(const Vec3 &a, const Vec3 &b) { return {a[0] + b[0], a[1] + b[1], a[2] + b[2]}; }
-Vec3 sub(const Vec3 &a, const Vec3 &b) { return {a[0] - b[0], a[1] - b[1], a[2] - b[2]}; }
 Vec3 mul(const Vec3 &a, double s) { return {a[0] * s, a[1] * s, a[2] * s}; }
 double dotp(const Vec3 &a, const Vec3 &b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 double len(const Vec3 &a) { return std::sqrt(dotp(a, a)); }
@@ -146,7 +149,7 @@ std::array<Vec3, 3> momentPlane(const std::array<Vec3, 3> &basis, int direction)
 }
 
 void addMomentSymbol(Batches &batches, const Vec3 &color, const Vec3 &center, const Vec3 &axis,
-                     const Vec3 &u, const Vec3 &v, double value, double radius)
+                     const Vec3 &u, const Vec3 &v, double value, double radius, double width)
 {
     const double orientation = value > 0 ? -1.0 : 1.0;
     constexpr int kSteps = 25;
@@ -167,8 +170,8 @@ void addMomentSymbol(Batches &batches, const Vec3 &color, const Vec3 &center, co
     points.push_back(add(back, side));
     points.push_back(sub(back, side));
     points.push_back(tip);
-    batches.addPolyline(color, 3.0, points, arc);
-    batches.addSegments(color, 3.0, points, {{kSteps, kSteps + 2}, {kSteps + 1, kSteps + 2}});
+    batches.addPolyline(color, width, points, arc);
+    batches.addSegments(color, width, points, {{kSteps, kSteps + 2}, {kSteps + 1, kSteps + 2}});
 }
 
 } // namespace
@@ -187,11 +190,12 @@ void LoadActionRenderer::clear()
     }
     m_actors.clear();
     m_labels = {};
+    m_picks.clear();
 }
 
 void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                                 const std::vector<MemberAction> &members,
-                                const Visibility &visibility)
+                                const Visibility &visibility, const Key &highlighted)
 {
     clear();
     if (!m_renderer) {
@@ -199,8 +203,29 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
     }
 
     Batches batches;
-    const Vec3 momentColor = kLocalColor;
-    const Vec3 nodeColor = kGlobalColor;
+    const Vec3 baseMomentColor = kLocalColor;
+    const Vec3 baseNodeColor = kGlobalColor;
+    auto pickOf = [this](const Key &key) -> PickItem & {
+        for (PickItem &item : m_picks) {
+            if (item.key == key) {
+                return item;
+            }
+        }
+        m_picks.push_back({key, {}, {}});
+        return m_picks.back();
+    };
+    auto ringPick = [](PickItem &item, const Vec3 &center, const Vec3 &u, const Vec3 &v) {
+        constexpr int kSides = 16;
+        Vec3 previous = add(center, mul(u, kMomentRadius));
+        for (int i = 1; i <= kSides; ++i) {
+            const double angle = 2.0 * kPi * i / kSides;
+            const Vec3 point = add(center, add(mul(u, kMomentRadius * std::cos(angle)), mul(v, kMomentRadius * std::sin(angle))));
+            item.segments.push_back({previous, point});
+            previous = point;
+        }
+    };
+    auto shown = [&](const Key &key, const Vec3 &color) { return key.valid() && key == highlighted ? kHighlightColor : color; };
+    auto widthOf = [&](const Key &key, double width) { return key.valid() && key == highlighted ? width + 2.0 : width; };
 
     // Intensidade maxima entre forcas distribuidas e nodais visiveis.
     double maximum = 0.0;
@@ -285,7 +310,13 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                         segments.push_back({first, first + 2});
                         segments.push_back({first + 1, first + 2});
                     }
-                    batches.addSegments(color, 2.0, pts, segments);
+                    batches.addSegments(shown(action.key, color), widthOf(action.key, 2.0), pts, segments);
+                    if (action.key.valid()) {
+                        PickItem &item = pickOf(action.key);
+                        for (std::size_t s = 1; s < segments.size(); ++s) {   // so as pontas das setas: a linha coincide com a propria barra
+                            item.segments.push_back({pts[static_cast<std::size_t>(segments[s].first)], pts[static_cast<std::size_t>(segments[s].second)]});
+                        }
+                    }
                     m_labels.positions.push_back(sub(tailEnd, mul(loadDirection, kLabelClearance)));
                     m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kN/m"));
                     m_labels.colors.push_back(color);
@@ -297,9 +328,12 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                 const Vec3 offset = mul(forceDirection, -valueSign * forceHeight(value, maximum));
                 const Vec3 topStart = add(action.start, offset);
                 const Vec3 topEnd = add(action.end, offset);
-                batches.addFace(color, {action.start, action.end, topEnd, topStart});
-                batches.addSegments(color, 2.0, {action.start, action.end, topEnd, topStart},
+                batches.addFace(shown(action.key, color), {action.start, action.end, topEnd, topStart});
+                batches.addSegments(shown(action.key, color), widthOf(action.key, 2.0), {action.start, action.end, topEnd, topStart},
                                     {{1, 2}, {2, 3}, {3, 0}});
+                if (action.key.valid()) {
+                    pickOf(action.key).quads.push_back({action.start, action.end, topEnd, topStart});
+                }
                 const double offsetLength = len(offset);
                 const Vec3 outward = offsetLength > 0 ? mul(offset, 1.0 / offsetLength)
                                                       : mul(forceDirection, -valueSign);
@@ -327,10 +361,13 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                 const Vec3 normal = perpendicularTo(direction);
                 const Vec3 armA = add(sub(node.position, mul(direction, chevron)), mul(normal, chevron * 0.55));
                 const Vec3 armB = sub(sub(node.position, mul(direction, chevron)), mul(normal, chevron * 0.55));
-                batches.addSegments(nodeColor, 3.0, {lineStart, node.position, armA, armB}, {{0, 1}, {2, 1}, {3, 1}});
+                batches.addSegments(shown(node.key, baseNodeColor), widthOf(node.key, 3.0), {lineStart, node.position, armA, armB}, {{0, 1}, {2, 1}, {3, 1}});
+                if (node.key.valid()) {
+                    pickOf(node.key).segments.push_back({lineStart, node.position});
+                }
                 m_labels.positions.push_back(sub(lineStart, mul(direction, kLabelClearance)));
                 m_labels.texts.push_back(formatNumber(force) + QStringLiteral(" kN"));
-                m_labels.colors.push_back(nodeColor);
+                m_labels.colors.push_back(baseNodeColor);
                 m_labels.weights.push_back(std::abs(force));
             }
         }
@@ -357,11 +394,14 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                     centers.push_back(add(action.start, mul(sub(action.end, action.start), fraction)));
                 }
                 for (const Vec3 &center : centers) {
-                    addMomentSymbol(batches, momentColor, center, plane[0], plane[1], plane[2], value, kMomentRadius);
+                    addMomentSymbol(batches, shown(action.key, baseMomentColor), center, plane[0], plane[1], plane[2], value, kMomentRadius, widthOf(action.key, 3.0));
+                    if (action.key.valid()) {
+                        ringPick(pickOf(action.key), center, plane[1], plane[2]);
+                    }
                 }
                 m_labels.positions.push_back(add(centers[centers.size() / 2], mul(plane[1], kMomentRadius * 1.35)));
                 m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kNm/m"));
-                m_labels.colors.push_back(momentColor);
+                m_labels.colors.push_back(baseMomentColor);
                 m_labels.weights.push_back(std::abs(value));
             }
         }
@@ -377,10 +417,13 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                     continue;
                 }
                 const auto plane = momentPlane(identity, axis);
-                addMomentSymbol(batches, nodeColor, node.position, plane[0], plane[1], plane[2], value, kMomentRadius);
+                addMomentSymbol(batches, shown(node.key, baseNodeColor), node.position, plane[0], plane[1], plane[2], value, kMomentRadius, widthOf(node.key, 3.0));
+                if (node.key.valid()) {
+                    ringPick(pickOf(node.key), node.position, plane[1], plane[2]);
+                }
                 m_labels.positions.push_back(add(node.position, mul(plane[1], kMomentRadius * 1.35)));
                 m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kNm"));
-                m_labels.colors.push_back(nodeColor);
+                m_labels.colors.push_back(baseNodeColor);
                 m_labels.weights.push_back(std::abs(value));
             }
         }

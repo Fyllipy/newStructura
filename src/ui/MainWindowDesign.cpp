@@ -126,7 +126,14 @@ void MainWindow::onDesignSettings()
         }
     }
     const bool analysisChanged = settings.secondOrder != m_extras.design.secondOrder
-                                 || (settings.secondOrder && settings.stiffnessReduction != m_extras.design.stiffnessReduction);
+                                 || (settings.secondOrder && settings.stiffnessReduction != m_extras.design.stiffnessReduction)
+                                 || settings.shearDeformation != m_extras.design.shearDeformation
+                                 || settings.warpingTorsion != m_extras.design.warpingTorsion
+                                 || (!settings.secondOrder && settings.autoB2 != m_extras.design.autoB2)
+                                 || settings.rigidZoneFactor != m_extras.design.rigidZoneFactor
+                                 || settings.geometricImperfection != m_extras.design.geometricImperfection
+                                 || (settings.geometricImperfection && settings.imperfectionRatio != m_extras.design.imperfectionRatio)
+                                 || (settings.secondOrder && (settings.stabilityFunctions != m_extras.design.stabilityFunctions || settings.loadSteps != m_extras.design.loadSteps));
     m_extras.design = settings;
     showStatusMessage(analysisChanged ? tr("Parâmetros atualizados. A mudança de 2ª ordem vale após rodar a análise novamente (F5).")
                                       : tr("Parâmetros de dimensionamento atualizados."),
@@ -162,7 +169,9 @@ QString MainWindow::designCacheKey() const
     key += d.defaultSteel.toUtf8() + '|' + d.rectTubeStandard.toUtf8() + '|';
     key += QByteArray::number(static_cast<int>(d.amplifyB1)) + QByteArray::number(static_cast<int>(d.slendernessGoverns)) + QByteArray::number(static_cast<int>(d.secondOrder))
         + QByteArray::number(static_cast<int>(d.autoB2)) + QByteArray::number(static_cast<int>(d.singleStorey)) + QByteArray::number(static_cast<int>(d.groupByFamily))
-        + QByteArray::number(static_cast<int>(d.notionalLoads)) + QByteArray::number(d.notionalFactor, 'g', 8);
+        + QByteArray::number(static_cast<int>(d.notionalLoads)) + QByteArray::number(d.notionalFactor, 'g', 8)
+        + QByteArray::number(static_cast<int>(d.stabilityFunctions)) + QByteArray::number(static_cast<int>(d.shearDeformation)) + QByteArray::number(static_cast<int>(d.warpingTorsion)) + QByteArray::number(d.loadSteps)
+        + QByteArray::number(d.rigidZoneFactor, 'g', 8) + QByteArray::number(static_cast<int>(d.geometricImperfection)) + QByteArray::number(d.imperfectionRatio, 'g', 8);
     key += '|' + QByteArray::number(d.stiffnessReduction, 'g', 8) + '|' + QByteArray::number(d.rs, 'g', 8) + '|' + QByteArray::number(d.targetEta, 'g', 8) + '|';
     key += d.combinations.join(QLatin1Char(',')).toUtf8() + '|';
     auto params = [&key](const Structura::App::ProjectData::DesignMemberParams &p) {
@@ -171,7 +180,7 @@ QString MainWindow::designCacheKey() const
             + ',' + QByteArray::number(p.b2, 'g', 8) + ',' + QByteArray::number(p.netAreaRatio, 'g', 8) + ',' + QByteArray::number(p.deflDenominator) + ',' + QByteArray::number(p.stiffenerSpacing, 'g', 8) + ',' + QByteArray::number(p.panelTensionFlange) + ',' + QByteArray::number(static_cast<int>(p.coldWork)) + ',' + QByteArray::number(p.bearingLength, 'g', 8) + ',' + QByteArray::number(p.fatigueCategory) + ',' + QByteArray::number(p.fatigueCycles, 'g', 10) + ','
             + QByteArray::number(p.openingDiameter, 'g', 8) + ',' + QByteArray::number(p.openingPosition, 'g', 8) + ',' + QByteArray::number(p.openingOffset, 'g', 8) + ','
             + QByteArray::number(p.openingNeighbourD, 'g', 8) + ',' + QByteArray::number(p.openingSpacing, 'g', 8) + ','
-            + QByteArray::number(p.lx, 'g', 8) + ',' + QByteArray::number(p.ly, 'g', 8) + ',' + QByteArray::number(p.lz, 'g', 8) + ';';
+            + QByteArray::number(p.lx, 'g', 8) + ',' + QByteArray::number(p.ly, 'g', 8) + ',' + QByteArray::number(p.lz, 'g', 8) + ',' + QByteArray::number(p.compositeSpacing, 'g', 8) + QByteArray::number(static_cast<int>(p.compositeWelded)) + ',' + QByteArray::number(p.mixType) + QByteArray::number(p.mixModel) + ',' + QByteArray::number(p.mixHc, 'g', 8) + ',' + QByteArray::number(p.mixBc, 'g', 8) + ',' + QByteArray::number(p.mixFck, 'g', 8) + ',' + QByteArray::number(p.mixBarArea, 'g', 8) + ';';
     };
     params(d.defaults);
     for (const auto &m : d.members) {
@@ -197,7 +206,15 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
     run.lengthFactor = factors.second;
     run.forceFactor = factors.first;
 
-    const Structura::App::SolverBridge::ModelData &geometry = m_caseRuns.constBegin()->model;
+    // geometria: um caso de carga (as estruturas nt tem contencoes ficticias e nao servem de referencia)
+    auto geometryRun = m_caseRuns.constBegin();
+    while (geometryRun != m_caseRuns.constEnd() && geometryRun.key().startsWith(QLatin1String("NT:"))) {
+        ++geometryRun;
+    }
+    if (geometryRun == m_caseRuns.constEnd()) {
+        geometryRun = m_caseRuns.constBegin();
+    }
+    const Structura::App::SolverBridge::ModelData &geometry = geometryRun->model;
     std::vector<DesignService::ResultSet> ultimate;
     std::vector<DesignService::ResultSet> service;
     for (const auto &view : m_resultViews) {
@@ -207,6 +224,7 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
         DesignService::ResultSet set;
         set.name = view.name;
         set.result = &view.result;
+        set.nt = view.hasNt ? &view.resultNt : nullptr;
         for (const auto &term : view.terms) {
             const auto runIt = m_caseRuns.constFind(term.first);
             if (runIt != m_caseRuns.constEnd()) {
@@ -266,14 +284,16 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
             out.effects = DesignService::collectEffects(geometry, ultimate, factors.first, factors.second);
             // B2 por andar (so na analise de 1a ordem)
             if (secondOrder) {
-                out.warnings.append(designSettings.notionalLoads
+                out.warnings.append(designSettings.geometricActive()
+                                        ? tr("Análise de 2ª ordem: os esforços já incluem P-Δ e P-δ; B1 e B2 não são aplicados. As imperfeições geométricas entram pelo desaprumo inicial H/%1 das variantes das combinações.").arg(std::lround(1.0 / designSettings.imperfectionRatio))
+                                    : designSettings.notionalLoads
                                         ? tr("Análise de 2ª ordem: os esforços já incluem P-Δ e P-δ; B1 e B2 não são aplicados. As imperfeições geométricas entram pelas forças nocionais das combinações.")
                                         : tr("Análise de 2ª ordem: os esforços já incluem P-Δ e P-δ; B1 e B2 não são aplicados. "
                                              "Imperfeições geométricas (carga nocional 0,3%%) devem ser lançadas como cargas ou ativadas em Parâmetros de dimensionamento."));
             } else if (autoB2) {
                 progress.setDetail(tr("Coeficiente B2 por andar…"));
-                const auto b2 = StructuralChecks::stories(geometry, ultimate, designSettings, factors.first, factors.second);
-                DesignService::applyB2(out.effects, b2.b2);
+                const auto b2 = StructuralChecks::stories(geometry, ultimate, designSettings, factors.first, factors.second, true);
+                DesignService::applyB2(out.effects, b2.b2, b2.stiffnessFactor);
                 out.warnings += b2.warnings;
             }
             // Servico
@@ -282,7 +302,7 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
             } else {
                 progress.setDetail(tr("Flechas e deslocamentos de serviço…"));
                 out.deflections = StructuralChecks::deflections(geometry, service, designSettings, factors.second, inertiaRatio);
-                out.elsStories = StructuralChecks::stories(geometry, service, designSettings, factors.first, factors.second);
+                out.elsStories = StructuralChecks::stories(geometry, service, designSettings, factors.first, factors.second, false);
             }
             return out;
         });

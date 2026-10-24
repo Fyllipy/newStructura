@@ -36,6 +36,7 @@ public:
         TrussNode = 2,  ///< no de trelica plana: barras soldadas/parafusadas direto no banzo ou em chapa de no
         FlexEndPlate = 7,     ///< chapa de extremidade flexivel (altura parcial) soldada a alma da viga e parafusada ao apoio
         Composite = 8,        ///< ligacao mista de aco e concreto (Anexo O): armadura da laje, conectores e ligacao metalica
+        Pin = 9,              ///< chapa tracionada ligada por pino (NBR 8800:2024, 5.2.6) e o proprio pino (6.4, 6.6.2)
     };
 
     struct Entry;

@@ -61,6 +61,7 @@ struct MomentConnectionInput {
     SteelProps column;
     double colUnbraced {0.0};
     double doubler {0.0};            ///< chapa de reforco do painel de alma (mm), soma dos dois lados
+    bool beamOnBothSides {false};    ///< viga tambem do outro lado do pilar, com momento de mesmo sentido: par de compressoes opostas (5.7.6)
     bool panelStiffened {false};     ///< enrijecedores transversais do pilar alinhados as mesas da viga (entram no kv do painel)
     double colAxial {0.0};           ///< NSd do pilar (N, modulo), p/ o painel de alma (5.7.7.1)
     double colShear {0.0};           ///< cortante ja atuante no pilar (N), somado algebricamente a forca das mesas

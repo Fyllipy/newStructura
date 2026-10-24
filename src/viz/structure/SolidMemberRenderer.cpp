@@ -123,9 +123,9 @@ const SolidMemberRenderer::Geometry *SolidMemberRenderer::geometryFor(const Memb
             for (const auto &point : shape->loops[i]) {
                 loop.push_back({point[0] * 1e-3, point[1] * 1e-3});
             }
-            // Contorno externo anti-horario; furos horarios (material sempre a esquerda).
+            // Contornos externos anti-horarios; furos horarios (material sempre a esquerda).
             const bool counterClockwise = signedArea(loop) > 0.0;
-            if ((i == 0) != counterClockwise) {
+            if ((i < shape->outerCount) != counterClockwise) {
                 std::reverse(loop.begin(), loop.end());
             }
             geometry.loops.push_back(std::move(loop));

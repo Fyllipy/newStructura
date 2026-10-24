@@ -85,6 +85,9 @@ void MainWindow::onDeleteSelected()
     }
     const QSet<QUuid> selectedNodes = m_selectionModel->selectedNodes();
     const QSet<QUuid> selectedBars = m_selectionModel->selectedBars();
+    if (selectedNodes.isEmpty() && selectedBars.isEmpty() && deleteSelectedLoad()) {
+        return;
+    }
     if (selectedNodes.isEmpty() && selectedBars.isEmpty() && m_selectedShellObject >= 0) {
         deleteSelectedShell();
         return;
@@ -440,6 +443,88 @@ void MainWindow::onSplitBars()
     }
     refreshPropertiesPanel();
     showStatusMessage(tr("%1 barra(s) dividida(s): %2 corte(s), %3 nó(s) novo(s). Ctrl+Z desfaz.").arg(plan.size()).arg(cutCount).arg(created.size()), 6000);
+}
+
+int MainWindow::splitBarsAtIntermediateNodes(const QVector<QUuid> &barIds)
+{
+    if (!m_sceneController || barIds.isEmpty()) {
+        return 0;
+    }
+    constexpr double kOnAxisTolerance = 1e-3;   // m
+    const Geometry before = m_sceneController->captureGeometry();
+    QHash<QUuid, std::array<double, 3>> position;
+    for (const auto &n : before.nodes) {
+        position.insert(n.id, {n.x, n.y, n.z});
+    }
+    std::vector<SplitPlan> plan;
+    for (std::size_t i = 0; i < before.bars.size(); ++i) {
+        const auto &bar = before.bars[i];
+        if (!barIds.contains(bar.id) || !position.contains(bar.start) || !position.contains(bar.end)) {
+            continue;
+        }
+        const auto a = position.value(bar.start), b = position.value(bar.end);
+        const std::array<double, 3> d {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+        const double length2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+        if (length2 <= 0.0) {
+            continue;
+        }
+        const double length = std::sqrt(length2);
+        SplitPlan item {i, {}};
+        for (const auto &n : before.nodes) {
+            if (n.id == bar.start || n.id == bar.end) {
+                continue;
+            }
+            const double t = ((n.x - a[0]) * d[0] + (n.y - a[1]) * d[1] + (n.z - a[2]) * d[2]) / length2;
+            if (t * length <= kOnAxisTolerance || (1.0 - t) * length <= kOnAxisTolerance) {
+                continue;   // fora do trecho ou coincidente com uma extremidade
+            }
+            const double distance = std::hypot(n.x - (a[0] + t * d[0]), n.y - (a[1] + t * d[1]), n.z - (a[2] + t * d[2]));
+            if (distance <= kOnAxisTolerance) {
+                item.cuts.push_back({t, n.id});
+            }
+        }
+        if (!item.cuts.empty()) {
+            std::sort(item.cuts.begin(), item.cuts.end());
+            plan.push_back(std::move(item));
+        }
+    }
+    if (plan.empty()) {
+        return 0;
+    }
+    const ModelState stateBefore = captureState();
+    ModelState state = stateBefore;
+    Geometry after = before;
+    splitCore(after, state, plan);
+    // um trecho que coincide com uma barra ja existente (mesmos nos) nao deve duplica-la: descarta o trecho novo
+    {
+        auto pairKey = [](const Geometry::B &bar) {
+            const QString a = bar.start.toString(), b = bar.end.toString();
+            return a < b ? a + b : b + a;
+        };
+        QSet<QString> seen;
+        for (std::size_t i = 0; i < before.bars.size(); ++i) {
+            if (!barIds.contains(before.bars[i].id)) {
+                seen.insert(pairKey(before.bars[i]));
+            }
+        }
+        std::vector<Geometry::B> kept;
+        for (std::size_t i = 0; i < after.bars.size(); ++i) {
+            const bool isNew = i >= before.bars.size() || barIds.contains(after.bars[i].id);
+            if (isNew && seen.contains(pairKey(after.bars[i]))) {
+                continue;
+            }
+            seen.insert(pairKey(after.bars[i]));
+            kept.push_back(after.bars[i]);
+        }
+        after.bars = std::move(kept);
+    }
+    applyTopology(after, state);
+    if (m_undoService) {
+        m_undoService->stack()->push(new TopologyCommand(
+            tr("Dividir barra nos nós intermediários"), [this, before, stateBefore]() { applyTopology(before, stateBefore); },
+            [this, after, state]() { applyTopology(after, state); }));
+    }
+    return static_cast<int>(plan.size());
 }
 
 int MainWindow::splitBarsAtShellNodes(bool apply)

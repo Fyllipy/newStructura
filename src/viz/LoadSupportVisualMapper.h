@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QSet>
+#include <QString>
 #include <QVector>
 
 #include "app/ProjectDataTypes.h"
@@ -28,6 +30,8 @@ public:
         const QVector<Structura::App::ProjectData::MemberPlacement> *placements {nullptr}; ///< Giro de secao por barra
         const QVector<LoadCase> *loadCases {nullptr};
         QString activeCase; ///< Vazio = todos os casos
+        bool filterVisibleCases {false};   ///< true: so os casos de `visibleCases` aparecem (tem precedencia sobre `activeCase`)
+        QSet<QString> visibleCases;
     };
 
     static QVector<SceneController::NodalLoadVisual> mapNodalLoadVisuals(const SceneController *sceneController,

@@ -18,6 +18,13 @@ struct FormulaPiece {
 /// parenteses viram texto. Numeros ficam com virgula decimal.
 std::vector<FormulaPiece> convertCalculationLine(const std::string &line);
 
+/// Identificadores (simbolos) de uma expressao em texto simples, na ordem de aparicao, sem repeticao e sem unidades/funcoes.
+std::vector<std::string> identifiersIn(const std::string &expression);
+
+/// Divide `text` em `separator` fora de parenteses/colchetes; `trimText` remove espacos das pontas.
+std::vector<std::string> splitTopLevelText(const std::string &text, const std::string &separator);
+std::string trimText(const std::string &text);
+
 /// Expressao em texto simples -> LaTeX (sem rotulos).
 std::string expressionToLatex(const std::string &expression);
 

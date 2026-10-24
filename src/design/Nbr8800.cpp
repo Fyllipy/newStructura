@@ -127,7 +127,7 @@ double asymmetricBuckling(double nex, double ney, double nez, double x0, double 
 
 std::string fmt(const char *format, ...)
 {
-    char buffer[512];
+    char buffer[2048];
     va_list args;
     va_start(args, format);
     std::vsnprintf(buffer, sizeof(buffer), format, args);
@@ -156,13 +156,20 @@ TensionData tension(const DesignSection &s, const SteelGrade &steel, const Optio
 {
     TensionData t;
     const double ag = s.g.area;
-    const double ae = o.ct * o.netAreaRatio * ag;
+    const bool threaded = o.threadedRod && s.kind == SectionKind::SolidRound;
+    // 5.2.7: barra redonda rosqueada: ruptura da parte rosqueada com a area efetiva Abe = 0,75 Ab (6.3.2.2), limitada por Ab fy/ga1 (6.3.3.1)
+    const double ae = threaded ? 0.75 * ag : o.ct * o.netAreaRatio * ag;
     t.yieldRd = ag * steel.fy / o.gammaA1;
     t.ruptureRd = ae * steel.fu / o.gammaA2;
     t.NtRd = std::min(t.yieldRd, t.ruptureRd);
     t.lines.push_back(fmt("Escoamento da secao bruta: Ag fy / gama_a1 = %.1f x %.0f / %.2f = %s", ag, steel.fy, o.gammaA1, kn(t.yieldRd).c_str()));
-    t.lines.push_back(fmt("Ruptura da secao liquida: Ae fu / gama_a2 = (Ct An) fu / %.2f = (%.2f x %.2f x Ag) x %.0f / %.2f = %s", o.gammaA2,
-                          o.ct, o.netAreaRatio, steel.fu, o.gammaA2, kn(t.ruptureRd).c_str()));
+    if (threaded) {
+        t.lines.push_back(fmt("Barra redonda com extremidades rosqueadas (5.2.7): ruptura da parte rosqueada Abe fu / gama_a2 = (0,75 Ab) fu / %.2f = (0,75 x %.1f) x %.0f / %.2f = %s (Abe = 0,75 Ab, 6.3.2.2)", o.gammaA2,
+                              ag, steel.fu, o.gammaA2, kn(t.ruptureRd).c_str()));
+    } else {
+        t.lines.push_back(fmt("Ruptura da secao liquida: Ae fu / gama_a2 = (Ct An) fu / %.2f = (%.2f x %.2f x Ag) x %.0f / %.2f = %s", o.gammaA2,
+                              o.ct, o.netAreaRatio, steel.fu, o.gammaA2, kn(t.ruptureRd).c_str()));
+    }
     return t;
 }
 
@@ -176,16 +183,42 @@ CompressionData compression(const DesignSection &s, const SteelGrade &steel, con
     const double E = steel.E;
     const double G = steel.G;
     const double ag = s.g.area;
-    const double ix = s.g.Ix;
+    const double ix = o.ixOverride > 0.0 ? o.ixOverride : s.g.Ix;
     const double iy = s.g.Iy;
-    const double rx = s.g.rx;
+    const double rx = o.ixOverride > 0.0 ? std::sqrt(o.ixOverride / s.g.area) : s.g.rx;
     const double ry = s.g.ry;
 
     c.slenderness = std::max(len.Lx > 0 ? len.Lx / rx : 0.0, len.Ly > 0 ? len.Ly / ry : 0.0);
 
     const double inf = std::numeric_limits<double>::infinity();
     const double nex = len.Lx > 0 ? sq(kPi) * E * ix / sq(len.Lx) : inf;
-    const double ney = len.Ly > 0 ? sq(kPi) * E * iy / sq(len.Ly) : inf;
+    double ney = len.Ly > 0 ? sq(kPi) * E * iy / sq(len.Ly) : inf;
+    if (s.composite() && len.Ly > 0.0 && s.rMin > 0.0) {
+        // 5.3.6.3: a flexao em torno do eixo Y (perpendicular ao afastamento) deforma os perfis relativamente entre si e produz cortante nas ligacoes: Ne -> Ne,m
+        const double spacing = o.compositeSpacing > 0.0 ? o.compositeSpacing : (o.barLength > 0.0 ? o.barLength / 3.0 : 0.0);
+        if (spacing > 0.0) {
+            const double slender0 = len.Ly / ry;                                   // (L/r)0 da barra composta atuando como unidade
+            const double perMin = spacing / s.rMin;                                // l / rmin
+            const double ki = s.kind == SectionKind::DoubleAngleT ? 0.50 : (s.kind == SectionKind::DoubleChannelBack ? 0.75 : 0.86);
+            double factor = 1.0;
+            std::string rule;
+            if (o.compositeWelded) {
+                if (perMin > 40.0) {
+                    factor = sq(slender0) / (sq(slender0) + sq(ki * perMin));
+                    rule = fmt("5.3.6.3-b (solda/protensao), l/rmin = %.1f > 40: Ne,m = Ne,0 (L/r)0^2 / [(L/r)0^2 + (Ki l/rmin)^2], Ki = %.2f", perMin, ki);
+                } else {
+                    rule = fmt("5.3.6.3-b (solda/protensao), l/rmin = %.1f <= 40: Ne,m = Ne,0", perMin);
+                }
+            } else {
+                factor = sq(slender0) / (sq(slender0) + sq(perMin));
+                rule = fmt("5.3.6.3-a (parafusos com aperto normal): Ne,m = Ne,0 (L/r)0^2 / [(L/r)0^2 + (l/rmin)^2], l/rmin = %.1f", perMin);
+            }
+            const double ney0 = ney;
+            ney = ney0 * factor;
+            c.lines.push_back(fmt("Barra composta (%s): l = %.0f mm, rmin do perfil = %.1f mm, (L/r)0 = %.1f; %s -> Ne,0 = %s, Ne,m = %s", s.composite() ? "5.3.6.2" : "", spacing,
+                                  s.rMin, slender0, rule.c_str(), kn(ney0).c_str(), kn(ney).c_str()));
+        }
+    }
     const double r0sq = sq(rx) + sq(ry) + sq(s.x0) + sq(s.y0);
     const double r0 = std::sqrt(r0sq);
     const bool torsionOpen = s.Cw > 0.0 || s.J > 0.0;
@@ -200,7 +233,7 @@ CompressionData compression(const DesignSection &s, const SteelGrade &steel, con
                           std::isinf(nex) ? "inf" : kn(nex).c_str(), std::isinf(ney) ? "inf" : kn(ney).c_str(),
                           std::isinf(nez) ? "inf" : kn(nez).c_str()));
 
-    const bool monoSym = (s.kind == SectionKind::Channel || s.kind == SectionKind::Tee);
+    const bool monoSym = (s.kind == SectionKind::Channel || s.kind == SectionKind::Tee || s.kind == SectionKind::DoubleAngleT);
     if (monoSym) {
         // Eixo de simetria: X para o U (alma vertical), Y para o T. Flexo-torcao acopla a flexao em torno do eixo de simetria.
         const bool symX = (s.kind == SectionKind::Channel);
@@ -390,20 +423,23 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
     const bool major = (axis == Axis::X);
     const double w = major ? s.g.Wx() : s.g.Wy();
     const double mpl = (major ? s.g.Zx : s.g.Zy) * fy;
+    // Anexo G (G.4.2): os parametros de esbeltez usam as propriedades da secao de maior altura
+    const DesignSection &sl = (o.slendernessSection != nullptr && s.kind == SectionKind::I) ? *o.slendernessSection : s;
+    const double wSl = major ? sl.g.Wx() : sl.g.Wy();
 
     switch (s.kind) {
     case SectionKind::I:
     case SectionKind::Channel: {
         const bool isU = (s.kind == SectionKind::Channel);
         if (major) {
-            const double web = s.h / s.tw;
+            const double web = sl.h / sl.tw;
             if (!isU && web > 5.70 * std::sqrt(E / fy)) {
                 return slenderWebI(s, steel, lb, cb, o);
             }
             if (lb > 0.0) {
-                const double lambda = lb / s.g.ry;
+                const double lambda = lb / sl.g.ry;
                 const double lp = 1.76 * std::sqrt(E / fy);
-                const double lr = lambdaRFlt(s, steel, cb, w);
+                const double lr = lambdaRFlt(sl, steel, cb, wSl);
                 const double mr = (fy - sigmaR) * w;
                 const double mcr = mcrFlt(s, steel, lb, cb);
                 const double m = interpolate(lambda, lp, lr, mpl, mr, mcr, gamma);
@@ -551,6 +587,70 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
             lines.push_back("FLT: Lb = 0, estado-limite nao aplicavel.");
         }
         return finish(states, mplT, std::min(s.g.WxTop, s.g.WxBottom), steel, o, lines);
+    }
+    case SectionKind::DoubleAngleT: {
+        if (!major) {
+            none.lines.push_back("Duas cantoneiras em T fletidas em relacao ao eixo de simetria: nao coberto por 5.4.1.1-d (so a flexao em torno do eixo perpendicular a alma).");
+            return none;
+        }
+        // D.2.4: abas das cantoneiras com lambda = b/t, lambda_y = 0,54 sqrt(E/fy) e lambda_r = 0,91 sqrt(E/fy)
+        const bool flangeCompressed = (positiveSideCompressed == s.flangeUp);
+        const double wc = positiveSideCompressed ? s.g.WxTop : s.g.WxBottom;   // modulo da fibra comprimida
+        const double wMinimum = std::min(s.g.WxTop, s.g.WxBottom);
+        const double mplT = s.g.Zx * fy;
+        const double lambda = s.leg / s.t;
+        const double ly = 0.54 * std::sqrt(E / fy);
+        const double lr = 0.91 * std::sqrt(E / fy);
+        double m;
+        if (lambda <= ly) {
+            m = 1.5 * fy * wc / gamma;
+        } else if (lambda <= lr) {
+            m = (2.43 - 1.72 * lambda * std::sqrt(fy / E)) * fy * wc / gamma;
+        } else {
+            m = 0.7 * E * wc / sq(lambda) / gamma;
+        }
+        if (flangeCompressed) {
+            m = std::min(m, 1.5 * fy * wMinimum / gamma);
+            states.push_back({"FLM", m, fmt("FLM (D.2.4, mesa comprimida): b/t = %.1f, lambda_y = %.1f, lambda_r = %.1f -> M_Rd = %s", lambda, ly, lr, knm(m).c_str())});
+        } else {
+            states.push_back({"FLA", m, fmt("FLA (D.2.4, ponta livre da alma comprimida): b/t = %.1f, lambda_y = %.1f, lambda_r = %.1f -> M_Rd = %s", lambda, ly, lr, knm(m).c_str())});
+        }
+        if (lb > 0.0) {
+            const double bParam = 2.3 * (s.d / lb) * std::sqrt(s.g.Iy / s.J);
+            const double mcrBase = 1.95 * E / lb * std::sqrt(s.g.Iy * s.J);
+            const double wx = wc;
+            if (flangeCompressed) {
+                const double mcr = mcrBase * (bParam + std::sqrt(1.0 + sq(bParam)));
+                const double lambdaLt = lb / s.g.ry;
+                const double lp = 1.76 * std::sqrt(E / fy);
+                const double lrLt = 1.95 * E / (s.g.ry * fy) * std::sqrt(s.g.Iy * s.J) / wx * std::sqrt(2.36 * fy * s.d * wx / (E * s.J) + 1.0);
+                const double mr = fy * wx;
+                const double mLt = interpolate(lambdaLt, lp, lrLt, mplT, mr, mcr, gamma);
+                states.push_back({"FLT", mLt, fmt("FLT (D.2.4, ponta da alma tracionada): Lb = %.0f mm, lambda = %.1f, lambda_p = %.1f, lambda_r = %.1f, Mcr = %s -> M_Rd = %s", lb, lambdaLt, lp, lrLt,
+                                                  knm(mcr).c_str(), knm(mLt).c_str())});
+            } else {
+                const double mcr = mcrBase * (-bParam + std::sqrt(1.0 + sq(bParam)));
+                const double my = fy * wx;
+                const double r = my / mcr;
+                double mLt;
+                if (mcr <= 0.0) {
+                    mLt = 0.0;
+                } else if (r <= 1.0) {
+                    mLt = std::min((1.92 - 1.17 * std::sqrt(r)) * my, 1.5 * my) / gamma;
+                } else {
+                    mLt = (0.92 - 0.17 / r) * mcr / gamma;
+                }
+                states.push_back({"FLT", mLt, fmt("FLT (D.2.4, ponta da alma comprimida): Mcr = %s, fy Wx/Mcr = %.2f -> M_Rd = %s", knm(mcr).c_str(), r, knm(mLt).c_str())});
+            }
+        } else {
+            lines.push_back("FLT: Lb = 0, estado-limite nao aplicavel.");
+        }
+        return finish(states, mplT, wMinimum, steel, o, lines);
+    }
+    case SectionKind::DoubleChannelBack:
+    case SectionKind::DoubleChannelBox: {
+        none.lines.push_back("Barra composta de dois perfis U: a NBR 8800 nao traz resistencia a flexao para esta configuracao (5.4.1.1 so cobre U isolado e secoes-caixao com ligacao continua).");
+        return none;
     }
     case SectionKind::RectTube: {
         const double wall = major ? s.flatWidthB : s.flatWidthH;   // parede comprimida paralela ao eixo
@@ -721,6 +821,23 @@ ShearData shear(const DesignSection &s, const SteelGrade &steel, Axis direction,
             return plateShear(s.d, s.tw, s.d * s.tw, 1.2, steel, o, "Cortante na alma do T (5.4.3.3)");
         }
         return plateShear(s.bf / 2.0, s.tf, s.bf * s.tf, 1.2, steel, o, "Cortante nas mesas do T");
+    }
+    case SectionKind::DoubleAngleT: {
+        // 5.4.3.4: kv = 1,2, h = altura total do T, tw = espessura da aba, Aw = 2 b t
+        if (alongB) {
+            return plateShear(s.d, s.t, 2.0 * s.d * s.t, 1.2, steel, o, "Cortante nas abas verticais das cantoneiras em T (5.4.3.4)");
+        }
+        return plateShear(s.leg, s.t, 2.0 * s.leg * s.t, 1.2, steel, o, "Cortante nas abas horizontais das cantoneiras em T");
+    }
+    case SectionKind::DoubleChannelBack:
+    case SectionKind::DoubleChannelBox: {
+        if (alongB) {
+            const double ah = o.stiffenerSpacing > 0.0 && s.h > 0.0 ? o.stiffenerSpacing / s.h : 0.0;
+            const double kv = ah > 0.0 && ah <= 3.0 ? 5.0 + 5.0 / (ah * ah) : 5.34;
+            return plateShear(s.h, s.tw, 2.0 * s.d * s.tw, kv, steel, o, "Cortante nas duas almas dos U (5.4.3.1.1, soma dos perfis)");
+        }
+        const double bfOne = 0.5 * (s.bf - s.gapE);
+        return plateShear(bfOne, s.tf, 4.0 * bfOne * s.tf, 1.2, steel, o, "Cortante nas mesas dos dois U (5.4.3.5, soma dos perfis)");
     }
     case SectionKind::RectTube: {
         const double h = alongB ? s.flatWidthH : s.flatWidthB;

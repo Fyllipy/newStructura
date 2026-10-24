@@ -102,6 +102,8 @@ public:
     };
 
     static QVector<FieldDef> fields(int type);
+    /// Campos da verificacao de fadiga (NBR 8800:2024, Anexo H, H.5 e H.6) das ligacoes parafusadas e por pino.
+    static QVector<FieldDef> fatigueFields();
     static QString typeName(int type);
     static QString typeSummary(int type);
     /// A tipologia usa parafusos (grau e plano de corte no formulario).
@@ -114,7 +116,23 @@ public:
     /// Idem, para a ligacao tubular (banzo + diagonais que chegam ao no).
     static Structura::App::ProjectData::NodeConnection makeTubular(const BeamInfo &chord, const QVector<BraceInfo> &braces);
 
+    /// Verifica a ligacao com os esforcos dados. Ligacoes de NBR 8800 (exceto diagonais/contraventamentos, nos de trelica, tubulares e perfis formados a frio) sao
+    /// dimensionadas, no minimo, para 45 kN em qualquer direcao (6.1.5.2): esforcos menores sao elevados proporcionalmente a 45 kN.
     static Evaluation evaluate(const Structura::App::ProjectData::NodeConnection &connection, const Forces &forces);
+    /// Idem, sem o minimo de 6.1.5.2 (esforcos usados como informados). Barra inclinada em relacao a face do apoio (`skew` > 0 nos valores da ligacao):
+    /// cada verificacao fica com a mais desfavoravel entre os esforcos nos eixos da barra e os resolvidos no plano do apoio (`interfaceForces`).
+    static Evaluation evaluateExact(const Structura::App::ProjectData::NodeConnection &connection, const Forces &forces);
+    /// Evaluacao com os esforcos exatamente como informados (sem resolver a inclinacao).
+    static Evaluation evaluateExactBeamFrame(const Structura::App::ProjectData::NodeConnection &connection, const Forces &forces);
+
+    /// Angulo (graus) entre o eixo da barra e a normal da face do apoio (0 = perpendicular a face; barra de tesoura sobre pilar: a inclinacao do banzo).
+    static double skewDegrees(const std::array<double, 3> &beamAxis, const std::array<double, 3> &faceNormal);
+    /// Esforcos de uma barra que chega inclinada de `skewDeg` em relacao a normal da face, resolvidos no plano do apoio (normal a face e paralelo a ela):
+    /// N_n = |N| cos a + |V| sen a (soma em modulo: sentido de V no plano desconhecido) e V_p = |N| sen a + |V|. Conservador; igual aos esforcos da barra para a = 0.
+    static Forces interfaceForces(const Forces &forces, double skewDeg);
+    /// A forca minima de 6.1.5.2 vale para esta tipologia?
+    static bool minimumForceApplies(const Structura::App::ProjectData::NodeConnection &connection);
+    static constexpr double kMinimumDesignForce = 45000.0;   ///< N (6.1.5.2)
 
     /// Verificacao local do perfil de apoio (mesa ou alma onde a ligacao se solda), conforme `supType`/`supD`... de `connection.values`.
     /// `lengthAlong`/`lengthTransverse`: dimensoes da area carregada (mm); `tension`/`compression`: forcas normais a face (N).

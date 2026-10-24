@@ -513,6 +513,7 @@ void SceneController::updateLoadVisuals()
         action.position = {visual.position.x(), visual.position.y(), visual.position.z()};
         action.force = {visual.force.x(), visual.force.y(), visual.force.z()};
         action.moment = {visual.moment.x(), visual.moment.y(), visual.moment.z()};
+        action.key = {visual.sourceKind, visual.sourceIndex};
         nodes.push_back(action);
     }
 
@@ -528,6 +529,7 @@ void SceneController::updateLoadVisuals()
         action.values = toVec(visual.values);
         action.local = visual.local;
         action.selfWeight = visual.selfWeight;
+        action.key = {visual.sourceKind, visual.sourceIndex};
         members.push_back(action);
     }
 
@@ -536,8 +538,86 @@ void SceneController::updateLoadVisuals()
     visibility.nodeMoments = m_loadVisibility.nodeMoments;
     visibility.memberForces = m_loadVisibility.memberForces;
     visibility.memberMoments = m_loadVisibility.memberMoments;
-    m_loadRenderer->render(nodes, members, visibility);
+    m_loadRenderer->render(nodes, members, visibility, {m_highlightedLoad.kind, m_highlightedLoad.index});
     emit loadLabelsChanged();
+}
+
+void SceneController::setHighlightedLoad(const LoadRef &load)
+{
+    if (m_highlightedLoad == load) {
+        return;
+    }
+    m_highlightedLoad = load;
+    updateLoadVisuals();
+    requestRender();
+}
+
+SceneController::LoadRef SceneController::pickLoad(const QPointF &pos, double width, double height, double tolerancePx) const
+{
+    if (!m_loadRenderer || width <= 0.0 || height <= 0.0) {
+        return {};
+    }
+    const QMatrix4x4 matrix = compositeMatrix();
+    constexpr float kNear = 1e-4f;
+    auto clipOf = [&](const std::array<double, 3> &p) {
+        return matrix * QVector4D(static_cast<float>(p[0]), static_cast<float>(p[1]), static_cast<float>(p[2]), 1.0f);
+    };
+    auto toScreen = [&](const QVector4D &c) { return QPointF((c.x() / c.w() + 1.0) * width / 2.0, (1.0 - c.y() / c.w()) * height / 2.0); };
+    auto distanceToSegment = [&](QPointF a, QPointF b) {
+        const QPointF d = b - a;
+        const double l2 = d.x() * d.x() + d.y() * d.y();
+        double t = l2 > 1e-12 ? ((pos.x() - a.x()) * d.x() + (pos.y() - a.y()) * d.y()) / l2 : 0.0;
+        t = std::clamp(t, 0.0, 1.0);
+        const QPointF q = a + d * t;
+        return std::hypot(pos.x() - q.x(), pos.y() - q.y());
+    };
+    // segmento do espaco (recortado no plano proximo) -> distancia em pixels ao cursor
+    auto segmentDistance = [&](const std::array<double, 3> &p0, const std::array<double, 3> &p1) {
+        QVector4D c0 = clipOf(p0), c1 = clipOf(p1);
+        const bool in0 = c0.w() > kNear, in1 = c1.w() > kNear;
+        if (!in0 && !in1) {
+            return 1e18;
+        }
+        if (!in0) {
+            c0 = c0 + (c1 - c0) * ((kNear - c0.w()) / (c1.w() - c0.w()));
+        } else if (!in1) {
+            c1 = c1 + (c0 - c1) * ((kNear - c1.w()) / (c0.w() - c1.w()));
+        }
+        return distanceToSegment(toScreen(c0), toScreen(c1));
+    };
+    LoadRef best;
+    double bestDistance = tolerancePx;
+    for (const auto &item : m_loadRenderer->pickItems()) {
+        double distance = 1e18;
+        for (const auto &segment : item.segments) {
+            distance = std::min(distance, segmentDistance(segment[0], segment[1]));
+        }
+        for (const auto &quad : item.quads) {
+            // arestas livres da faixa (a aresta 0-1 e a propria barra e fica de fora)
+            distance = std::min({distance, segmentDistance(quad[1], quad[2]), segmentDistance(quad[2], quad[3]), segmentDistance(quad[3], quad[0])});
+            // interior da faixa, afastado da barra
+            std::array<QVector4D, 4> clip {clipOf(quad[0]), clipOf(quad[1]), clipOf(quad[2]), clipOf(quad[3])};
+            if (std::all_of(clip.begin(), clip.end(), [&](const QVector4D &c) { return c.w() > kNear; })) {
+                const std::array<QPointF, 4> s {toScreen(clip[0]), toScreen(clip[1]), toScreen(clip[2]), toScreen(clip[3])};
+                bool inside = false;
+                for (int i = 0, j = 3; i < 4; j = i++) {
+                    if (((s[static_cast<std::size_t>(i)].y() > pos.y()) != (s[static_cast<std::size_t>(j)].y() > pos.y()))
+                        && (pos.x() < (s[static_cast<std::size_t>(j)].x() - s[static_cast<std::size_t>(i)].x()) * (pos.y() - s[static_cast<std::size_t>(i)].y())
+                                              / (s[static_cast<std::size_t>(j)].y() - s[static_cast<std::size_t>(i)].y()) + s[static_cast<std::size_t>(i)].x())) {
+                        inside = !inside;
+                    }
+                }
+                if (inside && distanceToSegment(s[0], s[1]) > tolerancePx * 0.8) {
+                    distance = 0.0;
+                }
+            }
+        }
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = {item.key.kind, item.key.index};
+        }
+    }
+    return best;
 }
 
 void SceneController::setSolidMembers(const QVector<SolidMemberVisual> &members)
@@ -797,20 +877,6 @@ LoadLabelData SceneController::loadLabels() const
     return result;
 }
 
-bool SceneController::pickWorldPoint(int displayX, int displayY, double &x, double &y, double &z) const
-{
-    if (!m_renderer || !m_renderWindow) return false;
-    if (!m_picker) return false;
-    // Perform pick against scene (grid and points are both pickable)
-    if (m_picker->Pick(displayX, displayY, 0, m_renderer)) {
-        double p[3];
-        m_picker->GetPickPosition(p);
-        x = p[0]; y = p[1]; z = p[2];
-        return true;
-    }
-    return false;
-}
-
 void SceneController::placeOrientationMarker(int widgetWidth, int widgetHeight, int sizePx, int marginPx)
 {
     if (!m_orientationMarker || widgetWidth < 50 || widgetHeight < 50) {
@@ -825,88 +891,6 @@ int SceneController::viewportHeight() const
     if (!m_renderWindow) return 0;
     int* size = m_renderWindow->GetSize();
     return size ? size[1] : 0;
-}
-
-bool SceneController::worldPointOnPlaneZ0(int displayX, int displayY, double &x, double &y, double &z) const
-{
-    if (!m_renderer) return false;
-
-    // 1) Try ray from display near/far to Z=0
-    double p0w[4], p1w[4];
-    m_renderer->SetDisplayPoint(displayX, displayY, 0.0);
-    m_renderer->DisplayToWorld();
-    m_renderer->GetWorldPoint(p0w);
-    if (std::abs(p0w[3]) > 1e-14) { p0w[0]/=p0w[3]; p0w[1]/=p0w[3]; p0w[2]/=p0w[3]; }
-
-    m_renderer->SetDisplayPoint(displayX, displayY, 1.0);
-    m_renderer->DisplayToWorld();
-    m_renderer->GetWorldPoint(p1w);
-    if (std::abs(p1w[3]) > 1e-14) { p1w[0]/=p1w[3]; p1w[1]/=p1w[3]; p1w[2]/=p1w[3]; }
-
-    double dx = p1w[0] - p0w[0];
-    double dy = p1w[1] - p0w[1];
-    double dz = p1w[2] - p0w[2];
-    const double eps = 1e-14;
-    if (std::abs(dz) < eps) {
-        // 2) Fallback: build a ray from camera position through far world point
-        auto *cam = m_renderer->GetActiveCamera();
-        if (!cam) return false;
-        double cpos[3]; cam->GetPosition(cpos);
-        dx = p1w[0] - cpos[0];
-        dy = p1w[1] - cpos[1];
-        dz = p1w[2] - cpos[2];
-        if (std::abs(dz) < eps) return false;
-        const double t = -cpos[2] / dz;
-        x = cpos[0] + t * dx;
-        y = cpos[1] + t * dy;
-        z = 0.0;
-        return std::isfinite(x) && std::isfinite(y);
-    }
-
-    const double t = -p0w[2] / dz; // z=0 => p0.z + t*dz = 0
-    x = p0w[0] + t * dx;
-    y = p0w[1] + t * dy;
-    z = 0.0;
-    return std::isfinite(x) && std::isfinite(y);
-}
-
-bool SceneController::worldPointOnViewPlane(int displayX, int displayY, double &x, double &y, double &z) const
-{
-    if (!m_renderer) return false;
-
-    // Camera view plane: passes through focal point and is orthogonal to view direction
-    auto *cam = m_renderer->GetActiveCamera();
-    if (!cam) return false;
-    double fpt[3];
-    cam->GetFocalPoint(fpt);
-    double dop[3];
-    cam->GetDirectionOfProjection(dop); // normalized in VTK
-
-    // Build ray from display near/far
-    double p0w[4], p1w[4];
-    m_renderer->SetDisplayPoint(displayX, displayY, 0.0);
-    m_renderer->DisplayToWorld();
-    m_renderer->GetWorldPoint(p0w);
-    if (std::abs(p0w[3]) > 1e-14) { p0w[0]/=p0w[3]; p0w[1]/=p0w[3]; p0w[2]/=p0w[3]; }
-    m_renderer->SetDisplayPoint(displayX, displayY, 1.0);
-    m_renderer->DisplayToWorld();
-    m_renderer->GetWorldPoint(p1w);
-    if (std::abs(p1w[3]) > 1e-14) { p1w[0]/=p1w[3]; p1w[1]/=p1w[3]; p1w[2]/=p1w[3]; }
-
-    // Intersect ray p(t) = p0 + t*(p1-p0) with plane (n·(p - f)) = 0 where n=dop
-    const double rdx = p1w[0]-p0w[0];
-    const double rdy = p1w[1]-p0w[1];
-    const double rdz = p1w[2]-p0w[2];
-    const double ndotdir = dop[0]*rdx + dop[1]*rdy + dop[2]*rdz;
-    if (std::abs(ndotdir) < 1e-12) return false; // Ray parallel to view plane
-    const double vx = fpt[0]-p0w[0];
-    const double vy = fpt[1]-p0w[1];
-    const double vz = fpt[2]-p0w[2];
-    const double t = (dop[0]*vx + dop[1]*vy + dop[2]*vz) / ndotdir;
-    x = p0w[0] + t*rdx;
-    y = p0w[1] + t*rdy;
-    z = p0w[2] + t*rdz;
-    return std::isfinite(x) && std::isfinite(y) && std::isfinite(z);
 }
 
 int SceneController::nodeCount() const
@@ -1414,7 +1398,6 @@ void SceneController::rebuildBarLCSVisuals()
                 
                 // Main shaft line (origin to base)
                 vtkIdType p0 = m_lcsPoints->InsertNextPoint(origin[0], origin[1], origin[2]);
-                vtkIdType pBase = m_lcsPoints->InsertNextPoint(baseX, baseY, baseZ);
                 vtkIdType pTip = m_lcsPoints->InsertNextPoint(tipX, tipY, tipZ);
                 
                 m_lcsCells->InsertNextCell(2);
@@ -1468,7 +1451,7 @@ void SceneController::rebuildBarLCSVisuals()
             createArrow(lcs.yPrime, yColor);
             createArrow(lcs.zPrime, zColor);
             
-        } catch (const std::exception &e) {
+        } catch (const std::exception &) {
             // Skip bars that fail LCS computation
             continue;
         }

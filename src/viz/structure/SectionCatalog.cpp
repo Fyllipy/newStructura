@@ -40,9 +40,49 @@ QHash<QString, QVector<CatalogProfile>> loadCatalog()
 
 } // namespace
 
+namespace {
+
+/// Catalogo das barras compostas: cada perfil laminado do catalogo (L ou U) combinado em dupla, com o afastamento padrao de 10 mm
+/// (chapa espacadora/de no usual) e o nome "2L ..." / "2U ... (costas)" / "2U ... (face a face)".
+QHash<QString, QVector<CatalogProfile>> composedCatalog(const QHash<QString, QVector<CatalogProfile>> &simple)
+{
+    QHash<QString, QVector<CatalogProfile>> composed;
+    constexpr double kDefaultGap = 10.0;
+    auto derive = [&](const QString &composedFamily, const QString &baseFamily, const QString &prefix, const QString &suffix) {
+        const auto base = simple.constFind(baseFamily);
+        if (base == simple.constEnd()) {
+            return;
+        }
+        QVector<CatalogProfile> list;
+        for (const CatalogProfile &profile : base.value()) {
+            CatalogProfile item;
+            QString name = profile.name;
+            name.remove(0, name.indexOf(QLatin1Char(' ')) + 1);   // "L 76 x 6.1" -> "76 x 6.1"
+            item.name = prefix + QLatin1Char(' ') + name + suffix;
+            item.parameters = profile.parameters;
+            item.parameters.insert(QStringLiteral("e"), kDefaultGap);
+            list.append(std::move(item));
+        }
+        composed.insert(composedFamily, std::move(list));
+    };
+    derive(QStringLiteral("Dupla Cantoneira T"), QStringLiteral("L Laminado"), QStringLiteral("2L"), QString());
+    derive(QStringLiteral("Duplo U Costas"), QStringLiteral("U Laminado"), QStringLiteral("2U"), QStringLiteral(" (costas)"));
+    derive(QStringLiteral("Duplo U Face a Face"), QStringLiteral("U Laminado"), QStringLiteral("2U"), QStringLiteral(" (face a face)"));
+    return composed;
+}
+
+} // namespace
+
 const QVector<CatalogProfile> &SectionCatalog::profiles(const QString &family)
 {
-    static const QHash<QString, QVector<CatalogProfile>> catalog = loadCatalog();
+    static const QHash<QString, QVector<CatalogProfile>> catalog = [] {
+        QHash<QString, QVector<CatalogProfile>> all = loadCatalog();
+        const auto composed = composedCatalog(all);
+        for (auto it = composed.begin(); it != composed.end(); ++it) {
+            all.insert(it.key(), it.value());
+        }
+        return all;
+    }();
     static const QVector<CatalogProfile> empty;
     const auto it = catalog.constFind(family);
     return it == catalog.constEnd() ? empty : it.value();

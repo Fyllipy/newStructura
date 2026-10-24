@@ -15,16 +15,6 @@ using Cat = ConnectionCatalog;
 
 namespace {
 
-D::BoltGrade gradeByName(const QString &name)
-{
-    for (const auto &g : D::boltGrades()) {
-        if (QString::fromStdString(g.name) == name) {
-            return g;
-        }
-    }
-    return D::boltGrades().size() > 2 ? D::boltGrades()[2] : D::boltGrades().front();
-}
-
 D::WebShearInput toInput(const NodeConnection &c, const Cat::Forces &f)
 {
     D::WebShearInput in;
@@ -145,7 +135,7 @@ QVector<Cat::FieldDef> webShearFields(const Cat::Entry &entry)
 NodeConnection webShearDefault(const Cat::Entry &entry, const Cat::BeamInfo &beam, double plateFy, double plateFu)
 {
     NodeConnection c;
-    c.grade = QString::fromStdString(D::boltGrades().size() > 2 ? D::boltGrades()[2].name : D::boltGrades().front().name);
+    c.grade = defaultBoltGradeName();
     const bool welded = entry.preset.value(QStringLiteral("webWelded")) != 0.0;
     const bool doublePlate = entry.preset.value(QStringLiteral("plates")) >= 2.0;
     const int support = static_cast<int>(entry.preset.value(QStringLiteral("support")) + 0.5);

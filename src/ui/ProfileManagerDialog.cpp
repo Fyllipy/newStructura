@@ -2,6 +2,7 @@
 
 #include "ProfileBrowser.h"
 #include "ProfileEditorWidget.h"
+#include "ProfilePropertiesDialog.h"
 
 #include <QHBoxLayout>
 #include <QLabel>
@@ -20,6 +21,7 @@ ProfileManagerDialog::ProfileManagerDialog(QWidget *parent)
     , m_header(new QLabel(this))
     , m_newButton(new QPushButton(tr("Novo perfil..."), this))
     , m_variationButton(new QPushButton(tr("Criar variação deste perfil..."), this))
+    , m_propertiesButton(new QPushButton(tr("Propriedades completas do perfil..."), this))
     , m_addButton(new QPushButton(tr("Adicionar ao projeto"), this))
     , m_assignButton(new QPushButton(this))
 {
@@ -37,6 +39,7 @@ ProfileManagerDialog::ProfileManagerDialog(QWidget *parent)
     auto *side = new QVBoxLayout();
     side->setSpacing(6);
     side->addWidget(m_detail, 1);
+    side->addWidget(m_propertiesButton);
     side->addWidget(m_addButton);
     side->addWidget(m_assignButton);
     side->addWidget(m_variationButton);
@@ -82,6 +85,12 @@ ProfileManagerDialog::ProfileManagerDialog(QWidget *parent)
     connect(m_addButton, &QPushButton::clicked, this, [this]() { emit addToProjectRequested(m_browser->currentId()); });
     connect(m_assignButton, &QPushButton::clicked, this, [this]() { emit assignRequested(m_browser->currentId()); });
     connect(m_newButton, &QPushButton::clicked, this, &ProfileManagerDialog::showCreatePage);
+    connect(m_propertiesButton, &QPushButton::clicked, this, [this]() {
+        if (const auto section = m_browser->currentSection()) {
+            ProfilePropertiesDialog dialog(*section, this);
+            dialog.exec();
+        }
+    });
     connect(m_variationButton, &QPushButton::clicked, this, [this]() {
         if (const auto section = m_browser->currentSection()) {
             showCreatePage();
@@ -126,6 +135,7 @@ void ProfileManagerDialog::updateButtons()
     m_assignButton->setText(m_barCount > 0 ? tr("Atribuir a %1 barra(s) selecionada(s)").arg(m_barCount)
                                            : tr("Atribuir às barras selecionadas (nenhuma)"));
     m_variationButton->setEnabled(selected);
+    m_propertiesButton->setEnabled(selected);
 }
 
 void ProfileManagerDialog::showCreatePage()

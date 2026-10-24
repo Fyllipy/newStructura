@@ -1,3 +1,4 @@
+#include "core/math/Vec3Ops.h"
 #include "viz/AreaPanelRenderer.h"
 
 #include <vtkActor.h>
@@ -19,17 +20,18 @@ namespace {
 
 using Vec3 = AreaPanelRenderer::Vec3;
 
+using Structura::Math::cross;
+using Structura::Math::dot;
+
 Vec3 operator+(const Vec3 &a, const Vec3 &b) { return {a[0] + b[0], a[1] + b[1], a[2] + b[2]}; }
 Vec3 operator-(const Vec3 &a, const Vec3 &b) { return {a[0] - b[0], a[1] - b[1], a[2] - b[2]}; }
 Vec3 operator*(const Vec3 &a, double s) { return {a[0] * s, a[1] * s, a[2] * s}; }
-double dot(const Vec3 &a, const Vec3 &b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 double length(const Vec3 &a) { return std::sqrt(dot(a, a)); }
 Vec3 normalized(const Vec3 &a)
 {
     const double n = length(a);
     return n > 1e-12 ? a * (1.0 / n) : Vec3 {0, 0, -1};
 }
-Vec3 cross(const Vec3 &a, const Vec3 &b) { return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]}; }
 
 Vec3 anyPerpendicular(const Vec3 &d)
 {

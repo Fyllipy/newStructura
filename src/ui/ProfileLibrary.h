@@ -30,7 +30,7 @@ public:
     };
 
     /// Categoria de fabricacao do perfil (base para o dimensionamento futuro de estruturas metalicas).
-    enum class Category { Laminado = 0, MoldadoAFrio = 1, Concreto = 2, SemGeometria = 3 };
+    enum class Category { Laminado = 0, MoldadoAFrio = 1, Concreto = 2, SemGeometria = 3, Composta = 4 };
 
     static const QVector<Entry> &entries();   ///< catalogo + perfis do usuario
     /// Substitui os perfis do usuario (carregados do banco do programa).

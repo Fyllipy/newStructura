@@ -19,6 +19,32 @@ extern "C" {
 //  maxIterations <= 0 and tolerance <= 0 select defaults (30, 1e-7).
 SOLVER_DLL_API void structura_set_options(int secondOrder, int maxIterations, double tolerance);
 
+// Advanced analysis options for the following structura_solve* calls (defaults: all off, so the results do not change):
+//  shearDeformation: non-zero = Timoshenko bending using the shear areas given by structura_set_shear_areas
+//  stabilityFunctions: non-zero = second order by Livesley stability functions (exact P-delta / P-small-delta in each member, Euler-Bernoulli);
+//                      with shear deformation the consistent geometric stiffness is used instead
+//  loadSteps: second order, 0 = direct iteration with automatic load increments if it fails; n > 1 = always n load steps
+SOLVER_DLL_API void structura_set_analysis_options(int shearDeformation, int stabilityFunctions, int loadSteps);
+// Shear areas (same length unit squared as the section area) per section id; replaces the previous list. count = 0 clears it.
+SOLVER_DLL_API void structura_set_shear_areas(int count, const int* sectionIds, const double* shearAreaY, const double* shearAreaZ);
+// Rigid end zones per member id (lengths along the member axis from node I and node J, in the model length unit); replaces the previous list.
+// The flexible part is the remaining length; end forces are reported at the nodes. count = 0 clears the list.
+SOLVER_DLL_API void structura_set_rigid_zones(int count, const int* memberIds, const double* lengthI, const double* lengthJ);
+// Torsion with warping (Vlasov) for open thin-walled sections. Sections: warping constant Cw (length^6, same unit as the section data) per section id;
+// members: ids that use it, with the warping condition at each end (0 = automatic: restrained at fully fixed nodes, shared by collinear members, free
+// elsewhere; 1 = free (zero bimoment); 2 = restrained (theta' = 0)). Both lists replace the previous ones; count = 0 clears them.
+// Not combined with buckling or modal analysis (St. Venant torsion is used there, with a warning).
+SOLVER_DLL_API void structura_set_warping_sections(int count, const int* sectionIds, const double* warpingConstants);
+SOLVER_DLL_API void structura_set_warping_members(int count, const int* memberIds, const int* modeStart, const int* modeEnd);
+// Results of the last successful solve per requested member id: out4 = (theta' at I, theta' at J, generalized force at I, at J);
+// the forces on theta' are the bimoments applied to the bar (B at I; -B at J, B = -E Cw theta''). Returns the number of members with warping.
+SOLVER_DLL_API int structura_get_warping(int count, const int* memberIds, double* out4);
+// Barras de secao I de alma variavel (NBR 8800:2024, Anexo G): alturas nas extremidades I e J, largura e espessura das mesas, espessura da alma (unidades do modelo)
+// e numero de trechos prismaticos em que o solver subdivide a barra (nos internos; os esforcos devolvidos sao os das extremidades da barra). Substitui a lista anterior.
+SOLVER_DLL_API void structura_set_taper(int count, const int* memberIds, const double* d1, const double* d2, const double* bf, const double* tw, const double* tf, const int* segments);
+// Warnings of the last successful solve, one per line (UTF-8/ASCII). Returns the number of warnings; copies up to bufferSize - 1 characters.
+SOLVER_DLL_API int structura_get_warnings(char* buffer, int bufferSize);
+
 // Linear buckling: number of modes extracted by the following structura_solve* calls (0 = off, default).
 // Uses the first-order axial forces of the loads given to the solve; the factors multiply those loads.
 SOLVER_DLL_API void structura_set_buckling(int modes);
@@ -43,6 +69,8 @@ SOLVER_DLL_API int structura_get_modal(int maxModes, int nodeCount, double* omeg
 //  ties: slave node tied to up to 8 master nodes (weights sum to 1); tieDofMasks (may be null = all): bits 0..5 = DOFs tied (7 = translations only, a hinged support).
 //  springs: nodal elastic supports; compressionOnly != 0: k6[0] normal, k6[1] tangential, normal (3 values) from support to structure.
 SOLVER_DLL_API void structura_clear_shells();
+// Thermal expansion coefficient (1/K) of each shell, same order as structura_set_shells (call right after it). Default 1.2e-5.
+SOLVER_DLL_API int structura_set_shell_alpha(int shellCount, const double* alphas);
 SOLVER_DLL_API int structura_set_shells(
     int shellCount,
     const int* shellIds,

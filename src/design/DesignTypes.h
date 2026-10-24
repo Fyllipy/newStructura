@@ -36,6 +36,10 @@ enum class SectionKind {
     RoundTube,    ///< tubular circular
     SolidRound,
     SolidRect,
+    // barras compostas (NBR 8800, 5.3.6): dois perfis iguais separados por um afastamento e ligados a intervalos
+    DoubleAngleT,       ///< duas cantoneiras em T (abas verticais costas com costas)
+    DoubleChannelBack,  ///< dois U em forma de I (almas voltadas uma para a outra)
+    DoubleChannelBox,   ///< dois U face a face (caixa com afastamento)
     // formados a frio (NBR 14762)
     ColdChannel,        ///< U simples
     ColdLippedChannel,  ///< U enrijecido

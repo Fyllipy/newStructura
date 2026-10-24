@@ -65,10 +65,14 @@ void MainWindow::updateEditActionsEnabled()
     if (m_moveElementsAction) {
         m_moveElementsAction->setEnabled(hasSelection);
     }
-    for (QAction *action : {m_serialCopyAction, m_rotateElementsAction, m_mirrorElementsAction, m_deleteElementsAction}) {
+    for (QAction *action : {m_serialCopyAction, m_rotateElementsAction, m_mirrorElementsAction}) {
         if (action) {
             action->setEnabled(hasSelection);
         }
+    }
+    if (m_deleteElementsAction) {
+        // uma carga selecionada na viewport tambem pode ser excluida
+        m_deleteElementsAction->setEnabled(hasSelection || (m_sceneController && m_sceneController->highlightedLoad().valid()));
     }
 }
 
@@ -296,18 +300,18 @@ bool MainWindow::applyTransform(bool copy, const std::function<std::array<double
         for (const auto &support : supports) {
             const auto it = externalNodeMap.constFind(support.nodeId);
             if (it != externalNodeMap.constEnd()) {
-                NodeSupport copy = support;
-                copy.nodeId = it.value();
-                m_supports.append(copy);
+                NodeSupport copied = support;
+                copied.nodeId = it.value();
+                m_supports.append(copied);
             }
         }
         const auto loads = m_nodalLoads;
         for (const auto &load : loads) {
             const auto it = externalNodeMap.constFind(load.nodeId);
             if (it != externalNodeMap.constEnd()) {
-                NodalLoad copy = load;
-                copy.nodeId = it.value();
-                m_nodalLoads.append(copy);
+                NodalLoad copied = load;
+                copied.nodeId = it.value();
+                m_nodalLoads.append(copied);
             }
         }
     }
@@ -360,31 +364,32 @@ bool MainWindow::applyTransform(bool copy, const std::function<std::array<double
         for (const auto &load : loads) {
             const auto it = externalBarMap.constFind(load.memberId);
             if (it != externalBarMap.constEnd()) {
-                MemberLoad copy = load;
-                copy.memberId = it.value();
-                m_memberLoads.append(copy);
+                MemberLoad copied = load;
+                copied.memberId = it.value();
+                m_memberLoads.append(copied);
             }
         }
         const auto placements = m_extras.placements;
         for (const auto &placement : placements) {
             const auto it = externalBarMap.constFind(placement.memberId);
             if (it != externalBarMap.constEnd()) {
-                auto copy = placement;
-                copy.memberId = it.value();
-                m_extras.placements.append(copy);
+                auto copied = placement;
+                copied.memberId = it.value();
+                m_extras.placements.append(copied);
             }
         }
         const auto moments = m_extras.memberMoments;
         for (const auto &moment : moments) {
             const auto it = externalBarMap.constFind(moment.memberId);
             if (it != externalBarMap.constEnd()) {
-                auto copy = moment;
-                copy.memberId = it.value();
-                m_extras.memberMoments.append(copy);
+                auto copied = moment;
+                copied.memberId = it.value();
+                m_extras.memberMoments.append(copied);
             }
         }
     }
 
+    splitBarsAtIntermediateNodes(createdBars);   // barras copiadas que passam por nos existentes
     syncLoadVisuals();
     syncSupportVisuals();
     syncPlacementVisuals();

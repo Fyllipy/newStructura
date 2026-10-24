@@ -173,7 +173,6 @@ std::vector<Check> checkBolted(const BoltedInput &in)
     if (in.ny > 1) pitch = std::min(pitch, in.sy);
     const double lfEdge = in.endDistance - dh / 2.0;
     const double lfPitch = pitch < 1e17 ? pitch - dh : 1e18;
-    const double lf = std::min(lfEdge, lfPitch);
     const double k1 = in.deformationLimit ? 1.2 : 1.5;
     const double k2 = in.deformationLimit ? 2.4 : 3.0;
     const double fcRd = boltBearingResistance(in);

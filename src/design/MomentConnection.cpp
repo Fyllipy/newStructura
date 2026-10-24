@@ -163,6 +163,7 @@ std::vector<Check> checkMomentConnection(const MomentConnectionInput &in)
     s.lengthTransverse = in.beamTf + 2.0 * in.flangeWeldLeg;
     s.unbracedLength = in.colUnbraced;
     s.gammaA1 = in.gammaA1;
+    s.pairForce = in.beamOnBothSides ? fc : 0.0;
     for (Check c : checkSupportMember(s)) {
         checks.push_back(std::move(c));
     }

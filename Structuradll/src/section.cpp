@@ -39,3 +39,24 @@ void Section::setIy(double Iy) {
 void Section::setJ(double J) {
     this->J = J;
 }
+
+double Section::getAy() const {
+    return Ay;
+}
+
+double Section::getAz() const {
+    return Az;
+}
+
+void Section::setShearAreas(double Ay, double Az) {
+    this->Ay = Ay;
+    this->Az = Az;
+}
+
+double Section::getCw() const {
+    return Cw;
+}
+
+void Section::setCw(double Cw) {
+    this->Cw = Cw;
+}

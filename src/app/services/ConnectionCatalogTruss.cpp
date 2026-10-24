@@ -17,16 +17,6 @@ namespace {
 
 constexpr double kDeg = 3.14159265358979323846 / 180.0;
 
-D::BoltGrade gradeByName(const QString &name)
-{
-    for (const auto &g : D::boltGrades()) {
-        if (QString::fromStdString(g.name) == name) {
-            return g;
-        }
-    }
-    return D::boltGrades().size() > 2 ? D::boltGrades()[2] : D::boltGrades().front();
-}
-
 QString key(int bar, const char *name)
 {
     return QStringLiteral("b%1%2").arg(bar).arg(QString::fromLatin1(name));
@@ -169,7 +159,7 @@ QVector<Cat::FieldDef> trussNodeFields(const Cat::Entry &entry)
 NodeConnection trussNodeDefault(const Cat::Entry &entry, const Cat::BeamInfo &chord, double plateFy, double plateFu, const QVector<Cat::BraceInfo> &braces)
 {
     NodeConnection c;
-    c.grade = QString::fromStdString(D::boltGrades().size() > 2 ? D::boltGrades()[2].name : D::boltGrades().front().name);
+    c.grade = defaultBoltGradeName();
     const int barMode = static_cast<int>(entry.preset.value(QStringLiteral("barMode")) + 0.5);
     const int chordMode = static_cast<int>(entry.preset.value(QStringLiteral("chordMode")) + 0.5);
     c.values = {{"barMode", static_cast<double>(barMode)}, {"chordMode", static_cast<double>(chordMode)}, {"supType", 1.0}, {"db", 20.0}, {"thread", 1.0},

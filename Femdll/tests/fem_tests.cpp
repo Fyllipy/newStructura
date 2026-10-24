@@ -238,7 +238,9 @@ void cylinderUnderPressure()
     m.nodes[id(0, nz / 2)].fixed[2] = 1;
     m.nodes[id(0, nz / 2)].fixed[1] = 1;
     m.nodes[id(nt / 2, nz / 2)].fixed[1] = 1;
+    m.nodes[id(nt / 2, nz / 2)].fixed[2] = 1;
     m.nodes[id(nt / 4, nz / 2)].fixed[0] = 1;
+    m.nodes[id(nt / 4, nz / 2)].fixed[2] = 1;   // 6 vinculos no total (A: y z; B: y z; C: x z) eliminam os 6 modos de corpo rigido
     fem::LoadCase lc;
     for (std::size_t e = 0; e < m.shells.size(); ++e) {
         lc.pressure.push_back({static_cast<int>(e), {p, p, p, p}});
@@ -449,6 +451,23 @@ void nonConformingTies()
     near(wSlave, wInterp, 1e-5, "no pendente segue a interpolacao da aresta mestra");
 }
 
+void mechanismIsRejected()
+{
+    // chapa com rotacao de corpo rigido no plano livre (apoios insuficientes): deve ser erro, nao "sucesso" com deslocamentos absurdos
+    fem::Model m = rectangle(1.0, 1.0, 1, 1, 0.1, 2.0e11, 0.3);
+    m.nodes[0].fixed = {1, 1, 1, 0, 0, 0};
+    m.nodes[1].fixed = {0, 0, 1, 0, 0, 0};
+    m.nodes[2].fixed = {0, 0, 1, 0, 0, 0};
+    fem::LoadCase lc;
+    fem::NodalLoad l;
+    l.node = 3;
+    l.f[0] = 1000.0;
+    lc.nodal.push_back(l);
+    m.cases.push_back(lc);
+    std::string error;
+    check(!m.solve({}, error), "mecanismo (rotacao no plano livre) e rejeitado: " + error);
+}
+
 } // namespace
 
 int main()
@@ -462,6 +481,7 @@ int main()
     beamTest();
     compressionOnlySprings();
     nonConformingTies();
+    mechanismIsRejected();
     std::printf("\n%s (%d falhas)\n", failures == 0 ? "TODOS OS TESTES PASSARAM" : "HA FALHAS", failures);
     return failures == 0 ? 0 : 1;
 }

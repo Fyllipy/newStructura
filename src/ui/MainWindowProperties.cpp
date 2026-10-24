@@ -1,4 +1,15 @@
 #include "MainWindow.h"
+#include "SvgIcons.h"
+
+#include <QToolButton>
+
+#include <QScrollArea>
+
+#include <QLabel>
+
+#include <QHBoxLayout>
+
+#include <QFrame>
 
 #include <QVTKOpenGLNativeWidget.h>
 #include "app/UndoRedoService.h"
@@ -63,20 +74,57 @@ void MainWindow::ensurePropertiesPanel()
     }
 
     // flutuante: filho da viewport, no lado direito, sem empurrar a visualizacao (ver positionPlaneLabel)
-    m_propertiesContainer = new QWidget(static_cast<QWidget *>(m_vtkWidget));
+    m_propertiesContainer = new QFrame(static_cast<QWidget *>(m_vtkWidget));
     m_propertiesContainer->setObjectName(QStringLiteral("PropertiesContainer"));
-    m_propertiesContainer->setFixedWidth(320);
+    m_propertiesContainer->setFixedWidth(350);
+    // mesmo estilo da janela de eixos de referencia: cartao arredondado com cabecalho azul e botao de fechar
     m_propertiesContainer->setStyleSheet(QStringLiteral(
-        "#PropertiesContainer { background: #f5f7fb; border-left: 1px solid #d6dde8; }"));
-    m_propertiesContainer->setAttribute(Qt::WA_StyledBackground, true);
+        "QFrame#PropertiesContainer { background: #f2f5fa; border: 1px solid #cbd4e2; border-radius: 8px; }"
+        "QFrame#propertiesHeader { background: #0d7fb9; border: 0; border-top-left-radius: 8px; border-top-right-radius: 8px; }"
+        "QLabel#propertiesTitle { color: #ffffff; font-size: 13px; font-weight: 700; background: transparent; }"
+        "QScrollArea#propertiesScroll { background: transparent; border: 0; }"
+        "QScrollArea#propertiesScroll > QWidget > QWidget { background: transparent; }"));
 
     auto *panelLayout = new QVBoxLayout(m_propertiesContainer);
-    panelLayout->setContentsMargins(12, 12, 12, 12);
+    panelLayout->setContentsMargins(0, 0, 0, 10);
     panelLayout->setSpacing(8);
 
-    m_propertiesPanel = new PropertiesPanel(m_propertiesContainer);
-    panelLayout->addWidget(m_propertiesPanel);
-    panelLayout->addStretch(1);
+    auto *header = new QFrame(m_propertiesContainer);
+    header->setObjectName(QStringLiteral("propertiesHeader"));
+    header->setFixedHeight(34);
+    auto *headerLayout = new QHBoxLayout(header);
+    headerLayout->setContentsMargins(12, 0, 6, 0);
+    auto *title = new QLabel(tr("Propriedades"), header);
+    title->setObjectName(QStringLiteral("propertiesTitle"));
+    headerLayout->addWidget(title);
+    headerLayout->addStretch(1);
+    auto *close = new QToolButton(header);
+    close->setIcon(Structura::UI::svgIcon(QStringLiteral("close.svg"), QColor(Qt::white), 14));
+    close->setIconSize(QSize(14, 14));
+    close->setFixedSize(24, 24);
+    close->setToolTip(tr("Fechar"));
+    close->setStyleSheet(QStringLiteral(
+        "QToolButton { border: 0; border-radius: 4px; background: transparent; }"
+        "QToolButton:hover { background: rgba(255, 255, 255, 0.25); }"));
+    connect(close, &QToolButton::clicked, this, [this]() {
+        if (m_propertiesToolButton) {
+            m_propertiesToolButton->setChecked(false);   // o botao da barra lateral esconde o painel
+        } else if (m_propertiesContainer) {
+            m_propertiesContainer->hide();
+        }
+    });
+    headerLayout->addWidget(close);
+    panelLayout->addWidget(header);
+
+    auto *scroll = new QScrollArea(m_propertiesContainer);
+    scroll->setObjectName(QStringLiteral("propertiesScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_propertiesPanel = new PropertiesPanel(scroll);
+    scroll->setWidget(m_propertiesPanel);
+    m_propertiesPanel->installEventFilter(this);   // mudancas de layout (secoes que aparecem/somem) reajustam a altura do cartao
+    panelLayout->addWidget(scroll, 1);
 
     m_propertiesContainer->hide();
 
@@ -87,6 +135,8 @@ void MainWindow::ensurePropertiesPanel()
     connect(m_propertiesPanel, &PropertiesPanel::barSectionEdited,
             this, &MainWindow::onBarSectionEdited);
     connect(m_propertiesPanel, &PropertiesPanel::barReportRequested, this, &MainWindow::onBarReport);
+    connect(m_propertiesPanel, &PropertiesPanel::barCompositeGapEdited, this, &MainWindow::onBarCompositeGapEdited);
+    connect(m_propertiesPanel, &PropertiesPanel::barCompositeEdited, this, &MainWindow::onBarCompositeEdited);
     connect(m_propertiesPanel, &PropertiesPanel::placementEditorRequested, this, [this]() {
         if (m_placementPanel && !m_placementPanel->isVisible()) {
             onTogglePlacementPanel();
@@ -338,6 +388,7 @@ void MainWindow::refreshPropertiesPanel()
 
     m_propertiesPanel->setNodeEntries(buildNodeEntries(nodeIds));
     m_propertiesPanel->setBarEntries(buildBarEntries(barIds));
+    positionPlaneLabel();   // o cartao acompanha a altura do conteudo
     updateLoadActionsEnabled();
     refreshLoadsPanel();
     refreshPlacementPanel();

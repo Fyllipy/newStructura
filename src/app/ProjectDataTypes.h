@@ -184,6 +184,9 @@ struct LoadCase {
 struct LoadCombination {
     QString name;
     QVector<QPair<QString, double>> factors; ///< (nome do caso, fator)
+    /// Variante com imperfeicao geometrica inicial (so em tempo de execucao, nao e gravada): direcao 0 = X, 1 = Y (-1 = nenhuma) e sentido +1/-1.
+    int imperfectionAxis {-1};
+    int imperfectionSign {0};
 
     bool operator==(const LoadCombination &other) const
     {
@@ -264,16 +267,21 @@ struct ReferenceAxes {
     }
 
     /// Eixos exibidos no plano de construcao cuja normal e `normal` (0=X, 1=Y, 2=Z) na posicao `offset`.
-    /// Plano XY: eixos X/Y do nivel nessa elevacao. Planos XZ/YZ: uniao dos eixos horizontais e os niveis
+    /// Plano XY: eixos X/Y do nivel nessa elevacao (nivel sem eixos proprios: uniao dos eixos de todos os niveis). Planos XZ/YZ: uniao dos eixos horizontais e os niveis
     /// (nome + elevacao) como eixos verticais.
     void planeAxes(int normal, double offset, QVector<ReferenceAxis> &u, QVector<ReferenceAxis> &v) const
     {
         u.clear();
         v.clear();
         if (normal == 2) {
-            if (const AxisLevel *level = levelAt(offset)) {
+            const AxisLevel *level = levelAt(offset);
+            if (level && (!level->x.isEmpty() || !level->y.isEmpty())) {
                 u = level->x;
                 v = level->y;
+            } else {
+                // nivel sem eixos proprios (ou sem nivel nessa elevacao): herda os eixos dos demais, para que apareçam em todos os niveis
+                u = unionAlong(0);
+                v = unionAlong(1);
             }
             return;
         }
@@ -323,6 +331,8 @@ struct DesignMemberParams {
     double lb {0.0};            ///< Lb informado (m); 0 = usa L / trechos
     bool braced {false};        ///< Mesa comprimida contida continuamente
     bool cbOne {false};         ///< Adota Cb = 1,0
+    int oneFlangeBraced {0};    ///< NBR 8800, 5.4.2.4: 0 = nao; 1 = mesa do lado + (superior) com contencao lateral continua; 2 = mesa do lado - (inferior)
+    bool forceAwayFromFreeFlange {false};   ///< 5.4.2.4: forcas transversais orientadas no sentido oposto a mesa livre (senao, no sentido da mesa livre)
     double b2 {1.0};            ///< Amplificacao dos efeitos globais (B2)
     double netAreaRatio {1.0};  ///< An / Ag na ligacao
     int deflDenominator {0};    ///< Limite de flecha L/n (0 = automatico: L/350 horizontais, L/250 inclinadas)
@@ -337,30 +347,85 @@ struct DesignMemberParams {
     double openingOffset {0.0};      ///< excentricidade do centro da abertura em relacao a meia altura (mm)
     double openingNeighbourD {0.0};  ///< diametro da abertura adjacente (mm); 0 = nao ha
     double openingSpacing {0.0};     ///< distancia entre os centros das duas aberturas, ao longo da viga (mm)
+    // Ligacao da barra tracionada (NBR 8800, 5.2.3 a 5.2.5): area liquida pelos furos e coeficiente Ct
+    int ctMode {0};                  ///< 0 = Ct = 1,0 e An/Ag informado; 1 = 5.2.5-c: Ct = 1 - ec/lc; 2 = 5.2.5-b (soldas transversais): Ct = Ac/Ag
+    double ctEccentricity {0.0};     ///< ec: distancia do centro geometrico da barra (ou da barra ficticia) ao plano de cisalhamento da ligacao (mm)
+    double ctLength {0.0};           ///< lc: comprimento da ligacao na direcao da forca (mm)
+    double ctConnectedAreaRatio {0.0};   ///< Ac/Ag: area dos elementos conectados / area bruta (limite inferior de Ct em 5.2.5-c; valor de Ct em 5.2.5-b)
+    double holeBoltDiameter {0.0};   ///< db dos parafusos da linha de ruptura (mm); 0 = sem furos (usa An/Ag informado)
+    int holesInChain {0};            ///< numero de furos na cadeia de ruptura
+    double holeThickness {0.0};      ///< espessura do elemento furado (mm)
+    double staggerPitch {0.0};       ///< s: espacamento longitudinal entre furos em zigue-zague (mm)
+    double staggerGauge {0.0};       ///< g: gabarito transversal entre esses furos (mm)
+    int staggerLinks {0};            ///< numero de linhas ligando dois furos (cada uma soma s2/(4g))
+    // Barras compostas (NBR 8800, 5.3.6)
+    double compositeSpacing {0.0};   ///< l: distancia entre as ligacoes dos perfis (mm); 0 = duas ligacoes intermediarias uniformemente espacadas (l = L/3)
+    bool compositeWelded {false};    ///< ligacoes intermediarias soldadas ou com parafusos protendidos (5.3.6.3-b); senao parafusos com aperto normal (5.3.6.3-a)
+    // Itens adicionais da NBR 8800:2024 (gravados como pares chave=valor ao fim da linha, so quando diferentes do padrao)
+    bool threadedEnds {false};       ///< barra redonda com extremidades rosqueadas (5.2.7): ruptura da parte rosqueada Abe fu/ga2, Abe = 0,75 Ab
+    double webWeldLeg {0.0};         ///< perna do filete mesa-alma de perfil soldado (mm); 0 = nao verificar (5.4.5)
+    double webWeldFw {485.0};        ///< fw do metal da solda mesa-alma (MPa)
+    double flangeLineLoad {0.0};     ///< forca aplicada diretamente na mesa e transmitida a alma pela solda (N/mm), somada ao cisalhamento da flexao (5.4.5)
+    double coverB {0.0};             ///< lamela (chapa de reforco sobreposta a mesa): largura (mm); 0 = sem lamela (5.4.4)
+    double coverT {0.0};             ///< espessura da lamela (mm)
+    double coverStart {0.0};         ///< posicao da extremidade inicial da lamela, a partir do inicio da barra (mm)
+    double coverEnd {0.0};           ///< posicao da extremidade final (mm)
+    int coverFlanges {2};            ///< lamelas em 1 (mesa superior) ou 2 mesas
+    double coverWeldLeg {0.0};       ///< perna do filete da lamela (mm)
+    bool coverEndWeld {true};        ///< solda de filete na extremidade da lamela (5.4.4.2)
+    bool plasticAnalysis {false};    ///< viga continua com analise rigido-plastica: limite do comprimento destravado entre rotulas (4.11.5)
+    // Pilar misto de aco e concreto (NBR 8800:2024, Anexo M): o perfil de aco e o da secao da barra (I/H, tubular retangular ou circular)
+    int mixType {0};                 ///< 0 = barra de aco; 1 = I/H totalmente revestido; 2 = I/H parcialmente revestido; 3 = tubular preenchido
+    int mixModel {1};                ///< modelo de calculo: 1 (M.5.2), 2 (M.5.3), 3 (M.5.4, so tubulares)
+    double mixHc {0.0};              ///< revestimento de concreto: altura hc (mm), na direcao da alma do perfil
+    double mixBc {0.0};              ///< largura bc (mm)
+    double mixFck {30.0};            ///< fck do concreto (MPa)
+    double mixFsk {500.0};           ///< fyk da armadura (MPa)
+    double mixBarArea {0.0};         ///< area de cada barra (mm2); 0 = sem armadura
+    int mixBarsH {0};                ///< barras em cada face superior/inferior (inclui os cantos)
+    int mixBarsV {0};                ///< barras intermediarias em cada face lateral
+    double mixCover {0.0};           ///< distancia do centro das barras a face do concreto (mm)
+    double mixAlphaE {1.0};          ///< alfa_E do agregado (NBR 6118)
     bool operator==(const DesignMemberParams &o) const
     {
         return memberId == o.memberId && steel == o.steel && kx == o.kx && ky == o.ky && kz == o.kz && lx == o.lx && ly == o.ly && lz == o.lz
-            && segments == o.segments && lb == o.lb && braced == o.braced && cbOne == o.cbOne && b2 == o.b2
+            && segments == o.segments && lb == o.lb && braced == o.braced && cbOne == o.cbOne && oneFlangeBraced == o.oneFlangeBraced
+            && forceAwayFromFreeFlange == o.forceAwayFromFreeFlange && b2 == o.b2
             && netAreaRatio == o.netAreaRatio && deflDenominator == o.deflDenominator && stiffenerSpacing == o.stiffenerSpacing
             && panelTensionFlange == o.panelTensionFlange && coldWork == o.coldWork && bearingLength == o.bearingLength
             && fatigueCategory == o.fatigueCategory && fatigueCycles == o.fatigueCycles && openingDiameter == o.openingDiameter
             && openingPosition == o.openingPosition && openingOffset == o.openingOffset && openingNeighbourD == o.openingNeighbourD
-            && openingSpacing == o.openingSpacing;
+            && openingSpacing == o.openingSpacing && ctMode == o.ctMode && ctEccentricity == o.ctEccentricity && ctLength == o.ctLength
+            && ctConnectedAreaRatio == o.ctConnectedAreaRatio && holeBoltDiameter == o.holeBoltDiameter && holesInChain == o.holesInChain
+            && holeThickness == o.holeThickness && staggerPitch == o.staggerPitch && staggerGauge == o.staggerGauge && staggerLinks == o.staggerLinks
+            && compositeSpacing == o.compositeSpacing && compositeWelded == o.compositeWelded
+            && threadedEnds == o.threadedEnds && webWeldLeg == o.webWeldLeg && webWeldFw == o.webWeldFw && flangeLineLoad == o.flangeLineLoad
+            && coverB == o.coverB && coverT == o.coverT && coverStart == o.coverStart && coverEnd == o.coverEnd && coverFlanges == o.coverFlanges
+            && coverWeldLeg == o.coverWeldLeg && coverEndWeld == o.coverEndWeld && plasticAnalysis == o.plasticAnalysis
+            && mixType == o.mixType && mixModel == o.mixModel && mixHc == o.mixHc && mixBc == o.mixBc && mixFck == o.mixFck && mixFsk == o.mixFsk
+            && mixBarArea == o.mixBarArea && mixBarsH == o.mixBarsH && mixBarsV == o.mixBarsV && mixCover == o.mixCover && mixAlphaE == o.mixAlphaE;
     }
 };
 
 /// Opcoes globais do dimensionamento do projeto.
 struct DesignSettings {
     QString defaultSteel {QStringLiteral("MR250")};
-    QString rectTubeStandard {QStringLiteral("NBR14762")};   ///< Norma dos tubulares retangulares: NBR14762 ou NBR8800
+    QString rectTubeStandard {QStringLiteral("AUTO")};   ///< Norma dos tubulares retangulares: AUTO (reconhece laminado x formado a frio pela serie), NBR14762 ou NBR8800
     bool amplifyB1 {true};
     bool slendernessGoverns {true};
     bool secondOrder {false};           ///< Analise de segunda ordem (P-delta global e local) nas combinacoes
+    bool stabilityFunctions {false};    ///< 2a ordem pelas funcoes de estabilidade (Livesley): P-delta e P-delta local exatos em cada barra, sem subdividi-las
+    bool shearDeformation {false};      ///< Deformacao por cortante (Timoshenko) nas barras, com as areas de cisalhamento das secoes
+    bool warpingTorsion {false};        ///< Torcao com empenamento (Vlasov, 7o grau de liberdade) nas barras de secao I/H; senao so Saint-Venant
+    double rigidZoneFactor {0.0};       ///< Zonas rigidas nas extremidades das barras: fracao (0 a 1) da penetracao da barra no perfil que a recebe; 0 = desligado
+    int loadSteps {0};                  ///< 2a ordem: 0 = iteracao direta com incremento automatico de carga se divergir; n > 1 = sempre em n passos
     double stiffnessReduction {0.8};    ///< Fator aplicado a EA e EI na analise de 2a ordem das combinacoes ultimas (NBR 8800, 4.10.5)
     bool autoB2 {true};                 ///< Calcula B2 por andar (Anexo C) nas analises de 1a ordem
     double rs {0.85};                   ///< Rs do Anexo C (0,85 em porticos, 1,0 nos demais casos)
     bool singleStorey {false};          ///< Galpao/edificacao de um pavimento (limite de topo H/300; senao H/400)
-    bool notionalLoads {false};         ///< Forcas nocionais (NBR 8800, 4.9.7.2): variantes das combinacoes ultimas com 0,3% das cargas gravitacionais
+    bool geometricImperfection {false};  ///< Imperfeicao geometrica inicial direta (desaprumo H/n) nas combinacoes ultimas da 2a ordem, no lugar das forcas nocionais
+    double imperfectionRatio {1.0 / 333.0};   ///< Desaprumo: deslocamento horizontal = razao x altura acima da base (NBR 8800, 4.9.7.1: H/333)
+    bool notionalLoads {false};       ///< Forcas nocionais (NBR 8800, 4.9.7.2): variantes das combinacoes ultimas com 0,3% das cargas gravitacionais
     double notionalFactor {0.003};
     bool groupByFamily {false};         ///< Dimensionamento automatico: mesma familia recebe o mesmo perfil (senao agrupa por perfil atual)
     double targetEta {1.0};             ///< Aproveitamento alvo do dimensionamento automatico
@@ -379,10 +444,14 @@ struct DesignSettings {
         p.memberId = memberId;
         return p;
     }
+    /// A imperfeicao geometrica so existe na 2a ordem (na 1a ordem nao ha P-delta para amplifica-la); quando ativa, substitui as forcas nocionais.
+    [[nodiscard]] bool geometricActive() const { return geometricImperfection && secondOrder; }
+    [[nodiscard]] bool notionalActive() const { return notionalLoads && !geometricActive(); }
+    [[nodiscard]] bool hasImperfectionVariants() const { return notionalActive() || geometricActive(); }
     [[nodiscard]] bool isDefault() const
     {
-        return members.isEmpty() && defaultSteel == QLatin1String("MR250") && rectTubeStandard == QLatin1String("NBR14762")
-            && amplifyB1 && slendernessGoverns && !secondOrder && stiffnessReduction == 0.8 && autoB2 && rs == 0.85 && !singleStorey && !notionalLoads && notionalFactor == 0.003 && !groupByFamily && targetEta == 1.0
+        return members.isEmpty() && defaultSteel == QLatin1String("MR250") && rectTubeStandard == QLatin1String("AUTO")
+            && amplifyB1 && slendernessGoverns && !secondOrder && !stabilityFunctions && !shearDeformation && !warpingTorsion && loadSteps == 0 && rigidZoneFactor == 0.0 && stiffnessReduction == 0.8 && autoB2 && rs == 0.85 && !singleStorey && !notionalLoads && !geometricImperfection && imperfectionRatio == 1.0 / 333.0 && notionalFactor == 0.003 && !groupByFamily && targetEta == 1.0
             && combinations.isEmpty() && defaults == DesignMemberParams {};
     }
 };
@@ -418,6 +487,9 @@ struct StoredMemberResult {
     int memberId {0};
     std::array<double, 12> forces {};
     std::array<double, 3> auxK {};
+    bool hasWarping {false};                ///< torcao com empenamento: theta' nas extremidades e forcas generalizadas (bimomentos)
+    std::array<double, 2> warpingRate {};
+    std::array<double, 2> warpingForce {};
 };
 struct StoredShellResult {
     int shellId {0};

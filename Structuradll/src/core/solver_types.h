@@ -23,6 +23,11 @@ struct SectionData {
     double Iz = 0.0;
     double Iy = 0.0;
     double J = 0.0;
+    // Areas efetivas de cisalhamento (m2) para a deformacao por cortante: Ay = cortante na direcao local y, Az = na direcao z (0 = rigida ao cortante)
+    double Ay = 0.0;
+    double Az = 0.0;
+    // Constante de empenamento (m6) das secoes abertas de paredes finas: > 0 permite a torcao com empenamento (7o grau de liberdade) nas barras que a pedirem
+    double Cw = 0.0;
 };
 
 struct NodeData {
@@ -48,6 +53,23 @@ struct MemberData {
     double offsetZ2 = 0.0;
     // End releases: ux uy uz rx ry rz at node I then node J (non-zero = released)
     std::array<int, 12> releases{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    // Zonas rigidas nas extremidades (m, medidas sobre o eixo da barra a partir de cada no): so o trecho restante e flexivel
+    double rigidI = 0.0;
+    double rigidJ = 0.0;
+    // Torcao com empenamento (Vlasov): 0 = so Saint-Venant; 1 = ativa (exige Cw > 0 na secao). Condicao de empenamento em cada extremidade:
+    // 0 = automatica (impedido em no totalmente engastado, livre nos demais; barras colineares no no compartilham o empenamento), 1 = livre, 2 = impedido
+    int warping = 0;
+    int warpingStart = 0;
+    int warpingEnd = 0;
+    // Barra de secao I de alma variavel (NBR 8800, Anexo G): alturas nas extremidades I e J, mesas e alma constantes. O solver subdivide a barra em `segments`
+    // trechos prismaticos (nos internos), com as propriedades da altura media de cada trecho, e devolve os esforcos das extremidades da barra original.
+    bool taper = false;
+    double taperD1 = 0.0;
+    double taperD2 = 0.0;
+    double taperBf = 0.0;
+    double taperTw = 0.0;
+    double taperTf = 0.0;
+    int taperSegments = 8;
 };
 
 struct NodalLoadData {
@@ -78,6 +100,7 @@ struct ShellElementData {
     double E = 0.0;
     double nu = 0.3;
     double density = 0.0;                      // massa especifica (so modal)
+    double alpha = 1.2e-5;                     // dilatacao termica (1/K), usada nas cargas de temperatura
     double thickness = 0.0;
 };
 
@@ -134,6 +157,12 @@ struct SolverInput {
     std::vector<std::pair<int, double>> extraNodalMasses;   // node id, mass
     int maxIterations = 30;
     double tolerance = 1e-7;
+    // Deformacao por cortante (Timoshenko) nas barras cuja secao tem areas de cisalhamento
+    bool shearDeformation = false;
+    // Segunda ordem pelas funcoes de estabilidade (Livesley) em vez da rigidez geometrica consistente (P-delta e P-delta local exatos na barra)
+    bool stabilityFunctions = false;
+    // Segunda ordem: 0 = iteracao direta com incremento de carga automatico se falhar; n > 1 = sempre em n passos de carga
+    int loadSteps = 0;
 };
 
 struct NodeResult {
@@ -148,9 +177,15 @@ struct MemberResult {
     int nodeJ = 0;
     std::array<double, 12> localForces{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     std::array<double, 3> auxiliaryK{0.0, 0.0, 0.0};
+    // Torcao com empenamento: taxa de torcao theta' nas extremidades (rad/m) e forcas generalizadas conjugadas (N.m2: bimomento aplicado a barra, B = -E Cw theta'')
+    bool hasWarping = false;
+    std::array<double, 2> warpingRate{0.0, 0.0};
+    std::array<double, 2> warpingForce{0.0, 0.0};
 };
 
 struct SolverOutput {
+    // Avisos do solver (condicionamento, graus de liberdade sem rigidez, tirantes que nao estabilizam, segunda ordem resolvida por incrementos...)
+    std::vector<std::string> warnings;
     std::vector<NodeResult> nodes;
     std::vector<MemberResult> members;
     std::vector<ShellResultData> shells;

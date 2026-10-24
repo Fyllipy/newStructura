@@ -251,7 +251,7 @@ ViewportLabelOverlay::ViewportLabelOverlay(QWidget *parent)
     setAutoFillBackground(false);
     resizeToParent();
     show();
-    raise();
+    lower();   // cobre toda a viewport: fica abaixo dos cartoes (legenda, cubo de vistas, paineis), mas acima do desenho
 }
 
 void ViewportLabelOverlay::resizeToParent()
@@ -259,7 +259,7 @@ void ViewportLabelOverlay::resizeToParent()
     if (parentWidget()) {
         setGeometry(parentWidget()->rect());
     }
-    raise();
+    lower();
 }
 
 void ViewportLabelOverlay::setGroup(const QString &kind,
@@ -319,7 +319,7 @@ void ViewportLabelOverlay::sync(const QMatrix4x4 &matrix)
             group.screen[i] = QPointF((nx + 1.0) * w / 2.0, (1.0 - ny) * h / 2.0);
         }
     }
-    raise();
+    lower();
     update();
 }
 

@@ -120,10 +120,11 @@ void MainWindow::onGenerateDrawings()
                 run.reset();
             }
         }
+        const auto sceneBars = m_sceneController->bars();
         for (const auto &connection : m_extras.connections) {
             SheetBuilder::ConnectionDetail detail;
             detail.connection = connection;
-            for (const auto &bar : m_sceneController->bars()) {
+            for (const auto &bar : sceneBars) {
                 if (bar.externalId != connection.memberId) {
                     continue;
                 }

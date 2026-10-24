@@ -273,7 +273,7 @@ void ConstructionScene::rebuild()
     m_axes_renderer.setVisible(m_axesVisible);
     m_labels = m_axes_renderer.labels();
 
-    // Demais niveis (somente com "todos os niveis" ativo no plano XY).
+    // Demais niveis (malha e eixos de referencia): somente com "todos os niveis" ativo no plano XY.
     std::vector<double> others;
     if (showAllLevels()) {
         for (const double elevation : m_axes.planeLevels(2)) {

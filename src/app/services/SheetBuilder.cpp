@@ -862,7 +862,7 @@ void drawView(Sheet &s, const Layers &l, const Region &region, const SheetBuilde
 
     // barras: contorno do perfil (largura visivel pela projecao da caixa d x bf)
     LabelPlacer placer;
-    const bool outline = ctx.options.profiles != Detail::Axis;
+    const bool drawOutline = ctx.options.profiles != Detail::Axis;
     struct Pending {
         Item item;
         Point a, b;
@@ -879,7 +879,7 @@ void drawView(Sheet &s, const Layers &l, const Region &region, const SheetBuilde
             const V3 T3 = U * (-uy) + Vv * ux;
             const double widthMm = it.bar->depthMm * std::abs(dot(it.axes.y, T3)) + it.bar->widthMm * std::abs(dot(it.axes.z, T3));
             const double wp = widthMm * k;
-            if (outline && wp >= 0.9) {
+            if (drawOutline && wp >= 0.9) {
                 halfBand = wp / 2.0;
                 const double nx = -uy * halfBand, ny = ux * halfBand;
                 s.polyline({{a.x + nx, a.y + ny}, {b.x + nx, b.y + ny}, {b.x - nx, b.y - ny}, {a.x - nx, a.y - ny}}, true, layer);

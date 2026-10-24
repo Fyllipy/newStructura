@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 #include <array>
 #include <memory>
@@ -40,6 +41,11 @@ public:
         double iz {0.0};
         double iy {0.0};
         double j {0.0};
+        /// Areas efetivas de cisalhamento (unidade de comprimento ao quadrado) para a deformacao por cortante; 0 = rigida ao cortante.
+        double shearAreaY {0.0};
+        double shearAreaZ {0.0};
+        /// Constante de empenamento Cw (unidade de comprimento a sexta); > 0 permite a torcao com empenamento nas barras que a pedirem.
+        double warpingConstant {0.0};
     };
 
     struct NodeData {
@@ -67,6 +73,18 @@ public:
         std::array<int, 12> releases {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
         /// Tirante: so trabalha a tracao (a barra e desativada enquanto encurtar).
         bool tensionOnly {false};
+        /// Zonas rigidas nas extremidades (unidade de comprimento do modelo, sobre o eixo da barra a partir de cada no); 0 = sem zona rigida.
+        double rigidStart {0.0};
+        double rigidEnd {0.0};
+        /// Torcao com empenamento (Vlasov, 7o grau de liberdade): exige Cw > 0 na secao. Condicao em cada extremidade:
+        /// 0 = automatica (impedido em no totalmente engastado; compartilhado por barras colineares; livre nos demais), 1 = livre, 2 = impedido.
+        bool warping {false};
+        int warpingStartMode {0};
+        int warpingEndMode {0};
+        /// Barra de secao I de alma variavel (NBR 8800, Anexo G): alturas nas extremidades I e J, mesas e alma (unidade de comprimento do modelo); o solver a subdivide em `taperSegments` trechos.
+        bool taper {false};
+        double taperD1 {0.0}, taperD2 {0.0}, taperBf {0.0}, taperTw {0.0}, taperTf {0.0};
+        int taperSegments {8};
 
         [[nodiscard]] bool hasPlacement() const
         {
@@ -115,6 +133,7 @@ public:
         int id {0};
         std::array<int, 4> nodes {{0, 0, 0, 0}};   ///< ids dos nos, anti-horario visto do lado da normal positiva
         double e {0.0}, nu {0.3}, density {0.0}, thickness {0.0};
+        double alpha {1.2e-5};   ///< dilatacao termica (1/K)
     };
     struct ShellTieData {
         int slave {0};
@@ -156,6 +175,12 @@ public:
         std::vector<ShellLoadData> shellLoads;
         /// Analise de segunda ordem (P-delta e P-delta local) por iteracao com rigidez geometrica.
         bool secondOrder {false};
+        /// Deformacao por cortante (Timoshenko) nas secoes com area de cisalhamento.
+        bool shearDeformation {false};
+        /// Segunda ordem pelas funcoes de estabilidade (P-delta e P-delta local exatos em cada barra) em vez da rigidez geometrica consistente.
+        bool stabilityFunctions {false};
+        /// Segunda ordem: 0 = iteracao direta com incremento automatico de carga se divergir; n > 1 = sempre em n passos.
+        int loadSteps {0};
         /// Modos de flambagem elastica linear a extrair (0 = nao calcular); usa os esforcos axiais de primeira ordem.
         int bucklingModes {0};
         /// Modos de vibracao livre a extrair (0 = nao calcular). Massas adicionais concentradas por no (id, massa).
@@ -173,6 +198,11 @@ public:
         int memberId {0};
         std::array<double, 12> localForces {{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
         std::array<double, 3> auxK {{0.0, 0.0, 0.0}};
+        /// Torcao com empenamento: taxa de torcao theta' nas extremidades (rad por unidade de comprimento) e forcas generalizadas
+        /// conjugadas (bimomento aplicado a barra: +B no I, -B no J, B = -E Cw theta'').
+        bool hasWarping {false};
+        std::array<double, 2> warpingRate {{0.0, 0.0}};
+        std::array<double, 2> warpingForce {{0.0, 0.0}};
     };
 
     struct ShellElementResult {
@@ -194,6 +224,8 @@ public:
         std::vector<double> modalOmega;
         std::vector<std::array<double, 3>> modalMassRatio;
         std::vector<std::vector<double>> modalShapes;
+        /// Avisos do solver (condicionamento, graus de liberdade sem rigidez, tirantes que oscilam, segunda ordem por incrementos...).
+        QStringList warnings;
     };
 
     explicit SolverBridge(QString libraryPath = QString());

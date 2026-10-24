@@ -15,7 +15,7 @@ class ResultsPersistence
 public:
     /// Impressao digital (SHA-1) dos modelos de cada caso e das opcoes que alteram a analise.
     static QString fingerprint(const std::vector<const Structura::App::SolverBridge::ModelData *> &models, bool secondOrder,
-                               double stiffnessReduction);
+                               double stiffnessReduction, double imperfectionRatio = 0.0);
 
     static Structura::App::ProjectData::StoredRun toStored(const QString &name, const Structura::App::SolverBridge::Result &result);
 

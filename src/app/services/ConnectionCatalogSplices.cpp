@@ -15,16 +15,6 @@ using Cat = ConnectionCatalog;
 
 namespace {
 
-D::BoltGrade gradeByName(const QString &name)
-{
-    for (const auto &g : D::boltGrades()) {
-        if (QString::fromStdString(g.name) == name) {
-            return g;
-        }
-    }
-    return D::boltGrades().size() > 2 ? D::boltGrades()[2] : D::boltGrades().front();
-}
-
 D::CoverSpliceInput toCover(const NodeConnection &c, double axial)
 {
     D::CoverSpliceInput in;
@@ -119,7 +109,7 @@ QVector<Cat::FieldDef> coverSpliceFields(const Cat::Entry &entry)
 NodeConnection coverSpliceDefault(const Cat::Entry &entry, const Cat::BeamInfo &beam, double plateFy, double plateFu)
 {
     NodeConnection c;
-    c.grade = QString::fromStdString(D::boltGrades().size() > 2 ? D::boltGrades()[2].name : D::boltGrades().front().name);
+    c.grade = defaultBoltGradeName();
     const int shape = static_cast<int>(entry.preset.value(QStringLiteral("shape")) + 0.5);
     const int covers = static_cast<int>(entry.preset.value(QStringLiteral("covN"), 2.0) + 0.5);
     const auto &g = beam.geometry;
@@ -245,7 +235,7 @@ QVector<Cat::FieldDef> tubeSpliceFields(const Cat::Entry &)
 NodeConnection tubeSpliceDefault(const Cat::Entry &, const Cat::BeamInfo &beam, double plateFy, double plateFu)
 {
     NodeConnection c;
-    c.grade = QString::fromStdString(D::boltGrades().size() > 2 ? D::boltGrades()[2].name : D::boltGrades().front().name);
+    c.grade = defaultBoltGradeName();
     const double d = beam.geometry.value(QStringLiteral("D"), beam.geometry.value(QStringLiteral("d"), beam.depth > 0.0 ? beam.depth : 114.3));
     const double t = beam.geometry.value(QStringLiteral("t"), 6.0);
     const double plateD = std::ceil((d + 110.0) / 10.0) * 10.0;

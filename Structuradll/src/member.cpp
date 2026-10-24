@@ -2,6 +2,7 @@
 #include "node.h"
 #include "material.h"
 #include "section.h"
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <tuple>
@@ -41,7 +42,7 @@ Member::Member(int id, std::shared_ptr<Node> nodeI, std::shared_ptr<Node> nodeJ,
 
     // Initialize internal forces vector
     internalForces.resize(12, 0.0);
-    fixedEndForces.resize(12, 0.0);
+    fixedEndForces.resize(14, 0.0);
     localAxesComputed = false;
 
     // Validate inputs
@@ -226,12 +227,77 @@ Eigen::MatrixXd Member::getRigidOffsetMatrix() const {
     return T;
 }
 
-Eigen::MatrixXd Member::calculateNodeToAxisMatrix() const {
+Eigen::MatrixXd Member::calculateNodeToAxisMatrix(bool includeRigidZones) const {
+    if (includeRigidZones && hasRigidZones()) {
+        return getRigidZoneMatrix() * getRigidOffsetMatrix() * calculateTransformationMatrix();
+    }
     return getRigidOffsetMatrix() * calculateTransformationMatrix();
 }
 
+void Member::setRigidZones(double lengthI, double lengthJ) {
+    rigidI = std::max(0.0, lengthI);
+    rigidJ = std::max(0.0, lengthJ);
+    if (hasRigidZones() && rigidI + rigidJ >= calculateLength() * 0.999) {
+        throw std::runtime_error("Rigid end zones consume the whole length of member " + std::to_string(id));
+    }
+    condensationCached = false;
+}
+
+double Member::calculateFlexibleLength() const {
+    return calculateLength() - rigidI - rigidJ;
+}
+
+Eigen::MatrixXd Member::getRigidZoneMatrix() const {
+    Eigen::MatrixXd T = Eigen::MatrixXd::Identity(12, 12);
+    T(1, 5) = rigidI;
+    T(2, 4) = -rigidI;
+    T(7, 11) = -rigidJ;
+    T(8, 10) = rigidJ;
+    return T;
+}
+
+Eigen::VectorXd Member::rigidStubLoads(const Eigen::Vector3d& q, const Eigen::Vector3d& m) const {
+    Eigen::VectorXd f = Eigen::VectorXd::Zero(12);
+    // a rigid zone of length a carries the resultant P = q a at a/2 from its node: force P and moment (a/2 x P) + m a at the node
+    const double a = rigidI, b = rigidJ;
+    f(0) = q.x() * a;
+    f(1) = q.y() * a;
+    f(2) = q.z() * a;
+    f(3) = m.x() * a;
+    f(4) = m.y() * a - 0.5 * a * (q.z() * a);
+    f(5) = m.z() * a + 0.5 * a * (q.y() * a);
+    f(6) = q.x() * b;
+    f(7) = q.y() * b;
+    f(8) = q.z() * b;
+    f(9) = m.x() * b;
+    f(10) = m.y() * b + 0.5 * b * (q.z() * b);
+    f(11) = m.z() * b - 0.5 * b * (q.y() * b);
+    return f;
+}
+
+void Member::addFixedEndLocal(const Eigen::VectorXd& flexLocal, const Eigen::VectorXd& rigidAtNodeEnds) {
+    const Eigen::VectorXd condensed = condenseFixedEndForces(flexLocal);
+    if (rigidFixedForces.size() != 12) {
+        rigidFixedForces.assign(12, 0.0);
+    }
+    for (int i = 0; i < 12; ++i) {
+        fixedEndForces[i] += -condensed(i);
+        rigidFixedForces[static_cast<size_t>(i)] += -rigidAtNodeEnds(i);
+    }
+    for (Eigen::Index i = 12; i < condensed.size(); ++i) {
+        fixedEndForces[static_cast<size_t>(i)] += -condensed(i);
+    }
+}
+
 Eigen::VectorXd Member::localAxisForcesToGlobalNodal(const Eigen::VectorXd& localForces) const {
-    return calculateNodeToAxisMatrix().transpose() * condenseFixedEndForces(localForces);
+    const Eigen::VectorXd condensed = condenseFixedEndForces(localForces);
+    if (condensed.size() == 14) {
+        Eigen::VectorXd global(14);
+        global.head(12) = calculateNodeToAxisMatrix().transpose() * condensed.head(12);
+        global.tail(2) = condensed.tail(2);   // warping parameters are not transformed
+        return global;
+    }
+    return calculateNodeToAxisMatrix().transpose() * condensed;
 }
 
 Eigen::MatrixXd Member::calculateTransformationMatrix() const {
@@ -252,6 +318,94 @@ Eigen::MatrixXd Member::calculateTransformationMatrix() const {
     return T;
 }
 
+namespace {
+
+// Stability functions of a bar in bending under axial force: x = P L^2 / (E I) with P > 0 in compression (x < 0 = tension).
+// S1 = 4 and S2 = 2 for x = 0. Closed forms (Livesley) with the series for small |x| (the denominator vanishes as x^2).
+void stabilityFunctionsOf(double x, double& s1, double& s2) {
+    if (std::abs(x) < 0.5) {
+        static const double c1[7] = {4.0, -2.0 / 15.0, -11.0 / 6300.0, -1.0 / 27000.0, -509.0 / 582120000.0, -14617.0 / 681080400000.0, -153221.0 / 286053768000000.0};
+        static const double c2[7] = {2.0, 1.0 / 30.0, 13.0 / 12600.0, 11.0 / 378000.0, 907.0 / 1164240000.0, 27641.0 / 1362160800000.0, 298183.0 / 572107536000000.0};
+        s1 = 0.0;
+        s2 = 0.0;
+        double power = 1.0;
+        for (int k = 0; k < 7; ++k) {
+            s1 += c1[k] * power;
+            s2 += c2[k] * power;
+            power *= x;
+        }
+        return;
+    }
+    if (x > 0.0) {
+        const double r = std::sqrt(x);
+        const double d = 2.0 - 2.0 * std::cos(r) - r * std::sin(r);
+        s1 = r * (std::sin(r) - r * std::cos(r)) / d;
+        s2 = r * (r - std::sin(r)) / d;
+    } else {
+        const double r = std::sqrt(-x);
+        const double d = 2.0 - 2.0 * std::cosh(r) + r * std::sinh(r);
+        s1 = r * (r * std::cosh(r) - std::sinh(r)) / d;
+        s2 = r * (std::sinh(r) - r) / d;
+    }
+}
+
+// 4x4 bending stiffness (v1, theta1, v2, theta2) of one plane: Euler-Bernoulli, Timoshenko (phi = 12 E I / (G As L^2)) or with stability
+// functions for the axial force `compression` (P > 0 compresses; ignored unless `useStability`).
+Eigen::Matrix4d bendingBlock(double EI, double L, double phi, bool useStability, double compression) {
+    double a, b, c, d;
+    if (useStability) {
+        double s1, s2;
+        stabilityFunctionsOf(compression * L * L / EI, s1, s2);
+        a = 2.0 * (s1 + s2) * EI / (L * L * L) - compression / L;
+        b = (s1 + s2) * EI / (L * L);
+        c = s1 * EI / L;
+        d = s2 * EI / L;
+    } else {
+        const double f = 1.0 / (1.0 + phi);
+        a = 12.0 * (EI / (L * L * L)) * f;
+        b = 6.0 * (EI / (L * L)) * f;
+        c = (4.0 + phi) * (EI / L) * f;
+        d = (2.0 - phi) * (EI / L) * f;
+    }
+    Eigen::Matrix4d k;
+    k << a, b, -a, b,
+         b, c, -b, d,
+         -a, -b, a, -b,
+         b, d, -b, c;
+    return k;
+}
+
+} // namespace
+
+void Member::setWarpingEnabled(bool enabled) {
+    warpingEnabled = enabled;
+    condensationCached = false;
+}
+
+bool Member::hasWarping() const {
+    return warpingEnabled && section->getCw() > 0.0 && material->getG() * section->getJ() > 0.0 && material->getE() > 0.0;
+}
+
+Eigen::MatrixXd Member::calculateExtendedNodeToAxisMatrix() const {
+    Eigen::MatrixXd T = Eigen::MatrixXd::Identity(14, 14);
+    T.topLeftCorner(12, 12) = calculateNodeToAxisMatrix();
+    return T;
+}
+
+Eigen::Vector4d Member::uniformTorqueFixedEnd(double m) const {
+    return Warping::uniformTorqueFixedEnd(m, material->getE() * section->getCw(), material->getG() * section->getJ(), calculateFlexibleLength());
+}
+
+void Member::setShearDeformation(bool enabled) {
+    shearDeformation = enabled;
+    condensationCached = false;
+}
+
+void Member::setStabilityFunctions(bool enabled) {
+    stabilityFunctions = enabled;
+    condensationCached = false;
+}
+
 Eigen::MatrixXd Member::getFullLocalStiffnessMatrix() const {
     double E = material->getE();
     double G = material->getG();
@@ -259,81 +413,76 @@ Eigen::MatrixXd Member::getFullLocalStiffnessMatrix() const {
     double Iz = section->getIz();
     double Iy = section->getIy();
     double J = section->getJ();
-    double L = calculateLength();
-
+    double L = calculateFlexibleLength();
     double L2 = L * L;
-    double L3 = L * L * L;
 
-    // Pre-calculate common terms
-    double EA_L = E * A / L;
-    double GJ_L = G * J / L;
-    double EIy_L = E * Iy / L;
-    double EIz_L = E * Iz / L;
-    double EIy_L2 = E * Iy / L2;
-    double EIz_L2 = E * Iz / L2;
-    double EIy_L3 = E * Iy / L3;
-    double EIz_L3 = E * Iz / L3;
+    const double EA_L = E * A / L;
+    const double GJ_L = G * J / L;
+
+    // Timoshenko shear parameters of the two bending planes (0 = rigid in shear)
+    double phiY = 0.0, phiZ = 0.0;
+    if (shearDeformation && G > 0.0) {
+        if (section->getAy() > 0.0) {
+            phiY = 12.0 * E * Iz / (G * section->getAy() * L2);
+        }
+        if (section->getAz() > 0.0) {
+            phiZ = 12.0 * E * Iy / (G * section->getAz() * L2);
+        }
+    }
+    const bool stability = usesStabilityFunctions() && geometricAxialForce != 0.0 && Iy > 0.0 && Iz > 0.0;
+    const double compression = -geometricAxialForce;
 
     Eigen::MatrixXd K_local = Eigen::MatrixXd::Zero(12, 12);
-
-    // Populate the upper triangle of the matrix
     K_local(0, 0) = EA_L;
     K_local(0, 6) = -EA_L;
-
-    K_local(1, 1) = 12 * EIz_L3;
-    K_local(1, 5) = 6 * EIz_L2;
-    K_local(1, 7) = -12 * EIz_L3;
-    K_local(1, 11) = 6 * EIz_L2;
-
-    K_local(2, 2) = 12 * EIy_L3;
-    K_local(2, 4) = -6 * EIy_L2;
-    K_local(2, 8) = -12 * EIy_L3;
-    K_local(2, 10) = -6 * EIy_L2;
-
+    K_local(6, 0) = -EA_L;
+    K_local(6, 6) = EA_L;
     K_local(3, 3) = GJ_L;
     K_local(3, 9) = -GJ_L;
-
-    K_local(4, 4) = 4 * EIy_L;
-    K_local(4, 8) = 6 * EIy_L2;
-    K_local(4, 10) = 2 * EIy_L;
-
-    K_local(5, 5) = 4 * EIz_L;
-    K_local(5, 7) = -6 * EIz_L2;
-    K_local(5, 11) = 2 * EIz_L;
-
-    K_local(6, 6) = EA_L;
-
-    K_local(7, 7) = 12 * EIz_L3;
-    K_local(7, 11) = -6 * EIz_L2;
-
-    K_local(8, 8) = 12 * EIy_L3;
-    K_local(8, 10) = 6 * EIy_L2;
-
+    K_local(9, 3) = -GJ_L;
     K_local(9, 9) = GJ_L;
 
-    K_local(10, 10) = 4 * EIy_L;
+    // bending in the x-y plane (Iz): dofs 1 (uy), 5 (rz), 7 (uy), 11 (rz)
+    const int p[4] = {1, 5, 7, 11};
+    const Eigen::Matrix4d ky = bendingBlock(E * Iz, L, phiY, stability, compression);
+    // bending in the x-z plane (Iy): dofs 2 (uz), 4 (ry), 8 (uz), 10 (ry); the rotations change sign
+    const int q[4] = {2, 4, 8, 10};
+    const Eigen::Matrix4d kz = bendingBlock(E * Iy, L, phiZ, stability, compression);
+    const double sign[4] = {1.0, -1.0, 1.0, -1.0};
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            K_local(p[i], p[j]) = ky(i, j);
+            K_local(q[i], q[j]) = sign[i] * sign[j] * kz(i, j);
+        }
+    }
 
-    K_local(11, 11) = 4 * EIz_L;
-
-    // Use symmetry to fill the lower triangle
-    K_local.triangularView<Eigen::Lower>() = K_local.transpose();
-
-    if (geometricAxialForce != 0.0) {
+    if (geometricAxialForce != 0.0 && !stability) {
         // Geometric stiffness (consistent, cubic interpolation): captures P-delta (sway) and P-small-delta.
         const double c = geometricAxialForce / (30.0 * L);
         const double a = 36.0 * c, b = 3.0 * L * c, d = 4.0 * L2 * c, e = -L2 * c;
-        // bending in the x-y plane: dofs 1 (uy), 5 (rz), 7 (uy), 11 (rz)
-        const int p[4] = {1, 5, 7, 11};
-        const double ky[4][4] = {{a, b, -a, b}, {b, d, -b, e}, {-a, -b, a, -b}, {b, e, -b, d}};
-        // bending in the x-z plane: dofs 2 (uz), 4 (ry), 8 (uz), 10 (ry); rotations change sign
-        const int q[4] = {2, 4, 8, 10};
-        const double kz[4][4] = {{a, -b, -a, -b}, {-b, d, b, e}, {-a, b, a, b}, {-b, e, b, d}};
+        const double kgy[4][4] = {{a, b, -a, b}, {b, d, -b, e}, {-a, -b, a, -b}, {b, e, -b, d}};
+        const double kgz[4][4] = {{a, -b, -a, -b}, {-b, d, b, e}, {-a, b, a, b}, {-b, e, b, d}};
         for (int i = 0; i < 4; ++i) {
             for (int j = 0; j < 4; ++j) {
-                K_local(p[i], p[j]) += ky[i][j];
-                K_local(q[i], q[j]) += kz[i][j];
+                K_local(p[i], p[j]) += kgy[i][j];
+                K_local(q[i], q[j]) += kgz[i][j];
             }
         }
+    }
+
+    if (hasWarping()) {
+        // Torsion with warping (Vlasov): replaces the Saint-Venant terms by the exact 4x4 block in (theta_i, phi_i, theta_j, phi_j)
+        Eigen::MatrixXd K14 = Eigen::MatrixXd::Zero(14, 14);
+        K14.topLeftCorner(12, 12) = K_local;
+        K14(3, 3) = K14(3, 9) = K14(9, 3) = K14(9, 9) = 0.0;
+        const Eigen::Matrix4d kt = Warping::stiffness(E * section->getCw(), G * J, L);
+        const int idx[4] = {3, 12, 9, 13};
+        for (int i = 0; i < 4; ++i) {
+            for (int j = 0; j < 4; ++j) {
+                K14(idx[i], idx[j]) += kt(i, j);
+            }
+        }
+        K_local = K14;
     }
 
     if (stiffnessFactor != 1.0) {
@@ -368,9 +517,12 @@ bool Member::hasReleases() const {
 
 namespace {
 // Partition indices of retained (A) and released (R) DOFs
-void partitionDofs(const std::array<bool, 12>& releases, std::vector<int>& retained, std::vector<int>& released) {
+void partitionDofs(const std::array<bool, 12>& releases, std::vector<int>& retained, std::vector<int>& released, int count = 12) {
     for (int i = 0; i < 12; ++i) {
         (releases[static_cast<size_t>(i)] ? released : retained).push_back(i);
+    }
+    for (int i = 12; i < count; ++i) {
+        retained.push_back(i);   // warping parameters are never released
     }
 }
 } // namespace
@@ -385,7 +537,7 @@ Eigen::MatrixXd Member::getLocalStiffnessMatrix() const {
 
     const Eigen::MatrixXd K = getFullLocalStiffnessMatrix();
     std::vector<int> a, r;
-    partitionDofs(releases, a, r);
+    partitionDofs(releases, a, r, static_cast<int>(K.rows()));
 
     Eigen::MatrixXd Kaa(a.size(), a.size()), Kar(a.size(), r.size()), Krr(r.size(), r.size());
     for (size_t i = 0; i < a.size(); ++i) {
@@ -403,7 +555,7 @@ Eigen::MatrixXd Member::getLocalStiffnessMatrix() const {
     }
     const Eigen::MatrixXd Kc = Kaa - Kar * lu.solve(Kar.transpose());
 
-    Eigen::MatrixXd result = Eigen::MatrixXd::Zero(12, 12);
+    Eigen::MatrixXd result = Eigen::MatrixXd::Zero(K.rows(), K.rows());
     for (size_t i = 0; i < a.size(); ++i) {
         for (size_t j = 0; j < a.size(); ++j) {
             result(a[i], a[j]) = Kc(i, j);
@@ -414,13 +566,18 @@ Eigen::MatrixXd Member::getLocalStiffnessMatrix() const {
     return result;
 }
 
-Eigen::VectorXd Member::condenseFixedEndForces(const Eigen::VectorXd& localForces) const {
+Eigen::VectorXd Member::condenseFixedEndForces(const Eigen::VectorXd& forces) const {
+    Eigen::VectorXd localForces = forces;
+    if (hasWarping() && localForces.size() == 12) {
+        localForces.conservativeResize(14);   // loads without a warping part (forces, bending moments): zero on the warping parameters
+        localForces.tail(2).setZero();
+    }
     if (!hasReleases()) {
         return localForces;
     }
     const Eigen::MatrixXd K = getFullLocalStiffnessMatrix();
     std::vector<int> a, r;
-    partitionDofs(releases, a, r);
+    partitionDofs(releases, a, r, static_cast<int>(K.rows()));
 
     Eigen::MatrixXd Kar(a.size(), r.size()), Krr(r.size(), r.size());
     for (size_t i = 0; i < a.size(); ++i) {
@@ -440,7 +597,7 @@ Eigen::VectorXd Member::condenseFixedEndForces(const Eigen::VectorXd& localForce
     }
     const Eigen::VectorXd fc = fa - Kar * lu.solve(fr);
 
-    Eigen::VectorXd result = Eigen::VectorXd::Zero(12);
+    Eigen::VectorXd result = Eigen::VectorXd::Zero(K.rows());
     for (size_t i = 0; i < a.size(); ++i) {
         result(a[i]) = fc(i);
     }
@@ -449,7 +606,7 @@ Eigen::VectorXd Member::condenseFixedEndForces(const Eigen::VectorXd& localForce
 
 Eigen::MatrixXd Member::getGlobalStiffnessMatrix() const {
     Eigen::MatrixXd K_local = getLocalStiffnessMatrix();
-    Eigen::MatrixXd T = calculateNodeToAxisMatrix();
+    Eigen::MatrixXd T = hasWarping() ? calculateExtendedNodeToAxisMatrix() : calculateNodeToAxisMatrix();
     return T.transpose() * K_local * T;
 }
 
@@ -482,13 +639,16 @@ Eigen::MatrixXd Member::getGlobalMassMatrix() const {
             m(xz[i], xz[j]) += c * bxz[i][j];
         }
     }
-    const Eigen::MatrixXd T = calculateNodeToAxisMatrix();
+    const Eigen::MatrixXd T = calculateNodeToAxisMatrix(false);   // massa do comprimento total; as zonas rigidas nao alteram a massa
     return T.transpose() * m * T;
 }
 
 void Member::addDistributedLoad(const std::vector<double>& globalEquivalentForces) {
-    if (globalEquivalentForces.size() != 12) {
-        throw std::invalid_argument("Distributed load vector must have 12 components");
+    if (globalEquivalentForces.size() != 12 && globalEquivalentForces.size() != 14) {
+        throw std::invalid_argument("Distributed load vector must have 12 components (14 with warping)");
+    }
+    for (size_t i = 12; i < globalEquivalentForces.size(); ++i) {
+        fixedEndForces[i] += -globalEquivalentForces[i];   // warping parameters: no transformation
     }
 
     Eigen::VectorXd F_global(12);
@@ -513,14 +673,24 @@ void Member::addDistributedLoad(const std::vector<double>& globalEquivalentForce
 }
 
 void Member::calculateInternalForces() {
-    // Get global displacements for nodes I and J
-    Eigen::VectorXd U_global = Eigen::VectorXd::Zero(12);
+    if (stiffnessFactor < 1e-6) {
+        // tirante inativo (fora de servico): nao transmite esforcos; sua carga ja foi levada aos nos
+        std::fill(internalForces.begin(), internalForces.end(), 0.0);
+        return;
+    }
+    const bool warping = hasWarping();
+    // Get global displacements for nodes I and J (plus the warping parameters of the two ends)
+    Eigen::VectorXd U_global = Eigen::VectorXd::Zero(warping ? 14 : 12);
     for (int i = 0; i < 6; ++i) {
         U_global(i) = nodeI->getDisplacement(i);
         U_global(i + 6) = nodeJ->getDisplacement(i);
     }
+    if (warping) {
+        U_global(12) = warpValueI;
+        U_global(13) = warpValueJ;
+    }
 
-    Eigen::MatrixXd T = calculateNodeToAxisMatrix();
+    Eigen::MatrixXd T = warping ? calculateExtendedNodeToAxisMatrix() : calculateNodeToAxisMatrix();
     Eigen::MatrixXd K_local = getLocalStiffnessMatrix();
 
     // Calculate local (bar-axis) displacements: u_local = Toff * R * U_global
@@ -531,13 +701,23 @@ void Member::calculateInternalForces() {
 
     Eigen::VectorXd f_local = f_displacement;
 
-    for (int i = 0; i < 12; ++i) {
-        f_local(i) += fixedEndForces[i];   // f = K u + f0, f0 = fixed-end (clamped) forces = -F_equivalent
+    for (Eigen::Index i = 0; i < f_local.size(); ++i) {
+        f_local(i) += loadFactor * fixedEndForces[static_cast<size_t>(i)];   // f = K u + f0, f0 = fixed-end (clamped) forces = -F_equivalent
     }
 
     // Store results in the member variable
+    if (hasRigidZones()) {
+        // forcas na extremidade flexivel -> forcas nos nos: a zona rigida transmite as forcas e soma as reacoes das suas cargas
+        f_local.head(12) = getRigidZoneMatrix().transpose() * f_local.head(12);
+        for (size_t i = 0; i < rigidFixedForces.size() && i < 12; ++i) {
+            f_local(static_cast<Eigen::Index>(i)) += loadFactor * rigidFixedForces[i];
+        }
+    }
     for (int i = 0; i < 12; ++i) {
         internalForces[i] = f_local(i);
+    }
+    if (warping) {
+        warpEndForces = {f_local(12), f_local(13)};
     }
 }
 
@@ -547,4 +727,5 @@ const std::vector<double>& Member::getInternalForces() const {
 
 void Member::clearDistributedLoads() {
     std::fill(fixedEndForces.begin(), fixedEndForces.end(), 0.0);
+    rigidFixedForces.clear();
 }

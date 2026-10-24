@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "AxesPanel.h"
 
 #include <QToolButton>
 
@@ -17,11 +18,11 @@ bool MainWindow::handleWindowDragEvent(QEvent *event)
     switch (event->type()) {
     case QEvent::MouseButtonPress: {
         auto *me = static_cast<QMouseEvent *>(event);
-        return handleWindowDragMousePress(me->button(), me->globalPos());
+        return handleWindowDragMousePress(me->button(), me->globalPosition().toPoint());
     }
     case QEvent::MouseMove: {
         auto *me = static_cast<QMouseEvent *>(event);
-        return handleWindowDragMouseMove(me->globalPos());
+        return handleWindowDragMouseMove(me->globalPosition().toPoint());
     }
     case QEvent::MouseButtonRelease: {
         auto *me = static_cast<QMouseEvent *>(event);
@@ -81,6 +82,15 @@ bool MainWindow::handleViewportCommandEvent(QEvent *event)
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
 {
+    if (handleLoadPickKey(event)) {
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape && m_sceneController && m_sceneController->highlightedLoad().valid()) {
+        clearSelectedLoad();
+        event->accept();
+        return;
+    }
     if (event->key() == Qt::Key_Escape && m_selectionModel && m_command == Command::None && !(m_placement && m_placement->active())
         && (!m_selectionModel->selectedNodes().isEmpty() || !m_selectionModel->selectedBars().isEmpty())) {
         m_selectionModel->clear();
@@ -92,11 +102,29 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
+    if (obj == m_vtkWidget && event->type() == QEvent::KeyPress) {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (handleLoadPickKey(keyEvent)) {
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_Escape && m_sceneController && m_sceneController->highlightedLoad().valid()) {
+            clearSelectedLoad();
+            return true;
+        }
+    }
     if (obj == m_vtkWidget && event->type() == QEvent::KeyPress && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape && m_selectionModel
         && m_command == Command::None && !(m_placement && m_placement->active())
         && (!m_selectionModel->selectedNodes().isEmpty() || !m_selectionModel->selectedBars().isEmpty())) {
         m_selectionModel->clear();
         return true;
+    }
+    if (obj == m_propertiesPanel && event->type() == QEvent::LayoutRequest && !m_adjustingProperties) {
+        m_adjustingProperties = true;
+        positionPlaneLabel();
+        m_adjustingProperties = false;
+    }
+    if (obj == m_axesPanel && (event->type() == QEvent::Show || event->type() == QEvent::Hide || event->type() == QEvent::Resize)) {
+        positionPlaneLabel();
     }
     if (obj == m_quickBar && event->type() == QEvent::Resize && m_titleLabel && m_helpButton && m_homeTabButton) {
         // titulo centralizado em relacao a barra, sem invadir os botoes da esquerda nem os da direita
@@ -115,6 +143,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
     if (obj == m_vtkWidget && m_sceneController && event->type() == QEvent::Resize) {
         positionPlaneLabel();
         positionViewCube();
+        positionLegend();
         m_sceneController->placeOrientationMarker(m_vtkWidget->width(), m_vtkWidget->height());
         if (m_labelOverlay) {
             m_labelOverlay->resizeToParent();

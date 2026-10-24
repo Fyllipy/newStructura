@@ -165,6 +165,48 @@ HtmlResult toHtml(const ReportDocument &doc, double eqPx, bool includeCover)
                 h += QStringLiteral("</tr>");
             }
             h += QStringLiteral("</table>");
+        } else if (const auto *card = std::get_if<CalcCard>(&block)) {
+            const bool fail = card->status == CellStatus::Fail, warn = card->status == CellStatus::Warn;
+            const QString accent = fail ? QStringLiteral("#c0392b") : (warn ? QStringLiteral("#e0a100") : QStringLiteral("#2e9e5b"));
+            const QString fill = fail ? QStringLiteral("#f8dad6") : (warn ? QStringLiteral("#fcefcb") : QStringLiteral("#ddefe3"));
+            const QString ink = fail ? QStringLiteral("#7a1e14") : (warn ? QStringLiteral("#6b4500") : QStringLiteral("#1e5c34"));
+            h += QStringLiteral("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"margin:14px 0 4px 0;\"><tr><td width=\"6\" bgcolor=\"%1\"></td>"
+                                "<td bgcolor=\"%2\" style=\"padding:6px 10px; color:%3;\"><b>%4</b>%5</td></tr></table>")
+                     .arg(accent, fill, ink, esc(card->title),
+                          card->clause.empty() ? QString() : QStringLiteral("&nbsp;&nbsp;<span style=\"font-size:9pt;\">(%1)</span>").arg(esc(card->clause)));
+            if (!card->location.empty()) {
+                h += QStringLiteral("<p style=\"margin:3px 6px 0 6px; color:#5a6472; font-size:9pt;\"><i>Seção crítica: %1</i></p>").arg(esc(card->location));
+            }
+            if (!card->description.empty()) {
+                h += QStringLiteral("<p style=\"margin:4px 6px 6px 6px; color:#3a4352; font-size:9.5pt; text-align:justify;\">%1</p>").arg(esc(card->description));
+            }
+            for (const CalcStep &step : card->steps) {
+                if (!step.label.empty()) {
+                    h += QStringLiteral("<p style=\"margin:8px 6px 0 6px; color:#1f4e79;\"><b>&#9656; %1</b></p>").arg(esc(step.label));
+                }
+                for (const std::string &eq : step.equations) {
+                    h += QStringLiteral("<p align=\"center\" style=\"margin:4px 0;\">%1</p>").arg(equationTag(eq, false));
+                }
+                for (const std::string &note : step.notes) {
+                    h += QStringLiteral("<p style=\"margin:2px 6px; color:#5a6472; font-size:9pt;\"><i>%1</i></p>").arg(esc(note));
+                }
+                if (!step.variables.empty()) {
+                    h += QStringLiteral("<p style=\"margin:6px 6px 2px 6px; color:#404b5a; font-size:9.5pt;\"><b>Onde:</b></p>");
+                    h += QStringLiteral("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"3\" style=\"margin-left:6px;\">");
+                    for (const CalcVariable &v : step.variables) {
+                        h += QStringLiteral("<tr><td width=\"14%\" align=\"right\">%1</td><td width=\"62%\" style=\"color:#2a3340; font-size:9pt;\">&nbsp;%2</td>"
+                                            "<td width=\"24%\" align=\"right\" style=\"border-bottom:1px solid #b7c3d4;\"><b style=\"color:#1f4e79;\">%3</b> <span style=\"color:#5a6472; font-size:9pt;\">%4</span></td></tr>")
+                                 .arg(equationTag(v.latex, true), esc(v.meaning), esc(v.value), esc(v.unit));
+                    }
+                    h += QStringLiteral("</table>");
+                }
+            }
+            h += QStringLiteral("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"4\" style=\"margin:8px 0 14px 0; border-top:2px solid %1; border-bottom:2px solid %1;\"><tr>"
+                                "<td width=\"60%\">%2</td><td width=\"40%\" align=\"right\">%3 <b style=\"color:%1; font-size:13pt;\">&nbsp;%4&nbsp;</b>"
+                                "<b style=\"color:%1; font-size:15pt;\">%5</b>%6</td></tr></table>")
+                     .arg(accent, equationTag(card->inequalityLatex, true), equationTag(card->resultLabel + " :", true), esc(card->resultValue),
+                          card->ok ? QStringLiteral("&#10004;") : QStringLiteral("&#10008;"),
+                          card->resultDetail.empty() ? QString() : QStringLiteral("<br/><span style=\"color:#5a6472; font-size:8.5pt;\">%1</span>").arg(esc(card->resultDetail)));
         } else if (const auto *img = std::get_if<Image>(&block)) {
             const QImage image = QImage::fromData(img->png.data(), static_cast<int>(img->png.size()), "PNG");
             if (!image.isNull()) {

@@ -1,0 +1,41 @@
+# Convertido do CYPE 3D (Anexo Veloo.ed3) por cype2structura
+# Unidades: kN, m (E e G em kN/m2; cargas superficiais do CYPE em tf/m2 convertidas com 1 tf = 9,80665 kN)
+
+[MATERIALS]
+# ID    E (kN/m2)       G (kN/m2)
+1          2.059396e+08   7.920756e+07
+
+[MATERIAL_PROPS]
+# ID  peso especifico (kN/m3)  Nome  Biblioteca  fy(MPa)  fu(MPa)
+1          7.698220e+01 Aco_CYPE - 0 0
+
+[SECTIONS]
+# ID    A (m^2)     Iz (m^4)      Iy (m^4)      J (m^4)
+1          1.660000e-03   6.350000e-06   8.200000e-07   1.720000e-08
+
+[SECTION_GEOMETRY]
+# ID    Familia(_ no lugar de espaco)  Espelhada(0/1)  parametro=valor (mm) ...
+1        W_Laminado 0 d=148 bf=100 tw=4.3 tf=4.9
+
+[NODES]
+# ID    X (m)    Y (m)    Z (m)    UX  UY  UZ  RX  RY  RZ
+7          0.000000   0.000000   0.000000    1   1   1   1   1   1
+9          0.000000   0.000000   6.000000    0   0   0   0   0   0
+15         0.000000   5.000000   6.000000    0   0   0   0   0   0
+21         5.000000   0.000000   6.000000    0   0   0   0   0   0
+
+[MEMBERS]
+# ID    Node_i   Node_j   Material_ID   Section_ID
+11              7        9          1            1
+17              9       15          1            1
+23              9       21          1            1
+
+[LOAD_CASES]
+# Nome  Sigla  PesoProprio(0/1)
+PP               PP       1
+
+[NODAL_LOADS]
+# Node_ID   Fx (N)    Fy (N)   Fz (N)   Mx (Nm)   My (Nm)   Mz (Nm)   Caso
+
+[MEMBER_LOADS]
+# Formato: Member_ID  Sistema(Local/Global)  qx (kN/m)  qy (kN/m)  qz (kN/m)  Caso

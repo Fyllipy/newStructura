@@ -1,0 +1,47 @@
+iter 0 faltam 21 ['Cnt2D_leeContorno2D', 'ambhorm_lee', 'dathipfle_lee', 'ebaarray_nousar_lee_apunorde_con_1_dato_extra', 'ebaarray_nousar_lee_apunorde_con_2_datos_extra', 'ebaarray_nousar_lee_apunorde_con_3_datos_extra', 'ebaarray_nousar_lee_apunorde_con_5_datos_extra', 'eppilob_lee', 'epseccion_lee', 'hipocal_lee', 'plplacan_lee_exref', 'pvarmado_lee_exref', 'pzmadinc_lee', 'pzmadmat_lee', 'pzmadmat_lee_exref', 'pzmadob_lee', 'pzmetstr_lee', 'rfdathorm_lee', 'rfdatmet_lee', 'svforjcype_lee', 'svseccion_lee']
+  sem exportacao: pvarmado_lee_exref
+  sem exportacao: plplacan_lee_exref
+  sem exportacao: pzmadmat_lee_exref
+  closure arrays2.dll ['ebaarray_nousar_lee_apunorde_con_1_dato_extra', 'ebaarray_nousar_lee_apunorde_con_2_datos_extra', 'ebaarray_nousar_lee_apunorde_con_3_datos_extra', 'ebaarray_nousar_lee_apunorde_con_5_datos_extra']
+  closure pilargeo.dll ['eppilob_lee', 'epseccion_lee']
+  closure pzmadera.dll ['pzmadinc_lee', 'pzmadmat_lee', 'pzmadob_lee']
+  closure dathipfle.dll ['dathipfle_lee']
+  closure ambiente.dll ['ambhorm_lee']
+  closure ghipocal.dll ['hipocal_lee']
+  closure seccviga.dll ['svforjcype_lee', 'svseccion_lee']
+  closure piezamet.dll ['pzmetstr_lee']
+  closure rstfuego.dll ['rfdathorm_lee', 'rfdatmet_lee']
+  closure geom2d.dll ['Cnt2D_leeContorno2D']
+iter 1 faltam 43 ['aparmado_lee', 'arcpieza_lee', 'baelambiente_lee', 'bp3perfil_lee', 'bp3perfil_lee_antiguo', 'bp3perfil_lee_antiguo_version_antigua', 'bshambiente_lee', 'cantovar_lee', 'cantovar_lee_antiguo', 'cartela_lee', 'ec2ambiente_lee', 'ec2ntcambiente_lee', 'egtensadm_lee', 'ehe08ambiente_lee', 'frcpanyo_lee', 'func_lee_apunorde_con_1_dato_extra', 'func_lee_apunorde_con_2_datos_extra', 'func_lee_apunorde_con_3_datos_extra', 'func_lee_apunorde_con_5_datos_extra', 'ishambiente_lee', 'losahorm_lee', 'methorm_lee', 'nb2ambiente_lee', 'ntc04ambiente_lee', 'plataban_lee', 'plplacan_lee_exref', 'presilla_lee', 'presilla_lee_antigua', 'presilla_lee_perfil2', 'pvarmado_lee_exref']
+  sem exportacao: pvarmado_lee_exref
+  sem exportacao: plplacan_lee_exref
+  sem exportacao: pzmadmat_lee_exref
+  sem exportacao: func_lee_apunorde_con_1_dato_extra
+  sem exportacao: func_lee_apunorde_con_2_datos_extra
+  sem exportacao: func_lee_apunorde_con_3_datos_extra
+  sem exportacao: func_lee_apunorde_con_5_datos_extra
+  closure secgenelelin.dll ['sghormsgen_lee', 'sgusoseccion_lee']
+  closure pzmadera.dll ['pzmadasgclaser_lee', 'pzmadinc_lee', 'pzmadmat_lee', 'pzmadob_lee']
+  closure pilararm.dll ['aparmado_lee']
+  closure ehe.dll ['ehe08ambiente_lee']
+  closure eurocod.dll ['ec2ambiente_lee', 'ec2ntcambiente_lee']
+  closure nb1.dll ['nb2ambiente_lee']
+  closure india.dll ['ishambiente_lee']
+  closure bael.dll ['baelambiente_lee']
+  closure rusia.dll ['rsambhorm_lee']
+  closure ntc.dll ['ntc04ambiente_lee']
+  closure british.dll ['bshambiente_lee']
+  closure forchapa.dll ['frcpanyo_lee']
+  closure elemgeo.dll ['egtensadm_lee']
+  closure vgmixta.dll ['vgmixta_lee']
+  closure arcelor.dll ['arcpieza_lee']
+  closure bibperf3.dll ['bp3perfil_lee', 'bp3perfil_lee_antiguo', 'bp3perfil_lee_antiguo_version_antigua']
+  closure pztipos.dll ['cantovar_lee', 'cantovar_lee_antiguo', 'cartela_lee', 'losahorm_lee', 'methorm_lee', 'plataban_lee', 'presilla_lee', 'presilla_lee_antigua', 'presilla_lee_perfil2', 'rigalma_lee', 'separvar_lee', 'sepdoble_lee', 'soldlong_lee', 'tipotubo_lee', 'uniongen_lee', 'vigaboyd_lee']
+iter 2 faltam 7 ['func_lee_apunorde_con_1_dato_extra', 'func_lee_apunorde_con_2_datos_extra', 'func_lee_apunorde_con_3_datos_extra', 'func_lee_apunorde_con_5_datos_extra', 'plplacan_lee_exref', 'pvarmado_lee_exref', 'pzmadmat_lee_exref']
+  sem exportacao: pvarmado_lee_exref
+  sem exportacao: plplacan_lee_exref
+  sem exportacao: pzmadmat_lee_exref
+  sem exportacao: func_lee_apunorde_con_1_dato_extra
+  sem exportacao: func_lee_apunorde_con_2_datos_extra
+  sem exportacao: func_lee_apunorde_con_3_datos_extra
+  sem exportacao: func_lee_apunorde_con_5_datos_extra

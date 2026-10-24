@@ -376,6 +376,27 @@ bool Model::solve(const SolveOptions &options, std::string &error)
             error = "Falha na fatoracao da matriz de rigidez (estrutura instavel ou apoios insuficientes).";
             return false;
         }
+        {
+            // mecanismo: pivo que perde ~12 digitos em relacao a diagonal do proprio grau de liberdade (dependencia linear).
+            // A fatoracao "tem sucesso" em aritmetica de ponto flutuante e devolve deslocamentos sem sentido, entao e erro.
+            const auto pivots = solver.vectorD();
+            const auto &permutation = solver.permutationP().indices();
+            std::vector<int> nodalDof(freeCount, 0);
+            for (int d = 0; d < nd; ++d) {
+                if (freeIndex[d] >= 0) {
+                    nodalDof[freeIndex[d]] = d;
+                }
+            }
+            for (int i = 0; i < freeCount; ++i) {
+                const double diagonal = std::abs(kff.coeff(i, i));
+                const double pivot = pivots(permutation(i));
+                if (diagonal > 0.0 && (pivot <= 0.0 || pivot < 1.0e-12 * diagonal)) {
+                    error = "Estrutura instavel (mecanismo): no " + std::to_string(nodes[nodalDof[i] / 6].id) + ", grau de liberdade "
+                            + std::to_string(nodalDof[i] % 6 + 1) + " sem restricao pela rigidez do modelo; verifique apoios e ligacoes.";
+                    return false;
+                }
+            }
+        }
         for (int cidx = 0; cidx < caseCount; ++cidx) {
             Eigen::VectorXd fr(freeCount);
             for (int d = 0; d < nd; ++d) {

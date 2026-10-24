@@ -29,6 +29,7 @@
 #include "shell/ShellModel.h"
 
 #include <QFile>
+#include <QRegularExpression>
 #include <QTemporaryDir>
 
 #include <deque>
@@ -169,6 +170,26 @@ bool load(DatModelIoService &service, MemoryGateway &gateway, const QString &pat
 
 } // namespace
 
+static SolverBridge::ModelData cantileverModel(double axial, double lateral, double length, double inertia = 4e-6)
+{
+    SolverBridge::ModelData model;
+    model.materials.push_back({1, 2.0e11, 8.0e10});
+    model.sections.push_back({1, 0.01, inertia, inertia, 1e-5});
+    SolverBridge::NodeData fixed;
+    fixed.id = 1;
+    fixed.restraints = {{1, 1, 1, 1, 1, 1}};
+    SolverBridge::NodeData end;
+    end.id = 2;
+    end.x = length;
+    model.nodes = {fixed, end};
+    model.members.push_back(SolverBridge::MemberData {1, 1, 2, 1, 1});
+    SolverBridge::NodalLoadData load;
+    load.nodeId = 2;
+    load.values = {{axial, 0.0, lateral, 0.0, 0.0, 0.0}};   // axial < 0 comprime
+    model.nodalLoads.push_back(load);
+    return model;
+}
+
 class TestProjectIoAndSolver : public QObject
 {
     Q_OBJECT
@@ -218,6 +239,24 @@ private slots:
         loaded.extras.axes.planeAxes(2, 3.0, u, v);
         QCOMPARE(u.size(), 1);
         QCOMPARE(v.size(), 0);
+        {
+            // nivel sem eixos proprios (e elevacao sem nivel) herdam a uniao dos eixos dos demais: os eixos aparecem em todos os niveis
+            ProjectData::ReferenceAxes axes;
+            ProjectData::AxisLevel empty;
+            empty.name = QStringLiteral("N0");
+            empty.elevation = 0.0;
+            ProjectData::AxisLevel top;
+            top.name = QStringLiteral("N2");
+            top.elevation = 6.0;
+            top.x = {{QStringLiteral("A"), 0.0}, {QStringLiteral("B"), 6.0}};
+            top.y = {{QStringLiteral("1"), 0.0}};
+            axes.levels = {empty, top};
+            axes.planeAxes(2, 0.0, u, v);
+            QCOMPARE(u.size(), 2);
+            QCOMPARE(v.size(), 1);
+            axes.planeAxes(2, 3.0, u, v);   // sem nivel nessa elevacao
+            QCOMPARE(u.size(), 2);
+        }
         loaded.extras.axes.planeAxes(1, 0.0, u, v);
         QCOMPARE(u.size(), 2);
         QCOMPARE(v.size(), 2);
@@ -459,6 +498,300 @@ private slots:
         QVERIFY(std::abs(second - exact) / exact < 0.03);
         QVERIFY(second > first * 1.2);
     }
+    // ---- referencias do solver: funcoes de estabilidade, deformacao por cortante, incremento de carga e avisos -------------------------------------------
+    void solverStabilityFunctionsAreExactForCompressionAndTension()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        const double E = 2.0e11, I = 4e-6, L = 5.0, H = 100.0;
+        const double pcr = 3.14159265358979 * 3.14159265358979 * E * I / (4.0 * L * L);
+        for (const double factor : {0.3, 0.8, -1.5}) {   // compressao 0,3 e 0,8 Pcr; tracao 1,5 Pcr
+            const double P = factor * pcr;
+            auto model = cantileverModel(-P, H, L);
+            model.secondOrder = true;
+            model.stabilityFunctions = true;
+            const double tip = SolverBridge(dll).solve(model).nodeResults[1].displacements[2];
+            const double k = std::sqrt(std::abs(P) / (E * I));
+            const double exact = P > 0.0 ? H / (P * k) * (std::tan(k * L) - k * L) : H / (-P * k) * (k * L - std::tanh(k * L));
+            // uma unica barra: as funcoes de estabilidade reproduzem a solucao exata (a rigidez geometrica cubica so aproxima)
+            QVERIFY2(std::abs(tip - exact) / std::abs(exact) < 1e-8, qPrintable(QStringLiteral("fator %1: %2 x %3").arg(factor).arg(tip).arg(exact)));
+            model.stabilityFunctions = false;
+            const double approximate = SolverBridge(dll).solve(model).nodeResults[1].displacements[2];
+            QVERIFY(std::abs(approximate - exact) / std::abs(exact) > 1e-6);   // a aproximacao cubica difere da exata
+        }
+    }
+    void solverShearDeformationAddsTimoshenkoTerm()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        const double E = 2.0e11, G = 8.0e10, I = 4e-6, L = 1.0, H = 1000.0, Asy = 2.0e-3;
+        auto model = cantileverModel(0.0, H, L);
+        model.sections[0].shearAreaY = Asy;
+        model.sections[0].shearAreaZ = Asy;
+        const double euler = H * L * L * L / (3.0 * E * I);
+        QVERIFY(std::abs(SolverBridge(dll).solve(model).nodeResults[1].displacements[2] - euler) / euler < 1e-12);   // desligado: Euler-Bernoulli
+        model.shearDeformation = true;
+        const double timoshenko = euler + H * L / (G * Asy);
+        QVERIFY(std::abs(SolverBridge(dll).solve(model).nodeResults[1].displacements[2] - timoshenko) / timoshenko < 1e-9);
+        model.sections[0].shearAreaY = 0.0;   // area nao definida: a secao continua rigida ao cortante
+        QVERIFY(std::abs(SolverBridge(dll).solve(model).nodeResults[1].displacements[2] - euler) / euler < 1e-12);
+    }
+    void solverSecondOrderReportsCriticalLoadFactor()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        const double E = 2.0e11, I = 4e-6, L = 5.0;
+        const double pcr = 3.14159265358979 * 3.14159265358979 * E * I / (4.0 * L * L);
+        auto model = cantileverModel(-1.5 * pcr, 100.0, L);
+        model.secondOrder = true;
+        QString message;
+        try {
+            SolverBridge(dll).solve(model);
+        } catch (const std::exception &e) {
+            message = QString::fromUtf8(e.what());
+        }
+        QVERIFY2(message.contains(QLatin1String("Second-order")) && message.contains(QLatin1String("between")), qPrintable(message));
+        // o fator critico estimado (carga aplicada = 1,5 Pcr) fica em torno de 1/1,5 = 0,667
+        const QRegularExpression rx(QStringLiteral("between ([0-9.]+) and ([0-9.]+)"));
+        const auto match = rx.match(message);
+        QVERIFY(match.hasMatch());
+        QVERIFY(std::abs(match.captured(1).toDouble() - 1.0 / 1.5) < 0.05);
+    }
+    void solverSecondOrderIncrementsMatchDirectIteration()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        const double E = 2.0e11, I = 4e-6, L = 5.0;
+        const double pcr = 3.14159265358979 * 3.14159265358979 * E * I / (4.0 * L * L);
+        auto model = cantileverModel(-0.6 * pcr, 100.0, L);
+        model.secondOrder = true;
+        const double direct = SolverBridge(dll).solve(model).nodeResults[1].displacements[2];
+        model.loadSteps = 6;
+        const auto stepped = SolverBridge(dll).solve(model);
+        QVERIFY(std::abs(stepped.nodeResults[1].displacements[2] - direct) / direct < 1e-5);
+        QVERIFY(stepped.warnings.isEmpty());
+    }
+    void solverWarnsAboutDofsWithoutStiffness()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        auto model = cantileverModel(1000.0, 0.0, 3.0);
+        model.members[0].releases = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1}};   // rotacoes liberadas no no J: nada as restringe
+        const auto result = SolverBridge(dll).solve(model);
+        QVERIFY(!result.warnings.isEmpty());
+        QVERIFY(result.warnings.join(QLatin1Char('\n')).contains(QLatin1String("no stiffness")));
+    }
+    void solverRigidEndZonesMatchClosedForm()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // Balanco com zona rigida de 0,5 m no engaste e de 1,0 m na ponta, carga uniforme q em +Z: o trecho flexivel (L - a - b) e um balanco
+        // engastado em x = a; a carga da zona rigida da ponta chega ao no como forca q.b e momento q.b.b/2, e o no acompanha a extremidade
+        // flexivel por um elo rigido (u = u_f + b.theta).
+        const double E = 2.0e11, I = 4e-6, L = 5.0, a = 0.5, b = 1.0, q = 1000.0;
+        auto model = cantileverModel(0.0, 0.0, L);
+        model.nodalLoads.clear();
+        model.members[0].rigidStart = a;
+        model.members[0].rigidEnd = b;
+        SolverBridge::MemberLoadData load;
+        load.memberId = 1;
+        load.coordSystem = SolverBridge::MemberLoadCoordSystem::Global;
+        load.qz = q;
+        model.memberLoads.push_back(load);
+        const auto result = SolverBridge(dll).solve(model);
+        const double lf = L - a - b, p = q * b, m = p * b / 2.0;
+        const double flexTip = q * std::pow(lf, 4) / (8.0 * E * I) + p * std::pow(lf, 3) / (3.0 * E * I) + m * lf * lf / (2.0 * E * I);
+        const double flexRotation = q * std::pow(lf, 3) / (6.0 * E * I) + p * lf * lf / (2.0 * E * I) + m * lf / (E * I);
+        const double expected = flexTip + b * flexRotation;
+        QVERIFY2(std::abs(result.nodeResults[1].displacements[2] - expected) / expected < 1e-9,
+                 qPrintable(QStringLiteral("%1 x %2").arg(result.nodeResults[1].displacements[2]).arg(expected)));
+        // equilibrio global: reacao vertical q.L e momento q.L^2/2 em torno de y
+        QVERIFY(std::abs(result.nodeResults[0].reactions[2] + q * L) < 1e-6 * q * L);
+        QVERIFY(std::abs(std::abs(result.nodeResults[0].reactions[4]) - q * L * L / 2.0) < 1e-6 * q * L * L);
+        // esforcos de extremidade (nos nos): cortante q.L no engaste, nulo na ponta livre
+        QVERIFY(std::abs(std::abs(result.memberResults[0].localForces[1]) - q * L) < 1e-6 * q * L || std::abs(std::abs(result.memberResults[0].localForces[2]) - q * L) < 1e-6 * q * L);
+        QVERIFY(std::abs(result.memberResults[0].localForces[7]) < 1e-3 && std::abs(result.memberResults[0].localForces[8]) < 1e-3);
+    }
+    void solverWarpingTorsionMatchesVlasovClosedForm()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // Balanco de secao I sob torque T na ponta: theta(L) = T/(GJ) (L - tanh(kL)/k), bimomento no engaste B = T tanh(kL)/k, k = sqrt(GJ/(E Cw))
+        const double E = 2.0e11, G = 8.0e10, J = 1e-5, Cw = 1e-6, L = 2.0, T = 1000.0;
+        const double k = std::sqrt(G * J / (E * Cw));
+        auto model = cantileverModel(0.0, 0.0, L);
+        model.nodalLoads[0].values = {{0.0, 0.0, 0.0, T, 0.0, 0.0}};
+        model.sections[0].warpingConstant = Cw;
+        model.members[0].warping = true;
+        const auto result = SolverBridge(dll).solve(model);
+        const double expectedTheta = T / (G * J) * (L - std::tanh(k * L) / k);
+        const double theta = result.nodeResults[1].displacements[3];
+        QVERIFY2(std::abs(theta - expectedTheta) / expectedTheta < 1e-9, qPrintable(QStringLiteral("%1 x %2").arg(theta).arg(expectedTheta)));
+        QVERIFY(result.memberResults[0].hasWarping);
+        const double baseBimoment = T * std::tanh(k * L) / k;
+        QVERIFY2(std::abs(std::abs(result.memberResults[0].warpingForce[0]) - baseBimoment) / baseBimoment < 1e-9,
+                 qPrintable(QStringLiteral("%1 x %2").arg(result.memberResults[0].warpingForce[0]).arg(baseBimoment)));
+        QVERIFY(std::abs(result.memberResults[0].warpingForce[1]) < 1e-6 * baseBimoment);   // ponta livre: bimomento nulo
+        QVERIFY(std::abs(result.memberResults[0].warpingRate[0]) < 1e-15);                  // engaste: empenamento impedido
+        // sem empenamento o modelo e o de Saint-Venant puro: theta = T L/(GJ)
+        model.members[0].warping = false;
+        const auto plain = SolverBridge(dll).solve(model);
+        QVERIFY(std::abs(plain.nodeResults[1].displacements[3] - T * L / (G * J)) / (T * L / (G * J)) < 1e-9);
+        QVERIFY(!plain.memberResults[0].hasWarping);
+
+        // torque uniforme m no balanco: psi = theta' obedece E Cw psi'' - GJ psi = -m (L - x), psi(0) = 0, psi'(L) = 0
+        const double m = 400.0, gj = G * J;
+        auto uniform = cantileverModel(0.0, 0.0, L);
+        uniform.nodalLoads.clear();
+        uniform.sections[0].warpingConstant = Cw;
+        uniform.members[0].warping = true;
+        SolverBridge::MemberMomentData moment;
+        moment.memberId = 1;
+        moment.coordSystem = SolverBridge::MemberLoadCoordSystem::Local;
+        moment.mx = m;
+        uniform.memberMoments.push_back(moment);
+        const auto uniformResult = SolverBridge(dll).solve(uniform);
+        const double a = -m * L / gj;
+        const double b = (m / (gj * k) + (m * L / gj) * std::sinh(k * L)) / std::cosh(k * L);
+        const double expectedUniform = m * L * L / (2.0 * gj) + a * std::sinh(k * L) / k + b * (std::cosh(k * L) - 1.0) / k;
+        const double uniformTheta = uniformResult.nodeResults[1].displacements[3];
+        QVERIFY2(std::abs(uniformTheta - expectedUniform) / expectedUniform < 1e-9, qPrintable(QStringLiteral("%1 x %2").arg(uniformTheta).arg(expectedUniform)));
+        const double expectedBase = E * Cw * (-m / gj + k * b);   // |B(0)| = E Cw |psi'(0)|
+        QVERIFY2(std::abs(std::abs(uniformResult.memberResults[0].warpingForce[0]) - std::abs(expectedBase)) / std::abs(expectedBase) < 1e-8,
+                 qPrintable(QStringLiteral("%1 x %2").arg(uniformResult.memberResults[0].warpingForce[0]).arg(expectedBase)));
+    }
+
+    void solverWarpingIsContinuousBetweenCollinearMembers()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // o mesmo balanco dividido em duas barras colineares: o parametro de empenamento e compartilhado no no intermediario
+        const double G = 8.0e10, J = 1e-5, Cw = 1e-6, L = 2.0, T = 1000.0;
+        auto single = cantileverModel(0.0, 0.0, L);
+        single.nodalLoads[0].values = {{0.0, 0.0, 0.0, T, 0.0, 0.0}};
+        single.sections[0].warpingConstant = Cw;
+        single.members[0].warping = true;
+        const auto reference = SolverBridge(dll).solve(single);
+
+        auto split = single;
+        SolverBridge::NodeData middle;
+        middle.id = 3;
+        middle.x = 0.5 * L;
+        split.nodes.push_back(middle);
+        split.members[0] = SolverBridge::MemberData {1, 1, 3, 1, 1};
+        split.members[0].warping = true;
+        split.members.push_back(SolverBridge::MemberData {2, 3, 2, 1, 1});
+        split.members[1].warping = true;
+        const auto result = SolverBridge(dll).solve(split);
+        const double expected = reference.nodeResults[1].displacements[3];
+        QVERIFY2(std::abs(result.nodeResults[1].displacements[3] - expected) / expected < 1e-9,
+                 qPrintable(QStringLiteral("%1 x %2").arg(result.nodeResults[1].displacements[3]).arg(expected)));
+        // continuidade do empenamento e do bimomento no no intermediario
+        QVERIFY(std::abs(result.memberResults[0].warpingRate[1] - result.memberResults[1].warpingRate[0]) < 1e-12);
+        QVERIFY(std::abs(result.memberResults[0].warpingForce[1] + result.memberResults[1].warpingForce[0]) < 1e-6 * std::abs(result.memberResults[0].warpingForce[0]));
+        Q_UNUSED(G)
+        Q_UNUSED(J)
+    }
+
+    void solverTaperedMemberMatchesIntegratedDeflection()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // balanco de secao I de alma variavel (d1 = 0,30 m no engaste, d2 = 0,60 m na ponta) sob carga P na ponta:
+        // delta = int M^2 / (E I(x)) dx / P com M = P (L - x); Iz(d) = bf d^3/12 - (bf - tw)(d - 2 tf)^3/12
+        const double E = 2.0e11, L = 4.0, P = 20000.0, bf = 0.20, tw = 0.008, tf = 0.012, d1 = 0.30, d2 = 0.60;
+        auto inertia = [&](double x) {
+            const double d = d1 + (d2 - d1) * x / L;
+            return bf * std::pow(d, 3) / 12.0 - (bf - tw) * std::pow(d - 2.0 * tf, 3) / 12.0;
+        };
+        double expected = 0.0;
+        const int n = 4000;
+        for (int i = 0; i <= n; ++i) {
+            const double x = L * i / n, w = (i == 0 || i == n) ? 1.0 : (i % 2 ? 4.0 : 2.0);
+            expected += w * std::pow(P * (L - x), 2) / (E * inertia(x));
+        }
+        expected *= L / n / 3.0 / P;
+        auto model = cantileverModel(0.0, 0.0, L);
+        model.nodalLoads[0].values = {{0.0, 0.0, P, 0.0, 0.0, 0.0}};   // carga vertical (z): flexao em torno do eixo de maior inercia
+        auto &member = model.members[0];
+        member.taper = true;
+        member.taperD1 = d1;
+        member.taperD2 = d2;
+        member.taperBf = bf;
+        member.taperTw = tw;
+        member.taperTf = tf;
+        member.taperSegments = 24;
+        const auto result = SolverBridge(dll).solve(model);
+        const double tip = std::abs(result.nodeResults[1].displacements[2]);
+        QVERIFY2(std::abs(tip - expected) / expected < 0.01, qPrintable(QStringLiteral("%1 x %2").arg(tip).arg(expected)));
+        // esforcos das extremidades da barra original (nao dos trechos): cortante P nas duas pontas, em equilibrio, e momento P L no engaste
+        const auto &f = result.memberResults[0].localForces;
+        QVERIFY(std::abs(std::abs(f[1]) - P) < 1e-3 * P && std::abs(f[1] + f[7]) < 1e-3 * P);   // Vy local = z global (altura da alma)
+        QVERIFY(std::abs(std::abs(f[5]) - P * L) < 1e-3 * P * L);
+        QCOMPARE(int(result.memberResults.size()), 1);
+        QCOMPARE(int(result.nodeResults.size()), 2);
+    }
+
+    void geometricImperfectionVariantsShiftTheNodes()
+    {
+        using Structura::App::Services::NotionalLoadService;
+        using Structura::App::ProjectData::DesignSettings;
+        using Structura::App::ProjectData::LoadCombination;
+        DesignSettings settings;
+        settings.secondOrder = true;
+        settings.geometricImperfection = true;
+        QVERIFY(settings.geometricActive() && !settings.notionalActive() && settings.hasImperfectionVariants());
+        settings.secondOrder = false;   // na 1a ordem a imperfeicao direta nao existe
+        QVERIFY(!settings.geometricActive());
+        settings.secondOrder = true;
+        LoadCombination ultimate;
+        ultimate.name = QStringLiteral("ELU1");
+        ultimate.factors = {{QStringLiteral("PP"), 1.4}};
+        LoadCombination service;
+        service.name = QStringLiteral("ELS1");
+        service.factors = {{QStringLiteral("PP"), 1.0}};
+        const auto all = NotionalLoadService::variantsFor(settings, {ultimate, service});
+        QCOMPARE(all.size(), 2 + 4);   // so a combinacao ultima gera variantes (+X, -X, +Y, -Y)
+        QCOMPARE(all[2].name, QStringLiteral("ELU1 +IX"));
+        QCOMPARE(all[2].imperfectionAxis, 0);
+        QCOMPARE(all[3].imperfectionSign, -1);
+        QCOMPARE(all[4].imperfectionAxis, 1);
+        QCOMPARE(all[2].factors, ultimate.factors);
+
+        SolverBridge::ModelData model;
+        SolverBridge::NodeData base;
+        base.id = 1;
+        base.z = 2.0;
+        base.restraints = {{1, 1, 1, 1, 1, 1}};
+        SolverBridge::NodeData top;
+        top.id = 2;
+        top.x = 1.0;
+        top.z = 12.0;
+        model.nodes = {base, top};
+        NotionalLoadService::applyImperfection(model, 0, 1, 1.0 / 333.0);
+        QVERIFY(std::abs(model.nodes[0].x) < 1e-15);                         // a base nao se move
+        QVERIFY(std::abs(model.nodes[1].x - (1.0 + 10.0 / 333.0)) < 1e-12);   // 10 m acima da base: H/333
+        NotionalLoadService::applyImperfection(model, 1, -1, 1.0 / 333.0);
+        QVERIFY(std::abs(model.nodes[1].y + 10.0 / 333.0) < 1e-12);
+    }
     void solverTensionOnlyTiesDeactivateWhenShortening()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
@@ -511,6 +844,88 @@ private slots:
         // Tirantes: a barra que encurta e desativada e a outra recebe todo o esforco: T = 5H/3
         QVERIFY(std::abs(axial(tied, 2)) < 1.0);
         QVERIFY(std::abs(axial(tied, 1) - 5000.0 / 3.0) < 5.0);
+    }
+    void designParametersOfNbr8800AuditRoundTrip()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString first = dir.filePath(QStringLiteral("a.dat"));
+        QFile file(first);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        file.write(kSample);
+        file.close();
+        DatModelIoService service;
+        MemoryGateway gateway;
+        Loaded loaded;
+        QVERIFY(load(service, gateway, first, loaded));
+        ProjectData::DesignMemberParams p;
+        p.memberId = 3;
+        p.oneFlangeBraced = 1;
+        p.forceAwayFromFreeFlange = true;
+        p.ctMode = 1;
+        p.ctEccentricity = 21.5;
+        p.ctLength = 150.0;
+        p.ctConnectedAreaRatio = 0.85;
+        p.holeBoltDiameter = 20.0;
+        p.holesInChain = 2;
+        p.holeThickness = 9.5;
+        p.staggerPitch = 60.0;
+        p.staggerGauge = 40.0;
+        p.staggerLinks = 1;
+        loaded.extras.design.members.append(p);
+        loaded.extras.design.defaults.ctMode = 2;
+        loaded.extras.design.defaults.ctConnectedAreaRatio = 0.7;
+        loaded.extras.design.defaults.oneFlangeBraced = 2;
+        loaded.extras.design.geometricImperfection = true;
+        loaded.extras.design.imperfectionRatio = 1.0 / 400.0;
+        loaded.extras.design.stabilityFunctions = true;
+        loaded.extras.design.shearDeformation = true;
+        loaded.extras.design.loadSteps = 8;
+        loaded.extras.design.rigidZoneFactor = 0.5;
+        const QString second = dir.filePath(QStringLiteral("b.dat"));
+        QString error;
+        QVERIFY(service.save(second, &gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, &error));
+        MemoryGateway gateway2;
+        Loaded again;
+        QVERIFY(load(service, gateway2, second, again));
+        QVERIFY(again.extras.design.members.contains(p));
+        QCOMPARE(again.extras.design.defaults.ctMode, 2);
+        QVERIFY(std::abs(again.extras.design.defaults.ctConnectedAreaRatio - 0.7) < 1e-12);
+        QCOMPARE(again.extras.design.defaults.oneFlangeBraced, 2);
+        QVERIFY(again.extras.design.geometricImperfection && again.extras.design.stabilityFunctions && again.extras.design.shearDeformation);
+        QVERIFY(std::abs(again.extras.design.imperfectionRatio - 1.0 / 400.0) < 1e-12);
+        QCOMPARE(again.extras.design.loadSteps, 8);
+        QVERIFY(std::abs(again.extras.design.rigidZoneFactor - 0.5) < 1e-12);
+    }
+    void netAreaAndCtOfTensionConnection()
+    {
+        using Structura::App::Services::DesignService;
+        ProjectData::DesignMemberParams p;
+        p.holeBoltDiameter = 20.0;
+        p.holesInChain = 2;
+        p.holeThickness = 10.0;
+        double ratio = 1.0, ct = 1.0;
+        std::vector<std::string> notes;
+        DesignService::tensionConnection(p, 3000.0, ratio, ct, notes);
+        QVERIFY(std::abs(ratio - (3000.0 - 2.0 * 23.5 * 10.0) / 3000.0) < 1e-12);   // largura do furo = db + 1,5 + 2,0 mm
+        QVERIFY(std::abs(ct - 1.0) < 1e-12);
+        p.staggerLinks = 1;
+        p.staggerPitch = 60.0;
+        p.staggerGauge = 40.0;
+        DesignService::tensionConnection(p, 3000.0, ratio, ct, notes);
+        QVERIFY(std::abs(ratio - (3000.0 - 470.0 + 10.0 * 3600.0 / 160.0) / 3000.0) < 1e-12);   // + s2/(4g) por linha entre furos
+        p.ctMode = 1;
+        p.ctEccentricity = 20.0;
+        p.ctLength = 100.0;
+        DesignService::tensionConnection(p, 3000.0, ratio, ct, notes);
+        QVERIFY(std::abs(ct - 0.8) < 1e-12);   // Ct = 1 - ec/lc
+        p.ctConnectedAreaRatio = 0.9;          // limite inferior Ac/Ag
+        DesignService::tensionConnection(p, 3000.0, ratio, ct, notes);
+        QVERIFY(std::abs(ct - 0.9) < 1e-12);
+        p.ctMode = 2;                          // soldas transversais: Ct = Ac/Ag
+        p.ctConnectedAreaRatio = 0.6;
+        DesignService::tensionConnection(p, 3000.0, ratio, ct, notes);
+        QVERIFY(std::abs(ct - 0.6) < 1e-12);
     }
     void newExtrasRoundTrip()
     {
@@ -1921,6 +2336,14 @@ private slots:
         }
     }
     void exampleGalpaoWithCoupledSlab()
+    {
+        try {
+            exampleGalpaoWithCoupledSlabBody();
+        } catch (const std::exception &e) {
+            QFAIL(e.what());
+        }
+    }
+    void exampleGalpaoWithCoupledSlabBody()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         const QString example = QStringLiteral(STRUCTURA_SOURCE_DIR "/Examples/galpao_3_andares.dat");

@@ -35,6 +35,6 @@ struct GrossSection {
 
 /// Calcula as propriedades brutas. `loops[0]` e o contorno externo; os demais sao furos.
 /// A origem e deslocada para o centroide.
-GrossSection computeGrossSection(const std::vector<Loop> &loops);
+GrossSection computeGrossSection(const std::vector<Loop> &loops, std::size_t outerCount = 1);
 
 } // namespace Structura::Design

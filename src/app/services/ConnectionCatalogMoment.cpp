@@ -15,16 +15,6 @@ using Cat = ConnectionCatalog;
 
 namespace {
 
-D::BoltGrade gradeByName(const QString &name)
-{
-    for (const auto &g : D::boltGrades()) {
-        if (QString::fromStdString(g.name) == name) {
-            return g;
-        }
-    }
-    return D::boltGrades().size() > 2 ? D::boltGrades()[2] : D::boltGrades().front();
-}
-
 D::MomentConnectionInput toInput(const NodeConnection &c, double shear, double axial, double moment, double panelShear = -1.0, double columnAxial = 0.0)
 {
     D::MomentConnectionInput in;
@@ -101,6 +91,7 @@ D::MomentConnectionInput toInput(const NodeConnection &c, double shear, double a
     in.colUnbraced = val(c, "supLb", 0.0);
     in.doubler = val(c, "doubler", 0.0);
     in.panelStiffened = val(c, "panelStiff", 0.0) != 0.0;
+    in.beamOnBothSides = val(c, "bothSides", 0.0) != 0.0;
     in.colAxial = val(c, "colN", 0.0) * 1000.0;
     in.colShear = val(c, "colV", 0.0) * 1000.0;
     in.shear = shear;
@@ -179,6 +170,8 @@ QVector<Cat::FieldDef> momentFields(const Cat::Entry &entry)
     section(QObject::tr("Pilar (reforço do painel)"));
     add("doubler", QObject::tr("Chapa de reforço da alma (soma dos dois lados)"), 0, 60, 1, mm);
     add("panelStiff", QObject::tr("Enrijecedores transversais alinhados às mesas da viga"), 0, 1, 0, QString(), {QObject::tr("Não"), QObject::tr("Sim")});
+    add("bothSides", QObject::tr("Viga também do outro lado do pilar (momentos de mesmo sentido)"), 0, 1, 0, QString(), {QObject::tr("Não"), QObject::tr("Sim")},
+        QObject::tr("Par de forças de compressão opostas nas duas mesas do pilar: verifica a instabilidade da alma por compressão (NBR 8800:2024, 5.7.6)."));
     add("colN", QObject::tr("Força axial no pilar (se o nó não for calculado)"), 0, 100000, 1, QObject::tr(" kN"), {}, QObject::tr("Usada só quando os esforços do nó não estão disponíveis; com a análise, o programa obtém NSd e o cortante do pilar do equilíbrio do nó."));
     add("colV", QObject::tr("Cortante do pilar (se o nó não for calculado)"), 0, 100000, 1, QObject::tr(" kN"), {}, QObject::tr("Usado só quando os esforços do nó não estão disponíveis (equilíbrio do nó automático quando há análise)."));
     add("supLb", QObject::tr("Comprimento destravado do pilar (0 = contido)"), 0, 20000, 0, mm);
@@ -188,7 +181,7 @@ QVector<Cat::FieldDef> momentFields(const Cat::Entry &entry)
 NodeConnection momentDefault(const Cat::Entry &entry, const Cat::BeamInfo &beam, double plateFy, double plateFu)
 {
     NodeConnection c;
-    c.grade = QString::fromStdString(D::boltGrades().size() > 2 ? D::boltGrades()[2].name : D::boltGrades().front().name);
+    c.grade = defaultBoltGradeName();
     const double d = beam.depth > 0.0 ? beam.depth : 300.0;
     const double bf = beam.bf > 0.0 ? beam.bf : 150.0;
     const double tf = beam.tf > 0.0 ? beam.tf : 10.0;

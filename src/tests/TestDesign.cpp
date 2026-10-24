@@ -1,5 +1,8 @@
 #include "app/services/NodeEquilibrium.h"
 #include "app/SolverBridge.h"
+#include "design/BeamExtras.h"
+#include "design/CompositeColumn.h"
+#include "design/TaperedMember.h"
 #include "app/services/AreaLoadService.h"
 #include "app/services/DesignService.h"
 #include "app/services/StructuralChecks.h"
@@ -21,6 +24,7 @@
 #include "design/DesignSection.h"
 #include "design/Nbr14762.h"
 #include "design/Nbr8800.h"
+#include "viz/structure/SectionCatalog.h"
 #include "viz/structure/SectionShapes.h"
 
 #include <QFile>
@@ -31,7 +35,7 @@ using Structura::Visualization::SectionShapes;
 
 namespace {
 
-DesignSection make(const QString &family, const QMap<QString, double> &params, double j = 0.0)
+DesignSection make(const QString &family, const QMap<QString, double> &params, double j = 0.0, bool principalAxes = false)
 {
     QString err;
     const auto shape = SectionShapes::build(family, params, false, &err);
@@ -47,7 +51,21 @@ DesignSection make(const QString &family, const QMap<QString, double> &params, d
     for (const auto &l : shape->loops) {
         loops.emplace_back(l.begin(), l.end());
     }
-    return makeDesignSection(spec, loops, j);
+    double angle = 0.0;
+    if (principalAxes) {
+        const auto g = Structura::Design::computeGrossSection(loops, shape->outerCount);
+        const double theta = 0.5 * std::atan2(2.0 * g.Ixy, g.Ix - g.Iy) * 180.0 / 3.14159265358979323846;
+        double best = 1e300;
+        for (const double candidate : {theta, -theta}) {   // como DesignService::makeSection: o sinal que anula Ixy
+            const DesignSection trial = makeDesignSection(spec, loops, j, Standard::NBR14762, candidate, shape->outerCount);
+            const double residual = std::abs(trial.g.Ixy) / std::max(1.0, std::max(trial.g.Ix, trial.g.Iy));
+            if (residual < best) {
+                best = residual;
+                angle = candidate;
+            }
+        }
+    }
+    return makeDesignSection(spec, loops, j, Standard::NBR14762, angle, shape->outerCount);
 }
 
 } // namespace
@@ -1294,6 +1312,429 @@ private slots:
         }
     }
 
+    void warpingTorsionEffectsAndCheck()
+    {
+        using namespace Structura::App;
+        using Structura::App::Services::DesignService;
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // Balanco em I sob torque T na ponta (unidades do modelo: kN e m). O bimomento no engaste e T tanh(kL)/k (em modulo) e, no engaste, todo o torque
+        // e resistido por empenamento (psi = 0 => T_sv = 0); na ponta livre B = 0 e T_w = T - T_sv.
+        const QMap<QString, double> geometry = {{"d", 300}, {"bf", 150}, {"tw", 8}, {"tf", 12}};
+        const auto props = Structura::Visualization::SectionShapes::properties(QStringLiteral("W Laminado"), geometry);
+        QVERIFY(props.has_value());
+        const DesignSection section = make("W Laminado", geometry, props->j * 1e12);
+        QVERIFY(section.Cw > 0.0);
+        const double length = 3.0, torque = 5.0;   // m, kN*m
+        SolverBridge::ModelData model;
+        model.materials.push_back({1, 2.0e8, 7.7e7});
+        model.sections.push_back({1, props->area, props->iz, props->iy, props->j});
+        model.sections[0].warpingConstant = section.Cw * 1e-18;
+        SolverBridge::NodeData base;
+        base.id = 1;
+        base.restraints = {{1, 1, 1, 1, 1, 1}};
+        SolverBridge::NodeData tip;
+        tip.id = 2;
+        tip.x = length;
+        model.nodes = {base, tip};
+        model.members.push_back(SolverBridge::MemberData {1, 1, 2, 1, 1});
+        model.members[0].warping = true;
+        SolverBridge::NodalLoadData load;
+        load.nodeId = 2;
+        load.values = {{0.0, 0.0, 0.0, torque, 0.0, 0.0}};
+        model.nodalLoads.push_back(load);
+        const auto result = SolverBridge(dll).solve(model);
+        DesignService::ResultSet set;
+        set.name = "ELU1";
+        set.result = &result;
+        set.terms = {{&model, 1.0}};
+        const auto effects = DesignService::collectEffects(model, {set}, 1000.0, 1000.0, 11);
+        QCOMPARE(effects.size(), 1);
+        QVERIFY(effects[0].warping);
+        const auto &stations = effects[0].combos[0].stations;
+        const double e = 2.0e5, g = 7.7e4;   // MPa
+        const double k = std::sqrt(g * section.J / (e * section.Cw));   // 1/mm
+        const double t = torque * 1e6, l = length * 1e3;   // N*mm, mm
+        const double expectedBase = t * std::tanh(k * l) / k;   // N*mm2
+        QVERIFY2(std::abs(std::abs(stations.front().e.B) - expectedBase) / expectedBase < 1e-6,
+                 qPrintable(QString("B(0) = %1 x %2").arg(stations.front().e.B).arg(expectedBase)));
+        QVERIFY(std::abs(stations.back().e.B) < 1e-6 * expectedBase);
+        QVERIFY2(std::abs(std::abs(stations.front().e.Tw) - t) / t < 1e-6, qPrintable(QString("Tw(0) = %1").arg(stations.front().e.Tw)));
+        // Saint-Venant puro na ponta nao e atingido (empenamento livre, mas a barra e curta); Tsv + Tw = T em toda a barra
+        for (const auto &st : stations) {
+            QVERIFY(std::abs(std::abs(st.e.T) - t) / t < 1e-6);
+        }
+        // verificacao 5.5.2.3
+        Structura::Design::BarDesignInput in;
+        in.section = &section;
+        in.steel = {"A572 Gr50", 345, 450};
+        in.length = l;
+        in.warping = true;
+        in.combos = effects[0].combos;
+        const auto design = Structura::Design::designBar(in);
+        bool normal = false, shear = false;
+        for (const auto &check : design.checks) {
+            normal = normal || check.id == "warping_normal";
+            shear = shear || check.id == "warping_shear";
+            if (check.id == "warping_normal") {
+                // sigma_w = B omega/Cw no engaste, sem outros esforcos: omega = h bf/4
+                const double sigma = expectedBase * section.sectorial.omegaMax / section.sectorial.Cw;   // omega_max = h bf/4 na extremidade das mesas (linha media)
+                QVERIFY2(std::abs(check.demand - sigma) / sigma < 1e-6, qPrintable(QString("sigma = %1 x %2").arg(check.demand).arg(sigma)));
+            }
+        }
+        QVERIFY(normal);
+        QVERIFY(shear);
+        in.warping = false;   // sem empenamento: so Saint-Venant (T_sv = T, sem tensoes de empenamento) e aviso de que o empenamento foi desprezado
+        const auto plain = Structura::Design::designBar(in);
+        bool plainNormal = false, plainShear = false;
+        for (const auto &check : plain.checks) {
+            if (check.id == "warping_normal") {
+                plainNormal = true;
+                QVERIFY(check.demand < 1e-6);   // sem N, M nem B: tensao normal nula
+            }
+            plainShear = plainShear || check.id == "warping_shear";
+        }
+        QVERIFY(plainNormal && plainShear);
+        QVERIFY(!plain.warnings.empty());
+    }
+
+    void dumpMemorial()
+    {
+        if (qEnvironmentVariableIsEmpty("STRUCTURA_DUMP_MEMO")) {
+            QSKIP("so desenvolvimento");
+        }
+        QFile out(QString::fromLocal8Bit(qgetenv("STRUCTURA_DUMP_MEMO")));
+        QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Text));
+        QTextStream text(&out);
+        text.setEncoding(QStringConverter::Utf8);
+        for (const QString family : {QStringLiteral("W Laminado"), QStringLiteral("C Formado")}) {
+            const QMap<QString, double> params = family.startsWith("W") ? QMap<QString, double> {{"d", 300}, {"bf", 150}, {"tw", 8}, {"tf", 12}}
+                                                                        : QMap<QString, double> {{"d", 150}, {"bf", 60}, {"c", 20}, {"t", 2.65}};
+            const DesignSection section = make(family, params, 0.0);
+            Structura::Design::BarDesignInput in;
+            in.section = &section;
+            in.steel = family.startsWith("W") ? Structura::Design::SteelGrade {"A572 Gr50", 345, 450} : Structura::Design::SteelGrade {"MR250", 250, 400, 200000, 77000, true};
+            in.length = 4000.0;
+            Structura::Design::ComboEffects combo;
+            combo.name = "ELU1";
+            for (const double x : {0.0, 2000.0, 4000.0}) {
+                Structura::Design::StationEffects st;
+                st.x = x;
+                st.e.N = -100000.0; st.e.Mx = 20e6 * (1.0 - x / 4000.0); st.e.My = 2e6; st.e.Vy = 30000.0; st.e.Vz = 5000.0;
+                combo.stations.push_back(st);
+            }
+            in.combos = {combo};
+            const auto result = Structura::Design::designBar(in);
+            text << "=== " << family << "\n";
+            for (const auto &c : result.summaryLines) { text << "SUMMARY " << QString::fromStdString(c) << "\n"; }
+            for (const auto &c : result.checks) {
+                text << "## " << QString::fromStdString(c.id) << " | " << QString::fromStdString(c.title) << " | " << QString::fromStdString(c.clause) << " | " << c.demand << " " << QString::fromStdString(c.unit) << " / " << c.resistance << "\n";
+                for (const auto &l : c.lines) { text << "   " << QString::fromStdString(l) << "\n"; }
+            }
+        }
+    }
+
+    void sectorialPropertiesOfThinWalledSections()
+    {
+        const DesignSection w = make("W Laminado", {{"d", 300}, {"bf", 150}, {"tw", 8}, {"tf", 12}}, 1.0);
+        QVERIFY(w.sectorial.valid);
+        QVERIFY(std::abs(w.sectorial.ys) < 1e-6 && std::abs(w.sectorial.zs) < 1e-6);
+        const double h = 300 - 12;
+        QVERIFY(std::abs(w.sectorial.omegaMax - h * 150 / 4.0) / (h * 150 / 4.0) < 1e-9);
+        // Cw da linha media de um I: tf h^2 bf^3 / 24 (mesas) -- compara com a formula da norma (D.2.8-a), que usa Iy da secao real
+        QVERIFY(std::abs(w.sectorial.Cw - 12.0 * h * h * std::pow(150.0, 3) / 24.0) / w.sectorial.Cw < 1e-9);
+        QVERIFY(std::abs(w.sectorial.Cw - w.Cw) / w.Cw < 0.05);
+        // nos eixos locais (y = altura, z = largura) as mesas estao em y constante: omega = y z (sentido positivo de torcao em torno de +x)
+        for (const auto &p : w.sectorial.samples) {
+            if (std::abs(std::abs(p.y) - h / 2.0) < 1e-6) {
+                QVERIFY(std::abs(p.omega - p.y * p.z) < 1e-6 * h * 150.0);
+            }
+        }
+        // U: o centro de cisalhamento fica fora da alma, a distancia e0 da linha media
+        const DesignSection u = make("U Laminado", {{"d", 254}, {"bf", 66}, {"tw", 6.1}, {"tf", 11.1}, {"r", 9.0}, {"r1", 4.5}}, 1.0);
+        QVERIFY2(u.sectorial.valid, qPrintable(QString("score %1").arg(u.sectorial.matchScore)));
+        QVERIFY2(std::abs(u.sectorial.zs + u.x0) < 0.15 * std::abs(u.x0), qPrintable(QString("zs = %1, x0 = %2").arg(u.sectorial.zs).arg(u.x0)));
+        QVERIFY(std::abs(u.sectorial.Cw - u.Cw) / u.Cw < 0.08);
+        for (const auto &spec : {std::make_pair(QStringLiteral("C Formado"), QMap<QString, double> {{"d", 150}, {"bf", 60}, {"c", 20}, {"t", 2.65}}),
+                                 std::make_pair(QStringLiteral("Z Formado"), QMap<QString, double> {{"d", 150}, {"bf", 60}, {"t", 2.65}}),
+                                 std::make_pair(QStringLiteral("U Formado"), QMap<QString, double> {{"d", 100}, {"bf", 50}, {"t", 2.0}}),
+                                 std::make_pair(QStringLiteral("L Laminado"), QMap<QString, double> {{"b", 76}, {"t", 6.35}, {"r1", 0.0}, {"r2", 0.0}})}) {
+            const DesignSection s = make(spec.first, spec.second, 1.0, true);
+            QVERIFY2(s.sectorial.valid, qPrintable(QString("%1 score %2 Ixy %3 Ix %4 Iy %5 ang %6").arg(spec.first).arg(s.sectorial.matchScore).arg(s.g.Ixy).arg(s.g.Ix).arg(s.g.Iy).arg(s.principalAngleDeg)));
+            QVERIFY(s.sectorial.Cw >= 0.0);
+        }
+    }
+
+    void threadedRodWebFlangeWeldCoverPlateAndPlasticHinges()
+    {
+        namespace B = Structura::Design;
+        // 5.2.7: barra redonda rosqueada, ruptura da parte rosqueada com Abe = 0,75 Ab
+        {
+            const DesignSection rod = make("Barra Circular", {{"d", 20}});
+            B::BarDesignInput in;
+            in.section = &rod;
+            in.steel = {"A36", 250, 400};
+            in.length = 3000.0;
+            in.threadedEnds = true;
+            B::ComboEffects combo;
+            combo.name = "ELU1";
+            for (const double x : {0.0, 3000.0}) {
+                B::StationEffects st;
+                st.x = x;
+                st.e.N = 50000.0;
+                combo.stations.push_back(st);
+            }
+            in.combos = {combo};
+            const auto result = B::designBar(in);
+            const double ag = rod.g.area;
+            for (const auto &check : result.checks) {
+                if (check.id == "tension") {
+                    QVERIFY2(std::abs(check.resistance - std::min(ag * 250.0 / 1.10, 0.75 * ag * 400.0 / 1.35) / 1000.0) < 1e-6, qPrintable(QString("%1 kind %2").arg(check.resistance).arg(int(rod.kind))));
+                }
+            }
+        }
+        // 5.4.5 / 5.4.4 / 4.11.5 em uma viga I biapoiada de 8 m
+        const DesignSection w = make("W Laminado", {{"d", 400}, {"bf", 180}, {"tw", 8}, {"tf", 12.5}});
+        B::BarDesignInput in;
+        in.section = &w;
+        in.steel = {"A572 Gr50", 345, 450};
+        in.length = 8000.0;
+        in.compressionFlangeBraced = true;
+        in.webWeldLeg = 5.0;
+        in.flangeLineLoad = 20.0;
+        const double mMax = 600e6;
+        B::ComboEffects combo;
+        combo.name = "ELU1";
+        for (int i = 0; i <= 20; ++i) {
+            B::StationEffects st;
+            st.x = 8000.0 * i / 20.0;
+            const double u = st.x / 8000.0;
+            st.e.Mx = mMax * 4.0 * u * (1.0 - u);
+            st.e.Vy = 4.0 * mMax / 8000.0 * std::abs(1.0 - 2.0 * u);
+            combo.stations.push_back(st);
+        }
+        in.combos = {combo};
+        auto find = [](const B::BarDesignOutput &r, const char *id) -> const B::CheckResult * {
+            for (const auto &c : r.checks) {
+                if (c.id == id) {
+                    return &c;
+                }
+            }
+            return nullptr;
+        };
+        {
+            const auto result = B::designBar(in);
+            const auto *weld = find(result, "web_flange_weld");
+            if (!weld) { QString ids; for (const auto &c : result.checks) { ids += QString::fromStdString(c.id) + " "; } for (const auto &wn : result.warnings) { ids += " W:" + QString::fromStdString(wn); } qWarning("ids: %s", qPrintable(ids)); }
+            QVERIFY(weld);
+            const double vMax = 4.0 * mMax / 8000.0;
+            const double q = vMax * (180.0 * 12.5 * (400.0 - 12.5) / 2.0) / w.g.Ix;
+            QVERIFY(std::abs(weld->demand - std::hypot(q, 20.0) / 2.0) < 1e-6);
+            QVERIFY(std::abs(weld->resistance - std::min(0.60 * 0.707 * 5.0 * 485.0 / 1.35, 0.60 * 8.0 * std::min(345.0 / 1.10, 450.0 / 1.35))) < 1e-6);
+            QVERIFY(find(result, "web_flange_weld_min"));
+        }
+        {
+            // lamela 200 x 12,5 nas duas mesas de x = 1500 a x = 6500: ha prolongamento alem das secoes de transicao
+            in.webWeldLeg = 0.0;
+            in.coverB = 200.0;
+            in.coverT = 12.5;
+            in.coverStart = 1500.0;
+            in.coverEnd = 6500.0;
+            in.coverWeldLeg = 6.0;
+            const auto result = B::designBar(in);
+            QVERIFY(find(result, "cover_plate_transition_esquerda"));
+            QVERIFY(find(result, "cover_plate_transition_direita"));
+            QVERIFY(find(result, "cover_plate_end_esquerda"));
+            QVERIFY(find(result, "cover_plate_flexure"));
+            const double ic = w.g.Ix + 2.0 * 200.0 * 12.5 * std::pow(200.0 + 6.25, 2) + 2.0 * 200.0 * std::pow(12.5, 3) / 12.0;
+            const auto *flex = find(result, "cover_plate_flexure");
+            QVERIFY(std::abs(flex->resistance - ic / (200.0 + 12.5) * 345.0 / 1.10 / 1e6) < 1e-6);
+            // sem solda na extremidade, a_l = 2 b = 400 mm
+            in.coverEndWeld = false;
+            const auto noEnd = B::designBar(in);
+            bool found = false;
+            for (const auto &line : find(noEnd, "cover_plate_end_esquerda")->lines) {
+                found = found || line.find("a_l = 2.0 b") != std::string::npos;
+            }
+            QVERIFY(found);
+        }
+        {
+            // 4.11.5: viga contida em 2 trechos de 4 m com curvatura simples: M1/M2 = -0 no apoio extremo... trecho 1: apoio (0) e meio (max): ratio 0
+            in.coverB = 0.0;
+            in.plasticAnalysis = true;
+            in.compressionFlangeBraced = false;
+            in.lateralSegments = 2;
+            const auto result = B::designBar(in);
+            const auto *hinge = find(result, "plastic_hinge");
+            QVERIFY(hinge);
+            const double ry = w.g.ry;
+            QVERIFY(std::abs(hinge->resistance - B::plasticHingeUnbracedLength(false, 200000.0, 345.0, ry, 0.0)) < 1e-6);
+            QVERIFY(std::abs(B::plasticHingeUnbracedLength(false, 200000.0, 345.0, ry, 0.5) - (0.12 + 0.076 * 0.5) * 200000.0 / 345.0 * ry) < 1e-9);
+            QVERIFY(B::plasticHingeUnbracedLength(true, 200000.0, 345.0, ry, -1.0) >= 0.10 * 200000.0 / 345.0 * ry - 1e-9);
+        }
+    }
+
+    void taperedMemberFollowsAnnexG()
+    {
+        namespace B = Structura::Design;
+        B::TaperedGeometry constant {400.0, 400.0, 180.0, 8.0, 12.5};
+        const double iConstant = constant.strongInertia(400.0);
+        // d1 = d2: a inercia equivalente e a propria (os senos sao os modos exatos da coluna prismatica)
+        QVERIFY(std::abs(B::taperedEquivalentInertia(constant, 6000.0) - iConstant) / iConstant < 1e-9);
+        B::TaperedGeometry geometry {300.0, 600.0, 180.0, 8.0, 12.5};
+        const double ixEq = B::taperedEquivalentInertia(geometry, 6000.0);
+        QVERIFY(ixEq > geometry.strongInertia(300.0) && ixEq < geometry.strongInertia(600.0));
+        // verificacao secao a secao: tracao com a menor altura (G.2); flexao com o momento de cada secao
+        const double length = 6000.0;
+        std::vector<DesignSection> stations;
+        B::BarDesignInput in;
+        B::ComboEffects combo;
+        combo.name = "ELU1";
+        for (int i = 0; i <= 20; ++i) {
+            B::StationEffects st;
+            st.x = length * i / 20.0;
+            st.e.N = 150000.0;   // tracao
+            st.e.Mx = 250e6 * (1.0 - st.x / length);   // maior no engaste (altura 300 mm)
+            st.e.Vy = 80000.0;
+            combo.stations.push_back(st);
+            const double d = geometry.depthAt(st.x, length);
+            stations.push_back(make("W Laminado", {{"d", d}, {"bf", 180}, {"tw", 8}, {"tf", 12.5}}));
+        }
+        const DesignSection smallest = make("W Laminado", {{"d", 300}, {"bf", 180}, {"tw", 8}, {"tf", 12.5}});
+        const DesignSection largest = make("W Laminado", {{"d", 600}, {"bf", 180}, {"tw", 8}, {"tf", 12.5}});
+        in.section = &stations.front();
+        in.steel = {"A572 Gr50", 345, 450};
+        in.length = length;
+        in.compressionFlangeBraced = true;
+        in.combos = {combo};
+        const auto result = B::designTaperedBar(in, geometry, stations, smallest, largest);
+        QVERIFY(result.supported);
+        const B::CheckResult *tension = nullptr, *flexure = nullptr;
+        for (const auto &c : result.checks) {
+            if (c.id == "tension") tension = &c;
+            if (c.id == "flexure_x") flexure = &c;
+        }
+        QVERIFY(tension && flexure);
+        QVERIFY(std::abs(tension->resistance - smallest.g.area * 345.0 / 1.10 / 1000.0) < 1e-6);   // G.2: area da menor altura
+        // o engaste (maior momento, menor altura) governa a flexao: razao igual a da secao de 300 mm isolada
+        B::BarDesignInput solo = in;
+        solo.section = &smallest;
+        const auto alone = B::designBar(solo);
+        double aloneRatio = 0.0;
+        for (const auto &c : alone.checks) {
+            if (c.id == "flexure_x") aloneRatio = c.ratio;
+        }
+        QVERIFY(flexure->ratio >= aloneRatio - 1e-9);
+        QVERIFY(!result.summaryLines.empty());
+    }
+
+    void rectangularTubeStandardIsRecognisedFromTheSeries()
+    {
+        using Structura::App::Services::DesignService;
+        auto tube = [](double t) {
+            Structura::App::ProjectData::SectionInfo section;
+            section.name = QStringLiteral("RHS");
+            section.family = QStringLiteral("Tubular Retangular");
+            section.geometry = {{QStringLiteral("b"), 150.0}, {QStringLiteral("h"), 100.0}, {QStringLiteral("t"), t}};
+            section.j = 1e-6;
+            return section;
+        };
+        using Structura::Design::Standard;
+        QCOMPARE(DesignService::makeSection(tube(3.0), QStringLiteral("AUTO")).standard, Standard::NBR14762);    // parede fina: formado a frio
+        QCOMPARE(DesignService::makeSection(tube(8.0), QStringLiteral("AUTO")).standard, Standard::NBR8800);     // parede grossa: laminado a quente
+        QCOMPARE(DesignService::makeSection(tube(8.0), QStringLiteral("NBR14762")).standard, Standard::NBR14762);   // escolha manual prevalece
+        QCOMPARE(DesignService::makeSection(tube(3.0), QStringLiteral("NBR8800")).standard, Standard::NBR8800);
+    }
+
+    void compositeColumnFollowsAnnexM()
+    {
+        try { compositeColumnBody(); } catch (const std::exception &ex) { QFAIL(ex.what()); }
+    }
+
+    void compositeColumnBody()
+    {
+        namespace B = Structura::Design;
+        // tubo circular preenchido (sem armadura): D = 406,4 mm, t = 12,5 mm, fy = 345 MPa, fck = 40 MPa
+        B::CompositeColumnSection tube;
+        tube.type = B::CompositeColumnSection::Type::FilledCircular;
+        tube.b1 = tube.b2 = 406.4;
+        tube.t = 12.5;
+        tube.fck = 40.0;
+        tube.finalize();
+        const double di = 406.4 - 25.0;
+        QVERIFY(std::abs(tube.Aa - B::kPi / 4.0 * (406.4 * 406.4 - di * di)) < 1e-6);
+        QVERIFY(std::abs(tube.Ac - B::kPi / 4.0 * di * di) < 1e-6);
+        const auto r = B::compositeColumnResistance(tube, 345.0, 200000.0, 1.10, 1.4, 1.15, 4000.0, 4000.0);
+        QVERIFY(r.valid);
+        const double fcd1 = 0.95 * 40.0 / 1.4;
+        QVERIFY(std::abs(r.Npl - (tube.Aa * 345.0 / 1.10 + tube.Ac * fcd1)) < 1e-3);
+        QVERIFY(r.delta > 0.1 && r.delta < 0.9);
+        // alfa_c = 0,45 + 3 (Aa + As)/(Ac + Aa + As) <= 0,9; (EI)e = Ea Ia + alfa_c Ec Ic
+        const double alphaC = std::min(0.45 + 3.0 * tube.Aa / (tube.Ac + tube.Aa), 0.9);
+        QVERIFY(std::abs(tube.alphaC() - alphaC) < 1e-12);
+        QVERIFY(std::abs(r.EIx - (200000.0 * tube.IaX + alphaC * tube.Ec * tube.IcX)) / r.EIx < 1e-12);
+        QVERIFY(r.chi_x > 0.0 && r.chi_x <= 1.0);
+        QVERIFY(std::abs(r.NRd_x - r.chi_x * r.Np) < 1e-6);
+        // momento de plastificacao sem armadura: hn = Ac fcd1 / (2 D fcd1 + 4 t (2 fyd - fcd1)) (M.5.5.4)
+        const double fyd = 345.0 / 1.10;
+        const double hn = tube.Ac * fcd1 / (2.0 * 406.4 * fcd1 + 4.0 * 12.5 * (2.0 * fyd - fcd1));
+        QVERIFY(std::abs(r.hnX - hn) < 1e-6);
+        const double zcn = (406.4 - 25.0) * hn * hn, zan = 406.4 * hn * hn - zcn;
+        const double mpl = fyd * (tube.ZaX - zan) + 0.5 * fcd1 * (tube.ZcX - zcn);
+        QVERIFY(std::abs(r.Mpl_x - mpl) / mpl < 1e-9);
+        QVERIFY(r.MmaxPl_x > r.Mpl_x);
+
+        // secao totalmente revestida com armadura: W 310 x 97 aproximado, 450 x 450, 8 barras
+        B::CompositeColumnSection enc;
+        enc.type = B::CompositeColumnSection::Type::FullyEncased;
+        enc.d = 308.0;
+        enc.bf = 305.0;
+        enc.tw = 9.9;
+        enc.tf = 15.4;
+        enc.hc = enc.bc = 500.0;
+        enc.fck = 30.0;
+        enc.ringOfBars(3, 1, 314.0, 45.0);
+        enc.finalize();
+        QVERIFY(std::abs(enc.As - 8 * 314.0) < 1e-9);
+        QVERIFY(std::abs(enc.Ac + enc.Aa + enc.As - 500.0 * 500.0) < 1e-6);
+        const auto re = B::compositeColumnResistance(enc, 345.0, 200000.0, 1.10, 1.4, 1.15, 4000.0, 4000.0);
+        QVERIFY(re.valid && re.Mpl_x > 0.0 && re.Mpl_y > 0.0);
+        // a linha neutra plastica fica dentro do perfil e M_pl <= M_max,pl
+        QVERIFY(re.hnX >= 0.0 && re.hnX <= 250.0);
+        QVERIFY(re.Mpl_x <= re.MmaxPl_x + 1e-6 && re.Mpl_y <= re.MmaxPl_y + 1e-6);
+        QVERIFY(std::abs(re.Npl_s - enc.As * enc.fsk / 1.15) < 1e-6);
+
+        // verificacao da barra: compressao pura de 40 % de N_Rd e interacao pelo modelo I
+        B::BarDesignInput in;
+        in.compositeColumn = &tube;
+        in.steel = {"A572 Gr50", 345, 450};
+        in.length = 4000.0;
+        B::ComboEffects combo;
+        combo.name = "ELU1";
+        for (int i = 0; i <= 4; ++i) {
+            B::StationEffects st;
+            st.x = 1000.0 * i;
+            st.e.N = -0.4 * std::min(r.NRd_x, r.NRd_y);
+            st.e.Mx = 30e6;
+            combo.stations.push_back(st);
+        }
+        in.combos = {combo};
+        const auto out = B::designCompositeColumn(in, 1);
+        QVERIFY(out.supported);
+        const B::CheckResult *comp = nullptr, *inter = nullptr;
+        for (const auto &c : out.checks) {
+            if (c.id == "compression") comp = &c;
+            if (c.id == "interaction") inter = &c;
+        }
+        QVERIFY(comp && inter);
+        QVERIFY(std::abs(comp->ratio - 0.4) < 1e-9);
+        QVERIFY(inter->ratio > 0.4);
+        const auto iii = B::designCompositeColumn(in, 3);
+        QVERIFY(iii.supported);
+    }
+
     void serviceCantileverEffectsAndSigns()
     {
         using namespace Structura::App;
@@ -1725,6 +2166,336 @@ private slots:
         QVERIFY(std::abs(loads[2].q[2] + 1.5) < 1e-9);
     }
 
+    void cbOfCantileverAndOneBracedFlange()
+    {
+        const DesignSection s = make("W Laminado", {{"d", 300}, {"bf", 150}, {"tw", 8}, {"tf", 12}});
+        auto run = [&](bool cantilever, int oneFlange, bool away, double m0, double mEnd) {
+            BarDesignInput in;
+            in.section = &s;
+            in.steel = {"A572 Gr50", 345, 450};
+            in.length = 4000;
+            in.cantilever = cantilever;
+            in.oneFlangeBraced = oneFlange;
+            in.forceAwayFromFreeFlange = away;
+            in.amplifyB1 = false;
+            ComboEffects c;
+            c.name = "ELU1";
+            for (int i = 0; i <= 4; ++i) {
+                StationEffects st;
+                st.x = i * 1000.0;
+                st.e.Mx = m0 + (mEnd - m0) * i / 4.0;
+                c.stations.push_back(st);
+            }
+            in.combos.push_back(c);
+            const auto out = designBar(in);
+            for (const auto &check : out.checks) {
+                if (check.id == "flexure_x") {
+                    std::string text;
+                    for (const auto &l : check.lines) {
+                        text += l + "\n";
+                    }
+                    return std::make_pair(check.ratio, text);
+                }
+            }
+            return std::make_pair(0.0, std::string());
+        };
+        // balanco: momento nulo na ponta livre e maximo no engaste; a formula geral daria Cb = 1,67, a norma manda Cb = 1,0 (5.4.2.3-b)
+        const auto general = run(false, 0, false, 0.0, -40e6);
+        const auto cantilever = run(true, 0, false, 0.0, -40e6);
+        QVERIFY(general.second.find("Cb = 1.67") != std::string::npos);
+        QVERIFY(cantilever.second.find("Cb = 1.00") != std::string::npos);
+        QVERIFY(cantilever.first > general.first);
+        // uma mesa contida (superior): momento negativo comprime a mesa inferior (livre). M1 = M2 = MCL: Cb = 1,0; M1 = -M, M2 = 0: Cb = 5/3
+        const auto uniform = run(false, 1, false, -40e6, -40e6);
+        QVERIFY(uniform.second.find("5.4.2.4-a") != std::string::npos);
+        QVERIFY(uniform.second.find("Cb = 1.00") != std::string::npos);
+        const auto triangular = run(false, 1, false, -40e6, 0.0);
+        QVERIFY2(triangular.second.find("Cb = 1.67") != std::string::npos, triangular.second.c_str());
+        // forcas no sentido oposto a mesa livre: caso c) Cb = 1,0
+        const auto away = run(false, 1, true, -40e6, 0.0);
+        QVERIFY(away.second.find("5.4.2.4-c") != std::string::npos);
+        // momento positivo comprime a mesa contida (superior): sem FLT
+        const auto bracedCompressed = run(false, 1, false, 40e6, 40e6);
+        QVERIFY(bracedCompressed.second.find("sem FLT") != std::string::npos);
+        QVERIFY(bracedCompressed.first < uniform.first);
+    }
+    void annexCSeparatesNtAndLtAndClassifiesTheStructure()
+    {
+        // B1 e B2 aplicados a estrutura nt/lt: N_Sd = N_nt + B2 N_lt; M_Sd = B1 M_nt + B2 M_lt (Anexo C.2.1)
+        const DesignSection s = make("W Laminado", {{"d", 300}, {"bf", 150}, {"tw", 8}, {"tf", 12}});
+        auto build = [&](bool useNt, double b2, double stiffness) {
+            BarDesignInput in;
+            in.section = &s;
+            in.steel = {"A572 Gr50", 345, 450};
+            in.length = 3000;
+            in.amplifyB1 = true;
+            ComboEffects c;
+            c.name = "ELU1";
+            c.b2 = b2;
+            c.hasNt = useNt;
+            c.bStiffness = stiffness;
+            for (int i = 0; i <= 2; ++i) {
+                StationEffects st;
+                st.x = i * 1500.0;
+                st.e.N = -100e3;
+                st.e.Mx = 60e6;
+                st.nt.N = -80e3;
+                st.nt.Mx = 40e6;
+                c.stations.push_back(st);
+            }
+            in.combos.push_back(c);
+            return designBar(in);
+        };
+        const auto withNt = build(true, 1.2, 1.0);
+        std::string text;
+        for (const auto &check : withNt.checks) {
+            if (check.id == "flexure_x") {
+                for (const auto &l : check.lines) {
+                    text += l + "\n";
+                }
+            }
+        }
+        QVERIFY2(text.find("N_Sd = N_nt + B2 N_lt = -80.00 + 1.200 x -20.00 = -104.00 kN") != std::string::npos, text.c_str());
+        // rigidez reduzida (media deslocabilidade) aumenta B1 (Ne x 0,8)
+        const auto reduced = build(true, 1.2, 0.8);
+        auto interaction = [](const BarDesignOutput &out) {
+            for (const auto &check : out.checks) {
+                if (check.id == "interaction") {
+                    return check.ratio;
+                }
+            }
+            return 0.0;
+        };
+        QVERIFY(interaction(reduced) > interaction(withNt) && interaction(withNt) > 0.0);
+        // sem a separacao, a forca axial nao e amplificada e o momento total e amplificado por B1 e B2
+        const auto legacy = build(false, 1.2, 1.0);
+        QVERIFY(interaction(legacy) != interaction(withNt));
+    }
+    void swayClassificationAndReducedStiffnessB2()
+    {
+        using namespace Structura::App;
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        const double E = 2.0e8, I = 2.0e-4, L = 5.0, H = 20.0;
+        auto run = [&](double P) {
+            SolverBridge::ModelData model;
+            model.materials.push_back({1, E, 7.7e7});
+            model.sections.push_back({1, 0.01, I, I, 1e-5});
+            SolverBridge::NodeData a;
+            a.id = 1;
+            a.restraints = {1, 1, 1, 1, 1, 1};
+            SolverBridge::NodeData b;
+            b.id = 2;
+            b.z = L;
+            model.nodes = {a, b};
+            model.members.push_back(SolverBridge::MemberData {1, 1, 2, 1, 1});
+            SolverBridge::NodalLoadData load;
+            load.nodeId = 2;
+            load.values = {{H, 0.0, -P, 0.0, 0.0, 0.0}};
+            model.nodalLoads.push_back(load);
+            const auto result = SolverBridge(dll).solve(model);
+            Services::DesignService::ResultSet set;
+            set.name = "ELU1";
+            set.result = &result;
+            set.terms = {{&model, 1.0}};
+            ProjectData::DesignSettings settings;
+            settings.rs = 1.0;
+            return Services::StructuralChecks::stories(model, {set}, settings, 1000.0, 1000.0);
+        };
+        const double k = 3.0 * E * I / (L * L);                       // P L^2 / (3 E I) = P / k
+        const auto small = run(0.05 * k);                              // B2 = 1/(1-0,05) = 1,053 <= 1,10
+        QCOMPARE(small.swayClass, 0);
+        QVERIFY(std::abs(small.stiffnessFactor - 1.0) < 1e-12);
+        const auto medium = run(0.17 * k);                             // B2 nominal = 1/(1-0,17) = 1,205: media deslocabilidade
+        QCOMPARE(medium.swayClass, 1);
+        QVERIFY(std::abs(medium.maxB2Nominal - 1.0 / (1.0 - 0.17)) < 1e-2);
+        QVERIFY(std::abs(medium.stiffnessFactor - 0.8) < 1e-12);
+        QVERIFY(std::abs(medium.b2.value("ELU1").value(1) - 1.0 / (1.0 - 0.17 / 0.8)) < 1e-2);   // B2 com a rigidez reduzida a 0,8
+        const auto large = run(0.40 * k);                              // B2 = 1,67: grande deslocabilidade
+        QCOMPARE(large.swayClass, 2);
+    }
+    void exceptionalCombinationsUseTable3Coefficients()
+    {
+        using namespace Structura::App;
+        QVERIFY(Services::DesignService::isExceptionalCombination("EXC1"));
+        QVERIFY(!Services::DesignService::isExceptionalCombination("ELU1"));
+        Structura::App::ProjectData::SectionInfo section;
+        section.family = QStringLiteral("W Laminado");
+        section.name = QStringLiteral("W 310x32.7");
+        section.geometry = {{"d", 313}, {"bf", 102}, {"tw", 6.6}, {"tf", 10.8}};
+        section.area = 4190.0;
+        section.iz = 6.5e7 * 1e-12;
+        section.iy = 1.9e6 * 1e-12;
+        section.j = 2.9e4 * 1e-12;
+        auto effects = [&](const char *name) {
+            Services::DesignService::MemberEffects me;
+            me.memberId = 1;
+            me.lengthMm = 3000.0;
+            Structura::Design::ComboEffects c;
+            c.name = name;
+            for (int i = 0; i <= 2; ++i) {
+                Structura::Design::StationEffects st;
+                st.x = i * 1500.0;
+                st.e.N = 300e3;   // tracao: Nt,Rd depende de gama_a1 e gama_a2
+                c.stations.push_back(st);
+            }
+            me.combos.push_back(c);
+            return me;
+        };
+        ProjectData::DesignSettings settings;
+        ProjectData::DesignMemberParams params;
+        const auto normal = Services::DesignService::verifyMember(effects("ELU1"), section, params, settings, 1.0);
+        const auto exceptional = Services::DesignService::verifyMember(effects("EXC1"), section, params, settings, 1.0);
+        double rn = 0.0, re = 0.0;
+        for (const auto &c : normal.output.checks) {
+            if (c.id == "tension") {
+                rn = c.ratio;
+            }
+        }
+        for (const auto &c : exceptional.output.checks) {
+            if (c.id == "tension") {
+                re = c.ratio;
+            }
+        }
+        QVERIFY(rn > 0.0 && re > 0.0);
+        // escoamento: gama_a1 1,10 -> 1,00 (razao x 1,00/1,10); a ruptura (1,35 -> 1,15) reduz ainda mais; Nt,Rd = min dos dois
+        QVERIFY(re < rn);
+        QVERIFY(std::abs(re / rn - 1.0 / 1.10) < 1e-6 || std::abs(re / rn - 1.15 / 1.35) < 1e-6);
+    }
+    void compositeSectionsGeometryAndCatalog()
+    {
+        using Structura::Visualization::SectionCatalog;
+        const QMap<QString, double> l = {{"b", 76.0}, {"t", 6.35}};
+        const auto single = SectionShapes::properties(QStringLiteral("L Laminado"), l);
+        QMap<QString, double> pair = l;
+        pair.insert(QStringLiteral("e"), 10.0);
+        const auto doubled = SectionShapes::properties(QStringLiteral("Dupla Cantoneira T"), pair);
+        QVERIFY(single && doubled);
+        QVERIFY(std::abs(doubled->area - 2.0 * single->area) / single->area < 1e-9);
+        // Iz (flexao no plano da altura): inercias das duas cantoneiras em torno do eixo horizontal comum do conjunto
+        QVERIFY(doubled->iz > 2.0 * single->iz * 0.5);
+        // o afastamento aumenta a inercia em torno do eixo vertical (Iy): Iy(e) > Iy(0)
+        QMap<QString, double> touching = l;
+        touching.insert(QStringLiteral("e"), 0.0);
+        const auto zeroGap = SectionShapes::properties(QStringLiteral("Dupla Cantoneira T"), touching);
+        QVERIFY(zeroGap && doubled->iy > zeroGap->iy);
+        QVERIFY(SectionShapes::isComposite(QStringLiteral("Duplo U Costas")) && !SectionShapes::isComposite(QStringLiteral("W Laminado")));
+        // catalogo derivado dos perfis laminados
+        if (!SectionCatalog::profiles(QStringLiteral("L Laminado")).isEmpty()) {   // o catalogo e um recurso Qt (so presente no aplicativo)
+            const auto &angles = SectionCatalog::profiles(QStringLiteral("Dupla Cantoneira T"));
+            QVERIFY(angles.size() == SectionCatalog::profiles(QStringLiteral("L Laminado")).size() && !angles.isEmpty());
+            QVERIFY(angles.first().name.startsWith(QStringLiteral("2L ")));
+            QVERIFY(std::abs(angles.first().parameters.value(QStringLiteral("e")) - 10.0) < 1e-12);
+            QVERIFY(SectionCatalog::profiles(QStringLiteral("Duplo U Costas")).first().name.contains(QStringLiteral("(costas)")));
+        }
+        // as barras compostas sao reconhecidas pelo dimensionamento
+        const auto design = make(QStringLiteral("Dupla Cantoneira T"), pair, doubled->j * 1e12);
+        QVERIFY(design.supported() && design.kind == Structura::Design::SectionKind::DoubleAngleT && design.composite());
+        QVERIFY(design.rMin > 0.0 && design.rMin < design.g.ry);
+        QVERIFY(design.symmetricAboutY && !design.symmetricAboutX);
+        const auto boxes = make(QStringLiteral("Duplo U Face a Face"), {{"d", 203}, {"bf", 57}, {"tw", 5.6}, {"tf", 9.5}, {"e", 10}}, 1.0e5);
+        QVERIFY(boxes.supported() && boxes.kind == Structura::Design::SectionKind::DoubleChannelBox && boxes.symmetricAboutX && boxes.symmetricAboutY);
+    }
+    void compositeCompressionUsesEquivalentSlendernessOfClause536()
+    {
+        const QMap<QString, double> pair = {{"b", 76.0}, {"t", 6.35}, {"e", 10.0}};
+        const auto props = SectionShapes::properties(QStringLiteral("Dupla Cantoneira T"), pair);
+        QVERIFY(props);
+        const DesignSection s = make(QStringLiteral("Dupla Cantoneira T"), pair, props->j * 1e12);
+        auto run = [&](double spacing, bool welded) {
+            BarDesignInput in;
+            in.section = &s;
+            in.steel = {"A36", 250, 400};
+            in.length = 3000;
+            in.Kx = in.Ky = in.Kz = 1.0;
+            in.compositeSpacing = spacing;
+            in.compositeWelded = welded;
+            ComboEffects c;
+            c.name = "ELU1";
+            for (int i = 0; i <= 2; ++i) {
+                StationEffects st;
+                st.x = i * 1500.0;
+                st.e.N = -60e3;
+                c.stations.push_back(st);
+            }
+            in.combos.push_back(c);
+            return designBar(in);
+        };
+        auto find = [](const BarDesignOutput &out, const char *id) -> const CheckResult * {
+            for (const auto &check : out.checks) {
+                if (check.id == id) {
+                    return &check;
+                }
+            }
+            return nullptr;
+        };
+        const auto bolted = run(1000.0, false);
+        const auto welded = run(1000.0, true);
+        const auto sparse = run(1500.0, false);
+        QVERIFY(find(bolted, "composite") && find(bolted, "compression"));
+        // 5.3.6.3-a (aperto normal) penaliza mais que 5.3.6.3-b (solda); ligacoes mais afastadas reduzem Nc,Rd
+        QVERIFY(find(bolted, "compression")->resistance <= find(welded, "compression")->resistance + 1e-9);
+        QVERIFY(find(sparse, "compression")->resistance < find(bolted, "compression")->resistance);
+        std::string text;
+        for (const auto &l : find(bolted, "compression")->lines) {
+            text += l + "\n";
+        }
+        QVERIFY2(text.find("5.3.6.3-a") != std::string::npos, text.c_str());
+        // 5.3.6.1: so uma ligacao intermediaria (l = L/2) nao atende
+        QVERIFY(find(sparse, "composite")->ratio > 1.0);
+        QVERIFY(find(bolted, "composite")->ratio < find(sparse, "composite")->ratio);
+        // flexao da dupla cantoneira em T pela D.2.4
+        BarDesignInput in;
+        in.section = &s;
+        in.steel = {"A36", 250, 400};
+        in.length = 3000;
+        ComboEffects c;
+        c.name = "ELU1";
+        for (int i = 0; i <= 2; ++i) {
+            StationEffects st;
+            st.x = i * 1500.0;
+            st.e.Mx = 3e6;
+            c.stations.push_back(st);
+        }
+        in.combos.push_back(c);
+        const auto flex = designBar(in);
+        std::string flexText;
+        for (const auto &check : flex.checks) {
+            if (check.id == "flexure_x") {
+                for (const auto &l : check.lines) {
+                    flexText += l + "\n";
+                }
+            }
+        }
+        QVERIFY2(flexText.find("D.2.4") != std::string::npos, flexText.c_str());
+    }
+    void dumpCompositeLoops()
+    {
+        if (qEnvironmentVariableIsEmpty("STRUCTURA_DUMP_LOOPS")) {
+            QSKIP("so desenvolvimento");
+        }
+        QFile out(QString::fromLocal8Bit(qgetenv("STRUCTURA_DUMP_LOOPS")));
+        QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Text));
+        QTextStream text(&out);
+        const QMap<QString, QMap<QString, double>> cases = {
+            {QStringLiteral("Dupla Cantoneira T"), {{"b", 76.0}, {"t", 6.35}, {"e", 10.0}}},
+            {QStringLiteral("Duplo U Costas"), {{"d", 203}, {"bf", 57}, {"tw", 5.6}, {"tf", 9.5}, {"e", 10}}},
+            {QStringLiteral("Duplo U Face a Face"), {{"d", 203}, {"bf", 57}, {"tw", 5.6}, {"tf", 9.5}, {"e", 10}}}};
+        for (auto it = cases.begin(); it != cases.end(); ++it) {
+            const auto shape = SectionShapes::build(it.key(), it.value(), false);
+            QVERIFY(shape);
+            text << "FAMILY " << it.key() << " outer " << shape->outerCount << "\n";
+            for (const auto &loop : shape->loops) {
+                text << "LOOP";
+                for (const auto &p : loop) {
+                    text << " " << p[0] << "," << p[1];
+                }
+                text << "\n";
+            }
+        }
+    }
     void designBarOrchestration()
     {
         const DesignSection s = make("W Laminado", {{"d", 300}, {"bf", 150}, {"tw", 8}, {"tf", 12}});

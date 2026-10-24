@@ -1,3 +1,4 @@
+#include "core/math/Vec3Ops.h"
 #include "AreaLoadService.h"
 
 #include <algorithm>
@@ -9,9 +10,10 @@ namespace {
 
 using Vec3 = AreaLoadService::Vec3;
 
-Vec3 sub(const Vec3 &a, const Vec3 &b) { return {a[0] - b[0], a[1] - b[1], a[2] - b[2]}; }
-double dot(const Vec3 &a, const Vec3 &b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-Vec3 cross(const Vec3 &a, const Vec3 &b) { return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]}; }
+using Structura::Math::cross;
+using Structura::Math::dot;
+using Structura::Math::sub;
+
 double norm(const Vec3 &a) { return std::sqrt(dot(a, a)); }
 Vec3 unit(const Vec3 &a)
 {

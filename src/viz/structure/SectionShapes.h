@@ -32,7 +32,8 @@ struct SectionShape {
     using Point = std::array<double, 2>;
     using Loop = std::vector<Point>;
 
-    std::vector<Loop> loops; ///< O primeiro e o contorno externo; os demais sao furos.
+    std::vector<Loop> loops; ///< Os `outerCount` primeiros sao contornos externos (material); os demais sao furos.
+    std::size_t outerCount {1}; ///< 1 nas secoes usuais; 2 nas barras compostas (dois perfis separados por um afastamento).
     Point centroid {0.0, 0.0};
     std::array<double, 4> bounds {0.0, 0.0, 0.0, 0.0}; ///< min a, max a, min b, max b
 };
@@ -54,6 +55,11 @@ public:
     /// Familias disponiveis, na ordem de exibicao.
     static const QVector<SectionFamily> &families();
     static const SectionFamily *findFamily(const QString &name);
+
+    /// Familia de barra composta (dois perfis iguais trabalhando em conjunto, NBR 8800, 5.3.6): contornos externos separados.
+    static bool isComposite(const QString &family);
+    /// Familia simples (catalogo) que forma a barra composta e o numero de perfis; vazio se `family` nao e composta.
+    static QString componentFamily(const QString &family);
 
     /// Gera os contornos; devolve nullopt (com `error`) se as dimensoes forem invalidas.
     static std::optional<SectionShape> build(const QString &family,

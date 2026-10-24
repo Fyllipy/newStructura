@@ -5,10 +5,15 @@
 #include "app/services/DesignService.h"
 #include "app/services/SectionPlacementService.h"
 #include "app/services/ShellCouplingService.h"
+#include "viz/LocalCoordinateSystem.h"
 
 #include <QHash>
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 
 namespace Structura::App::Services {
@@ -97,8 +102,36 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
             data.iy = principal.iyPrincipal;
             principalAngleBySection.insert(sec.externalId, principal.thetaDeg);
         }
+        if (extras.design.shearDeformation) {
+            // areas de cisalhamento (alma na direcao da altura, mesas na outra); secoes inclinadas (cantoneiras) ficam rigidas ao cortante
+            const double lengthFactor = DesignService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
+            if (!(principal.valid && principal.inclined) && lengthFactor > 0.0) {
+                const auto areas = DesignService::shearAreasMm2(DesignService::makeSection(sec, extras.design.rectTubeStandard));
+                const bool strongIsZ = data.iz >= data.iy;
+                const double unit = 1.0 / (lengthFactor * lengthFactor);
+                data.shearAreaY = (strongIsZ ? areas.first : areas.second) * unit;
+                data.shearAreaZ = (strongIsZ ? areas.second : areas.first) * unit;
+            }
+        }
+        if (extras.design.warpingTorsion) {
+            // empenamento (Vlasov): secoes abertas de paredes finas com linha media conhecida, com o Cw da propria linha media (coerente com a
+            // coordenada setorial usada nas tensoes); cantoneiras e T (pernas concorrentes) tem Cw desprezivel e ficam em Saint-Venant.
+            // O acoplamento flexo-torcional das secoes nao duplamente simetricas (centro de cisalhamento fora do centroide) nao e modelado
+            const double lengthFactor = DesignService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
+            if (lengthFactor > 0.0) {
+                using Structura::Design::SectionKind;
+                const auto design = DesignService::makeSection(sec, extras.design.rectTubeStandard);
+                const bool concurrentLegs = design.kind == SectionKind::Angle || design.kind == SectionKind::ColdAngle || design.kind == SectionKind::Tee;
+                if (design.sectorial.valid && !concurrentLegs && design.sectorial.Cw > 0.0) {
+                    data.warpingConstant = design.sectorial.Cw / std::pow(lengthFactor, 6.0);
+                }
+            }
+        }
         model.sections.push_back(data);
     }
+    model.shearDeformation = extras.design.shearDeformation;
+    model.stabilityFunctions = extras.design.stabilityFunctions;
+    model.loadSteps = extras.design.loadSteps;
 
     for (const auto &node : nodes) {
         Structura::App::SolverBridge::NodeData data;
@@ -176,7 +209,131 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
             }
             break;
         }
+        for (const auto &section : model.sections) {
+            if (section.id == data.sectionId && section.warpingConstant > 0.0) {
+                data.warping = true;
+            }
+        }
+        if (sectionIt->family == QLatin1String("I Alma Variavel")) {
+            // Anexo G: alturas d1 (no inicial) e d2 (no final) em unidades do modelo; mesas e alma constantes
+            const double lengthFactor = DesignService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
+            if (lengthFactor > 0.0) {
+                const auto &g = sectionIt->geometry;
+                data.taper = true;
+                data.taperD1 = g.value(QStringLiteral("d1")) / lengthFactor;
+                data.taperD2 = g.value(QStringLiteral("d2")) / lengthFactor;
+                data.taperBf = g.value(QStringLiteral("bf")) / lengthFactor;
+                data.taperTw = g.value(QStringLiteral("tw")) / lengthFactor;
+                data.taperTf = g.value(QStringLiteral("tf")) / lengthFactor;
+                data.warping = false;
+            }
+        }
         model.members.push_back(data);
+    }
+
+    if (extras.design.rigidZoneFactor > 0.0) {
+        // Zonas rigidas: em cada extremidade, a barra atravessa o perfil das outras barras do no ate a sua face; o trecho dentro dele e rigido
+        // (fator x distancia do eixo ate a face). A distancia e a saida do raio, a partir do eixo da outra barra, do prisma retangular d x bf
+        // do seu perfil (eixos locais com o giro da secao). Barras que continuam a propria barra (colineares), trelicas/tirantes e secoes
+        // sem dimensoes (ou inclinadas) nao geram zona rigida.
+        const double lengthFactor = DesignService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
+        struct Prism {
+            std::array<double, 3> x {}, y {}, z {};
+            double hy {0.0}, hz {0.0};   // dimensoes (mm) segundo y' e z'
+            bool valid {false};
+        };
+        QHash<int, SectionInfo> sectionByExternal;
+        for (const auto &sec : sections) {
+            sectionByExternal.insert(sec.externalId, sec);
+        }
+        QHash<int, std::array<double, 2>> inertiaBySection;   // iz, iy do solver
+        for (const auto &data : model.sections) {
+            inertiaBySection.insert(data.id, {data.iz, data.iy});
+        }
+        QHash<int, std::array<double, 3>> nodePosition;
+        for (const auto &node : model.nodes) {
+            nodePosition.insert(node.id, {node.x, node.y, node.z});
+        }
+        std::vector<Prism> prism(model.members.size());
+        QHash<int, QVector<std::pair<int, bool>>> barsAtNode;   // no -> (indice da barra, ponta final?)
+        Structura::Geometry::DefaultLocalAxisProvider provider;
+        for (std::size_t i = 0; i < model.members.size(); ++i) {
+            const auto &member = model.members[i];
+            const auto a = nodePosition.constFind(member.nodeI), b = nodePosition.constFind(member.nodeJ);
+            if (a == nodePosition.constEnd() || b == nodePosition.constEnd()) {
+                continue;
+            }
+            barsAtNode[member.nodeI].append({static_cast<int>(i), false});
+            barsAtNode[member.nodeJ].append({static_cast<int>(i), true});
+            const auto lcs = Structura::Geometry::rotatedAboutX(provider.computeLCS(*a, *b, std::nullopt), member.sectionRotationDeg);
+            prism[i].x = lcs.xPrime;
+            prism[i].y = lcs.yPrime;
+            prism[i].z = lcs.zPrime;
+            const auto sectionIt2 = sectionByExternal.constFind(member.sectionId);
+            const auto inertia = inertiaBySection.constFind(member.sectionId);
+            if (sectionIt2 == sectionByExternal.constEnd() || inertia == inertiaBySection.constEnd()) {
+                continue;
+            }
+            const auto &g = sectionIt2->geometry;
+            const double depth = g.value(QStringLiteral("d"), g.value(QStringLiteral("D"), 0.0));
+            const double width = g.value(QStringLiteral("bf"), g.value(QStringLiteral("b"), g.value(QStringLiteral("D"), 0.0)));
+            if (depth <= 0.0 || width <= 0.0) {
+                continue;
+            }
+            const bool strongIsZ = (*inertia)[0] >= (*inertia)[1];   // flexao forte em torno de z': a altura fica segundo y'
+            prism[i].hy = strongIsZ ? depth : width;
+            prism[i].hz = strongIsZ ? width : depth;
+            prism[i].valid = true;
+        }
+        auto unitFrom = [&](const Structura::App::SolverBridge::MemberData &member, bool atEnd) {
+            const auto from = nodePosition.value(atEnd ? member.nodeJ : member.nodeI);
+            const auto to = nodePosition.value(atEnd ? member.nodeI : member.nodeJ);
+            std::array<double, 3> u {to[0] - from[0], to[1] - from[1], to[2] - from[2]};
+            const double length = std::sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]);
+            for (double &c : u) {
+                c = length > 0.0 ? c / length : 0.0;
+            }
+            return std::make_pair(u, length);
+        };
+        auto dot = [](const std::array<double, 3> &p, const std::array<double, 3> &q) { return p[0] * q[0] + p[1] * q[1] + p[2] * q[2]; };
+        for (std::size_t i = 0; i < model.members.size(); ++i) {
+            auto &member = model.members[i];
+            bool normalType = true;
+            for (const auto &placement : extras.placements) {
+                if (placement.memberId == member.id && placement.memberType != Structura::App::ProjectData::MemberType::kNormal) {
+                    normalType = false;
+                }
+            }
+            if (!normalType || lengthFactor <= 0.0) {
+                continue;
+            }
+            for (const bool atEnd : {false, true}) {
+                const auto [u, length] = unitFrom(member, atEnd);
+                double reach = 0.0;   // mm
+                for (const auto &other : barsAtNode.value(atEnd ? member.nodeJ : member.nodeI)) {
+                    if (other.first == static_cast<int>(i) || !prism[static_cast<std::size_t>(other.first)].valid) {
+                        continue;
+                    }
+                    const auto &pr = prism[static_cast<std::size_t>(other.first)];
+                    if (std::abs(dot(u, pr.x)) > 0.985) {
+                        continue;   // continuacao (ou diagonal quase alinhada): nao e perfil que a recebe
+                    }
+                    const double cy = std::abs(dot(u, pr.y)), cz = std::abs(dot(u, pr.z));
+                    double exit = 1e300;
+                    if (cy > 1e-9) {
+                        exit = std::min(exit, 0.5 * pr.hy / cy);
+                    }
+                    if (cz > 1e-9) {
+                        exit = std::min(exit, 0.5 * pr.hz / cz);
+                    }
+                    if (exit < 1e299) {
+                        reach = std::max(reach, exit);
+                    }
+                }
+                const double rigid = std::min(extras.design.rigidZoneFactor * reach / lengthFactor, 0.4 * length);
+                (atEnd ? member.rigidEnd : member.rigidStart) = rigid;
+            }
+        }
     }
 
     // Com `loadCase` vazio, todas as cargas entram (compatibilidade); senao so as do caso.

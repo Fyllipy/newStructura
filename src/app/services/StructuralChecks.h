@@ -66,11 +66,22 @@ public:
         QMap<int, int> storyOfMember;                    ///< barra -> indice do andar
         QMap<QString, QMap<int, double>> b2;             ///< combinacao -> barra -> B2
         QStringList warnings;
+        /// Classificacao da estrutura quanto a deslocabilidade (NBR 8800, 4.10.4) pelo maior B2 nominal das combinacoes ultimas:
+        /// 0 = pequena (<= 1,10), 1 = media (<= 1,40), 2 = grande; -1 = nao classificada.
+        int swayClass {-1};
+        double maxB2Nominal {1.0};
+        /// Reducao de rigidez aplicada (4.10.7.1.2: 0,8 nas estruturas de media deslocabilidade; 1,0 = nominal): B2 usa Dh / fator e B1 usa Ne x fator.
+        double stiffnessFactor {1.0};
     };
 
     /// Andares, deslocamentos relativos e B2 por combinacao. `sets` sao as combinacoes de 1a ordem.
+    /// `ResultSet::nt` (estrutura nt, Anexo C.2.1) permite obter a cortante do andar na estrutura lt (original - nt) como pede C.2.3; sem ela, usa a da original.
+    /// `ultimate`: combinacoes ultimas (classifica a estrutura e aplica a reducao de rigidez da media deslocabilidade); falso = serie de servico.
     static Output stories(const Structura::App::SolverBridge::ModelData &geometry, const std::vector<ResultSet> &sets,
-                          const DesignSettings &settings, double forceFactorToN, double lengthFactorToMm);
+                          const DesignSettings &settings, double forceFactorToN, double lengthFactorToMm, bool ultimate = true);
+
+    /// Nos dos niveis dos andares (topo dos pilares verticais, exceto a base) onde se aplicam as contencoes horizontais ficticias da estrutura nt.
+    static std::vector<int> storyLevelNodes(const Structura::App::SolverBridge::ModelData &geometry);
 
     /// Flechas das barras nas combinacoes dadas (esforcos em unidades do modelo; E e I do modelo).
     /// `inertiaRatio(barra, |Mz|max, |My|max)` (momentos de servico em unidades do modelo) devolve {Ief/I em torno de z local, Ief/I em torno

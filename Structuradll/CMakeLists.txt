@@ -16,6 +16,7 @@ set(CORE_SOURCES
 	../Femdll/src/shell_q4.cpp
 	src/material.cpp
 	src/section.cpp
+	src/warping.cpp
 	src/node.cpp
 	src/member.cpp
 	src/load.cpp
@@ -26,6 +27,7 @@ set(CORE_HEADERS
 	src/core/solver_types.h
 	headers/material.h
 	headers/section.h
+	headers/warping.h
 	headers/node.h
 	headers/member.h
 	headers/load.h

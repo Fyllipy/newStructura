@@ -53,7 +53,39 @@ struct Image {
 
 struct PageBreak {};
 
-using Block = std::variant<Heading, Paragraph, Equation, Table, Image, PageBreak>;
+/// Variavel da lista "Onde:" de um passo de calculo: simbolo (LaTeX), significado e valor com unidade.
+struct CalcVariable {
+    std::string latex;
+    std::string meaning;
+    std::string value;   ///< vazio quando o valor nao e conhecido
+    std::string unit;    ///< texto simples ("kN", "mm")
+};
+
+/// Passo de uma verificacao: rotulo, equacoes (LaTeX), observacoes e as variaveis que aparecem nelas.
+struct CalcStep {
+    std::string label;
+    std::vector<std::string> equations;
+    std::vector<std::string> notes;
+    std::vector<CalcVariable> variables;
+};
+
+/// Verificacao de uma norma diagramada como ficha de calculo: faixa com titulo e item, descricao, passos
+/// (equacao + "Onde:") e resultado (desigualdade com o aproveitamento e a marca de aprovacao).
+struct CalcCard {
+    std::string title;
+    std::string clause;
+    CellStatus status {CellStatus::None};
+    std::string description;
+    std::string location;          ///< ex.: "Combinação ELU1, seção x = 2,000 m"
+    std::vector<CalcStep> steps;
+    std::string inequalityLatex;   ///< ex.: "N_{c,Sd} \le N_{c,Rd}"
+    std::string resultLabel;       ///< ex.: "η"
+    std::string resultValue;       ///< ex.: "0,150"
+    std::string resultDetail;      ///< ex.: "100,00 kN  /  665,45 kN" (solicitante / resistente)
+    bool ok {true};
+};
+
+using Block = std::variant<Heading, Paragraph, Equation, Table, Image, PageBreak, CalcCard>;
 
 struct ReportDocument {
     std::string title;

@@ -60,6 +60,10 @@ public:
         int releaseMask {0};
         int memberType {0};
         QString loadDetails;   ///< cargas atuantes (texto formatado, uma linha por carga)
+        bool compositeSection {false};     ///< secao de barra composta (5.3.6): dois perfis ligados a intervalos
+        double compositeGapMm {0.0};       ///< afastamento e entre os dois perfis (mm), parametro "e" da secao
+        double compositeSpacingMm {0.0};   ///< espacamento l entre as ligacoes dos perfis (mm); 0 = L/3
+        bool compositeWelded {false};      ///< ligacoes soldadas ou com parafusos protendidos
     };
 
     explicit PropertiesPanel(QWidget *parent = nullptr);
@@ -78,6 +82,10 @@ signals:
     void placementEditorRequested();
     /// Abre o memorial de calculo da barra selecionada.
     void barReportRequested();
+    /// Espacamento entre as ligacoes dos perfis de uma barra composta (mm) e tipo da ligacao; entra no dimensionamento (NBR 8800, 5.3.6).
+    /// Afastamento e entre os dois perfis (mm): altera a geometria da secao e, por consequencia, area, inercias e J enviados ao calculo.
+    void barCompositeGapEdited(const QVector<QUuid> &ids, double gapMm);
+    void barCompositeEdited(const QVector<QUuid> &ids, double spacingMm, bool welded);
 
 private slots:
     void handleNodeXEditing();
@@ -114,6 +122,10 @@ private:
     Structura::UI::SectionPlacementWidget *m_placementPreview {nullptr};
     QLabel *m_placementSummary {nullptr};
     QPushButton *m_placementButton {nullptr};
+    QWidget *m_compositeRow {nullptr};
+    QDoubleSpinBox *m_compositeGap {nullptr};
+    QDoubleSpinBox *m_compositeSpacing {nullptr};
+    QComboBox *m_compositeKind {nullptr};
 
 
     QVector<QUuid> m_currentNodeIds;

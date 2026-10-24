@@ -286,7 +286,7 @@ void runBusyImpl(QWidget *parent, const QString &calculation, const QString &det
             finished = true;
         });
         while (!finished.load()) {
-            progress.takeDetailChanged();
+            (void)progress.takeDetailChanged();
             g_scopePopup->setState(progress.value(), progress.total(), progress.detail().isEmpty() ? detail : progress.detail());
             QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 20);
             QThread::msleep(8);
@@ -319,7 +319,7 @@ void runBusyImpl(QWidget *parent, const QString &calculation, const QString &det
             popup->present();
         }
         if (popup) {
-            progress.takeDetailChanged();
+            (void)progress.takeDetailChanged();
             popup->setState(progress.value(), progress.total(), progress.detail());
         }
         QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 20);

@@ -67,6 +67,7 @@
         <file alias="dxf.svg">icons/svg/dxf.svg</file>
         <file alias="modal.svg">icons/svg/modal.svg</file>
         <file alias="connection.svg">icons/svg/connection.svg</file>
+        <file alias="connection-copy.svg">icons/svg/connection-copy.svg</file>
         <file alias="restraint.svg">icons/svg/restraint.svg</file>
         <file alias="sheets.svg">icons/svg/sheets.svg</file>
         <file alias="axes-config.svg">icons/svg/axes-config.svg</file>

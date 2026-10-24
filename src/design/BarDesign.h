@@ -19,11 +19,14 @@ struct Effects {
     double Vy {0.0};
     double Vz {0.0};
     double T {0.0};
+    double B {0.0};     ///< bimomento (N*mm2): torcao com empenamento; B = -E Cw theta'', positivo no sentido da convencao da face positiva
+    double Tw {0.0};    ///< parcela do torque resistida por empenamento (N*mm); a de Saint-Venant e T - Tw
 };
 
 struct StationEffects {
     double x {0.0};      ///< posicao ao longo da barra (mm)
-    Effects e;
+    Effects e;           ///< esforcos da analise de 1a ordem da estrutura original (nt + lt)
+    Effects nt;          ///< esforcos da estrutura "nt" (nos impedidos de se deslocar horizontalmente, Anexo C.2.1); valido se `hasNt`
 };
 
 /// Combinacao ultima: esforcos nas secoes de verificacao e informacao sobre cargas transversais (para Cm).
@@ -33,6 +36,11 @@ struct ComboEffects {
     bool transverseLoadX {false};           ///< ha cargas transversais no plano de flexao em torno de X (plano x-y local)
     bool transverseLoadY {false};
     double b2 {1.0};                        ///< amplificacao global B2 desta combinacao (Anexo C)
+    /// Esforcos separados em estrutura nt e lt (Anexo C.2.1): M_Sd = B1 M_nt + B2 M_lt e N_Sd = N_nt + B2 N_lt, com lt = original - nt.
+    /// Sem separacao (`hasNt` falso), B1 e B2 amplificam o momento total e a forca axial nao e amplificada.
+    bool hasNt {false};
+    /// Fator de reducao da rigidez (imperfeicoes de material, 4.10.7.1.2) aplicado a Ne de B1 nas estruturas de media deslocabilidade (1,0 = nominal).
+    double bStiffness {1.0};
 };
 
 struct BarDesignInput {
@@ -44,7 +52,10 @@ struct BarDesignInput {
     int lateralSegments {1};                ///< numero de trechos destravados da mesa comprimida (>= 1)
     bool compressionFlangeBraced {false};   ///< mesa comprimida contida continuamente (sem FLT)
     double lbOverride {0.0};                ///< >0: comprimento destravado informado (mm)
-    bool cbEqualsOne {false};               ///< Cb = 1,0 (balancos, etc.)
+    bool cbEqualsOne {false};               ///< Cb = 1,0 (adotado pelo usuario)
+    bool cantilever {false};                ///< balanco com a extremidade livre: Cb = 1,0 (5.4.2.3-b; limite inferior seguro nos demais casos de balanco)
+    int oneFlangeBraced {0};                ///< 5.4.2.4: 0 = nao; 1 = mesa do lado + com contencao lateral continua; 2 = mesa do lado -
+    bool forceAwayFromFreeFlange {false};   ///< 5.4.2.4: forcas transversais no sentido oposto a mesa livre
     bool amplifyB1 {true};                  ///< amplificacao local B1 (Anexo C)
     double b2 {1.0};                        ///< amplificacao global B2 aplicada aos momentos
     bool slendernessGoverns {true};         ///< limite de esbeltez entra no aproveitamento
@@ -61,6 +72,28 @@ struct BarDesignInput {
     double openingNeighbourD {0.0};         ///< abertura adjacente: diametro (mm)
     double openingSpacing {0.0};            ///< distancia entre centros (mm)
     double ct {1.0};
+    double compositeSpacing {0.0};          ///< barra composta (5.3.6): distancia entre as ligacoes dos perfis (mm); 0 = L/3
+    bool compositeWelded {false};           ///< ligacoes intermediarias soldadas ou com parafusos protendidos
+    bool threadedEnds {false};              ///< barra redonda com extremidades rosqueadas (5.2.7)
+    double webWeldLeg {0.0};                ///< 5.4.5: perna do filete mesa-alma do perfil soldado (mm); 0 = nao verificar
+    double webWeldFw {485.0};
+    double flangeLineLoad {0.0};            ///< forca aplicada diretamente na mesa (N/mm)
+    double coverB {0.0}, coverT {0.0};      ///< 5.4.4: lamela (largura e espessura, mm); 0 = sem lamela
+    double coverStart {0.0}, coverEnd {0.0};///< extremidades da lamela a partir do inicio da barra (mm)
+    int coverFlanges {2};
+    double coverWeldLeg {0.0};
+    bool coverEndWeld {true};
+    bool plasticAnalysis {false};           ///< 4.11.5: analise rigido-plastica de viga continua
+    // Barras de secao variavel (Anexo G): a barra e verificada secao a secao por `designTaperedBar`
+    int onlyStation {-1};                   ///< >= 0: so a secao de verificacao de indice dado entra nas verificacoes de esforcos (demais combinacoes inalteradas)
+    const DesignSection *axialSection {nullptr};          ///< G.2 e G.3: secao de menor altura para tracao e compressao
+    const DesignSection *slendernessSection {nullptr};    ///< G.4.2: secao de maior altura para os parametros de esbeltez da flexao
+    double ixEquivalent {0.0};              ///< G.3: inercia equivalente da barra variavel (analise racional, flambagem em relacao ao eixo perpendicular a alma), mm4
+    const struct CompositeColumnSection *compositeColumn {nullptr};   ///< Anexo M: secao mista; usada por `designCompositeColumn` (nao por `designBar`)
+    std::vector<std::string> tensionNotes; ///< memoria da area liquida e de Ct (5.2.3 a 5.2.5), acrescentada ao resumo
+    bool warping {false};                   ///< a barra foi analisada com torcao com empenamento (Vlasov): B e Tw nos esforcos
+    bool torsionReleasedStart {false};      ///< extremidade I sem restricao a rotacao em torno do eixo longitudinal (5.7.8)
+    bool torsionReleasedEnd {false};
     Standard rectangularTubeStandard {Standard::NBR14762};
     Nbr8800::Options opt8800;
     Nbr14762::Options opt14762;

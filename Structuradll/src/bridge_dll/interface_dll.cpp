@@ -13,6 +13,35 @@ struct GlobalOptions {
     double tolerance = 1e-7;
 };
 GlobalOptions g_options;
+bool g_shearDeformation = false;
+bool g_stabilityFunctions = false;
+int g_loadSteps = 0;
+struct ShearAreaEntry {
+    int sectionId = 0;
+    double ay = 0.0, az = 0.0;
+};
+std::vector<ShearAreaEntry> g_shearAreas;
+struct RigidZoneEntry {
+    int memberId = 0;
+    double lengthI = 0.0, lengthJ = 0.0;
+};
+std::vector<RigidZoneEntry> g_rigidZones;
+struct WarpingSectionEntry {
+    int sectionId = 0;
+    double cw = 0.0;
+};
+std::vector<WarpingSectionEntry> g_warpingSections;
+struct WarpingMemberEntry {
+    int memberId = 0;
+    int modeStart = 0, modeEnd = 0;
+};
+std::vector<WarpingMemberEntry> g_warpingMembers;
+struct TaperEntry {
+    int memberId = 0;
+    double d1 = 0.0, d2 = 0.0, bf = 0.0, tw = 0.0, tf = 0.0;
+    int segments = 8;
+};
+std::vector<TaperEntry> g_tapers;
 std::vector<int> g_tensionOnly;
 int g_bucklingModes = 0;
 int g_modalModes = 0;
@@ -89,6 +118,17 @@ extern "C" int structura_set_shells(
     return 0;
 }
 
+extern "C" int structura_set_shell_alpha(int shellCount, const double* alphas) {
+    // coeficiente de dilatacao termica por casca, na ordem de structura_set_shells (chamar depois dela)
+    if (shellCount != static_cast<int>(g_shells.size()) || (shellCount > 0 && alphas == nullptr)) {
+        return 1;
+    }
+    for (int i = 0; i < shellCount; ++i) {
+        g_shells[static_cast<size_t>(i)].alpha = alphas[i];
+    }
+    return 0;
+}
+
 extern "C" int structura_get_shell_results(int shellCount, double* values40, double* axes9) {
     const int available = static_cast<int>(g_lastOutput.shells.size());
     if (values40 == nullptr || axes9 == nullptr || shellCount != available) {
@@ -109,6 +149,83 @@ extern "C" void structura_set_options(int secondOrder, int maxIterations, double
     g_options.secondOrder = secondOrder != 0;
     g_options.maxIterations = maxIterations > 0 ? maxIterations : 30;
     g_options.tolerance = tolerance > 0.0 ? tolerance : 1e-7;
+}
+
+extern "C" void structura_set_analysis_options(int shearDeformation, int stabilityFunctions, int loadSteps) {
+    g_shearDeformation = shearDeformation != 0;
+    g_stabilityFunctions = stabilityFunctions != 0;
+    g_loadSteps = std::max(0, loadSteps);
+}
+
+extern "C" void structura_set_shear_areas(int count, const int* sectionIds, const double* shearAreaY, const double* shearAreaZ) {
+    g_shearAreas.clear();
+    for (int i = 0; i < count && sectionIds != nullptr && shearAreaY != nullptr && shearAreaZ != nullptr; ++i) {
+        g_shearAreas.push_back({sectionIds[i], shearAreaY[i], shearAreaZ[i]});
+    }
+}
+
+extern "C" void structura_set_rigid_zones(int count, const int* memberIds, const double* lengthI, const double* lengthJ) {
+    g_rigidZones.clear();
+    for (int i = 0; i < count && memberIds != nullptr && lengthI != nullptr && lengthJ != nullptr; ++i) {
+        g_rigidZones.push_back({memberIds[i], lengthI[i], lengthJ[i]});
+    }
+}
+
+extern "C" void structura_set_taper(int count, const int* memberIds, const double* d1, const double* d2, const double* bf, const double* tw, const double* tf, const int* segments) {
+    g_tapers.clear();
+    for (int i = 0; i < count; ++i) {
+        g_tapers.push_back({memberIds[i], d1[i], d2[i], bf[i], tw[i], tf[i], segments != nullptr ? segments[i] : 8});
+    }
+}
+
+extern "C" void structura_set_warping_sections(int count, const int* sectionIds, const double* warpingConstants) {
+    g_warpingSections.clear();
+    for (int i = 0; i < count; ++i) {
+        g_warpingSections.push_back({sectionIds[i], warpingConstants[i]});
+    }
+}
+
+extern "C" void structura_set_warping_members(int count, const int* memberIds, const int* modeStart, const int* modeEnd) {
+    g_warpingMembers.clear();
+    for (int i = 0; i < count; ++i) {
+        g_warpingMembers.push_back({memberIds[i], modeStart[i], modeEnd[i]});
+    }
+}
+
+extern "C" int structura_get_warping(int count, const int* memberIds, double* out4) {
+    int found = 0;
+    for (int i = 0; i < count; ++i) {
+        for (int k = 0; k < 4; ++k) {
+            out4[i * 4 + k] = 0.0;
+        }
+        for (const auto& member : g_lastOutput.members) {
+            if (member.id == memberIds[i] && member.hasWarping) {
+                out4[i * 4 + 0] = member.warpingRate[0];
+                out4[i * 4 + 1] = member.warpingRate[1];
+                out4[i * 4 + 2] = member.warpingForce[0];
+                out4[i * 4 + 3] = member.warpingForce[1];
+                ++found;
+                break;
+            }
+        }
+    }
+    return found;
+}
+
+extern "C" int structura_get_warnings(char* buffer, int bufferSize) {
+    std::string joined;
+    for (const auto& warning : g_lastOutput.warnings) {
+        if (!joined.empty()) {
+            joined += '\n';
+        }
+        joined += warning;
+    }
+    if (buffer != nullptr && bufferSize > 0) {
+        const size_t count = std::min(static_cast<size_t>(bufferSize - 1), joined.size());
+        std::memcpy(buffer, joined.data(), count);
+        buffer[count] = '\0';
+    }
+    return static_cast<int>(g_lastOutput.warnings.size());
 }
 
 extern "C" void structura_set_tension_only(int count, const int* memberIds) {
@@ -284,6 +401,9 @@ extern "C" int structura_solve_v4(
     input.shellLoads = g_shellLoads;
     input.ties = g_ties;
     input.springs = g_springs;
+    input.shearDeformation = g_shearDeformation;
+    input.stabilityFunctions = g_stabilityFunctions;
+    input.loadSteps = g_loadSteps;
     input.materials.reserve(static_cast<size_t>(materialCount));
     input.sections.reserve(static_cast<size_t>(sectionCount));
     input.nodes.reserve(static_cast<size_t>(nodeCount));
@@ -311,6 +431,17 @@ extern "C" int structura_solve_v4(
         section.Iz = sectionIz[i];
         section.Iy = sectionIy[i];
         section.J = sectionJ[i];
+        for (const auto& entry : g_shearAreas) {
+            if (entry.sectionId == section.id) {
+                section.Ay = entry.ay;
+                section.Az = entry.az;
+            }
+        }
+        for (const auto& entry : g_warpingSections) {
+            if (entry.sectionId == section.id) {
+                section.Cw = entry.cw;
+            }
+        }
         input.sections.push_back(section);
     }
 
@@ -345,6 +476,30 @@ extern "C" int structura_solve_v4(
         if (memberReleases12 != nullptr) {
             for (int k = 0; k < 12; ++k) {
                 member.releases[static_cast<size_t>(k)] = memberReleases12[i * 12 + k];
+            }
+        }
+        for (const auto& zone : g_rigidZones) {
+            if (zone.memberId == member.id) {
+                member.rigidI = zone.lengthI;
+                member.rigidJ = zone.lengthJ;
+            }
+        }
+        for (const auto& entry : g_tapers) {
+            if (entry.memberId == member.id) {
+                member.taper = true;
+                member.taperD1 = entry.d1;
+                member.taperD2 = entry.d2;
+                member.taperBf = entry.bf;
+                member.taperTw = entry.tw;
+                member.taperTf = entry.tf;
+                member.taperSegments = entry.segments;
+            }
+        }
+        for (const auto& entry : g_warpingMembers) {
+            if (entry.memberId == member.id) {
+                member.warping = 1;
+                member.warpingStart = entry.modeStart;
+                member.warpingEnd = entry.modeEnd;
             }
         }
         input.members.push_back(member);
