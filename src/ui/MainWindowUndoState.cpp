@@ -79,6 +79,7 @@ quint64 MainWindow::stateFingerprint() const
         num(m.youngModulus);
         num(m.shearModulus);
         num(m.unitWeight);
+        num(m.thermalExpansion);
         num(m.fy);
         num(m.fu);
     }
@@ -115,6 +116,49 @@ quint64 MainWindow::stateFingerprint() const
         num(m.memberId);
         num(m.mx); num(m.my); num(m.mz);
         text(m.loadCase);
+    }
+    bytes += '|';
+    for (const auto &a : m_extras.memberActions) {
+        num(a.memberId); num(a.kind); num(a.a); num(a.b);
+        for (const double v : a.v1) { num(v); }
+        for (const double v : a.v2) { num(v); }
+        text(a.loadCase);
+        text(a.system);
+    }
+    bytes += '|';
+    for (const auto &d : m_extras.diaphragms) {
+        text(d.name); num(d.masterNode); num(d.normalAxis);
+        for (const int slave : d.slaveNodes) { num(slave); }
+    }
+    for (const auto &l : m_extras.rigidLinks) {
+        num(l.masterNode); num(l.slaveNode); num(l.kind); num(l.dof);
+    }
+    for (const auto &s : m_extras.inclinedSupports) {
+        num(s.nodeId); num(s.mask);
+        for (const double a : s.axes) { num(a); }
+    }
+    for (const auto &c : m_extras.constraints) {
+        bytes += c.reportReaction ? '1' : '0';
+        for (int i = 0; i < c.nodes.size(); ++i) { num(c.nodes[i]); num(c.dofs.value(i)); num(c.coefs.value(i)); }
+    }
+    for (const auto &spec : m_extras.memberConnections) {
+        num(spec.memberId);
+        for (const double k : spec.springK) { num(k); }
+        for (const auto &h : spec.hinges) { num(h.dof); num(h.kElastic); num(h.yieldMoment); num(h.hardeningRatio); num(h.axialYield); num(h.exponent); }
+    }
+    for (const auto &link : m_extras.links) {
+        num(link.id); text(link.name); num(link.nodeI); num(link.nodeJ);
+        for (const double a : link.axes) { num(a); }
+        for (const auto &law : link.laws) {
+            num(law.kind); num(law.k); num(law.p1); num(law.p2);
+            for (const auto &point : law.table) { num(point.first); num(point.second); }
+        }
+    }
+    {
+        const auto &n = m_extras.nonlinear;
+        bytes += n.force ? '1' : '0';
+        num(n.steps); num(n.maxIterations); num(n.tolerance); num(n.criteria); num(n.maxCutbacks); num(n.controlMode); num(n.controlNode); num(n.controlDof);
+        num(n.controlTarget); num(n.loadFactorMax);
     }
     bytes += '|';
     for (const auto &c : m_extras.loadCases) {

@@ -332,23 +332,51 @@ void MainWindow::syncBarTypeMarkers()
             byMember.insert(placement.memberId, placement);
         }
     }
+    // ligacoes de extremidade: molas rotacionais (semirrigidas) e rotulas plasticas; mola nula = articulacao
+    QHash<int, Structura::App::ProjectData::MemberConnectionSpec> connections;
+    for (const auto &spec : m_extras.memberConnections) {
+        if (!spec.isDefault()) {
+            connections.insert(spec.memberId, spec);
+        }
+    }
     std::vector<Structura::Visualization::BarTypeRenderer::Marker> markers;
-    if (!byMember.isEmpty()) {
+    if (!byMember.isEmpty() || !connections.isEmpty()) {
         QHash<QUuid, std::array<double, 3>> position;
         for (const auto &node : m_sceneController->nodeInfos()) {
             position.insert(node.id, {node.x, node.y, node.z});
         }
         for (const auto &bar : m_sceneController->bars()) {
             const auto it = byMember.constFind(bar.externalId);
-            if (it == byMember.constEnd() || m_hiddenBars.contains(bar.id) || !position.contains(bar.startNodeId) || !position.contains(bar.endNodeId)) {
+            const auto conn = connections.constFind(bar.externalId);
+            if ((it == byMember.constEnd() && conn == connections.constEnd()) || m_hiddenBars.contains(bar.id) || !position.contains(bar.startNodeId)
+                || !position.contains(bar.endNodeId)) {
                 continue;
             }
             Structura::Visualization::BarTypeRenderer::Marker marker;
             marker.start = position.value(bar.startNodeId);
             marker.end = position.value(bar.endNodeId);
-            marker.hingeStart = (it->releaseMask & (kStartRy | kStartRz)) != 0;
-            marker.hingeEnd = (it->releaseMask & (kEndRy | kEndRz)) != 0;
-            marker.kind = it->memberType;
+            if (it != byMember.constEnd()) {
+                marker.hingeStart = (it->releaseMask & (kStartRy | kStartRz)) != 0;
+                marker.hingeEnd = (it->releaseMask & (kEndRy | kEndRz)) != 0;
+                marker.kind = it->memberType;
+            }
+            if (conn != connections.constEnd()) {
+                // dofs de flexao: ry/rz (4, 5) em I e (10, 11) em J; mola > 0 = semirrigida, 0 = articulada
+                for (int end = 0; end < 2; ++end) {
+                    bool semi = false, pin = false, plastic = false;
+                    for (int axis = 1; axis <= 2; ++axis) {
+                        const double k = conn->springK[static_cast<std::size_t>(end * 6 + 3 + axis)];
+                        semi = semi || k > 0.0;
+                        pin = pin || k == 0.0;
+                    }
+                    for (const auto &hinge : conn->hinges) {
+                        plastic = plastic || (hinge.dof >= end * 6 && hinge.dof < end * 6 + 6);
+                    }
+                    (end == 0 ? marker.semiStart : marker.semiEnd) = semi;
+                    (end == 0 ? marker.plasticStart : marker.plasticEnd) = plastic;
+                    (end == 0 ? marker.hingeStart : marker.hingeEnd) = (end == 0 ? marker.hingeStart : marker.hingeEnd) || pin;
+                }
+            }
             markers.push_back(marker);
         }
     }
@@ -459,6 +487,7 @@ void MainWindow::onCreateMaterial()
     info.youngModulus = dialog.youngModulus();
     info.shearModulus = dialog.shearModulus();
     info.unitWeight = dialog.unitWeight();
+    info.thermalExpansion = dialog.thermalExpansion();
     info.library = dialog.libraryName();
     info.fy = dialog.fy();
     info.fu = dialog.fu();
@@ -478,6 +507,7 @@ void MainWindow::onCreateMaterial()
         entry.eGPa = dialog.youngModulusGPa();
         entry.gGPa = dialog.shearModulusGPa();
         entry.unitWeight = info.unitWeight;
+        entry.thermalExpansion = info.thermalExpansion;
         entry.user = true;
         if (Structura::App::Services::UserLibrary::saveMaterial(entry)) {
             Structura::App::Services::MaterialLibrary::setUserEntries(Structura::App::Services::UserLibrary::loadMaterials());
@@ -719,6 +749,7 @@ bool MainWindow::addSteelMaterial(const QString &name)
     info.youngModulus = (entry ? entry->eGPa : 200.0) * 1e6;   // kN/m2
     info.shearModulus = (entry ? entry->gGPa : 77.0) * 1e6;
     info.unitWeight = entry ? entry->unitWeight : 78.5;
+    info.thermalExpansion = entry ? entry->thermalExpansion : 1.2e-5;
     info.library = entry ? entry->name : QString();
     info.fy = steel->fy;
     info.fu = steel->fu;

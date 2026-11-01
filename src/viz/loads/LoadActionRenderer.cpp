@@ -231,8 +231,11 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
     double maximum = 0.0;
     if (visibility.memberForces) {
         for (const auto &action : members) {
-            if (action.kind == MemberKind::Force) {
+            if (action.kind == MemberKind::Force && action.variant < 4) {
                 for (const double component : action.values) {
+                    maximum = std::max(maximum, std::abs(component));
+                }
+                for (const double component : action.values2) {
                     maximum = std::max(maximum, std::abs(component));
                 }
             }
@@ -249,7 +252,7 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
     // ── Forcas distribuidas ─────────────────────────────────────────────────
     if (visibility.memberForces && maximum > 0.0) {
         for (const auto &action : members) {
-            if (action.kind != MemberKind::Force) {
+            if (action.kind != MemberKind::Force || action.variant >= 4) {
                 continue;
             }
             const Vec3 memberVector = sub(action.end, action.start);
@@ -258,9 +261,15 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                 continue;
             }
             const Vec3 tangent = mul(memberVector, 1.0 / length);
+            // trecho carregado (a carga uniforme ocupa a barra toda)
+            const Vec3 segStart = add(action.start, mul(memberVector, action.t0));
+            const Vec3 segEnd = add(action.start, mul(memberVector, action.variant == 2 ? action.t0 : action.t1));
             for (int axis = 0; axis < 3; ++axis) {
-                const double value = action.values[static_cast<std::size_t>(axis)];
-                if (value == 0.0) {
+                const double value = action.variant == 0 || action.values[static_cast<std::size_t>(axis)] != 0.0
+                                         ? action.values[static_cast<std::size_t>(axis)]
+                                         : action.values2[static_cast<std::size_t>(axis)];
+                const double valueEnd = action.values2[static_cast<std::size_t>(axis)];
+                if (value == 0.0 && valueEnd == 0.0) {
                     continue;
                 }
                 Vec3 forceDirection {0.0, 0.0, 0.0};
@@ -276,11 +285,30 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                 }
 
                 const double valueSign = sign(value);
+                if (action.variant == 2) {
+                    // forca pontual: seta que termina no ponto de aplicacao
+                    const Vec3 direction = mul(forceDirection, valueSign);
+                    const double arrowLength = forceHeight(value, maximum);
+                    const Vec3 lineStart = sub(segStart, mul(direction, arrowLength));
+                    const double chevron = arrowLength * 0.18;
+                    const Vec3 normal = perpendicularTo(direction);
+                    const Vec3 armA = add(sub(segStart, mul(direction, chevron)), mul(normal, chevron * 0.55));
+                    const Vec3 armB = sub(sub(segStart, mul(direction, chevron)), mul(normal, chevron * 0.55));
+                    batches.addSegments(shown(action.key, color), widthOf(action.key, 3.0), {lineStart, segStart, armA, armB}, {{0, 1}, {2, 1}, {3, 1}});
+                    if (action.key.valid()) {
+                        pickOf(action.key).segments.push_back({lineStart, segStart});
+                    }
+                    m_labels.positions.push_back(sub(lineStart, mul(direction, kLabelClearance)));
+                    m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kN"));
+                    m_labels.colors.push_back(color);
+                    m_labels.weights.push_back(std::abs(value));
+                    continue;
+                }
                 if (std::abs(std::abs(dotp(tangent, forceDirection)) - 1.0) < 1e-9) {
                     // Carga axial: setas ao longo da barra, com uma cauda de 1 unidade.
                     const Vec3 loadDirection = mul(forceDirection, valueSign);
-                    Vec3 lineStart = action.start;
-                    Vec3 lineEnd = action.end;
+                    Vec3 lineStart = segStart;
+                    Vec3 lineEnd = segEnd;
                     Vec3 tailEnd;
                     if (dotp(memberVector, loadDirection) >= 0) {
                         lineStart = sub(lineStart, mul(loadDirection, kAxialTail));
@@ -324,23 +352,40 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                     continue;
                 }
 
-                // Faixa no lado oposto ao sentido da acao (convencao grafica).
+                // Faixa no lado oposto ao sentido da acao (convencao grafica); na carga trapezoidal a altura varia entre as pontas.
                 const Vec3 offset = mul(forceDirection, -valueSign * forceHeight(value, maximum));
-                const Vec3 topStart = add(action.start, offset);
-                const Vec3 topEnd = add(action.end, offset);
-                batches.addFace(shown(action.key, color), {action.start, action.end, topEnd, topStart});
-                batches.addSegments(shown(action.key, color), widthOf(action.key, 2.0), {action.start, action.end, topEnd, topStart},
+                const Vec3 offsetEnd = action.variant == 0 ? offset : mul(forceDirection, -sign(valueEnd) * forceHeight(valueEnd, maximum));
+                const Vec3 topStart = add(segStart, offset);
+                const Vec3 topEnd = add(segEnd, offsetEnd);
+                batches.addFace(shown(action.key, color), {segStart, segEnd, topEnd, topStart});
+                batches.addSegments(shown(action.key, color), widthOf(action.key, 2.0), {segStart, segEnd, topEnd, topStart},
                                     {{1, 2}, {2, 3}, {3, 0}});
                 if (action.key.valid()) {
-                    pickOf(action.key).quads.push_back({action.start, action.end, topEnd, topStart});
+                    pickOf(action.key).quads.push_back({segStart, segEnd, topEnd, topStart});
                 }
                 const double offsetLength = len(offset);
                 const Vec3 outward = offsetLength > 0 ? mul(offset, 1.0 / offsetLength)
                                                       : mul(forceDirection, -valueSign);
-                m_labels.positions.push_back(add(mul(add(topStart, topEnd), 0.5), mul(outward, kLabelClearance)));
-                m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kN/m"));
-                m_labels.colors.push_back(color);
-                m_labels.weights.push_back(std::abs(value));
+                if (action.variant == 0) {
+                    m_labels.positions.push_back(add(mul(add(topStart, topEnd), 0.5), mul(outward, kLabelClearance)));
+                    m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kN/m"));
+                    m_labels.colors.push_back(color);
+                    m_labels.weights.push_back(std::abs(value));
+                } else {
+                    // trapezoidal: um rotulo por ponta (o da ponta nula e omitido)
+                    if (value != 0.0) {
+                        m_labels.positions.push_back(add(topStart, mul(outward, kLabelClearance)));
+                        m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kN/m"));
+                        m_labels.colors.push_back(color);
+                        m_labels.weights.push_back(std::abs(value));
+                    }
+                    if (valueEnd != 0.0 && valueEnd != value) {
+                        m_labels.positions.push_back(add(topEnd, mul(outward, kLabelClearance)));
+                        m_labels.texts.push_back(formatNumber(valueEnd) + QStringLiteral(" kN/m"));
+                        m_labels.colors.push_back(color);
+                        m_labels.weights.push_back(std::abs(valueEnd));
+                    }
+                }
             }
         }
     }
@@ -380,6 +425,9 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
             if (action.kind != MemberKind::Moment) {
                 continue;
             }
+            if (action.variant >= 4) {
+                continue;
+            }
             const double memberLength = len(sub(action.end, action.start));
             for (int axis = 0; axis < 3; ++axis) {
                 const double value = action.values[static_cast<std::size_t>(axis)];
@@ -387,10 +435,10 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                     continue;
                 }
                 const auto plane = momentPlane(action.local ? action.basis : identity, axis);
-                const int count = std::max(2, std::min(8, static_cast<int>(memberLength / kMomentSpacing) + 1));
+                const int count = action.variant == 3 ? 1 : std::max(2, std::min(8, static_cast<int>(memberLength / kMomentSpacing) + 1));
                 std::vector<Vec3> centers;
                 for (int i = 0; i < count; ++i) {
-                    const double fraction = 0.15 + 0.70 * i / (count - 1);
+                    const double fraction = action.variant == 3 ? action.t0 : 0.15 + 0.70 * i / (count - 1);
                     centers.push_back(add(action.start, mul(sub(action.end, action.start), fraction)));
                 }
                 for (const Vec3 &center : centers) {
@@ -400,10 +448,37 @@ void LoadActionRenderer::render(const std::vector<NodeAction> &nodes,
                     }
                 }
                 m_labels.positions.push_back(add(centers[centers.size() / 2], mul(plane[1], kMomentRadius * 1.35)));
-                m_labels.texts.push_back(formatNumber(value) + QStringLiteral(" kNm/m"));
+                m_labels.texts.push_back(formatNumber(value) + (action.variant == 3 ? QStringLiteral(" kNm") : QStringLiteral(" kNm/m")));
                 m_labels.colors.push_back(baseMomentColor);
                 m_labels.weights.push_back(std::abs(value));
             }
+        }
+    }
+
+    // ── Temperatura e retracao ──────────────────────────────────────────────
+    if (visibility.memberForces) {
+        for (const auto &action : members) {
+            if (action.variant < 4 || action.note.isEmpty()) {
+                continue;
+            }
+            const Vec3 memberVector = sub(action.end, action.start);
+            if (len(memberVector) == 0.0) {
+                continue;
+            }
+            // duas linhas paralelas (vermelha: aquecimento/alongamento; azul: resfriamento/retracao) deslocadas da barra na direcao local y
+            const bool warm = action.values[0] > 0.0 || (action.values[0] == 0.0 && action.values[1] > 0.0);
+            const Vec3 color = warm ? Vec3 {0xcf / 255.0, 0x22 / 255.0, 0x2e / 255.0} : Vec3 {0x09 / 255.0, 0x69 / 255.0, 0xda / 255.0};
+            const Vec3 side = mul(action.basis[1], 0.12);
+            const Vec3 a1 = add(action.start, side), b1 = add(action.end, side), a2 = sub(action.start, side), b2 = sub(action.end, side);
+            batches.addSegments(shown(action.key, color), widthOf(action.key, 2.0), {a1, b1, a2, b2}, {{0, 1}, {2, 3}});
+            if (action.key.valid()) {
+                pickOf(action.key).segments.push_back({a1, b1});
+                pickOf(action.key).segments.push_back({a2, b2});
+            }
+            m_labels.positions.push_back(add(mul(add(action.start, action.end), 0.5), mul(action.basis[1], 0.3)));
+            m_labels.texts.push_back(action.note);
+            m_labels.colors.push_back(color);
+            m_labels.weights.push_back(1.0);
         }
     }
 

@@ -171,6 +171,39 @@ forca de corpo, temperatura), ligacoes no-escravo (ate 8 mestres, pesos que soma
 restricoes nos mesmos arrays dos nos de barras). `structura_get_shell_results` devolve 40 valores por elemento (5 pontos x nxx nyy nxy mxx myy mxy qx qy, eixos locais) e os eixos
 (9). `structura_clear_shells()` limpa o estado (o estado e global, como em `structura_set_options`).
 
+## Cargas de barra com posicao (`structura_set_member_actions`)
+
+Estado global (como `structura_set_options`): `structura_set_member_actions(count, memberIds, kinds, coordSystems, a, b, v1_3, v2_3)` registra, para as proximas chamadas de
+`structura_solve*`, cargas de barra com posicao; `count = 0` limpa. `a` e `b` sao distancias sobre o eixo, a partir do no I (mesma unidade de comprimento do modelo), e `v1_3`/`v2_3`
+guardam 3 valores por carga:
+
+| kind | carga | v1 | v2 |
+|---|---|---|---|
+| 0 | trapezoidal/parcial entre `a` e `b` | (qx,qy,qz) em `a` (forca/comprimento) | (qx,qy,qz) em `b` |
+| 1 | forca concentrada em `a` | (Fx,Fy,Fz) | - |
+| 2 | momento concentrado em `a` | (Mx,My,Mz) | - |
+| 3 | deformacao imposta em toda a barra (temperatura, retracao), sempre eixos locais | (eps0 axial livre, d(eps)/dy, d(eps)/dz) | - |
+
+`coordSystems`: 0 = local, 1 = global (kind 3 e sempre local). Para temperatura, o chamador converte: `eps0 = alfa * dT`, `d(eps)/dy = alfa * dT/dy`. Cargas em `a = 0` ou `a = L` (pontuais)
+vao direto ao no. Formulacao em `docs/FORMULACAO_MATEMATICA.md` (secoes 10.4 e 10.5); testes em `Structuradll/tests/solver_tests.cpp` (alvo `solver_tests`).
+
+## Molas de extremidade, rotulas plasticas, vinculos, ligacoes e analise nao linear
+
+Todas sao estados globais (como `structura_set_options`), validos para as proximas chamadas de `structura_solve*`; chamar com contagem 0 limpa o estado. Formulacao: `docs/FORMULACAO_MATEMATICA.md`, secoes 15 a 18.
+
+* `structura_set_end_springs(count, memberIds, k12)`: 12 rigidezes por barra (ux uy uz rx ry rz em I e depois em J; < 0 = sem mola, 0 = articulacao).
+* `structura_set_plastic_hinges(count, memberIds, dofs, kElastic, yieldMoment, hardeningRatio, axialYield, exponent)`: rotula bilinear em rotacao de extremidade (dof 3..5 em I, 9..11 em J);
+  `axialYield > 0` liga a interacao N-M. Aciona o motor incremental.
+* `structura_set_constraints(...)`: diafragmas rigidos (mestre, eixo normal, escravos), ligacoes rigidas (mestre, escravo, tipo 0 = corpo rigido, 1 = 3 translacoes, 2 = 3 rotacoes, 3 = um grau),
+  apoios inclinados (no, direcoes e1 e2 e3, mascara de restricao) e vinculos lineares gerais (termos no/grau/coeficiente, reacao 0/1). Por penalidade.
+* `structura_set_links(...)`: ligacoes entre dois nos com lei por grau relativo (0 linear, 1 so tracao, 2 so compressao, 3 e 4 folga, 5 elastoplastica, 6 multilinear, 7 rigida) e eixos locais.
+* `structura_set_nonlinear_options(force, steps, maxIterations, tolerance, criteria, maxCutbacks, controlMode, controlNode, controlDof, controlTarget, loadFactorMax)`:
+  criterios `1` forcas, `2` deslocamentos, `4` energia; `controlMode` 0 = carga, 1 = deslocamento.
+* Resultados da ultima analise: `structura_get_nonlinear_summary(double[8])` (usado, convergiu, fator de carga, passos, iteracoes, pontos da curva, rotulas, ligacoes),
+  `structura_get_nonlinear_curve`, `structura_get_hinge_results`, `structura_get_link_results` e `structura_get_constraint_forces`.
+
+Testes: `Structuradll/tests/solver_tests.cpp` (alvo `solver_tests`, 121 verificacoes analiticas).
+
 ## Opcoes avancadas de analise (estado global, como `structura_set_options`; padrao = tudo desligado, resultados inalterados)
 
 - `structura_set_analysis_options(shearDeformation, stabilityFunctions, loadSteps)`
@@ -192,6 +225,7 @@ de barras que pedem empenamento). A matriz local da barra passa a 14 x 14 com o 
 - `structura_set_warping_sections(count, sectionIds, Cw)`: constante de empenamento (unidade de comprimento a sexta) por secao; Cw = 0 ou ausente = so Saint-Venant. Substitui a lista anterior.
 - `structura_set_warping_members(count, memberIds, modeStart, modeEnd)`: barras que usam o empenamento e a condicao em cada extremidade: 0 = automatica (impedido em no totalmente engastado,
   compartilhado entre barras colineares no no, livre nos demais), 1 = livre (bimomento nulo), 2 = impedido (theta' = 0). Substitui a lista anterior.
+- `structura_set_shear_centers(count, sectionIds, scY, scZ)`: centro de cisalhamento por secao, em relacao ao centroide, nos eixos locais y e z (unidade do modelo); so atua nas barras com empenamento e acopla flexao e torcao na rigidez, na rigidez geometrica (2a ordem e flambagem, que agora aceita empenamento) das secoes nao duplamente simetricas. O torque dos esforcos da barra passa a ser o do centro de cisalhamento. Substitui a lista anterior.
 - `structura_set_taper(count, memberIds, d1, d2, bf, tw, tf, segments)`: barras de secao I de alma variavel (NBR 8800, Anexo G): alturas nas extremidades I e J, largura/espessura das mesas e
   espessura da alma (unidades do modelo) e numero de trechos prismaticos. O solver subdivide a barra em `segments` trechos com nos internos (propriedades da altura media de cada trecho) e devolve
   os esforcos das extremidades da barra original; os nos internos nao aparecem nos resultados. Substitui a lista anterior.
@@ -200,3 +234,7 @@ de barras que pedem empenamento). A matriz local da barra passa a 14 x 14 com o 
 - Nao e combinado com flambagem linear nem modal (usa Saint-Venant nessas execucoes, com aviso em `structura_get_warnings`).
 - Torque distribuido uniforme (momento distribuido local mx) usa as forcas de engastamento exatas (torques de extremidade m L / 2 mais o par de bimomentos).
 - Teoria, validacao e limitacoes: `docs/BARRAS_COMPOSTAS_E_TORCAO_COM_EMPENAMENTO.md`.
+
+### Infraestrutura numerica
+
+`void structura_set_solver_options(int linearSolver, int eigenSolver, int eigenDenseLimit, double iterativeTolerance, int iterativeMaxIterations)`: `linearSolver` 0 = LDL^T esparso direto (ordenacao AMD), 1 = gradiente conjugado precondicionado (cai no direto se nao convergir; sem verificacao de mecanismo); `eigenSolver` 0 = automatico (denso ate `eigenDenseLimit` graus de liberdade livres, iteracao em subespaco esparsa acima), 1 = denso, 2 = esparso. Mecanismos sao reportados com a lista dos graus de liberdade nao contidos (no e grau). Ver `docs/ESTABILIDADE_E_RESULTADOS.md`.

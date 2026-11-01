@@ -70,6 +70,14 @@ void MainWindow::onDeleteLoads()
             }
         }
     }
+    if (dialog.positionedLoads()) {
+        for (int i = m_extras.memberActions.size() - 1; i >= 0; --i) {
+            if (caseMatches(m_extras.memberActions[i].loadCase) && (all || barIds.contains(m_extras.memberActions[i].memberId))) {
+                m_extras.memberActions.removeAt(i);
+                ++distributed;
+            }
+        }
+    }
     if (dialog.areaPanels()) {
         for (int i = m_extras.areaLoads.size() - 1; i >= 0; --i) {
             const auto &panel = m_extras.areaLoads[i];

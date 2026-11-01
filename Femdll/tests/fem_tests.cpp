@@ -146,6 +146,46 @@ void cantileverInPlane()
     near(tip, expected, 0.03, "flecha da viga em balanco (membrana com modos incompativeis)");
 }
 
+void orthotropicCantilever()
+{
+    // viga em balanco no plano com material ortotropico (nu12 = 0): a rigidez ao longo do vao e a do eixo do material que cai em x
+    const double L = 10.0, H = 1.0, t = 0.1, E1 = 2.0e11, E2 = 0.5e11, G12 = 2.0e10, P = 1.0e5;
+    for (const bool alongX : {true, false}) {
+        fem::Model m = rectangle(L, H, 40, 4, t, E1, 0.0);
+        m.materials[0].orthotropic = true;
+        m.materials[0].E2 = E2;
+        m.materials[0].nu12 = 0.0;
+        m.materials[0].G12 = G12;
+        m.materials[0].axis = alongX ? fem::Vec3(1, 0, 0) : fem::Vec3(0, 1, 0);
+        const Grid g {40, 4};
+        for (auto &n : m.nodes) {
+            n.fixed[2] = n.fixed[3] = n.fixed[4] = 1;
+        }
+        for (int j = 0; j <= 4; ++j) {
+            m.nodes[g.node(0, j)].fixed[0] = m.nodes[g.node(0, j)].fixed[1] = 1;
+        }
+        fem::LoadCase lc;
+        for (int j = 0; j <= 4; ++j) {
+            fem::NodalLoad l;
+            l.node = g.node(40, j);
+            l.f[1] = P / 4.0 * ((j == 0 || j == 4) ? 0.5 : 1.0);
+            lc.nodal.push_back(l);
+        }
+        m.cases.push_back(lc);
+        std::string error;
+        { const bool solved = m.solve({}, error); check(solved, "balanco ortotropico resolve: " + error); }
+        // G12 nao depende da rotacao em 90 graus; E ao longo de x = E1 (eixo em x) ou E2 (eixo em y)
+        const double Ex = alongX ? E1 : E2;
+        const double I = t * H * H * H / 12.0;
+        const double expected = P * L * L * L / (3.0 * Ex * I) + P * L / (5.0 / 6.0 * G12 * t * H);
+        double tip = 0.0;
+        for (int j = 0; j <= 4; ++j) {
+            tip += m.results[0].displacements[6 * g.node(40, j) + 1] / 5.0;
+        }
+        near(tip, expected, 0.04, alongX ? "ortotropia: eixo 1 em x usa E1" : "ortotropia: eixo 1 em y usa E2 ao longo do vao");
+    }
+}
+
 void simplySupportedPlate()
 {
     const double a = 1.0, t = 0.01, E = 2.1e11, nu = 0.3, q = 1000.0;
@@ -475,6 +515,7 @@ int main()
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     membranePatchTest();
     cantileverInPlane();
+    orthotropicCantilever();
     simplySupportedPlate();
     clampedPlate();
     cylinderUnderPressure();

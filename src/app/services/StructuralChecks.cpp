@@ -357,6 +357,21 @@ StructuralChecks::Output StructuralChecks::stories(const Structura::App::SolverB
             }
         }
     }
+    if (!ultimate && !out.storyResults.isEmpty()) {
+        // combinacoes de servico sem acao horizontal: o deslocamento relativo de andar nao representa o limite de servico (Tabela B.1: H/400 a H/300 para vento)
+        double maxRatio = 0.0;
+        for (const StoryResult &r : std::as_const(out.storyResults)) {
+            const double drift = std::max(r.driftXMm, r.driftYMm);
+            if (r.heightMm > 0.0) {
+                maxRatio = std::max(maxRatio, drift / r.heightMm);
+            }
+        }
+        if (maxRatio < 1.0 / 5000.0) {
+            out.warnings.append(QStringLiteral("Os deslocamentos relativos de andar das combinacoes de servico sao desprezaveis (maximo h/%1): parecem nao conter acao horizontal. "
+                                               "Inclua uma combinacao de servico com o vento (limites da NBR 8800, Tabela B.1) para verificar a deslocabilidade lateral.")
+                                    .arg(maxRatio > 0.0 ? std::lround(1.0 / maxRatio) : 0));
+        }
+    }
     if (ultimate && !out.storyResults.isEmpty()) {
         // Classificacao (4.10.4): maior B2 nominal entre andares e combinacoes ultimas (4.10.4.8: B2 aproxima a razao entre os deslocamentos de 2a e 1a ordem)
         double maxB2 = 1.0;

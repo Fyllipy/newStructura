@@ -5,10 +5,19 @@
 #include "SplitBarDialog.h"
 #include "TrussDialog.h"
 #include "app/UndoRedoService.h"
+#include "app/services/CadImport.h"
 #include "app/services/ShellCouplingService.h"
 #include "shell/ShellMesh.h"
 #include "viz/SceneController.h"
 
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QFormLayout>
 #include <QLabel>
 #include <QMessageBox>
 #include <QVTKOpenGLNativeWidget.h>
@@ -141,6 +150,19 @@ void MainWindow::onDeleteSelected()
     eraseWhere(state.memberLoads, [&](const auto &l) { return barExt.contains(l.memberId); });
     auto &extras = state.extras;
     eraseWhere(extras.memberMoments, [&](const auto &m) { return barExt.contains(m.memberId); });
+    eraseWhere(extras.memberActions, [&](const auto &a) { return barExt.contains(a.memberId); });
+    eraseWhere(extras.memberConnections, [&](const auto &c) { return barExt.contains(c.memberId); });
+    // vinculos e ligacoes entre nos que citam nos excluidos
+    for (auto &diaphragm : extras.diaphragms) {
+        eraseWhere(diaphragm.slaveNodes, [&](int id) { return nodeExt.contains(id); });
+    }
+    eraseWhere(extras.diaphragms, [&](const auto &d) { return nodeExt.contains(d.masterNode) || d.slaveNodes.isEmpty(); });
+    eraseWhere(extras.rigidLinks, [&](const auto &l) { return nodeExt.contains(l.masterNode) || nodeExt.contains(l.slaveNode); });
+    eraseWhere(extras.inclinedSupports, [&](const auto &s) { return nodeExt.contains(s.nodeId); });
+    eraseWhere(extras.links, [&](const auto &l) { return nodeExt.contains(l.nodeI) || nodeExt.contains(l.nodeJ); });
+    eraseWhere(extras.constraints, [&](const auto &c) {
+        return std::any_of(c.nodes.begin(), c.nodes.end(), [&](int id) { return nodeExt.contains(id); });
+    });
     eraseWhere(extras.placements, [&](const auto &p) { return barExt.contains(p.memberId); });
     eraseWhere(extras.design.members, [&](const auto &p) { return barExt.contains(p.memberId); });
     eraseWhere(extras.connections, [&](const auto &c) { return nodeExt.contains(c.nodeId) || barExt.contains(c.memberId); });
@@ -230,6 +252,82 @@ void MainWindow::splitCore(SceneController::GeometrySnapshot &after, ModelState 
                 } else {
                     extras.placements.append(p);
                 }
+            }
+            break;
+        }
+        {
+            // cargas gerais com posicao: cada trecho recebe a parte da carga que cai nele (posicoes medidas a partir do no I do trecho)
+            double length = 0.0;
+            const Geometry::N *start = nullptr, *finish = nullptr;
+            for (const auto &n : after.nodes) {
+                start = n.id == original.start ? &n : start;
+                finish = n.id == original.end ? &n : finish;
+            }
+            if (start && finish) {
+                length = std::sqrt((finish->x - start->x) * (finish->x - start->x) + (finish->y - start->y) * (finish->y - start->y)
+                                   + (finish->z - start->z) * (finish->z - start->z));
+            }
+            QVector<Structura::App::ProjectData::MemberAction> originals;
+            for (int i = extras.memberActions.size() - 1; i >= 0; --i) {
+                if (extras.memberActions[i].memberId == oldExt) {
+                    originals.prepend(extras.memberActions[i]);
+                    extras.memberActions.removeAt(i);
+                }
+            }
+            namespace Kind = Structura::App::ProjectData::MemberActionKind;
+            const double tol = 1e-9 * std::max(length, 1.0);
+            for (const auto &action : originals) {
+                for (std::size_t s = 0; s < segments; ++s) {
+                    const double s0 = edge[s] * length, s1 = edge[s + 1] * length;
+                    auto piece = action;
+                    piece.memberId = ext[s];
+                    if (action.kind == Kind::kTemperature || action.kind == Kind::kShrinkage) {
+                        extras.memberActions.append(piece);
+                    } else if (action.kind == Kind::kTrapezoid) {
+                        const double lo = std::max(std::min(action.a, action.b), s0), hi = std::min(std::max(action.a, action.b), s1);
+                        if (hi - lo <= tol) {
+                            continue;
+                        }
+                        const double span = action.b - action.a;
+                        for (std::size_t c = 0; c < 3; ++c) {
+                            const double q1 = action.v1[c], q2 = action.v2[c];
+                            piece.v1[c] = std::abs(span) > 0.0 ? q1 + (q2 - q1) * (lo - action.a) / span : q1;
+                            piece.v2[c] = std::abs(span) > 0.0 ? q1 + (q2 - q1) * (hi - action.a) / span : q2;
+                        }
+                        piece.a = lo - s0;
+                        piece.b = hi - s0;
+                        extras.memberActions.append(piece);
+                    } else {
+                        const bool last = s + 1 == segments;
+                        if (action.a >= s0 - tol && (action.a < s1 - tol || last)) {
+                            piece.a = std::clamp(action.a - s0, 0.0, s1 - s0);
+                            extras.memberActions.append(piece);
+                        }
+                    }
+                }
+            }
+        }
+        // ligacoes de extremidade (molas e rotulas plasticas): as de I ficam no primeiro trecho e as de J no ultimo
+        for (int i = 0; i < extras.memberConnections.size(); ++i) {
+            if (extras.memberConnections[i].memberId != oldExt) {
+                continue;
+            }
+            const auto base = extras.memberConnections[i];
+            auto first = base, last = base;
+            first.memberId = ext.front();
+            last.memberId = ext.back();
+            for (std::size_t k = 0; k < 6; ++k) {
+                first.springK[k + 6] = -1.0;
+                last.springK[k] = -1.0;
+            }
+            first.hinges.clear();
+            last.hinges.clear();
+            for (const auto &hinge : base.hinges) {
+                (hinge.dof < 6 ? first : last).hinges.append(hinge);
+            }
+            extras.memberConnections[i] = first;
+            if (segments > 1) {
+                extras.memberConnections.append(last);
             }
             break;
         }
@@ -771,4 +869,145 @@ void MainWindow::onGenerateTruss()
     }
     m_sceneController->zoomExtents();
     showStatusMessage(tr("Treliça gerada: %1 nós e %2 barras (%3 painéis). Ctrl+Z desfaz.").arg(shape.nodes.size()).arg(shape.bars.size()).arg(shape.panels), 6000);
+}
+
+void MainWindow::onImportCad()
+{
+    using namespace Structura::App::Services;
+    if (!m_sceneController || m_command != Command::None) {
+        return;
+    }
+    if (m_sections.isEmpty() || m_materials.isEmpty()) {
+        QMessageBox::information(this, tr("Importar"), tr("Crie ao menos um material e um perfil antes de importar: eles são atribuídos às barras importadas."));
+        return;
+    }
+    const QString path = QFileDialog::getOpenFileName(this, tr("Importar DXF ou IFC"), QString(), tr("DXF e IFC (*.dxf *.ifc);;DXF (*.dxf);;IFC (*.ifc)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(this, tr("Importar"), tr("Não foi possível abrir o arquivo."));
+        return;
+    }
+    const QByteArray bytes = file.readAll();
+    file.close();
+    const bool isIfc = QFileInfo(path).suffix().compare(QLatin1String("ifc"), Qt::CaseInsensitive) == 0;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(isIfc ? tr("Importar IFC") : tr("Importar DXF"));
+    auto *form = new QFormLayout(&dialog);
+    auto *sectionBox = new QComboBox;
+    for (const auto &s : m_sections) {
+        sectionBox->addItem(s.name);
+    }
+    auto *materialBox = new QComboBox;
+    for (const auto &m : m_materials) {
+        materialBox->addItem(m.name);
+    }
+    auto *toleranceBox = new QDoubleSpinBox;
+    toleranceBox->setRange(0.01, 1000.0);
+    toleranceBox->setDecimals(2);
+    toleranceBox->setValue(1.0);
+    toleranceBox->setSuffix(tr(" mm"));
+    toleranceBox->setToolTip(tr("Extremos mais próximos que isso viram o mesmo nó"));
+    auto *unitBox = new QComboBox;
+    unitBox->addItem(tr("Automática ($INSUNITS)"), 0.0);
+    unitBox->addItem(tr("Milímetro"), 0.001);
+    unitBox->addItem(tr("Centímetro"), 0.01);
+    unitBox->addItem(tr("Metro"), 1.0);
+    unitBox->addItem(tr("Polegada"), 0.0254);
+    unitBox->addItem(tr("Pé"), 0.3048);
+    form->addRow(tr("Perfil padrão:"), sectionBox);
+    form->addRow(tr("Material:"), materialBox);
+    form->addRow(tr("Tolerância de fusão de nós:"), toleranceBox);
+    if (!isIfc) {
+        form->addRow(tr("Unidade do desenho:"), unitBox);
+    }
+    form->addRow(new QLabel(tr("Barras cujo nome de camada (DXF) ou de perfil (IFC) coincide com o de um perfil do projeto recebem esse perfil.")));
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    form->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    QString text = QString::fromUtf8(bytes);
+    if (text.contains(QChar(0xFFFD))) {
+        text = QString::fromLatin1(bytes);   // DXF antigo em Windows-1252: os nomes de camada nao sao UTF-8
+    }
+    const ImportResult imported = isIfc ? IfcImporter::parse(text) : DxfImporter::parse(text, unitBox->currentData().toDouble());
+    const ImportedTopology topology = buildTopology(imported.segments, toleranceBox->value() / 1000.0);
+    if (topology.bars.isEmpty()) {
+        QMessageBox::information(this, tr("Importar"), imported.warnings.isEmpty() ? tr("Nenhuma barra encontrada.") : imported.warnings.join(QLatin1Char('\n')));
+        return;
+    }
+    auto normalized = [](QString s) {
+        s = s.toUpper();
+        s.remove(QLatin1Char(' ')).remove(QLatin1Char('_')).remove(QLatin1Char('-')).remove(QLatin1Char('.')).remove(QLatin1Char(','));
+        return s;
+    };
+    QHash<QString, QUuid> sectionByName;
+    for (const auto &s : m_sections) {
+        sectionByName.insert(normalized(s.name), s.uuid);
+    }
+    const QUuid defaultSection = m_sections.at(std::clamp(sectionBox->currentIndex(), 0, static_cast<int>(m_sections.size()) - 1)).uuid;
+    const QUuid material = m_materials.at(std::clamp(materialBox->currentIndex(), 0, static_cast<int>(m_materials.size()) - 1)).uuid;
+
+    const Geometry before = m_sceneController->captureGeometry();
+    const ModelState stateBefore = captureState();
+    Geometry after = before;
+    ModelState state = stateBefore;
+    int nextNode = 0, nextBar = 0;
+    for (const auto &n : before.nodes) {
+        nextNode = std::max(nextNode, n.externalId);
+    }
+    for (const auto &b : before.bars) {
+        nextBar = std::max(nextBar, b.externalId);
+    }
+    std::vector<QUuid> nodeIds;
+    for (const auto &p : topology.nodes) {
+        Geometry::N node;
+        node.id = QUuid::createUuid();
+        node.externalId = ++nextNode;
+        node.x = p[0];
+        node.y = p[1];
+        node.z = p[2];
+        after.nodes.push_back(node);
+        nodeIds.push_back(node.id);
+    }
+    int matched = 0;
+    for (const auto &b : topology.bars) {
+        Geometry::B bar;
+        bar.id = QUuid::createUuid();
+        bar.externalId = ++nextBar;
+        bar.start = nodeIds[static_cast<std::size_t>(b.a)];
+        bar.end = nodeIds[static_cast<std::size_t>(b.b)];
+        bar.material = material;
+        bar.section = defaultSection;
+        const QString tag = !b.profile.isEmpty() ? b.profile : b.layer;
+        const auto it = sectionByName.constFind(normalized(tag));
+        if (it != sectionByName.constEnd()) {
+            bar.section = it.value();
+            ++matched;
+        }
+        after.bars.push_back(bar);
+    }
+    applyTopology(after, state);
+    if (m_undoService) {
+        m_undoService->stack()->push(new TopologyCommand(
+            tr("Importar %1").arg(isIfc ? QStringLiteral("IFC") : QStringLiteral("DXF")),
+            [this, before, stateBefore]() { applyTopology(before, stateBefore); },
+            [this, after, state]() { applyTopology(after, state); }));
+    }
+    m_sceneController->zoomExtents();
+    QString message = tr("Importadas %1 barras e %2 nós (%3 com perfil reconhecido pelo nome; as demais usam o perfil padrão). Ctrl+Z desfaz.").arg(topology.bars.size()).arg(topology.nodes.size()).arg(matched);
+    if (topology.mergedDuplicates > 0) {
+        message += tr(" %1 barra(s) repetida(s) descartada(s).").arg(topology.mergedDuplicates);
+    }
+    showStatusMessage(message, 10000);
+    if (!imported.warnings.isEmpty()) {
+        QMessageBox::information(this, tr("Importar"), imported.warnings.join(QLatin1Char('\n')));
+    }
 }

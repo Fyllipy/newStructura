@@ -19,6 +19,7 @@ public:
         double eGPa {200.0};
         double gGPa {77.0};
         double unitWeight {78.5};   ///< kN/m3
+        double thermalExpansion {1.2e-5};   ///< 1/degC (aco 1,2e-5; concreto 1,0e-5)
         QString note;
         bool user {false};     ///< criado pelo usuario (banco de materiais do programa)
         [[nodiscard]] bool isSteel() const { return category == Category::Custom ? (fy > 0.0 && fu > 0.0) : category != Category::Concrete; }

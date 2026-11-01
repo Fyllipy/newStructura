@@ -93,12 +93,39 @@ void MainWindow::createActions()
         return action;
     };
     m_serialCopyAction = makeEditAction(tr("Copia em\nserie"), QStringLiteral("serial.svg"), &MainWindow::onSerialCopy);
+    m_arrayCopyAction = makeEditAction(tr("Copia em\nmatriz"), QStringLiteral("array.svg"), &MainWindow::onArrayCopy);
+    m_arrayCopyAction->setToolTip(tr("Copia os elementos selecionados em uma grade (array) nas duas direcoes, com espacamento e numero de copias em cada uma"));
     m_rotateElementsAction = makeEditAction(tr("Rotacionar\nelementos"), QStringLiteral("rotate.svg"), &MainWindow::onRotateElements);
     m_mirrorElementsAction = makeEditAction(tr("Espelhar\nelementos"), QStringLiteral("mirror.svg"), &MainWindow::onMirrorElements);
 
     m_applyMemberMomentAction = new QAction(tr("Momento\ndistribuido"), this);
     m_applyMemberMomentAction->setIcon(Structura::UI::actionIcon(QStringLiteral("bar-moment.svg")));
     connect(m_applyMemberMomentAction, &QAction::triggered, this, &MainWindow::onApplyMemberMoment);
+
+    m_applyMemberActionAction = new QAction(tr("Carga geral\nem barra"), this);
+    m_applyMemberActionAction->setIcon(Structura::UI::actionIcon(QStringLiteral("bar-positioned.svg")));
+    m_applyMemberActionAction->setToolTip(tr("Carga trapezoidal ou parcial, força e momento concentrados, temperatura e retração em barras"));
+    connect(m_applyMemberActionAction, &QAction::triggered, this, &MainWindow::onApplyMemberAction);
+
+    m_connectivityAction = new QAction(tr("Vínculos e\nligações"), this);
+    m_connectivityAction->setIcon(Structura::UI::actionIcon(QStringLiteral("constraint.svg")));
+    m_connectivityAction->setToolTip(tr("Diafragmas rígidos, ligações rígidas, apoios inclinados, molas e elementos de interface entre nós e vínculos lineares"));
+    connect(m_connectivityAction, &QAction::triggered, this, &MainWindow::onEditConnectivity);
+
+    m_memberEndsAction = new QAction(tr("Extremidades e\nrótulas plásticas"), this);
+    m_memberEndsAction->setIcon(Structura::UI::actionIcon(QStringLiteral("fixed-ends.svg")));
+    m_memberEndsAction->setToolTip(tr("Ligações semirrígidas (mola rotacional) e rótulas plásticas bilineares nas extremidades das barras selecionadas"));
+    connect(m_memberEndsAction, &QAction::triggered, this, &MainWindow::onEditMemberEnds);
+
+    m_nonlinearOptionsAction = new QAction(tr("Opções não\nlineares"), this);
+    m_nonlinearOptionsAction->setIcon(Structura::UI::actionIcon(QStringLiteral("check-design.svg")));
+    m_nonlinearOptionsAction->setToolTip(tr("Passos, critérios de convergência e controle de carga ou de deslocamento da análise incremental"));
+    connect(m_nonlinearOptionsAction, &QAction::triggered, this, &MainWindow::onNonlinearOptions);
+
+    m_capacityCurveAction = new QAction(tr("Curva de\ncapacidade"), this);
+    m_capacityCurveAction->setIcon(Structura::UI::actionIcon(QStringLiteral("compare.svg")));
+    m_capacityCurveAction->setToolTip(tr("Curva fator de carga x deslocamento, rótulas plásticas e ligações da última análise não linear"));
+    connect(m_capacityCurveAction, &QAction::triggered, this, &MainWindow::onShowCapacityCurve);
 
     m_loadCaseVisibilityAction = new QAction(tr("Casos\nvisiveis"), this);
     m_loadCaseVisibilityAction->setIcon(Structura::UI::actionIcon(QStringLiteral("cases.svg")));
@@ -140,6 +167,18 @@ void MainWindow::createActions()
     m_exportDxfAction->setIcon(Structura::UI::actionIcon(QStringLiteral("dxf.svg")));
     m_exportDxfAction->setToolTip(tr("Exporta os eixos das barras em DXF (3D, planta ou elevações), uma camada por perfil"));
     connect(m_exportDxfAction, &QAction::triggered, this, &MainWindow::onExportDxf);
+    m_exportDstvAction = new QAction(tr("Exportar NC\n(DSTV)"), this);
+    m_exportDstvAction->setIcon(Structura::UI::actionIcon(QStringLiteral("dxf.svg")));
+    m_exportDstvAction->setToolTip(tr("Grava um arquivo .nc1 (DSTV) por chapa das ligações, com contorno e furação, para máquinas de corte e furação CNC"));
+    connect(m_exportDstvAction, &QAction::triggered, this, &MainWindow::onExportDstv);
+    m_exportIfcAction = new QAction(tr("Exportar\nIFC"), this);
+    m_exportIfcAction->setIcon(Structura::UI::actionIcon(QStringLiteral("dxf.svg")));
+    m_exportIfcAction->setToolTip(tr("Exporta as peças de perfil (pilares, vigas e diagonais, com o comprimento de corte e a seção) em IFC4 para BIM e outros programas"));
+    connect(m_exportIfcAction, &QAction::triggered, this, &MainWindow::onExportIfc);
+    m_importCadAction = new QAction(tr("Importar\nDXF / IFC"), this);
+    m_importCadAction->setIcon(Structura::UI::actionIcon(QStringLiteral("dxf.svg")));
+    m_importCadAction->setToolTip(tr("Cria nós e barras a partir de linhas de um DXF (uma camada por perfil) ou de vigas, pilares e barras de um IFC; escolha o perfil e o material padrão"));
+    connect(m_importCadAction, &QAction::triggered, this, &MainWindow::onImportCad);
     m_sheetsAction = new QAction(tr("Pranchas"), this);
     m_sheetsAction->setIcon(Structura::UI::actionIcon(QStringLiteral("sheets.svg")));
     m_sheetsAction->setToolTip(tr("Gera plantas, elevações com cotas, lista de barras e detalhes de ligações; exporta PDF e DXF"));

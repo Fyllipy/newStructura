@@ -22,6 +22,12 @@ public:
     void report(int value, int total, const QString &detail = QString());
     void setDetail(const QString &detail);
 
+    /// Cancelamento cooperativo: a tarefa declara que aceita cancelar (a janela mostra "Esc cancela") e consulta `isCancelled()` entre as etapas.
+    void setCancellable(bool on) { m_cancellable = on; }
+    [[nodiscard]] bool cancellable() const { return m_cancellable.load(); }
+    void requestCancel() { m_cancelled = true; }
+    [[nodiscard]] bool isCancelled() const { return m_cancelled.load(); }
+
     // leitura pela interface
     [[nodiscard]] int value() const { return m_value.load(); }
     [[nodiscard]] int total() const { return m_total.load(); }
@@ -31,6 +37,8 @@ public:
 private:
     std::atomic<int> m_value {0};
     std::atomic<int> m_total {0};
+    std::atomic<bool> m_cancellable {false};
+    std::atomic<bool> m_cancelled {false};
     mutable QMutex m_mutex;
     QString m_detail;
     bool m_changed {false};
@@ -40,6 +48,9 @@ private:
 /// A interface continua respondendo (sem aceitar cliques). Excecoes do job sao relancadas na thread da interface.
 /// A janela so aparece se o calculo durar mais que ~250 ms. Chamadas aninhadas executam direto, sem nova janela.
 void runBusyImpl(QWidget *parent, const QString &calculation, const QString &detail, const std::function<void(BusyProgress &)> &job);
+
+/// Lancada pelas tarefas que atendem ao cancelamento (Esc) da janela de progresso.
+struct OperationCancelled {};
 
 /// Verdadeiro enquanto houver um calculo em andamento (para suspender salvamento automatico e dicas do mouse).
 [[nodiscard]] bool isBusy();

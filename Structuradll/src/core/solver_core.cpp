@@ -1,4 +1,5 @@
 #include "solver_core.h"
+#include "iterative_solvers.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,16 +14,45 @@
 #include <Eigen/Sparse>
 #include <Eigen/SparseCholesky>
 
+#include "constraints.h"
+#include "links.h"
 #include "load.h"
 #include "material.h"
 #include "member.h"
 #include "node.h"
+#include "nonlinear_engine.h"
 #include "section.h"
 #include "shell_q4.h"
 
 namespace {
 constexpr double kAssemblyTolerance = 1e-12;
 constexpr double kMechanismPivotRatio = 1e-12;
+
+/// Autovalores esparsos (iteracao em subespaco) em vez de matrizes densas: automatico acima de `eigenDenseLimit` graus de liberdade livres.
+bool useSparseEigen(const SolverInput& input, int freeDofs) {
+    return input.eigenSolver == 2 || (input.eigenSolver == 0 && freeDofs > input.eigenDenseLimit);
+}
+
+/// Submatriz dos graus de liberdade livres (`freeIndex[dof]` < 0 = restrito), multiplicada por `sign`.
+Eigen::SparseMatrix<double> restrictToFree(const Eigen::SparseMatrix<double>& matrix, const std::vector<int>& freeIndex, int n, double sign) {
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(static_cast<size_t>(matrix.nonZeros()));
+    for (int col = 0; col < matrix.outerSize(); ++col) {
+        const int c = freeIndex[static_cast<size_t>(col)];
+        if (c < 0) {
+            continue;
+        }
+        for (Eigen::SparseMatrix<double>::InnerIterator it(matrix, col); it; ++it) {
+            const int r = freeIndex[static_cast<size_t>(it.row())];
+            if (r >= 0) {
+                triplets.emplace_back(r, c, sign * it.value());
+            }
+        }
+    }
+    Eigen::SparseMatrix<double> out(n, n);
+    out.setFromTriplets(triplets.begin(), triplets.end());
+    return out;
+}
 
 int toGlobalDof(const std::unordered_map<int, int>& nodeIndexById, int nodeId, int localDof) {
     const auto it = nodeIndexById.find(nodeId);
@@ -76,9 +106,10 @@ void assembleGlobalStiffness(
 // global forces -> local); with rigid zones the flexible part and the zones are registered separately.
 template <typename LoadType>
 void registerBarLoad(Member& member, const LoadType& load) {
+    Eigen::VectorXd flexLocal, rigid;
+    load.localComponents(&member, flexLocal, rigid);
+    member.addRawLoad(flexLocal);   // cargas equivalentes nao condensadas: usadas pelas barras com rotulas plasticas
     if (member.hasRigidZones()) {
-        Eigen::VectorXd flexLocal, rigid;
-        load.localComponents(&member, flexLocal, rigid);
         member.addFixedEndLocal(flexLocal, rigid);
     } else {
         member.addDistributedLoad(load.getEquivalentNodalForces(&member));
@@ -124,6 +155,15 @@ ShellAssembly buildShellAssembly(const SolverInput& input, const std::unordered_
         item.material.nu = data.nu;
         item.material.density = data.density;
         item.material.alpha = data.alpha;
+        if (data.orthotropic) {
+            item.material.orthotropic = true;
+            item.material.E2 = data.E2;
+            item.material.nu12 = data.nu12;
+            item.material.G12 = data.G12;
+            item.material.bend1 = data.bend1;
+            item.material.bend2 = data.bend2;
+            item.material.axis = fem::Vec3(data.axis[0], data.axis[1], data.axis[2]).normalized();
+        }
         item.thickness = data.thickness;
         item.frame = fem::shellFrame(p);
         if (item.frame.area < 1e-14) {
@@ -304,36 +344,14 @@ void assembleGlobalLoad(
             }
         }
 
-        if (const auto distLoad = std::dynamic_pointer_cast<DistributedLoad>(load)) {
-            const auto memberIt = memberById.find(distLoad->getMemberId());
+        if (const auto barLoad = std::dynamic_pointer_cast<BarLoad>(load)) {
+            const auto memberIt = memberById.find(barLoad->getMemberId());
             if (memberIt == memberById.end()) {
-                throw std::runtime_error("Distributed load references unknown member: " + std::to_string(distLoad->getMemberId()));
+                throw std::runtime_error("Member load references unknown member: " + std::to_string(barLoad->getMemberId()));
             }
 
             const auto& member = memberIt->second;
-            const auto equivalentForces = distLoad->getEquivalentNodalForces(member.get());
-            std::array<int, 12> dofIndices{};
-
-            const int nodeI = member->getNodeI()->getId();
-            const int nodeJ = member->getNodeJ()->getId();
-            for (int i = 0; i < 6; ++i) {
-                dofIndices[i] = toGlobalDof(nodeIndexById, nodeI, i);
-                dofIndices[i + 6] = toGlobalDof(nodeIndexById, nodeJ, i);
-            }
-
-            for (int i = 0; i < 12; ++i) {
-                globalLoad(dofIndices[static_cast<size_t>(i)]) += equivalentForces[static_cast<size_t>(i)];
-            }
-        }
-
-        if (const auto distMoment = std::dynamic_pointer_cast<DistributedMoment>(load)) {
-            const auto memberIt = memberById.find(distMoment->getMemberId());
-            if (memberIt == memberById.end()) {
-                throw std::runtime_error("Distributed moment references unknown member: " + std::to_string(distMoment->getMemberId()));
-            }
-
-            const auto& member = memberIt->second;
-            const auto equivalentForces = distMoment->getEquivalentNodalForces(member.get());
+            const auto equivalentForces = barLoad->getEquivalentNodalForces(member.get());
             const int nodeI = member->getNodeI()->getId();
             const int nodeJ = member->getNodeJ()->getId();
             for (int i = 0; i < 6; ++i) {
@@ -472,6 +490,9 @@ bool expandTapers(const SolverInput& in, TaperExpansion& out, std::string& error
     out.input.members.clear();
     out.input.memberLoads.clear();
     out.input.memberMoments.clear();
+    out.input.memberActions.clear();
+    out.input.endSprings.clear();
+    out.input.plasticHinges.clear();
     for (const auto& m : in.members) {
         if (!m.taper) {
             out.input.members.push_back(m);
@@ -546,6 +567,83 @@ bool expandTapers(const SolverInput& in, TaperExpansion& out, std::string& error
                     out.input.memberMoments.push_back(copy);
                 }
             }
+        }
+        // molas de extremidade e rotulas plasticas: as de I ficam no primeiro trecho e as de J no ultimo
+        for (const auto& spring : in.endSprings) {
+            if (spring.memberId != m.id) {
+                continue;
+            }
+            EndSpringData first = spring, last = spring;
+            first.memberId = ids.front();
+            last.memberId = ids.back();
+            for (size_t i = 6; i < 12; ++i) {
+                first.k[i] = -1.0;
+            }
+            for (size_t i = 0; i < 6; ++i) {
+                last.k[i] = -1.0;
+            }
+            out.input.endSprings.push_back(first);
+            out.input.endSprings.push_back(last);
+        }
+        for (const auto& hinge : in.plasticHinges) {
+            if (hinge.memberId == m.id) {
+                PlasticHingeData copy = hinge;
+                copy.memberId = hinge.dof < 6 ? ids.front() : ids.back();
+                out.input.plasticHinges.push_back(copy);
+            }
+        }
+        // cargas com posicao: cada trecho recebe a parte da carga que cai nele (posicoes medidas a partir do no I do trecho)
+        const double totalLength = std::sqrt((nj->second->x - ni->second->x) * (nj->second->x - ni->second->x)
+                                             + (nj->second->y - ni->second->y) * (nj->second->y - ni->second->y)
+                                             + (nj->second->z - ni->second->z) * (nj->second->z - ni->second->z));
+        const double segmentLength = totalLength / n;
+        for (const auto& action : in.memberActions) {
+            if (action.memberId != m.id) {
+                continue;
+            }
+            for (int k = 0; k < n; ++k) {
+                const double s0 = k * segmentLength, s1 = (k + 1) * segmentLength;
+                MemberActionData copy = action;
+                copy.memberId = ids[static_cast<size_t>(k)];
+                if (action.kind == 3) {
+                    out.input.memberActions.push_back(copy);   // deformacao imposta: em todos os trechos
+                } else if (action.kind == 0) {
+                    const double lo = std::max(std::min(action.a, action.b), s0), hi = std::min(std::max(action.a, action.b), s1);
+                    if (hi - lo <= 1e-12 * totalLength) {
+                        continue;
+                    }
+                    const double span = action.b - action.a;
+                    auto valueAt = [&](double s, size_t c) { return action.v1[c] + (action.v2[c] - action.v1[c]) * (std::abs(span) > 0.0 ? (s - action.a) / span : 0.0); };
+                    for (size_t c = 0; c < 3; ++c) {
+                        copy.v1[c] = valueAt(lo, c);
+                        copy.v2[c] = valueAt(hi, c);
+                    }
+                    copy.a = lo - s0;
+                    copy.b = hi - s0;
+                    out.input.memberActions.push_back(copy);
+                } else {
+                    const bool last = k == n - 1;
+                    if (action.a >= s0 - 1e-12 * totalLength && (action.a < s1 || last)) {
+                        copy.a = std::min(std::max(action.a - s0, 0.0), segmentLength);
+                        out.input.memberActions.push_back(copy);
+                    }
+                }
+            }
+        }
+    }
+    for (const auto& action : in.memberActions) {
+        if (out.subMembers.find(action.memberId) == out.subMembers.end()) {
+            out.input.memberActions.push_back(action);
+        }
+    }
+    for (const auto& spring : in.endSprings) {
+        if (out.subMembers.find(spring.memberId) == out.subMembers.end()) {
+            out.input.endSprings.push_back(spring);
+        }
+    }
+    for (const auto& hinge : in.plasticHinges) {
+        if (out.subMembers.find(hinge.memberId) == out.subMembers.end()) {
+            out.input.plasticHinges.push_back(hinge);
         }
     }
     // cargas e momentos das barras nao subdivididas
@@ -750,6 +848,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             auto section = std::make_shared<Section>(sectionData.id, sectionData.A, sectionData.Iz, sectionData.Iy, sectionData.J);
             section->setShearAreas(sectionData.Ay, sectionData.Az);
             section->setCw(sectionData.Cw);
+            section->setShearCenter(sectionData.scY, sectionData.scZ);
             sections.push_back(section);
             sectionById[sectionData.id] = section;
         }
@@ -804,10 +903,30 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 releaseFlags[k] = memberData.releases[k] != 0;
             }
             member->setReleases(releaseFlags);
+            for (const auto& spring : input.endSprings) {
+                if (spring.memberId == memberData.id) {
+                    member->setEndSprings(spring.k);
+                }
+            }
+            for (const auto& hingeData : input.plasticHinges) {
+                if (hingeData.memberId == memberData.id) {
+                    if (hingeData.dof < 0 || hingeData.dof >= 12 || (hingeData.dof % 6) < 3) {
+                        throw std::runtime_error("Plastic hinge on member " + std::to_string(memberData.id) + ": the hinge must be on a rotation (dof 3..5 or 9..11)");
+                    }
+                    PlasticHinge hinge;
+                    hinge.enabled = true;
+                    hinge.kElastic = hingeData.kElastic;
+                    hinge.yieldMoment = hingeData.yieldMoment;
+                    hinge.hardeningRatio = hingeData.hardeningRatio;
+                    hinge.axialYield = hingeData.axialYield;
+                    hinge.exponent = hingeData.exponent > 0.0 ? hingeData.exponent : 2.0;
+                    member->setPlasticHinge(hingeData.dof, hinge);
+                }
+            }
             if (memberData.warping != 0 && sectionIt->second->getCw() > 0.0) {
-                if (input.bucklingModes > 0 || input.modalModes > 0) {
+                if (input.modalModes > 0) {
                     if (!warpingIgnoredForModes) {
-                        warnings.push_back("Torsion with warping is not combined with buckling/modal analysis: the St. Venant torsion model was used in this run");
+                        warnings.push_back("Torsion with warping is not combined with the modal analysis: the St. Venant torsion model was used in this run");
                     }
                     warpingIgnoredForModes = true;
                 } else {
@@ -853,6 +972,24 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 momentData.memberId,
                 Eigen::Vector3d(momentData.mx, momentData.my, momentData.mz),
                 system));
+        }
+
+        for (const auto& actionData : input.memberActions) {
+            const DistributedLoad::CoordinateSystem system =
+                actionData.system == DistributedLoadSystem::Local
+                ? DistributedLoad::CoordinateSystem::Local
+                : DistributedLoad::CoordinateSystem::Global;
+            if (actionData.kind < 0 || actionData.kind > 3) {
+                throw std::runtime_error("Unknown member load kind: " + std::to_string(actionData.kind));
+            }
+            loads.push_back(std::make_shared<MemberAction>(
+                actionData.memberId,
+                static_cast<MemberAction::Kind>(actionData.kind),
+                system,
+                actionData.a,
+                actionData.b,
+                Eigen::Vector3d(actionData.v1[0], actionData.v1[1], actionData.v1[2]),
+                Eigen::Vector3d(actionData.v2[0], actionData.v2[1], actionData.v2[2])));
         }
 
         std::vector<int> restrainedDof;
@@ -949,9 +1086,35 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         fullStiffness += kShell;
         assembleTies(input, nodeIndexById, fullStiffness, totalDof, kTie);
         assembleSprings(input, nodeIndexById, inactiveSprings, totalDof, kSpring);
-        const Eigen::SparseMatrix<double> kExtra = kShell + kTie + kSpring;
         fullStiffness += kTie + kSpring;
         addShellLoads(input, shellAssembly, fullLoad);
+
+        // vinculos (diafragmas, ligacoes rigidas, apoios inclinados, vinculos gerais) por penalidade e ligacoes entre nos
+        LinkSet links(input, nodeIndexById, nodes);
+        const std::vector<ConstraintRow> constraintRows = buildConstraintRows(input, nodeIndexById, nodes, fullStiffness, totalDof);
+        Eigen::SparseMatrix<double> kCon;
+        assembleConstraintStiffness(constraintRows, totalDof, kCon);
+        const Eigen::SparseMatrix<double> kLinear = kShell + kTie + kSpring + kCon;   // parte constante durante a analise (sem barras nem ligacoes)
+        Eigen::SparseMatrix<double> kLinks(totalDof, totalDof);
+        {
+            Eigen::VectorXd scratch = Eigen::VectorXd::Zero(totalDof);
+            std::vector<Eigen::Triplet<double>> linkTriplets;
+            links.evaluate(Eigen::VectorXd::Zero(totalDof), scratch, linkTriplets);   // rigidez inicial (exata se as leis sao lineares)
+            kLinks.setFromTriplets(linkTriplets.begin(), linkTriplets.end());
+        }
+        const Eigen::SparseMatrix<double> kExtra = kLinear + kLinks;
+        fullStiffness += kCon + kLinks;
+
+        bool anyHinge = false;
+        for (const auto& member : members) {
+            anyHinge = anyHinge || member->hasPlasticHinges();
+        }
+        // o motor incremental trata as rotulas plasticas, as ligacoes nao lineares e o pedido explicito (controle de deslocamento, etc.)
+        const bool useEngine = anyHinge || links.nonlinear() || input.nonlinear.force;
+        if (useEngine && (input.bucklingModes > 0 || input.modalModes > 0)) {
+            warnings.push_back("Buckling and modal analyses are not combined with the incremental nonlinear analysis (plastic hinges, nonlinear links): they were skipped; "
+                               "run them on the elastic model");
+        }
 
         Eigen::SparseMatrix<double> stiffnessForSolve = fullStiffness;
         Eigen::VectorXd loadForSolve = fullLoad;
@@ -980,11 +1143,62 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 }
             }
         }
+        Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> linearSolver;
+        Eigen::VectorXd displacement = Eigen::VectorXd::Zero(totalDof);
+        if (!useEngine) {
         applyBoundaryConditions(restrainedDof, stiffnessForSolve, loadForSolve);
 
-        Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> linearSolver;
+        bool solvedIteratively = false;
+        if (input.linearSolver == 1) {
+            // gradiente conjugado precondicionado (Cholesky incompleta): evita a fatoracao exata em modelos grandes; sem a fatoracao nao ha verificacao de mecanismo
+            Eigen::VectorXd iterative = Eigen::VectorXd::Zero(totalDof);
+            int iterations = 0;
+            double error = 0.0;
+            if (Structura::Solver::solvePreconditionedCG(stiffnessForSolve, loadForSolve, iterative, input.iterativeTolerance, input.iterativeMaxIterations, &iterations, &error)) {
+                displacement = iterative;
+                solvedIteratively = true;
+                char text[200];
+                std::snprintf(text, sizeof(text), "Iterative solver (PCG, incomplete Cholesky): %d iterations, relative residual %.1e; mechanism check skipped", iterations, error);
+                warnings.push_back(text);
+            } else {
+                warnings.push_back("Iterative solver (PCG) did not converge: the direct solution was used");
+            }
+        }
+        if (!solvedIteratively) {
         linearSolver.compute(stiffnessForSolve);
         if (linearSolver.info() != Eigen::Success) {
+            // pivo nulo: localiza os graus de liberdade sem restricao com a matriz regularizada (K + eps I), cujos pivos de mecanismo ficam ~eps
+            double maxDiagonal = 0.0;
+            for (int i = 0; i < totalDof; ++i) {
+                maxDiagonal = std::max(maxDiagonal, std::abs(stiffnessForSolve.coeff(i, i)));
+            }
+            Eigen::SparseMatrix<double> regularized = stiffnessForSolve;
+            for (int i = 0; i < totalDof; ++i) {
+                regularized.coeffRef(i, i) += 1e-9 * maxDiagonal;
+            }
+            Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> probe(regularized);
+            std::string list;
+            int count = 0;
+            std::vector<bool> restrained(static_cast<size_t>(totalDof), false);
+            for (const int dof : restrainedDof) {
+                restrained[static_cast<size_t>(dof)] = true;
+            }
+            if (probe.info() == Eigen::Success) {
+                const auto pivots = probe.vectorD();
+                const auto& permutation = probe.permutationP().indices();
+                for (int i = 0; i < totalDof; ++i) {
+                    const double diagonal = std::abs(stiffnessForSolve.coeff(i, i));
+                    if (!restrained[static_cast<size_t>(i)] && diagonal > 0.0 && pivots(permutation(i)) < 1e-7 * maxDiagonal) {
+                        if (++count <= 8) {
+                            list += (list.empty() ? "" : "; ") + dofLabel(i);
+                        }
+                    }
+                }
+            }
+            if (count > 0) {
+                throw std::runtime_error("Unstable structure (mechanism): " + std::to_string(count) + " degree(s) of freedom not restrained by the stiffness of the model (" + list
+                                         + (count > 8 ? "; ..." : "") + "); check supports, releases and connections");
+            }
             throw std::runtime_error("Failed to decompose global stiffness matrix");
         }
 
@@ -993,12 +1207,25 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             // (estrutura hipostatica); o sistema "resolve" com deslocamentos sem sentido, entao e erro e nao aviso
             const auto pivots = linearSolver.vectorD();
             const auto& permutation = linearSolver.permutationP().indices();
+            std::vector<std::string> unstable;
+            int unstableCount = 0;
             for (int i = 0; i < totalDof; ++i) {
                 const double diagonal = std::abs(stiffnessForSolve.coeff(i, i));
                 const double pivot = pivots(permutation(i));
                 if (diagonal > 0.0 && (pivot <= 0.0 || pivot < kMechanismPivotRatio * diagonal)) {
-                    throw std::runtime_error("Unstable structure (mechanism): " + dofLabel(i) + " is not restrained by the stiffness of the model; check supports, releases and connections");
+                    ++unstableCount;
+                    if (unstable.size() < 8) {
+                        unstable.push_back(dofLabel(i));
+                    }
                 }
+            }
+            if (unstableCount > 0) {
+                std::string list;
+                for (const auto& label : unstable) {
+                    list += (list.empty() ? "" : "; ") + label;
+                }
+                throw std::runtime_error("Unstable structure (mechanism): " + std::to_string(unstableCount) + " degree(s) of freedom not restrained by the stiffness of the model ("
+                                         + list + (unstableCount > 8 ? "; ..." : "") + "); check supports, releases and connections");
             }
         }
         {
@@ -1013,10 +1240,11 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 }
             }
         }
-        Eigen::VectorXd displacement = linearSolver.solve(loadForSolve);
+        displacement = linearSolver.solve(loadForSolve);
         if (linearSolver.info() != Eigen::Success) {
             throw std::runtime_error("Failed to solve linear system");
         }
+        }   // !solvedIteratively
 
         const double residual = (stiffnessForSolve * displacement - loadForSolve).norm();
         // tolerancia relativa a soma dos termos |K||u| (ligacoes por penalidade tem rigidez muito maior que o resto do modelo)
@@ -1024,17 +1252,15 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         if (residual > std::max(1e-6, 1e-9 * residualScale)) {
             throw std::runtime_error("Linear solve residual is too large: " + std::to_string(residual));
         }
+        }   // !useEngine
 
         auto registerMemberLoads = [&]() {
             for (auto& member : members) {
                 member->clearDistributedLoads();
             }
             for (const auto& load : loads) {
-                if (const auto distributedLoad = std::dynamic_pointer_cast<DistributedLoad>(load)) {
-                    registerBarLoad(*memberById.at(distributedLoad->getMemberId()), *distributedLoad);
-                }
-                if (const auto distributedMoment = std::dynamic_pointer_cast<DistributedMoment>(load)) {
-                    registerBarLoad(*memberById.at(distributedMoment->getMemberId()), *distributedMoment);
+                if (const auto barLoad = std::dynamic_pointer_cast<BarLoad>(load)) {
+                    registerBarLoad(*memberById.at(barLoad->getMemberId()), *barLoad);
                 }
             }
         };
@@ -1053,7 +1279,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
 
         std::vector<double> bucklingFactors;
         std::vector<std::vector<double>> bucklingShapes;
-        if (input.bucklingModes > 0 && !input.secondOrder) {
+        if (input.bucklingModes > 0 && !input.secondOrder && !useEngine) {
             registerMemberLoads();
             publishDisplacements();
             Eigen::SparseMatrix<double> k0;
@@ -1089,46 +1315,60 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 }
             }
             const int n = static_cast<int>(freeDofs.size());
-            if (n > 2200) {
-                throw std::runtime_error("Buckling analysis: model too large for the dense eigen solver (" + std::to_string(n) + " free degrees of freedom; limit 2200)");
-            }
             std::vector<int> freeIndex(static_cast<size_t>(totalDof), -1);
             for (int i = 0; i < n; ++i) {
                 freeIndex[static_cast<size_t>(freeDofs[static_cast<size_t>(i)])] = i;
             }
-            Eigen::MatrixXd matA = Eigen::MatrixXd::Zero(n, n);
-            Eigen::MatrixXd matB = Eigen::MatrixXd::Zero(n, n);
-            for (int col = 0; col < k0.outerSize(); ++col) {
-                for (Eigen::SparseMatrix<double>::InnerIterator it(k0, col); it; ++it) {
-                    const int r = freeIndex[static_cast<size_t>(it.row())], c = freeIndex[static_cast<size_t>(col)];
-                    if (r >= 0 && c >= 0) {
-                        matA(r, c) += it.value();
+            Eigen::VectorXd mu;
+            Eigen::MatrixXd modeVectors;
+            if (useSparseEigen(input, n)) {
+                const auto result = Structura::Solver::largestGeneralizedEigenpairs(restrictToFree(k0, freeIndex, n, 1.0), restrictToFree(kg, freeIndex, n, -1.0),
+                                                                                    input.bucklingModes, input.iterativeTolerance);
+                if (result.mu.size() == 0) {
+                    throw std::runtime_error("Buckling analysis: the sparse eigenvalue problem failed (" + result.error + ")");
+                }
+                if (!result.converged) {
+                    warnings.push_back("Buckling analysis: subspace iteration did not fully converge; the highest modes may be inaccurate");
+                }
+                // ordem crescente, como a do solver denso
+                mu = result.mu.reverse();
+                modeVectors = result.vectors.rowwise().reverse();
+            } else {
+                Eigen::MatrixXd matA = Eigen::MatrixXd::Zero(n, n);
+                Eigen::MatrixXd matB = Eigen::MatrixXd::Zero(n, n);
+                for (int col = 0; col < k0.outerSize(); ++col) {
+                    for (Eigen::SparseMatrix<double>::InnerIterator it(k0, col); it; ++it) {
+                        const int r = freeIndex[static_cast<size_t>(it.row())], c = freeIndex[static_cast<size_t>(col)];
+                        if (r >= 0 && c >= 0) {
+                            matA(r, c) += it.value();
+                        }
                     }
                 }
-            }
-            for (int col = 0; col < kg.outerSize(); ++col) {
-                for (Eigen::SparseMatrix<double>::InnerIterator it(kg, col); it; ++it) {
-                    const int r = freeIndex[static_cast<size_t>(it.row())], c = freeIndex[static_cast<size_t>(col)];
-                    if (r >= 0 && c >= 0) {
-                        matB(r, c) -= it.value();
+                for (int col = 0; col < kg.outerSize(); ++col) {
+                    for (Eigen::SparseMatrix<double>::InnerIterator it(kg, col); it; ++it) {
+                        const int r = freeIndex[static_cast<size_t>(it.row())], c = freeIndex[static_cast<size_t>(col)];
+                        if (r >= 0 && c >= 0) {
+                            matB(r, c) -= it.value();
+                        }
                     }
                 }
+                Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es(matB, matA);   // B x = mu A x, A positive definite
+                if (es.info() != Eigen::Success) {
+                    throw std::runtime_error("Buckling analysis: the eigenvalue problem failed (unstable or singular stiffness)");
+                }
+                mu = es.eigenvalues();
+                modeVectors = es.eigenvectors();
             }
-            Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es(matB, matA);   // B x = mu A x, A positive definite
-            if (es.info() != Eigen::Success) {
-                throw std::runtime_error("Buckling analysis: the eigenvalue problem failed (unstable or singular stiffness)");
-            }
-            const Eigen::VectorXd& mu = es.eigenvalues();
             bucklingFactors.clear();
             bucklingShapes.clear();
-            for (int k = n - 1; k >= 0 && static_cast<int>(bucklingFactors.size()) < input.bucklingModes; --k) {
+            for (int k = static_cast<int>(mu.size()) - 1; k >= 0 && static_cast<int>(bucklingFactors.size()) < input.bucklingModes; --k) {
                 if (mu(k) <= 1e-14) {
                     break;
                 }
                 std::vector<double> shape(static_cast<size_t>(totalDof), 0.0);
                 double maxAbs = 0.0;
                 for (int i = 0; i < n; ++i) {
-                    const double value = es.eigenvectors()(i, k);
+                    const double value = modeVectors(i, k);
                     shape[static_cast<size_t>(freeDofs[static_cast<size_t>(i)])] = value;
                     if (i % 6 < 3 || true) {
                         maxAbs = std::max(maxAbs, std::abs(value));
@@ -1147,7 +1387,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         std::vector<double> modalOmega;
         std::vector<std::vector<double>> modalShapes;
         std::vector<std::array<double, 3>> modalMassRatio;
-        if (input.modalModes > 0 && !input.secondOrder) {
+        if (input.modalModes > 0 && !input.secondOrder && !useEngine) {
             Eigen::SparseMatrix<double> massMatrix(totalDof, totalDof);
             {
                 std::vector<Eigen::Triplet<double>> triplets;
@@ -1199,24 +1439,25 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 }
             }
             const int n = static_cast<int>(freeDofs.size());
-            if (n > 2200) {
-                throw std::runtime_error("Modal analysis: model too large for the dense eigen solver (" + std::to_string(n) + " free degrees of freedom; limit 2200)");
-            }
-            Eigen::MatrixXd matK = Eigen::MatrixXd::Zero(n, n);
-            Eigen::MatrixXd matM = Eigen::MatrixXd::Zero(n, n);
-            for (int col = 0; col < fullStiffness.outerSize(); ++col) {
-                for (Eigen::SparseMatrix<double>::InnerIterator it(fullStiffness, col); it; ++it) {
-                    const int r = freeIndex[static_cast<size_t>(it.row())], c = freeIndex[static_cast<size_t>(col)];
-                    if (r >= 0 && c >= 0) {
-                        matK(r, c) += it.value();
+            const bool sparseModal = useSparseEigen(input, n);
+            Eigen::MatrixXd matK, matM;
+            if (!sparseModal) {
+                matK = Eigen::MatrixXd::Zero(n, n);
+                matM = Eigen::MatrixXd::Zero(n, n);
+                for (int col = 0; col < fullStiffness.outerSize(); ++col) {
+                    for (Eigen::SparseMatrix<double>::InnerIterator it(fullStiffness, col); it; ++it) {
+                        const int r = freeIndex[static_cast<size_t>(it.row())], c = freeIndex[static_cast<size_t>(col)];
+                        if (r >= 0 && c >= 0) {
+                            matK(r, c) += it.value();
+                        }
                     }
                 }
-            }
-            for (int col = 0; col < massMatrix.outerSize(); ++col) {
-                for (Eigen::SparseMatrix<double>::InnerIterator it(massMatrix, col); it; ++it) {
-                    const int r = freeIndex[static_cast<size_t>(it.row())], c = freeIndex[static_cast<size_t>(col)];
-                    if (r >= 0 && c >= 0) {
-                        matM(r, c) += it.value();
+                for (int col = 0; col < massMatrix.outerSize(); ++col) {
+                    for (Eigen::SparseMatrix<double>::InnerIterator it(massMatrix, col); it; ++it) {
+                        const int r = freeIndex[static_cast<size_t>(it.row())], c = freeIndex[static_cast<size_t>(col)];
+                        if (r >= 0 && c >= 0) {
+                            matM(r, c) += it.value();
+                        }
                     }
                 }
             }
@@ -1231,19 +1472,35 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             if (totalMass[0] <= 0.0) {
                 throw std::runtime_error("Modal analysis: the model has no mass (set the material density / unit weight)");
             }
-            Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es(matM, matK);   // M x = mu K x, K positive definite
-            if (es.info() != Eigen::Success) {
-                throw std::runtime_error("Modal analysis: the eigenvalue problem failed (unstable or singular stiffness)");
+            Eigen::VectorXd mu;
+            Eigen::MatrixXd modeVectors;
+            if (sparseModal) {
+                const auto result = Structura::Solver::largestGeneralizedEigenpairs(restrictToFree(fullStiffness, freeIndex, n, 1.0), restrictToFree(massMatrix, freeIndex, n, 1.0),
+                                                                                    input.modalModes, input.iterativeTolerance);
+                if (result.mu.size() == 0) {
+                    throw std::runtime_error("Modal analysis: the sparse eigenvalue problem failed (" + result.error + ")");
+                }
+                if (!result.converged) {
+                    warnings.push_back("Modal analysis: subspace iteration did not fully converge; the highest modes may be inaccurate");
+                }
+                mu = result.mu.reverse();
+                modeVectors = result.vectors.rowwise().reverse();
+            } else {
+                Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es(matM, matK);   // M x = mu K x, K positive definite
+                if (es.info() != Eigen::Success) {
+                    throw std::runtime_error("Modal analysis: the eigenvalue problem failed (unstable or singular stiffness)");
+                }
+                mu = es.eigenvalues();
+                modeVectors = es.eigenvectors();
             }
-            const Eigen::VectorXd& mu = es.eigenvalues();
             const double muMax = mu.size() > 0 ? mu(mu.size() - 1) : 0.0;
-            for (int k = n - 1; k >= 0 && static_cast<int>(modalOmega.size()) < input.modalModes; --k) {
+            for (int k = static_cast<int>(mu.size()) - 1; k >= 0 && static_cast<int>(modalOmega.size()) < input.modalModes; --k) {
                 if (mu(k) <= muMax * 1e-14 || mu(k) <= 0.0) {
                     break;
                 }
                 Eigen::VectorXd full = Eigen::VectorXd::Zero(totalDof);
                 for (int i = 0; i < n; ++i) {
-                    full(freeDofs[static_cast<size_t>(i)]) = es.eigenvectors()(i, k);
+                    full(freeDofs[static_cast<size_t>(i)]) = modeVectors(i, k);
                 }
                 const double generalizedMass = full.dot(massMatrix * full);
                 std::array<double, 3> ratio{0.0, 0.0, 0.0};
@@ -1262,7 +1519,29 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             }
         }
 
-        if (input.secondOrder) {
+        // Analise incremental nao linear: Newton-Raphson com passos de carga ou de deslocamento
+        NonlinearOutcome nonlinearOutcome;
+        Eigen::VectorXd engineExternal;
+        if (useEngine) {
+            registerMemberLoads();
+            engineExternal = fullLoad;
+            for (const auto& member : members) {
+                if (member->hasPlasticHinges()) {
+                    // a parte flexivel das cargas das barras com rotulas entra no equilibrio local da barra (Member::evaluateNonlinear)
+                    const Eigen::VectorXd flexNodal = member->localAxisForcesToGlobalNodal(member->rawLoad());
+                    const int nodeI = member->getNodeI()->getId(), nodeJ = member->getNodeJ()->getId();
+                    for (int i = 0; i < 6; ++i) {
+                        engineExternal(toGlobalDof(nodeIndexById, nodeI, i)) -= flexNodal(i);
+                        engineExternal(toGlobalDof(nodeIndexById, nodeJ, i)) -= flexNodal(i + 6);
+                    }
+                }
+            }
+            NonlinearContext context{input, nodes, members, nodeIndexById, restrainedDof, totalDof, kLinear, engineExternal, links, warnings, fullLoad};
+            nonlinearOutcome = runNonlinearAnalysis(context, input.secondOrder);
+            displacement = nonlinearOutcome.displacement;
+        }
+
+        if (input.secondOrder && !useEngine) {
             registerMemberLoads();
             enum class Status { Converged, Unstable, NoConvergence, Singular };
             // Iteracao P-delta (K + Kg(N)) com o fator de carga `lambda`, a partir de `start`; deixa o resultado em `displacement`.
@@ -1377,8 +1656,9 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
 
         publishDisplacements();
 
-        const Eigen::VectorXd reactionVector = fullStiffness * displacement - fullLoad;
-        const Eigen::VectorXd springReaction = -(kSpring * displacement);
+        const Eigen::VectorXd reactionVector = useEngine ? Eigen::VectorXd(nonlinearOutcome.internalForce - nonlinearOutcome.loadFactor * engineExternal)
+                                                          : Eigen::VectorXd(fullStiffness * displacement - fullLoad);
+        const Eigen::VectorXd springReaction = -(kSpring * displacement) + constraintReactionVector(constraintRows, displacement, totalDof);
         for (const auto& node : nodes) {
             for (int localDof = 0; localDof < 6; ++localDof) {
                 const int globalDof = toGlobalDof(nodeIndexById, node->getId(), localDof);
@@ -1424,19 +1704,12 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         }
 
         for (const auto& load : loads) {
-            if (const auto distributedLoad = std::dynamic_pointer_cast<DistributedLoad>(load)) {
-                const auto memberIt = memberById.find(distributedLoad->getMemberId());
+            if (const auto barLoad = std::dynamic_pointer_cast<BarLoad>(load)) {
+                const auto memberIt = memberById.find(barLoad->getMemberId());
                 if (memberIt == memberById.end()) {
-                    throw std::runtime_error("Distributed load references unknown member in post-processing");
+                    throw std::runtime_error("Member load references unknown member in post-processing");
                 }
-                registerBarLoad(*memberIt->second, *distributedLoad);
-            }
-            if (const auto distributedMoment = std::dynamic_pointer_cast<DistributedMoment>(load)) {
-                const auto memberIt = memberById.find(distributedMoment->getMemberId());
-                if (memberIt == memberById.end()) {
-                    throw std::runtime_error("Distributed moment references unknown member in post-processing");
-                }
-                registerBarLoad(*memberIt->second, *distributedMoment);
+                registerBarLoad(*memberIt->second, *barLoad);
             }
         }
 
@@ -1450,6 +1723,25 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         output.modalOmega = modalOmega;
         output.modalShapes = modalShapes;
         output.modalMassRatio = modalMassRatio;
+        output.constraintForces = constraintForces(constraintRows, displacement);
+        output.nonlinear = NonlinearSummary{};
+        if (useEngine) {
+            output.nonlinear.used = true;
+            output.nonlinear.converged = nonlinearOutcome.completed;
+            output.nonlinear.loadFactor = nonlinearOutcome.loadFactor;
+            output.nonlinear.steps = nonlinearOutcome.steps;
+            output.nonlinear.iterations = nonlinearOutcome.iterations;
+            output.nonlinear.curve = nonlinearOutcome.curve;
+            output.nonlinear.links = links.results();
+            for (const auto& member : members) {
+                for (int dof = 0; dof < 12; ++dof) {
+                    const PlasticHinge& hinge = member->getPlasticHinge(dof);
+                    if (hinge.enabled) {
+                        output.nonlinear.hinges.push_back({member->getId(), dof, hinge.plasticRotation, hinge.moment, hinge.plasticRotation != 0.0 || hinge.yielded});
+                    }
+                }
+            }
+        }
         output.warnings = warnings;
         errorMessage.clear();
         return true;

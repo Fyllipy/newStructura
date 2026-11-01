@@ -15,6 +15,17 @@ Total mapeado: 44 arquivos.
 - `src/app/services/SectionPlacementService.cpp`: calcula a excentricidade do eixo da barra a partir do ponto de referencia da secao + deslocamento, as extensoes da secao e as inercias nos eixos de referencia (Mohr).
 - `src/app/UndoRedoService.cpp`: encapsula `QUndoStack` e cria comandos de undo/redo para edicoes de cena/propriedades.
 
+- `src/app/services/WindStaticService.cpp`: vento estatico em edificios (NBR 6123:2023): S2 das Tabelas 1 a 3, classe, coeficientes de forma da Tabela 6, forca por pavimento e excentricidade (ver `docs/VENTO_ESTATICO.md`).
+- `src/app/services/PositionedLoadConversion.h`: converte as cargas de barra com posicao (trapezoidais, pontuais, momentos) do modelo do solver nas cargas do pos-processador de diagramas.
+- `Structuradll/src/member_action.cpp`: forcas equivalentes das cargas de barra com posicao (trapezoidal/parcial, pontual, momento pontual, temperatura e retracao), com zonas rigidas.
+- `Structuradll/src/member_nonlinear.cpp`: molas de extremidade e rotulas plasticas bilineares (equilibrio local por Newton, rigidez tangente condensada, interacao N-M).
+- `Structuradll/src/core/constraints.cpp`: diafragmas rigidos, ligacoes rigidas, apoios inclinados e vinculos lineares por penalidade.
+- `Structuradll/src/core/links.cpp`: ligacoes entre dois nos com leis de forca-deformacao por grau de liberdade (so compressao, folga, elastoplastica, multilinear).
+- `Structuradll/src/core/nonlinear_engine.cpp`: motor incremental Newton-Raphson (controle de carga e de deslocamento, reducao de passo, 2a ordem, criterios de forca/deslocamento/energia).
+- `src/ui/MainWindowMemberActions.cpp`, `src/ui/MemberActionDialog.cpp`: comando e dialogo das cargas de barra com posicao.
+- `src/ui/MainWindowConstraints.cpp`, `src/ui/ConnectivityDialog.cpp`, `src/ui/MemberEndsDialog.cpp`, `src/ui/NonlinearOptionsDialog.cpp`, `src/ui/CapacityCurveDialog.cpp`: vinculos entre nos, ligacoes de extremidade e rotulas plasticas, opcoes e resultados da analise nao linear.
+- `src/ui/MainWindowWind.cpp`, `src/ui/WindStaticDialog.cpp`: geracao dos casos de vento estatico em edificios.
+
 ## Entrada
 
 - `src/main.cpp`: ponto de entrada da aplicacao; configura formato OpenGL/VTK, inicializa `QApplication` e abre `MainWindow`.
@@ -55,6 +66,9 @@ Total mapeado: 44 arquivos.
 - `src/viz/LoadSupportVisualMapper.cpp`: converte dados de cargas/apoios da aplicacao para estruturas visuais do `SceneController`.
 - `src/viz/LocalCoordinateSystem.cpp`: calcula/desenha sistema de eixos locais de barras.
 - `src/viz/SceneController.cpp`: controlador principal da cena VTK (atores, pickers, grid, barras/nos, highlights e render requests).
+
+- Detalhamento: `src/app/services/FabricationModel`, `FabricationDrawing`, `DstvExporter`, `src/drawing/DrawingSymbols`; ver `docs/DETALHAMENTO.md`.
+- Estabilidade, cascas ortotropicas e combinacoes condicionais: `src/app/services/EffectiveLengthService`, `LoadHypothesisService`, `ResultsEnvelopeService`, `ConstructionStageService`; `src/app/services/ResultsBinaryStore`, `src/ui/EffectiveLengthDialog`, `Structuradll/src/core/iterative_solvers`; ver `docs/ESTABILIDADE_E_RESULTADOS.md`.
 
 ## Nota
 

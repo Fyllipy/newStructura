@@ -1,6 +1,7 @@
 #include "design/BeamExtras.h"
 
 #include "design/Nbr8800.h"
+#include "design/StiffenerDesign.h"
 
 #include <algorithm>
 #include <cmath>
@@ -222,6 +223,98 @@ std::vector<CheckResult> beamExtraChecks(const BarDesignInput &in, const BeamExt
             c.lines.push_back(fmt("Secao com lamela %.0f x %.1f mm (%s): Ic = %.4g mm4, Wc = %.0f mm3; Mx,Rd = Wc fy / ga1 = %.0f x %.0f / %.2f = %.2f kN*m (elastico: contencao lateral e classificacao nao consideradas); M_Sd = %.2f kN*m",
                                   b, t, two ? "duas mesas" : "mesa superior", ic, wc, wc, fy, ctx.gammaA1, mRdPlated / kKnm, mPlated / kKnm));
             out.push_back(std::move(c));
+        }
+    }
+
+    // ---- 5.7.9 e 5.4.3.1.3: enrijecedores transversais de alma ----------------------------------------------------------------------
+    if (iSection && in.stiffSides > 0 && in.stiffWidth > 0.0 && in.stiffThickness > 0.0) {
+        namespace St = Structura::Design::Stiffeners;
+        St::StiffenerInput si;
+        si.d = s.d;
+        si.h = s.h > 0.0 ? s.h : s.d - 2.0 * s.tf;
+        si.tw = s.tw;
+        si.bf = s.bf;
+        si.tf = s.tf;
+        si.fy = fy;
+        si.fu = fu;
+        si.E = E;
+        si.gammaA1 = ctx.gammaA1;
+        si.gammaA2 = ctx.gammaA2;
+        si.gammaW2 = ctx.gammaW2;
+        si.sides = in.stiffSides;
+        si.b = in.stiffWidth;
+        si.t = in.stiffThickness;
+        si.cut = in.stiffCut;
+        si.fitted = in.stiffFitted;
+        si.weldLeg = in.stiffWeldLeg;
+        si.fw = in.webWeldFw;
+        si.bearing = in.stiffBearing;
+        si.unbracedLength = ctx.lb;
+        auto emit = [&](const char *id, const char *title, double force, bool interior, bool atEnd) {
+            if (force <= 0.0) {
+                return;
+            }
+            si.force = force;
+            si.interior = interior;
+            si.atEnd = atEnd;
+            const St::StiffenerResult r = St::checkStiffener(si);
+            const St::StiffenerCheck *worst = &r.checks.front();
+            for (const St::StiffenerCheck &sub : r.checks) {
+                if (sub.ratio > worst->ratio) {
+                    worst = &sub;
+                }
+            }
+            CheckResult c;
+            c.id = id;
+            c.title = title;
+            c.clause = ctx.clauseTag + ", 5.7.9";
+            c.demand = worst->demand;
+            c.resistance = worst->resistance;
+            c.unit = worst->unit;
+            c.ratio = r.maxRatio;
+            c.lines.push_back(fmt("F_Sd = %.1f kN; a alma sem enrijecedor resiste F_Rd = %.1f kN (%s): enrijecedor %s.", force / kKn, r.webResistance / kKn, r.webGoverning.c_str(), r.required ? "necessario" : "dispensavel"));
+            for (const St::StiffenerCheck &sub : r.checks) {
+                c.lines.push_back(fmt("%s [%s]  (%s): razao %.3f", sub.title.c_str(), sub.ratio <= 1.0 + 1e-9 ? "atende" : "NAO ATENDE", sub.clause.c_str(), sub.ratio));
+                for (const std::string &line : sub.lines) {
+                    c.lines.push_back("   " + line);
+                }
+            }
+            if (r.maxRatio > 1.0 + 1e-9) {
+                const St::StiffenerProposal p = St::proposeStiffener(si);
+                c.lines.push_back(p.found ? fmt("Proposta: %s de %.0f x %.1f mm atende todas as verificacoes acima.", si.sides >= 2 ? "par de chapas" : "chapa", p.b, p.t)
+                                          : "Nenhuma chapa da serie comercial (largura ate metade da mesa) atende: aumente a quantidade de enrijecedores ou use chapas de reforco da alma (5.7.7.2).");
+            }
+            out.push_back(std::move(c));
+        };
+        emit("stiffener_support_start", "Enrijecedor de apoio (extremidade inicial)", env.vy.front(), false, true);
+        emit("stiffener_support_end", "Enrijecedor de apoio (extremidade final)", env.vy.back(), false, true);
+        emit("stiffener_load", "Enrijecedor sob forca concentrada", in.stiffForce, true, false);
+        if (in.stiffenerSpacing > 0.0) {
+            const std::vector<St::StiffenerCheck> shear = St::checkShearStiffener(si, in.stiffenerSpacing);
+            if (!shear.empty()) {
+                const St::StiffenerCheck *worst = &shear.front();
+                for (const St::StiffenerCheck &sub : shear) {
+                    if (sub.ratio > worst->ratio) {
+                        worst = &sub;
+                    }
+                }
+                CheckResult c;
+                c.id = "stiffener_shear";
+                c.title = "Enrijecedor transversal intermediario (cortante)";
+                c.clause = ctx.clauseTag + ", 5.4.3.1.3 e 5.7.9.6";
+                c.demand = worst->demand;
+                c.resistance = worst->resistance;
+                c.unit = worst->unit;
+                c.ratio = worst->ratio;
+                for (const St::StiffenerCheck &sub : shear) {
+                    c.ratio = std::max(c.ratio, sub.ratio);
+                    c.lines.push_back(fmt("%s [%s]  (%s): razao %.3f", sub.title.c_str(), sub.ratio <= 1.0 + 1e-9 ? "atende" : "NAO ATENDE", sub.clause.c_str(), sub.ratio));
+                    for (const std::string &line : sub.lines) {
+                        c.lines.push_back("   " + line);
+                    }
+                }
+                out.push_back(std::move(c));
+            }
         }
     }
 

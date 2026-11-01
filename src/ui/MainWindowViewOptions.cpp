@@ -30,7 +30,7 @@ using Bar = Structura::UI::ViewOptionsBar;
 const QStringList &toggleKeys()
 {
     static const QStringList keys = {
-        Bar::kGrid, Bar::kReferenceAxes, Bar::kNodeLabels, Bar::kBarLabels, Bar::kLocalAxes,
+        Bar::kGrid, Bar::kReferenceAxes, Bar::kNodeLabels, Bar::kBarLabels, Bar::kLocalAxes, Bar::kBarGlyphs,
         Bar::kNodes, Bar::kSolids, Bar::kConnections, Bar::kConstraints, Bar::kAllLevels, Bar::kSupports, Bar::kNodeForces, Bar::kNodeMoments,
         Bar::kBarForces, Bar::kBarMoments, Bar::kHideLoadLabels, Bar::kAreaPanels, Bar::kSnap, Bar::kPlaneOnly,
     };
@@ -179,9 +179,40 @@ QVector<MainWindow::ConnectionPlacementInfo> MainWindow::connectionPlacements() 
             info.t[i] = beam->y[i];
             info.u[i] = beam->z[i];
         }
+        // a barra termina na face do apoio (mais a folga de montagem da chapa de cisalhamento), nao no no
+        const bool outsideNode = connection.values.value(QStringLiteral("outside"), 0.0) != 0.0;   // talas / flange fora do no: junta a `outDist` da face
+        const bool bearsOnSupport = connection.type == Structura::App::ProjectData::NodeConnection::kShearTab
+            || connection.type == Structura::App::ProjectData::NodeConnection::kDoubleAngle
+            || connection.type == Structura::App::ProjectData::NodeConnection::kGusset
+            || connection.type == Structura::App::ProjectData::NodeConnection::kEndPlate
+            || (Structura::App::Services::ConnectionCatalog::find(connection.type) && Structura::App::Services::ConnectionCatalog::find(connection.type)->usesSupport
+                && Structura::App::Services::ConnectionCatalog::find(connection.type)->legacyType < 0)
+            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kEndPlate
+            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kGusset
+            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kShearTab
+            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kDoubleAngle
+            || outsideNode;
         // s = 0 fica na face do apoio: plano da mesa/alma da barra de apoio escolhida, na posicao real dela
         double supportOffset = connection.values.value(QStringLiteral("supOffset"), 0.0) / lengthFactor;
-        const int supportId = static_cast<int>(connection.values.value(QStringLiteral("supMember"), 0.0) + 0.5);
+        int supportId = static_cast<int>(connection.values.value(QStringLiteral("supMember"), 0.0) + 0.5);
+        if (supportId <= 0 && supportOffset <= 0.0 && bearsOnSupport) {
+            // sem barra de apoio escolhida: a ligacao ficava no eixo do no e a viga atravessava o pilar. Usa-se a barra do mesmo no, nao paralela
+            // a viga, de maior altura de secao (pilar ou viga principal), para localizar a face de apoio.
+            const QUuid nodeId = connection.atEnd ? bar->endNodeId : bar->startNodeId;
+            std::vector<Structura::App::Services::SupportCandidate> candidates;
+            for (const auto &candidate : allBars) {
+                if (candidate.externalId == connection.memberId || (candidate.startNodeId != nodeId && candidate.endNodeId != nodeId)) {
+                    continue;
+                }
+                const auto host = frameOf(candidate);
+                if (!host || !host->section) {
+                    continue;
+                }
+                const auto &g = host->section->geometry;
+                candidates.push_back({candidate.externalId, host->x, g.value(QStringLiteral("d"), g.value(QStringLiteral("D"), 0.0))});
+            }
+            supportId = Structura::App::Services::pickSupportAutomatically(info.s, candidates);
+        }
         if (supportId > 0) {
             for (const auto &candidate : allBars) {
                 if (candidate.externalId != supportId) {
@@ -210,17 +241,13 @@ QVector<MainWindow::ConnectionPlacementInfo> MainWindow::connectionPlacements() 
         for (std::size_t i = 0; i < 3; ++i) {
             info.origin[i] += info.s[i] * supportOffset;
         }
-        // a barra termina na face do apoio (mais a folga de montagem da chapa de cisalhamento), nao no no
-        const bool bearsOnSupport = connection.type == Structura::App::ProjectData::NodeConnection::kShearTab
-            || connection.type == Structura::App::ProjectData::NodeConnection::kDoubleAngle
-            || connection.type == Structura::App::ProjectData::NodeConnection::kGusset
-            || connection.type == Structura::App::ProjectData::NodeConnection::kEndPlate
-            || (Structura::App::Services::ConnectionCatalog::find(connection.type) && Structura::App::Services::ConnectionCatalog::find(connection.type)->usesSupport
-                && Structura::App::Services::ConnectionCatalog::find(connection.type)->legacyType < 0)
-            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kEndPlate
-            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kGusset
-            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kShearTab
-            || Structura::App::Services::ConnectionCatalog::baseType(connection.type) == Structura::App::ProjectData::NodeConnection::kDoubleAngle;
+        if (outsideNode && (supportId > 0 || supportOffset > 0.0)) {
+            // ligacao fora do no: a junta fica a `outDist` da face do apoio, ao longo da viga (a viga continua ate o apoio)
+            const double outDist = connection.values.value(QStringLiteral("outDist"), 0.0) / lengthFactor;
+            for (std::size_t i = 0; i < 3; ++i) {
+                info.origin[i] += info.s[i] * outDist;
+            }
+        }
         if (bearsOnSupport && (supportId > 0 || supportOffset > 0.0)) {
             // chapa de cisalhamento: folga de montagem; chapa de extremidade: a viga comeca na face da chapa
             const double setback = connection.type == Structura::App::ProjectData::NodeConnection::kShearTab ? connection.values.value(QStringLiteral("setback"), 0.0)
@@ -431,6 +458,8 @@ void MainWindow::applyViewOption(const QString &key, bool on)
         if (m_showBarLCSToolButton && m_showBarLCSToolButton->isChecked() != on) {
             m_showBarLCSToolButton->setChecked(on);
         }
+    } else if (key == Bar::kBarGlyphs) {
+        m_sceneController->setBarTypeMarkersVisible(on);
     } else if (key == Bar::kNodes) {
         m_sceneController->setNodesVisible(on);
     } else if (key == Bar::kConstraints) {

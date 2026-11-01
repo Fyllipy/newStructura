@@ -1,10 +1,14 @@
 #include "shell/ShellFactory.h"
 #include "shell/ShellMesh.h"
+#include "ui/MemberActionDialog.h"
+#include "viz/BarTypeRenderer.h"
+#include "ui/MemberEndsDialog.h"
 #include "ui/ProfilePropertiesDialog.h"
 #include "viz/structure/SectionShapes.h"
 #include "ui/ShellDialog.h"
 #include "viz/structure/ShellRenderer.h"
 
+#include <vtkActorCollection.h>
 #include <vtkCamera.h>
 #include <vtkNew.h>
 #include <vtkPNGWriter.h>
@@ -14,6 +18,8 @@
 
 #include <QApplication>
 #include <QFile>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QFontDatabase>
 #include <QPushButton>
 #include <QTabWidget>
@@ -26,6 +32,68 @@ using namespace Structura::Shell;
 class TestShellUi : public QObject
 {
     Q_OBJECT
+
+private slots:
+    void memberEndsDialogReturnsPlasticHinge()
+    {
+        Structura::UI::MemberEndsDialog::Defaults defaults;
+        defaults.yieldMomentZ = 150.0;
+        defaults.yieldMomentY = 80.0;
+        defaults.stiffnessZ = 5000.0;
+        defaults.stiffnessY = 2000.0;
+        Structura::UI::MemberEndsDialog dialog(Structura::App::ProjectData::MemberConnectionSpec {}, defaults, 1);
+        const auto boxes = dialog.findChildren<QCheckBox *>();
+        QVERIFY(boxes.size() >= 4);
+        boxes[1]->setChecked(true);   // I - rz
+        const auto spec = dialog.spec();
+        QCOMPARE(spec.hinges.size(), 1);
+        QCOMPARE(spec.hinges[0].dof, 5);
+        QCOMPARE(spec.hinges[0].yieldMoment, 150.0);
+        QVERIFY(!spec.isDefault());
+    }
+
+    void barGlyphsShowPlasticSemiRigidAndToggle()
+    {
+        vtkNew<vtkRenderer> renderer;
+        Structura::Visualization::BarTypeRenderer glyphs;
+        glyphs.attach(renderer);
+        Structura::Visualization::BarTypeRenderer::Marker marker;
+        marker.start = {0, 0, 0};
+        marker.end = {4, 0, 0};
+        marker.plasticStart = true;
+        marker.semiEnd = true;
+        glyphs.render({marker}, true);
+        auto visibleActors = [&]() {
+            int count = 0;
+            auto *actors = renderer->GetActors();
+            actors->InitTraversal();
+            while (auto *actor = actors->GetNextActor()) {
+                count += actor->GetVisibility() ? 1 : 0;
+            }
+            return count;
+        };
+        const int shown = visibleActors();
+        QVERIFY(shown >= 4);   // contorno + preenchimento do cubo plastico e da esfera semirrigida
+        glyphs.setVisible(false);
+        QCOMPARE(visibleActors(), 0);
+        glyphs.setVisible(true);
+        QCOMPARE(visibleActors(), shown);
+    }
+
+    void memberActionDialogOpensForEveryKind()
+    {
+        // regressao: o dialogo "carga geral em barra" caia ao abrir (rotulos nulos nas linhas sem texto)
+        MemberActionDialog dialog;
+        dialog.setLoadCases({QStringLiteral("CASO1")}, QStringLiteral("CASO1"));
+        dialog.setSelectedCount(1);
+        dialog.setMemberLength(4.0);
+        auto *kinds = dialog.findChildren<QComboBox *>().first();
+        for (int i = 0; i < kinds->count(); ++i) {
+            kinds->setCurrentIndex(i);
+        }
+        dialog.setMemberLength(0.0);
+        QVERIFY(dialog.values().a >= 0.0);
+    }
 
 private:
     static QPushButton *button(QWidget *root, const QString &text)

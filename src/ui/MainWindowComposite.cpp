@@ -43,7 +43,10 @@ void MainWindow::onCompositeFloor()
             continue;
         }
         const SectionInfo &section = **it;
-        if (section.family != QLatin1String("W Laminado") && section.family != QLatin1String("I Laminado")) {
+        const bool weldedSymmetric = section.family == QLatin1String("I Soldado")
+            && (section.geometry.value(QStringLiteral("bfi")) <= 0.0 || section.geometry.value(QStringLiteral("bfi")) == section.geometry.value(QStringLiteral("bf")))
+            && (section.geometry.value(QStringLiteral("tfi")) <= 0.0 || section.geometry.value(QStringLiteral("tfi")) == section.geometry.value(QStringLiteral("tf")));
+        if (section.family != QLatin1String("W Laminado") && section.family != QLatin1String("I Laminado") && !weldedSymmetric) {
             continue;
         }
         Structura::UI::CompositeCandidate c;

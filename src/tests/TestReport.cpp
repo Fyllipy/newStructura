@@ -3,8 +3,13 @@
 #include "app/services/ReportService.h"
 #include "app/services/ConnectionService.h"
 #include "app/services/SheetBuilder.h"
+#include "drawing/SheetGroups.h"
+#include "app/services/MemberFabrication.h"
+#include "app/services/IfcExporter.h"
+#include "app/services/CadImport.h"
 #include "drawing/SheetPainter.h"
 #include <QPageSize>
+#include <QRegularExpression>
 #include <QPdfWriter>
 #include "design/BarDesign.h"
 #include "report/DocxWriter.h"
@@ -23,12 +28,47 @@
 #include <QFile>
 #include <QtTest>
 
+#include <set>
+
 using namespace Structura::Report;
 
 class TestReport : public QObject
 {
     Q_OBJECT
 private slots:
+    void reportRevisionTableAndPdfExport()
+    {
+        using Structura::App::Services::ReportService;
+        ReportService::Input input;
+        input.projectName = QStringLiteral("Galpão");
+        ReportService::Options options;
+        options.criteria = options.materialsAndSections = options.geometry = options.supports = options.loads = options.analysisResults = false;
+        options.designSummary = options.designDetails = options.serviceChecks = options.connections = options.sectionDrawings = false;
+        options.revisions = {QStringLiteral("A; 26/10/2026; Emissão inicial; Fulano"), QStringLiteral(" ; ; ; "), QStringLiteral("B; 02/11/2026; Ajuste de cargas")};
+        const auto doc = ReportService::buildGlobal(input, options);
+        const auto html = Structura::Report::toHtml(doc, 19.0, true);
+        QVERIFY(html.html.contains(QStringLiteral("Controle de revisões")));
+        QVERIFY(html.html.contains(QStringLiteral("Emissão inicial")) && html.html.contains(QStringLiteral("Ajuste de cargas")));
+        QVERIFY(html.html.contains(QStringLiteral("Fulano")));
+        // sem revisoes informadas o capitulo nao aparece
+        options.revisions.clear();
+        QVERIFY(!Structura::Report::toHtml(ReportService::buildGlobal(input, options), 19.0, true).html.contains(QStringLiteral("Controle de revisões")));
+        // PDF a partir do mesmo HTML (usado pelo dialogo): o arquivo e gerado com varias paginas de conteudo
+        options.revisions = {QStringLiteral("A; 26/10/2026; Emissão inicial; Fulano")};
+        const auto pdfHtml = Structura::Report::toHtml(ReportService::buildGlobal(input, options), 19.0, true);
+        const QString path = QDir::temp().filePath(QStringLiteral("structura_report_test.pdf"));
+        QFile::remove(path);
+        {
+            QTextDocument text;
+            text.setHtml(pdfHtml.html);
+            QPdfWriter writer(path);
+            writer.setPageSize(QPageSize(QPageSize::A4));
+            text.setPageSize(QSizeF(writer.width(), writer.height()));
+            text.print(&writer);
+        }
+        QVERIFY(QFileInfo(path).size() > 1500);
+        QFile::remove(path);
+    }
     void sheetsRenderToPdfAndDetails()
     {
         using Structura::App::Services::SheetBuilder;
@@ -47,7 +87,7 @@ private slots:
         in.info.project = QStringLiteral("Projeto de teste");
         SheetBuilder::ConnectionDetail detail;
         using NC = Structura::App::ProjectData::NodeConnection;
-        for (const auto type : {NC::kShearTab, NC::kDoubleAngle, NC::kGusset, NC::kSplice, NC::kBasePlate, NC::kTubular, NC::kColdFormed, NC::kEndPlate, 101, 104, 111, 114}) {
+        for (const auto type : {NC::kShearTab, NC::kDoubleAngle, NC::kGusset, NC::kSplice, NC::kBasePlate, NC::kTubular, NC::kColdFormed, NC::kEndPlate, 101, 104, 111, 114, 147, 148}) {
             SheetBuilder::ConnectionDetail d;
             Structura::App::Services::ConnectionService::BeamInfo beam;
             beam.depth = 360;
@@ -86,7 +126,240 @@ private slots:
                 QVERIFY(sheet.entities.size() > 40);
             }
         }
-        QCOMPARE(details, 12);
+        QCOMPARE(details, 14);
+        // chamadas de marca nos detalhes do catalogo: chapa (C1), parafuso (B1) e simbolo de solda
+        {
+            int withCallouts = 0;
+            for (const auto &sheet : sheets) {
+                if (sheet.name.rfind("Liga", 0) != 0) {
+                    continue;
+                }
+                bool plateMark = false, boltMark = false;
+                for (const auto &entity : sheet.entities) {
+                    if (const auto *t = std::get_if<Structura::Drawing::Text>(&entity)) {
+                        plateMark = plateMark || t->text == "C1";
+                        boltMark = boltMark || t->text == "B1";
+                    }
+                }
+                withCallouts += (plateMark && boltMark) ? 1 : 0;
+            }
+            QVERIFY(withCallouts >= 3);   // as tipologias do catalogo (101, 104, 111, 114)
+            // detalhes por sólidos: vista frontal + cortes A-A, B-B, C-C e D-D, chapas e tabelas de materiais na mesma prancha
+            int withSections = 0;
+            for (const auto &sheet : sheets) {
+                if (sheet.name.rfind("Liga", 0) != 0) {
+                    continue;
+                }
+                bool a = false, b = false, cc = false, dd = false, table = false;
+                for (const auto &entity : sheet.entities) {
+                    if (const auto *t = std::get_if<Structura::Drawing::Text>(&entity)) {
+                        a = a || t->text.rfind("SEÇÃO A-A", 0) == 0;
+                        b = b || t->text.rfind("SEÇÃO B-B", 0) == 0;
+                        cc = cc || t->text.rfind("SEÇÃO C-C", 0) == 0;
+                        dd = dd || t->text.rfind("SEÇÃO D-D", 0) == 0;
+                        table = table || t->text == "PARAFUSOS (porca e 2 arruelas)";
+                    }
+                }
+                withSections += (a && b && cc && dd && table) ? 1 : 0;
+            }
+            QVERIFY(withSections >= 4);   // 101, 104, 111, 114, 147 e 148 usam o detalhe por solidos
+            // simbolos de parafuso normalizados (hexagono da cabeca) e cotas dos cortes (linhas da camada COTAS)
+            int withHexagons = 0, withDimensions = 0;
+            for (const auto &sheet : sheets) {
+                if (sheet.name.rfind("Liga", 0) != 0) {
+                    continue;
+                }
+                int hex = 0, dimLines = 0;
+                int dimLayer = -1;
+                for (std::size_t i = 0; i < sheet.layers.size(); ++i) {
+                    if (sheet.layers[i].name == "COTAS") {
+                        dimLayer = static_cast<int>(i);
+                    }
+                }
+                for (const auto &entity : sheet.entities) {
+                    if (const auto *poly = std::get_if<Structura::Drawing::Polyline>(&entity)) {
+                        hex += (poly->closed && poly->points.size() == 6) ? 1 : 0;
+                    } else if (const auto *line = std::get_if<Structura::Drawing::Line>(&entity)) {
+                        dimLines += line->layer == dimLayer ? 1 : 0;
+                    }
+                }
+                withHexagons += hex > 0 ? 1 : 0;
+                withDimensions += dimLines > 60 ? 1 : 0;
+            }
+            QVERIFY(withHexagons >= 4);
+            QVERIFY(withDimensions >= 4);
+            // anotacoes editaveis: grupos estaveis, cadeias de cotas sem sobreposicao entre si, mover/excluir via ajustes do projeto
+            {
+                std::set<std::string> stems;
+                int checked = 0;
+                for (const auto &sheet : sheets) {
+                    QVERIFY2(stems.insert(sheet.fileStem).second, "fileStem repetido entre pranchas");
+                    if (sheet.name.rfind("Liga", 0) != 0 || sheet.groups.size() < 8) {
+                        continue;
+                    }
+                    ++checked;
+                    std::vector<std::pair<std::string, Structura::Drawing::Rect>> chains;
+                    for (const auto &g : sheet.groups) {
+                        if (g.key.find("/cotaH") == std::string::npos && g.key.find("/cotaV") == std::string::npos) {
+                            continue;
+                        }
+                        bool valid = false;
+                        const auto b = Structura::Drawing::groupBounds(sheet, g.id, &valid);
+                        if (valid) {
+                            chains.push_back({g.key, b});
+                        }
+                    }
+                    QVERIFY(chains.size() >= 2);
+                    for (std::size_t i = 0; i < chains.size(); ++i) {
+                        for (std::size_t j = i + 1; j < chains.size(); ++j) {
+                            // cadeias da mesma vista nao se cobrem (a margem de 0,6 mm e a do posicionador)
+                            const bool sameView = chains[i].first.substr(0, chains[i].first.rfind('/')) == chains[j].first.substr(0, chains[j].first.rfind('/'));
+                            if (sameView) {
+                                QVERIFY2(!chains[i].second.intersects(chains[j].second, -0.2), qPrintable(QString::fromStdString(chains[i].first + " x " + chains[j].first)));
+                            }
+                        }
+                    }
+                    // ajustes: mover desloca o grupo; excluir remove entidades
+                    auto moved = sheets;
+                    const std::string key = chains.front().first;
+                    Structura::App::ProjectData::SheetGroupEdit move;
+                    move.sheet = QString::fromStdString(sheet.fileStem);
+                    move.key = QString::fromStdString(key);
+                    move.dx = 7.0;
+                    move.dy = -3.0;
+                    Structura::App::Services::SheetBuilder::applyEdits(moved, {move});
+                    for (std::size_t i = 0; i < sheets.size(); ++i) {
+                        if (sheets[i].fileStem != sheet.fileStem) {
+                            continue;
+                        }
+                        const int gid = Structura::Drawing::findGroup(sheets[i], key);
+                        const auto before = Structura::Drawing::groupBounds(sheets[i], gid);
+                        const auto after = Structura::Drawing::groupBounds(moved[i], gid);
+                        QVERIFY(std::abs(after.x0 - before.x0 - 7.0) < 1e-6 && std::abs(after.y0 - before.y0 + 3.0) < 1e-6);
+                    }
+                    auto erased = sheets;
+                    move.deleted = true;
+                    Structura::App::Services::SheetBuilder::applyEdits(erased, {move});
+                    for (std::size_t i = 0; i < sheets.size(); ++i) {
+                        if (sheets[i].fileStem == sheet.fileStem) {
+                            bool valid = true;
+                            Structura::Drawing::groupBounds(erased[i], Structura::Drawing::findGroup(sheets[i], key), &valid);
+                            QVERIFY(!valid);
+                            QVERIFY(erased[i].entities.size() < sheets[i].entities.size());
+                        }
+                    }
+                    if (checked >= 3) {
+                        break;
+                    }
+                }
+                QVERIFY(checked >= 3);
+            }
+        }
+        // pecas de perfil: comprimento de corte real, furacao e marcas unicas
+        {
+            const auto members = Structura::App::Services::MemberFabrication::build(in);
+            QVERIFY(members.size() >= 2);
+            QSet<QString> marks;
+            const Structura::App::Services::FabMember *beam = nullptr;
+            for (const auto &m : members) {
+                QVERIFY(!marks.contains(m.mark));
+                marks.insert(m.mark);
+                if (m.mark.startsWith(QLatin1Char('V'))) {
+                    beam = &m;
+                }
+            }
+            QVERIFY(beam != nullptr);
+            QVERIFY(std::abs(beam->nodeLength - 8000.0) < 1e-6);
+            QVERIFY(beam->cutLength <= beam->faceLength + 1e-9 && beam->faceLength <= beam->nodeLength + 1e-9);
+            QVERIFY(beam->gapI > 0.0);
+            QVERIFY(std::abs(beam->cutLength - (beam->faceLength - beam->gapI - beam->gapJ)) < 1e-9);
+            QVERIFY(!beam->holes.isEmpty());
+            for (const auto &h : beam->holes) {
+                QVERIFY(h.x >= -1e-6 && h.diameter > 0.0);
+            }
+            SheetBuilder::Options memberOptions;
+            memberOptions.paper = SheetBuilder::Paper::A3;
+            memberOptions.views.insert(QStringLiteral("member-%1").arg(beam->mark));
+            const auto memberSheets = SheetBuilder::build(in, memberOptions);
+            QCOMPARE(int(memberSheets.size()), 1);
+            QVERIFY(memberSheets.front().entities.size() > 40);
+            const QString memberDump = qEnvironmentVariable("STRUCTURA_DUMP_SHEETS");
+            if (!memberDump.isEmpty()) {
+                QImage page(420 * 4, 297 * 4, QImage::Format_ARGB32);
+                page.fill(Qt::white);
+                QPainter p(&page);
+                Structura::Drawing::paintSheet(p, memberSheets.front(), 4.0);
+                p.end();
+                page.save(QDir(memberDump).filePath(QStringLiteral("member.png")));
+            }
+        }
+        // quadro de conjuntos e plano de corte
+        {
+            SheetBuilder::Options tableOptions;
+            tableOptions.paper = SheetBuilder::Paper::A3;
+            tableOptions.views.insert(QStringLiteral("assemblies"));
+            tableOptions.views.insert(QStringLiteral("cut-list"));
+            const auto tables = SheetBuilder::build(in, tableOptions);
+            QCOMPARE(int(tables.size()), 2);
+            for (const auto &sheet : tables) {
+                QVERIFY(sheet.entities.size() > 40);
+            }
+        }
+        // IFC4: estrutura, pecas e referencias consistentes
+        {
+            Structura::App::Services::IfcExporter::Options ifcOptions;
+            ifcOptions.projectName = QStringLiteral("Projeto 'teste' ação");
+            const QString ifc = Structura::App::Services::IfcExporter::build(in, ifcOptions);
+            QVERIFY(ifc.startsWith(QStringLiteral("ISO-10303-21;")));
+            QVERIFY(ifc.trimmed().endsWith(QStringLiteral("END-ISO-10303-21;")));
+            QVERIFY(ifc.contains(QStringLiteral("FILE_SCHEMA(('IFC4'))")));
+            QCOMPARE(ifc.count(QStringLiteral("=IFCPROJECT(")), 1);
+            QCOMPARE(ifc.count(QStringLiteral("=IFCCOLUMN(")), 2);
+            QCOMPARE(ifc.count(QStringLiteral("=IFCBEAM(")), 1);
+            QVERIFY(ifc.contains(QStringLiteral("''teste''")));   // aspas duplicadas
+            QVERIFY(ifc.contains(QStringLiteral("=IFCPLATE(")));   // chapas das ligacoes
+            QVERIFY(ifc.contains(QStringLiteral("=IFCARBITRARYPROFILEDEFWITHVOIDS(")));   // chapas furadas
+            QVERIFY(ifc.contains(QStringLiteral("=IFCRELASSOCIATESMATERIAL(")));
+            QVERIFY(ifc.contains(QStringLiteral("=IFCPROPERTYSET(")));
+            QVERIFY(ifc.contains(QStringLiteral("ComprimentoDeCorte")));
+            QVERIFY(ifc.contains(QStringLiteral("\\X2\\")));       // acentos codificados
+            // importacao do proprio arquivo: 2 pilares verticais e 1 viga horizontal, em metros, com o comprimento de corte
+            {
+                const auto imported = Structura::App::Services::IfcImporter::parse(ifc);
+                int columns = 0, beams = 0;
+                for (const auto &segment : imported.segments) {
+                    const double dx = segment.b[0] - segment.a[0], dy = segment.b[1] - segment.a[1], dz = segment.b[2] - segment.a[2];
+                    const double length = std::sqrt(dx * dx + dy * dy + dz * dz);
+                    QVERIFY2(length > 0.1 && length < 100.0, qPrintable(QString::number(length)));   // metros (o arquivo esta em milimetros)
+                    if (segment.layer == QLatin1String("IFCCOLUMN")) {
+                        ++columns;
+                        QVERIFY(std::abs(dz) > 0.99 * length);
+                    } else if (segment.layer == QLatin1String("IFCBEAM")) {
+                        ++beams;
+                        QVERIFY(std::abs(dz) < 0.01 * length);
+                    }
+                }
+                QCOMPARE(columns, 2);
+                QCOMPARE(beams, 1);
+            }
+            // toda referencia #n aponta para uma entidade definida
+            QSet<int> defined;
+            QRegularExpression define(QStringLiteral("^#(\\d+)="), QRegularExpression::MultilineOption);
+            auto it = define.globalMatch(ifc);
+            while (it.hasNext()) {
+                defined.insert(it.next().captured(1).toInt());
+            }
+            QRegularExpression use(QStringLiteral("#(\\d+)"));
+            auto uses = use.globalMatch(ifc);
+            while (uses.hasNext()) {
+                QVERIFY2(defined.contains(uses.next().captured(1).toInt()), "referencia IFC sem entidade");
+            }
+            // GlobalId: 22 caracteres do alfabeto IFC; a codificacao de 16 bytes zero e 22 vezes '0'
+            QCOMPARE(Structura::App::Services::IfcExporter::compressGuid(QByteArray(16, '\0')), QStringLiteral("0000000000000000000000"));
+            QCOMPARE(Structura::App::Services::IfcExporter::compressGuid(QByteArray(16, '\xff')).size(), 22);
+            QRegularExpression guid(QStringLiteral("\\('([0-9A-Za-z_$]{22})',"));
+            QVERIFY(guid.match(ifc).hasMatch());
+        }
         const QString path = QDir::temp().filePath(QStringLiteral("structura_sheets_test.pdf"));
         QFile::remove(path);
         {

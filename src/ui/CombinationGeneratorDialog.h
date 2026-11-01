@@ -33,6 +33,9 @@ private:
     QCheckBox *m_frequent {nullptr};
     QCheckBox *m_rare {nullptr};
     QCheckBox *m_favorable {nullptr};
+    QCheckBox *m_special {nullptr};
+    QCheckBox *m_exceptional {nullptr};
+    QCheckBox *m_fire {nullptr};
     QCheckBox *m_replace {nullptr};
     QLabel *m_preview {nullptr};
 };

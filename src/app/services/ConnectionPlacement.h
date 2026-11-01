@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cmath>
+#include <vector>
 
 namespace Structura::App::Services {
 
@@ -39,6 +40,30 @@ inline bool supportFaceOffset(const std::array<double, 3> &beamOrigin, const std
     // plano da face: n.(X - C) = half; X = beamOrigin + lambda s
     offset = (half * modelPerMm - facing * dot(axis, rel)) / cosine;
     return true;
+}
+
+/// Barra candidata a apoio de uma ligacao no no: id externo, eixo (unitario) e altura da secao (mm).
+struct SupportCandidate {
+    int id {0};
+    std::array<double, 3> axis {};
+    double depth {0.0};
+};
+
+/// Barra de apoio automatica quando a ligacao nao tem `supMember`: entre as barras do mesmo no, a de maior altura de secao que nao seja quase paralela
+/// a viga (|cos| <= 0,9 entre o eixo dela e `s`). Devolve 0 se nenhuma serve.
+inline int pickSupportAutomatically(const std::array<double, 3> &s, const std::vector<SupportCandidate> &candidates)
+{
+    int best = 0;
+    double bestDepth = 0.0;
+    for (const auto &candidate : candidates) {
+        const double cosine = candidate.axis[0] * s[0] + candidate.axis[1] * s[1] + candidate.axis[2] * s[2];
+        if (std::abs(cosine) > 0.9 || candidate.depth <= bestDepth) {
+            continue;
+        }
+        bestDepth = candidate.depth;
+        best = candidate.id;
+    }
+    return best;
 }
 
 } // namespace Structura::App::Services

@@ -16,7 +16,7 @@ class LoadsPanel : public QFrame
     Q_OBJECT
 
 public:
-    enum class Kind { Nodal = 0, Distributed = 1, Moment = 2 };
+    enum class Kind { Nodal = 0, Distributed = 1, Moment = 2, Positioned = 3 };
 
     struct Row {
         Kind kind {Kind::Nodal};

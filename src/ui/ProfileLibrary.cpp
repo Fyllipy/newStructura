@@ -82,7 +82,7 @@ QStringList ProfileLibrary::families()
 
 QList<ProfileLibrary::Category> ProfileLibrary::categories()
 {
-    return {Category::Laminado, Category::Composta, Category::MoldadoAFrio, Category::Concreto, Category::SemGeometria};
+    return {Category::Laminado, Category::Soldado, Category::Composta, Category::MoldadoAFrio, Category::Concreto, Category::SemGeometria};
 }
 
 QString ProfileLibrary::categoryName(Category category)
@@ -93,6 +93,7 @@ QString ProfileLibrary::categoryName(Category category)
     case Category::Concreto: return QObject::tr("Concreto");
     case Category::SemGeometria: return QObject::tr("Só propriedades");
     case Category::Composta: return QObject::tr("Barras compostas");
+    case Category::Soldado: return QObject::tr("Aço soldado (perfis armados)");
     }
     return {};
 }
@@ -108,6 +109,9 @@ ProfileLibrary::Category ProfileLibrary::categoryOf(const QString &family)
     }
     if (SectionShapes::isComposite(family)) {
         return Category::Composta;   // dois perfis laminados iguais trabalhando em conjunto (NBR 8800, 5.3.6)
+    }
+    if (family.endsWith(QLatin1String("Soldado"))) {
+        return Category::Soldado;   // perfis armados de chapas soldadas (I, H e caixao)
     }
     // Perfis "formados" e tubulares (conformados a frio) vs. laminados a quente (W, I, U, L, T e barras).
     if (family.endsWith(QLatin1String("Formado")) || family.startsWith(QLatin1String("Tubular"))) {
@@ -130,7 +134,7 @@ QStringList ProfileLibrary::familiesIn(Category category)
 QString ProfileLibrary::typeLabel(const QString &family)
 {
     QString label = family;
-    for (const char *suffix : {" Laminado", " Formado"}) {
+    for (const char *suffix : {" Laminado", " Formado", " Soldado"}) {
         if (label.endsWith(QLatin1String(suffix))) {
             label.chop(int(qstrlen(suffix)));
             break;

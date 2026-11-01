@@ -105,6 +105,9 @@ public:
     /// Combinacao ultima excepcional (nome iniciado por "EXC"): NBR 8800:2024, Tabela 3, usa gama_a1 = 1,00 e gama_a2 = 1,15 (normais, especiais e de construcao: 1,10 e 1,35).
     [[nodiscard]] static bool isExceptionalCombination(const QString &name);
 
+    /// Combinacao de incendio (nome iniciado por "FOGO", gerada pelo CombinationGenerator): NBR 14323:2013, 6.3. Nao entra na verificacao a temperatura ambiente.
+    [[nodiscard]] static bool isFireCombination(const QString &name);
+
     /// Nomes das combinacoes ultimas por padrao (as que nao comecam por "ELS").
     static QStringList defaultUltimateCombinations(const QStringList &allNames);
 

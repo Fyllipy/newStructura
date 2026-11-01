@@ -46,16 +46,46 @@ Kin kinematics(const ShellFrame &f, double r, double s)
     return k;
 }
 
-Eigen::Matrix3d membraneD(const Material &m, double t)
+/// Matriz de estado plano de tensao nos eixos do material (1, 2): Q = [E1/d, nu12 E2/d, 0; nu12 E2/d, E2/d, 0; 0, 0, G12], d = 1 - nu12 nu21.
+Eigen::Matrix3d orthotropicQ(double e1, double e2, double nu12, double g12)
 {
+    const double nu21 = nu12 * e2 / e1;
+    const double den = 1.0 - nu12 * nu21;
+    Eigen::Matrix3d q;
+    q << e1 / den, nu12 * e2 / den, 0.0, nu12 * e2 / den, e2 / den, 0.0, 0.0, 0.0, g12;
+    return q;
+}
+
+/// Gira Q para os eixos locais do elemento: D = T^T Q T, com T a transformacao de deformacoes (cisalhamento de engenharia) do elemento para o material.
+Eigen::Matrix3d rotateToElement(const Eigen::Matrix3d &q, const Material &m, const ShellFrame &f)
+{
+    const Vec3 local = f.R * m.axis;
+    const double norm = std::hypot(local(0), local(1));
+    const double theta = norm > 1e-9 ? std::atan2(local(1), local(0)) : 0.0;
+    const double c = std::cos(theta), s = std::sin(theta);
+    Eigen::Matrix3d t;
+    t << c * c, s * s, c * s, s * s, c * c, -c * s, -2.0 * c * s, 2.0 * c * s, c * c - s * s;
+    return t.transpose() * q * t;
+}
+
+Eigen::Matrix3d membraneD(const Material &m, double t, const ShellFrame &f)
+{
+    if (m.orthotropic) {
+        return t * rotateToElement(orthotropicQ(m.E, m.E2, m.nu12, m.G12), m, f);
+    }
     Eigen::Matrix3d d;
     const double c = m.E * t / (1.0 - m.nu * m.nu);
     d << 1.0, m.nu, 0.0, m.nu, 1.0, 0.0, 0.0, 0.0, 0.5 * (1.0 - m.nu);
     return c * d;
 }
 
-Eigen::Matrix3d bendingD(const Material &m, double t)
+Eigen::Matrix3d bendingD(const Material &m, double t, const ShellFrame &f)
 {
+    if (m.orthotropic) {
+        // rigidezes de flexao nas direcoes 1 e 2 (E1 bend1, E2 bend2); o cisalhamento de torcao acompanha a media geometrica
+        const double e1 = m.E * m.bend1, e2 = m.E2 * m.bend2;
+        return (t * t * t / 12.0) * rotateToElement(orthotropicQ(e1, e2, m.nu12, m.G12 * std::sqrt(m.bend1 * m.bend2)), m, f);
+    }
     Eigen::Matrix3d d;
     const double c = m.E * t * t * t / (12.0 * (1.0 - m.nu * m.nu));
     d << 1.0, m.nu, 0.0, m.nu, 1.0, 0.0, 0.0, 0.0, 0.5 * (1.0 - m.nu);
@@ -176,8 +206,8 @@ Mat24 shellTransform(const ShellFrame &frame)
 ShellStiffness shellStiffness(const ShellFrame &f, const Material &mat, double t, double kappa)
 {
     ShellStiffness out;
-    const Eigen::Matrix3d dm = membraneD(mat, t);
-    const Eigen::Matrix3d db = bendingD(mat, t);
+    const Eigen::Matrix3d dm = membraneD(mat, t, f);
+    const Eigen::Matrix3d db = bendingD(mat, t, f);
     const double gt = mat.G() * t;
     const Kin center = kinematics(f, 0.0, 0.0);
     const Eigen::Matrix<double, 8, 24> map = membraneMap();
@@ -260,8 +290,8 @@ Vec24 shellBodyLoad(const ShellFrame &f, const Vec3 &b, double t)
 Vec24 shellThermalLoad(const ShellFrame &f, const Material &mat, double t, double uniform, double gradient)
 {
     Vec24 load = Vec24::Zero();
-    const Eigen::Matrix3d dm = membraneD(mat, t);
-    const Eigen::Matrix3d db = bendingD(mat, t);
+    const Eigen::Matrix3d dm = membraneD(mat, t, f);
+    const Eigen::Matrix3d db = bendingD(mat, t, f);
     const Kin center = kinematics(f, 0.0, 0.0);
     const Eigen::Matrix<double, 8, 24> map = membraneMap();
     const Eigen::Vector3d eps0 = mat.alpha * uniform * Eigen::Vector3d(1.0, 1.0, 0.0);
@@ -313,8 +343,8 @@ ShellResult shellResultants(const ShellFrame &f, const Material &mat, double t, 
                             double uniformTemp, double gradientTemp)
 {
     ShellResult out;
-    const Eigen::Matrix3d dm = membraneD(mat, t);
-    const Eigen::Matrix3d db = bendingD(mat, t);
+    const Eigen::Matrix3d dm = membraneD(mat, t, f);
+    const Eigen::Matrix3d db = bendingD(mat, t, f);
     const double gt = mat.G() * t;
     const Kin center = kinematics(f, 0.0, 0.0);
     Eigen::Matrix<double, 8, 1> uMem;

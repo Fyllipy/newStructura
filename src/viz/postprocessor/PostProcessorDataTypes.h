@@ -26,6 +26,17 @@ struct UniformDistributedMoment {
     bool isLocalSystem{true};
 };
 
+/// Carga com posição sobre o elemento (trapezoidal/parcial, força pontual ou momento pontual).
+/// Posições `a` e `b` medidas sobre o eixo a partir do nó i, na unidade do modelo.
+struct PositionedLoad {
+    enum class Kind { Trapezoid, PointForce, PointMoment };
+    Kind kind{Kind::Trapezoid};
+    double a{0}, b{0};
+    std::array<double, 3> v1{};   ///< Trapezoid: (qx,qy,qz) em a; PointForce: (Fx,Fy,Fz); PointMoment: (Mx,My,Mz)
+    std::array<double, 3> v2{};   ///< Trapezoid: (qx,qy,qz) em b
+    bool isLocalSystem{true};
+};
+
 /// Dados completos de um elemento de barra para pós-processamento.
 struct BeamElementResults {
     int externalId{0};
@@ -46,6 +57,10 @@ struct BeamElementResults {
 
     /// Momentos distribuídos sobre o elemento. Pode estar vazio.
     std::vector<UniformDistributedMoment> distributedMoments;
+
+    /// Cargas com posição (trapezoidais/parciais, pontuais e momentos pontuais). Pode estar vazio.
+    /// Temperatura e retração não entram: não são cargas transversais e não alteram o equilíbrio das seções.
+    std::vector<PositionedLoad> positionedLoads;
 };
 
 /// Tipo de diagrama de esforços internos.

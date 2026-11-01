@@ -13,9 +13,11 @@
 #include "app/services/DynamicsService.h"
 #include "app/services/NotionalLoadService.h"
 #include "app/services/DxfExporter.h"
+#include "app/services/CadImport.h"
 #include "app/services/QuantityService.h"
 #include "app/services/BucklingService.h"
 #include "app/services/CombinationGenerator.h"
+#include "app/services/WindShedService.h"
 #include "app/services/ModelTemplateService.h"
 #include "app/services/ModelCheckService.h"
 #include "app/services/MaterialLibrary.h"
@@ -26,6 +28,13 @@
 #include "app/services/SectionPlacementService.h"
 #include "app/services/DesignService.h"
 #include "app/services/ShellCouplingService.h"
+#include "app/services/WindStaticService.h"
+#include "app/services/ResultsBinaryStore.h"
+#include "app/services/LoadHypothesisService.h"
+#include "app/services/ResultsEnvelopeService.h"
+#include "app/services/ConstructionStageService.h"
+#include "app/services/EffectiveLengthService.h"
+#include "app/services/EffectiveLengthService.h"
 #include "shell/ShellModel.h"
 
 #include <QFile>
@@ -675,6 +684,186 @@ private slots:
                  qPrintable(QStringLiteral("%1 x %2").arg(uniformResult.memberResults[0].warpingForce[0]).arg(expectedBase)));
     }
 
+    void solverShearCenterOffsetCouplesFlexureAndTorsion()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // Balanco com o centro de cisalhamento a (ys, zs) do centroide e carga vertical P (eixo y) no centroide: o torque em relacao ao centro de cisalhamento e
+        // T = zs P; theta(L) = T/(GJ) (L - tanh(kL)/k); a flecha do centroide e a da linha do centro de cisalhamento mais zs theta (v_s = v_c - zs theta);
+        // w_c = -ys theta
+        const double E = 2.0e11, G = 8.0e10, I = 4e-6, J = 1e-5, Cw = 1e-6, L = 2.0, P = 1000.0, ys = 0.03, zs = 0.05;
+        const double k = std::sqrt(G * J / (E * Cw));
+        auto model = cantileverModel(0.0, 0.0, L);
+        model.nodalLoads[0].values = {{0.0, 0.0, P, 0.0, 0.0, 0.0}};   // eixo global Z = eixo local y da barra (o z local e -Y)
+        model.sections[0].warpingConstant = Cw;
+        model.sections[0].shearCenterY = ys;
+        model.sections[0].shearCenterZ = zs;
+        model.members[0].warping = true;
+        const auto result = SolverBridge(dll).solve(model);
+        const double theta = zs * P / (G * J) * (L - std::tanh(k * L) / k);
+        const double vs = P * L * L * L / (3.0 * E * I);
+        const auto &tip = result.nodeResults[1].displacements;
+        QVERIFY2(std::abs(tip[3] - theta) / theta < 1e-9, qPrintable(QStringLiteral("theta %1 x %2").arg(tip[3]).arg(theta)));
+        QVERIFY2(std::abs(tip[2] - (vs + zs * theta)) / (vs + zs * theta) < 1e-9, qPrintable(QStringLiteral("v %1 x %2").arg(tip[2]).arg(vs + zs * theta)));
+        QVERIFY2(std::abs(tip[1] - ys * theta) / std::abs(ys * theta) < 1e-9, qPrintable(QStringLiteral("w %1 x %2").arg(tip[1]).arg(ys * theta)));   // w local = -Y global
+        // reacoes: equilibrio de forca e do momento em torno do centroide do engaste (torque da carga excentrica nao existe: a carga atua no centroide)
+        QVERIFY(std::abs(result.nodeResults[0].reactions[2] + P) < 1e-6 * P);
+        QVERIFY(std::abs(result.nodeResults[0].reactions[3]) < 1e-6 * P);
+        // sem o deslocamento do centro de cisalhamento a carga no centroide nao torce
+        model.sections[0].shearCenterY = 0.0;
+        model.sections[0].shearCenterZ = 0.0;
+        const auto plain = SolverBridge(dll).solve(model);
+        QVERIFY(std::abs(plain.nodeResults[1].displacements[3]) < 1e-12);
+        QVERIFY(std::abs(plain.nodeResults[1].displacements[2] - vs) / vs < 1e-9);
+    }
+
+    void flexuralTorsionalBucklingMatchesClosedForm()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // Coluna biarticulada (empenamento livre nas pontas, torcao impedida) com Cw > 0. (1) secao duplamente simetrica de baixa rigidez a torcao: flambagem por torcao
+        // Nez = (pi^2 E Cw/L^2 + G J)/r0^2 (NBR 8800, E.1.1-c); (2) centro de cisalhamento fora do centroide (zs na direcao do eixo de simetria): flexo-torcao
+        // N = [(Nv + Nz) - sqrt((Nv + Nz)^2 - 4 H Nv Nz)]/(2 H), H = 1 - zs^2/r0^2, com r0^2 = (Iy + Iz)/A + zs^2 (Timoshenko e Gere, Theory of Elastic Stability, cap. 5)
+        const double E = 2.0e11, G = 8.0e10, A = 0.01, Iz = 2e-6, Iy = 8e-6, J = 1e-9, Cw = 1e-10, L = 3.0, P = 1000.0;
+        const double pi2 = 3.14159265358979 * 3.14159265358979;
+        for (const double zs : {0.0, 0.05}) {
+            SolverBridge::ModelData model;
+            model.materials.push_back({1, E, G});
+            model.sections.push_back({1, A, Iz, Iy, J});
+            model.sections[0].warpingConstant = Cw;
+            model.sections[0].shearCenterZ = zs;
+            const int segments = 6;
+            for (int i = 0; i <= segments; ++i) {
+                SolverBridge::NodeData node;
+                node.id = i + 1;
+                node.x = L * i / segments;
+                if (i == 0) {
+                    node.restraints = {{1, 1, 1, 1, 0, 0}};
+                } else if (i == segments) {
+                    node.restraints = {{0, 1, 1, 1, 0, 0}};
+                }
+                model.nodes.push_back(node);
+            }
+            for (int i = 0; i < segments; ++i) {
+                SolverBridge::MemberData member {i + 1, i + 1, i + 2, 1, 1};
+                member.warping = true;
+                model.members.push_back(member);
+            }
+            SolverBridge::NodalLoadData load;
+            load.nodeId = segments + 1;
+            load.values = {{-P, 0.0, 0.0, 0.0, 0.0, 0.0}};
+            model.nodalLoads.push_back(load);
+            const double r0Squared = (Iy + Iz) / A + zs * zs;
+            const double nz = (pi2 * E * Cw / (L * L) + G * J) / r0Squared;
+            const double nv = pi2 * E * Iz / (L * L), nw = pi2 * E * Iy / (L * L);
+            double expected = std::min(nw, nz);
+            if (zs > 0.0) {
+                const double h = 1.0 - zs * zs / r0Squared;
+                expected = std::min(nw, ((nv + nz) - std::sqrt((nv + nz) * (nv + nz) - 4.0 * h * nv * nz)) / (2.0 * h));
+            } else {
+                expected = std::min({nv, nw, nz});
+            }
+            const auto result = Structura::App::Services::BucklingService::run(model, 3);
+            QVERIFY(!result.bucklingFactors.empty());
+            const double critical = result.bucklingFactors[0] * P;
+            QVERIFY2(std::abs(critical - expected) / expected < 0.01, qPrintable(QStringLiteral("zs = %1: %2 x %3").arg(zs).arg(critical).arg(expected)));
+            if (zs > 0.0) {
+                QVERIFY(critical < std::min(nv, nz) * 0.999);   // o acoplamento reduz a carga em relacao ao menor entre flexao e torcao
+            }
+        }
+    }
+
+    void solverMatchesTextbookFrameSolutions()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        const double E = 2.0e11;
+        auto node = [](int id, double x, double y, double z, std::array<int, 6> restraints) {
+            SolverBridge::NodeData n;
+            n.id = id;
+            n.x = x;
+            n.y = y;
+            n.z = z;
+            n.restraints = restraints;
+            return n;
+        };
+        const std::array<int, 6> fixed {{1, 1, 1, 1, 1, 1}}, freeNode {{0, 0, 0, 0, 0, 0}};
+        // Portico engastado na base com carga horizontal H no nivel da viga (Timoshenko/Gere, Mecanica dos materiais; escorregamento por rotacao-deflexao):
+        // Delta = H h^3 (2 + 3k) / (12 E Ic (1 + 6k)), k = (Ib/L)/(Ic/h)
+        {
+            const double h = 4.0, L = 6.0, Ic = 8e-5, Ib = 1.6e-4, H = 50e3;
+            SolverBridge::ModelData model;
+            model.materials.push_back({1, E, 8.0e10});
+            model.sections.push_back({1, 100.0, Ic, Ic, 1e-5});   // areas enormes: a solucao classica despreza a deformacao axial
+            model.sections.push_back({2, 100.0, Ib, Ib, 1e-5});
+            model.nodes = {node(1, 0, 0, 0, fixed), node(2, 0, 0, h, freeNode), node(3, L, 0, h, freeNode), node(4, L, 0, 0, fixed)};
+            model.members.push_back(SolverBridge::MemberData {1, 1, 2, 1, 1});
+            model.members.push_back(SolverBridge::MemberData {2, 2, 3, 1, 2});
+            model.members.push_back(SolverBridge::MemberData {3, 4, 3, 1, 1});
+            SolverBridge::NodalLoadData load;
+            load.nodeId = 2;
+            load.values = {{H, 0.0, 0.0, 0.0, 0.0, 0.0}};
+            model.nodalLoads.push_back(load);
+            const auto result = SolverBridge(dll).solve(model);
+            const double k = (Ib / L) / (Ic / h);
+            const double expected = H * h * h * h * (2.0 + 3.0 * k) / (12.0 * E * Ic * (1.0 + 6.0 * k));
+            QVERIFY2(std::abs(result.nodeResults[1].displacements[0] - expected) / expected < 1e-5,
+                     qPrintable(QStringLiteral("%1 x %2").arg(result.nodeResults[1].displacements[0]).arg(expected)));
+            QVERIFY(std::abs(result.nodeResults[2].displacements[0] - result.nodeResults[1].displacements[0]) < 1e-8);   // viga axialmente rigida: mesmo deslocamento nos dois topos
+            QVERIFY(std::abs(result.nodeResults[0].reactions[0] + H / 2.0) < 1e-6 * H);
+        }
+        // Viga biengastada com carga uniforme w: Mext = w L^2/12, flecha no meio w L^4/(384 E I)
+        {
+            const double L = 6.0, I = 4e-6, w = 10e3;
+            SolverBridge::ModelData model;
+            model.materials.push_back({1, E, 8.0e10});
+            model.sections.push_back({1, 0.01, I, I, 1e-5});
+            model.nodes = {node(1, 0, 0, 0, fixed), node(2, L / 2, 0, 0, freeNode), node(3, L, 0, 0, fixed)};
+            model.members.push_back(SolverBridge::MemberData {1, 1, 2, 1, 1});
+            model.members.push_back(SolverBridge::MemberData {2, 2, 3, 1, 1});
+            for (int id : {1, 2}) {
+                SolverBridge::MemberLoadData load;
+                load.memberId = id;
+                load.coordSystem = SolverBridge::MemberLoadCoordSystem::Global;
+                load.qz = -w;
+                model.memberLoads.push_back(load);
+            }
+            const auto result = SolverBridge(dll).solve(model);
+            const double mid = -w * L * L * L * L / (384.0 * E * I);
+            QVERIFY2(std::abs(result.nodeResults[1].displacements[2] - mid) / std::abs(mid) < 1e-9,
+                     qPrintable(QStringLiteral("%1 x %2").arg(result.nodeResults[1].displacements[2]).arg(mid)));
+            QVERIFY(std::abs(result.nodeResults[0].reactions[2] - w * L / 2.0) < 1e-6 * w * L);
+            QVERIFY(std::abs(std::abs(result.nodeResults[0].reactions[4]) - w * L * L / 12.0) < 1e-6 * w * L * L);
+        }
+        // Viga continua de dois vaos iguais com carga uniforme: reacoes 3wL/8, 5wL/4 e 3wL/8; momento no apoio central w L^2/8
+        {
+            const double L = 5.0, I = 4e-6, w = 12e3;
+            SolverBridge::ModelData model;
+            model.materials.push_back({1, E, 8.0e10});
+            model.sections.push_back({1, 0.01, I, I, 1e-5});
+            model.nodes = {node(1, 0, 0, 0, {{1, 1, 1, 1, 0, 0}}), node(2, L, 0, 0, {{0, 1, 1, 0, 0, 0}}), node(3, 2.0 * L, 0, 0, {{0, 1, 1, 0, 0, 0}})};
+            model.members.push_back(SolverBridge::MemberData {1, 1, 2, 1, 1});
+            model.members.push_back(SolverBridge::MemberData {2, 2, 3, 1, 1});
+            for (int id : {1, 2}) {
+                SolverBridge::MemberLoadData load;
+                load.memberId = id;
+                load.coordSystem = SolverBridge::MemberLoadCoordSystem::Global;
+                load.qz = -w;
+                model.memberLoads.push_back(load);
+            }
+            const auto result = SolverBridge(dll).solve(model);
+            QVERIFY(std::abs(result.nodeResults[0].reactions[2] - 3.0 * w * L / 8.0) < 1e-6 * w * L);
+            QVERIFY(std::abs(result.nodeResults[1].reactions[2] - 5.0 * w * L / 4.0) < 1e-6 * w * L);
+            QVERIFY(std::abs(result.nodeResults[2].reactions[2] - 3.0 * w * L / 8.0) < 1e-6 * w * L);
+        }
+    }
+
     void solverWarpingIsContinuousBetweenCollinearMembers()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
@@ -960,6 +1149,29 @@ private slots:
         tie.memberType = ProjectData::MemberType::kTie;
         tie.releaseMask = ProjectData::MemberType::kReleaseRotations;
         loaded.extras.placements.append(tie);
+        loaded.extras.design.vonMises = true;
+        loaded.extras.design.fireCheck = true;
+        loaded.extras.design.fireTrrf = 90.0;
+        ProjectData::DesignMemberParams fireProtected;
+        fireProtected.memberId = 6;
+        fireProtected.fireProtection = 2;
+        fireProtected.fireThickness = 35.0;
+        fireProtected.fireConductivity = 0.12;
+        fireProtected.fireDensity = 450.0;
+        fireProtected.fireSpecificHeat = 1100.0;
+        fireProtected.fireExposure = 1;
+        loaded.extras.design.members.append(fireProtected);
+        ProjectData::DesignMemberParams stiffened;
+        stiffened.memberId = 5;
+        stiffened.stiffSides = 2;
+        stiffened.stiffWidth = 90.0;
+        stiffened.stiffThickness = 12.5;
+        stiffened.stiffCut = 30.0;
+        stiffened.stiffFitted = false;
+        stiffened.stiffWeldLeg = 6.0;
+        stiffened.stiffBearing = 150.0;
+        stiffened.stiffForce = 250000.0;
+        loaded.extras.design.members.append(stiffened);
 
         const QString second = dir.filePath(QStringLiteral("b.dat"));
         QString error;
@@ -982,6 +1194,25 @@ private slots:
             foundTie = foundTie || (p.memberId == 9 && p.memberType == ProjectData::MemberType::kTie);
         }
         QVERIFY(foundTie);
+        QVERIFY(again.extras.design.vonMises);   // VON_MISES persiste em [DESIGN_SETTINGS]
+        QVERIFY(again.extras.design.fireCheck);   // FIRE_CHECK e FIRE_TRRF persistem em [DESIGN_SETTINGS]
+        QCOMPARE(again.extras.design.fireTrrf, 90.0);
+        const auto fireAgain = again.extras.design.paramsFor(6);   // protecao termica por barra (NBR 14323)
+        QCOMPARE(fireAgain.fireProtection, 2);
+        QCOMPARE(fireAgain.fireThickness, 35.0);
+        QCOMPARE(fireAgain.fireConductivity, 0.12);
+        QCOMPARE(fireAgain.fireDensity, 450.0);
+        QCOMPARE(fireAgain.fireSpecificHeat, 1100.0);
+        QCOMPARE(fireAgain.fireExposure, 1);
+        const auto stiffAgain = again.extras.design.paramsFor(5);   // enrijecedores (5.7.9) persistem como pares chave=valor
+        QCOMPARE(stiffAgain.stiffSides, 2);
+        QCOMPARE(stiffAgain.stiffWidth, 90.0);
+        QCOMPARE(stiffAgain.stiffThickness, 12.5);
+        QCOMPARE(stiffAgain.stiffCut, 30.0);
+        QVERIFY(!stiffAgain.stiffFitted);
+        QCOMPARE(stiffAgain.stiffWeldLeg, 6.0);
+        QCOMPARE(stiffAgain.stiffBearing, 150.0);
+        QCOMPARE(stiffAgain.stiffForce, 250000.0);
     }
 
     void userLibraryPersistsProfilesAndMaterials()
@@ -1165,6 +1396,192 @@ private slots:
         QVERIFY(sawSuction);
         QVERIFY(service >= 2);
     }
+    void windShedFollowsNbr6123Tables()
+    {
+        using Structura::App::Services::WindShedService;
+        // tabelas
+        QCOMPARE(WindShedService::twoPitchCe(0.3, 10.0, 0), -1.2);
+        QCOMPARE(WindShedService::twoPitchCe(0.3, 10.0, 1), -0.4);
+        QCOMPARE(WindShedService::twoPitchCe(1.0, 30.0, 0), -0.2);
+        QCOMPARE(WindShedService::twoPitchCe(2.0, 50.0, 0), 0.2);
+        QVERIFY(qAbs(WindShedService::twoPitchCe(0.3, 12.5, 0) - (-1.2 + 0.5 * (-1.0 + 1.2))) < 1e-12);   // interpolacao em theta
+        QCOMPARE(WindShedService::onePitchCe(10.0, 0), -1.0);
+        QCOMPARE(WindShedService::onePitchCe(30.0, 8), 0.0);
+        QCOMPARE(WindShedService::onePitchCe(20.0, 7), -1.0);
+        QCOMPARE(WindShedService::cpiDominantWindward(2.0), 0.5);
+        QVERIFY(qAbs(WindShedService::cpiDominantWindward(2.5) - 0.55) < 1e-12);
+        QCOMPARE(WindShedService::cpiDominantHighSuction(1.0), -0.7);
+        QCOMPARE(WindShedService::cpiDominantHighSuction(5.0), -0.9);
+        const auto wallsA0 = WindShedService::wallCe(0.3, 1.2, false);
+        QCOMPARE(wallsA0[0], -0.8);
+        QCOMPARE(wallsA0[2], 0.7);
+        const auto walls90 = WindShedService::wallCe(0.3, 1.2, true);
+        QCOMPARE(walls90[0], 0.7);
+        QCOMPARE(walls90[1], -0.4);
+
+        // fator topografico S1 (5.2-b): theta = 10 graus, dt = 20 m, z = 10 m
+        using Structura::App::Services::WindStaticService;
+        QVERIFY(qAbs(WindStaticService::s1Topographic(10.0, 10.0, 20.0) - (1.0 + 2.0 * std::tan(7.0 * 3.14159265358979 / 180.0))) < 1e-12);
+        QVERIFY(qAbs(WindStaticService::s1Topographic(45.0, 10.0, 20.0) - (1.0 + 2.0 * 0.31)) < 1e-12);
+        QVERIFY(qAbs(WindStaticService::s1Topographic(4.5, 10.0, 20.0) - (1.0 + 2.0 * std::tan(3.0 * 3.14159265358979 / 180.0) * 0.5)) < 1e-12);
+        QCOMPARE(WindStaticService::s1Topographic(2.0, 10.0, 20.0), 1.0);
+        QCOMPARE(WindStaticService::s1Topographic(30.0, 100.0, 20.0), 1.0);   // acima de 2,5 dt o fator volta a 1,0
+
+        // galpao b = 20 m (vao), a = 24 m (comprimento), h = 6 m, theta ~ 10 graus, cumeeira ao longo de Y; 5 porticos a cada 6 m
+        using Bar = WindShedService::Bar;
+        const double rise = 10.0 * std::tan(10.0 * 3.14159265358979 / 180.0);
+        QVector<Bar> bars;
+        int id = 1;
+        for (int i = 0; i <= 4; ++i) {
+            const double y = 6.0 * i;
+            bars.append({id++, {0, y, 0}, {0, y, 6}});
+            bars.append({id++, {20, y, 0}, {20, y, 6}});
+            bars.append({id++, {0, y, 6}, {10, y, 6 + rise}});
+            bars.append({id++, {10, y, 6 + rise}, {20, y, 6}});
+        }
+        WindShedService::Parameters p;
+        p.site.v0 = 35.0;
+        p.site.category = 2;
+        p.cpiMode = WindShedService::CpiMode::Custom;
+        p.cpiFirst = 0.0;
+        p.cpiSecond = -0.3;
+        const auto result = WindShedService::compute(p, bars);
+        QCOMPARE(result.columns, 10);
+        QCOMPARE(result.rafters, 10);
+        QVERIFY(result.geometry.twoPitch);
+        QVERIFY(qAbs(result.geometry.theta - 10.0) < 1e-6);
+        QVERIFY(qAbs(result.geometry.h - 6.0) < 1e-9);
+        QCOMPARE(result.cases.size(), 8);   // T+, T-, L+, L- com dois Cpi
+
+        auto find = [&](const QString &direction, double cpi) -> const WindShedService::Case * {
+            for (const auto &c : result.cases) {
+                if (c.direction == direction && qAbs(c.cpi - cpi) < 1e-9) {
+                    return &c;
+                }
+            }
+            return nullptr;
+        };
+        auto loadOf = [](const WindShedService::Case &c, int member) {
+            for (const auto &l : c.loads) {
+                if (l.memberId == member) {
+                    return l.q;
+                }
+            }
+            return WindShedService::Vec3 {0, 0, 0};
+        };
+        const auto *t = find(QStringLiteral("T+"), 0.0);
+        QVERIFY(t);
+        // portico central (y = 12): colunas ids 9 (u = 0, barlavento A) e 10 (u = 20, sotavento B); faixa de 6 m
+        const auto windwardColumn = loadOf(*t, 9);
+        QVERIFY(qAbs(windwardColumn[0] - 0.7 * t->q * 6.0) < 1e-9);   // pressao empurra para dentro (+x)
+        const auto leewardColumn = loadOf(*t, 10);
+        QVERIFY(qAbs(leewardColumn[0] - 0.4 * t->q * 6.0) < 1e-9);    // succao puxa para fora (+x)
+        // tesoura de barlavento (11, sobe para +u): EFI = -1,2 -> succao: forca para cima e para -u; tesoura de sotavento (12): GHJ = -0,4
+        const double th = 10.0 * 3.14159265358979 / 180.0;
+        const auto windwardRafter = loadOf(*t, 11);
+        QVERIFY(qAbs(windwardRafter[2] - 1.2 * t->q * 6.0 * std::cos(th)) < 1e-9);
+        QVERIFY(qAbs(windwardRafter[0] - (-1.2 * t->q * 6.0 * std::sin(th))) < 1e-9);
+        const auto leewardRafter = loadOf(*t, 12);
+        QVERIFY(qAbs(leewardRafter[2] - 0.4 * t->q * 6.0 * std::cos(th)) < 1e-9);
+        QVERIFY(qAbs(leewardRafter[0] - (0.4 * t->q * 6.0 * std::sin(th))) < 1e-9);
+        // Cpi = -0,3 soma +0,3 q ao liquido de cada superficie: a coluna de barlavento passa de +0,7 para +1,0
+        const auto *tNeg = find(QStringLiteral("T+"), -0.3);
+        QVERIFY(tNeg);
+        QVERIFY(qAbs(loadOf(*tNeg, 9)[0] - 1.0 * tNeg->q * 6.0) < 1e-9);
+        // vento oposto (T-): barlavento passa a ser a coluna de u = 20, empurrada para -x
+        const auto *tMinus = find(QStringLiteral("T-"), 0.0);
+        QVERIFY(tMinus);
+        QVERIFY(qAbs(loadOf(*tMinus, 10)[0] + 0.7 * tMinus->q * 6.0) < 1e-9);
+        QVERIFY(qAbs(loadOf(*tMinus, 12)[2] - 1.2 * tMinus->q * 6.0 * std::cos(th)) < 1e-9);   // agora a tesoura 12 sobe no sentido do vento
+        // vento longitudinal (L+): colunas laterais com A1B1 ate x1 = max(b/3, a/4) = 6,67 m e A2B2 ate a/2; faixa do portico y = 6: [3, 9]
+        const auto *lon = find(QStringLiteral("L+"), 0.0);
+        QVERIFY(lon);
+        const double x1 = 20.0 / 3.0;
+        const double averaged = (x1 - 3.0) * (-0.8) + (9.0 - x1) * (-0.5);
+        const auto sideColumn = loadOf(*lon, 5);   // portico y = 6, coluna u = 0 (plano u minimo: normal -x)
+        QVERIFY(qAbs(sideColumn[0] - lon->q * averaged) < 1e-9);   // succao puxa a coluna para fora (-x)
+        // o oitao de barlavento (y = 0) recebe pressao C = +0,7 empurrando para +y: colunas 1 e 2 (strip a partir de y = 0)
+        QVERIFY(loadOf(*lon, 1)[1] > 0.0);
+        QVERIFY(loadOf(*lon, 2)[1] > 0.0);
+        QVERIFY(!result.warnings.isEmpty());
+    }
+    void combinationGeneratorBuildsSpecialConstructionAndExceptional()
+    {
+        using Structura::App::Services::CombinationGenerator;
+        using K = CombinationGenerator::Kind;
+        using S = CombinationGenerator::Situation;
+        auto pp = CombinationGenerator::defaults(QStringLiteral("PP"), K::SteelSelfWeight);
+        auto cp = CombinationGenerator::defaults(QStringLiteral("CP"), K::Permanent);
+        auto sc = CombinationGenerator::defaults(QStringLiteral("SC"), K::VariableHeavy);
+        auto vt = CombinationGenerator::defaults(QStringLiteral("VT1"), K::Wind);
+        auto mont = CombinationGenerator::defaults(QStringLiteral("MONT"), K::Variable);
+        mont.situation = S::Construction;
+        auto impact = CombinationGenerator::defaults(QStringLiteral("IMPACTO"), K::Accidental);
+        QCOMPARE(CombinationGenerator::guessKind(QStringLiteral("IMPACTO"), false), K::Accidental);
+        QCOMPARE(CombinationGenerator::guessKind(QStringLiteral("PR1"), false), K::Crane);
+        // tabela 1 (NBR 8800:2024): peso proprio de aco 1,25 / 1,15 / 1,10; vento 1,40 / 1,20 / 1,00
+        QCOMPARE(pp.gammaUnfavorable, 1.25);
+        QCOMPARE(pp.gammaSpecial, 1.15);
+        QCOMPARE(pp.gammaExceptional, 1.10);
+        QCOMPARE(vt.gammaSpecial, 1.20);
+        // tabela 2: ocupacao industrial/comercial 0,7 / 0,6 / 0,4
+        QCOMPARE(sc.psi0, 0.7);
+        QCOMPARE(sc.psi2, 0.4);
+
+        const auto combos = CombinationGenerator::generate({pp, cp, sc, vt, mont, impact}, {});
+        auto factor = [](const ProjectData::LoadCombination &c, const QString &name) {
+            for (const auto &f : c.factors) {
+                if (f.first == name) {
+                    return f.second;
+                }
+            }
+            return 0.0;
+        };
+        int cons = 0, exc = 0, normal = 0;
+        for (const auto &c : combos) {
+            // acoes de construcao e excepcionais nunca entram nas combinacoes normais nem nas de servico
+            if (c.name.startsWith(QLatin1String("ELU")) || c.name.startsWith(QLatin1String("ELS"))) {
+                ++normal;
+                QCOMPARE(factor(c, QStringLiteral("MONT")), 0.0);
+                QCOMPARE(factor(c, QStringLiteral("IMPACTO")), 0.0);
+            } else if (c.name.startsWith(QLatin1String("CONS"))) {
+                ++cons;
+                QCOMPARE(factor(c, QStringLiteral("PP")), 1.15);
+                QCOMPARE(factor(c, QStringLiteral("CP")), 1.25);
+                QCOMPARE(factor(c, QStringLiteral("MONT")), 1.30);
+                if (factor(c, QStringLiteral("SC")) != 0.0) {
+                    QVERIFY(qAbs(factor(c, QStringLiteral("SC")) - 1.30 * 0.7) < 1e-9);   // psi0,ef = psi0
+                }
+            } else if (c.name.startsWith(QLatin1String("EXC"))) {
+                ++exc;
+                QCOMPARE(factor(c, QStringLiteral("IMPACTO")), 1.0);
+                QCOMPARE(factor(c, QStringLiteral("MONT")), 0.0);
+                QCOMPARE(factor(c, QStringLiteral("VT1")), 0.0);   // psi2 do vento = 0
+                if (factor(c, QStringLiteral("PP")) > 1.05) {
+                    QCOMPARE(factor(c, QStringLiteral("PP")), 1.10);
+                    QCOMPARE(factor(c, QStringLiteral("CP")), 1.15);
+                }
+                QVERIFY(qAbs(factor(c, QStringLiteral("SC")) - 1.0 * 0.4) < 1e-9);   // psi2 da sobrecarga industrial
+            }
+        }
+        QVERIFY(normal > 0);
+        QCOMPARE(cons, 2);   // sem vento e com vento (vento entra com psi0,ef)
+        QCOMPARE(exc, 2);    // permanentes desfavoraveis e favoraveis
+        // acao especial de duracao muito curta: psi0,ef = psi2
+        auto fast = CombinationGenerator::defaults(QStringLiteral("PARTIDA"), K::Variable);
+        fast.situation = S::Special;
+        fast.shortDuration = true;
+        const auto special = CombinationGenerator::generate({pp, sc, fast}, {});
+        bool sawSpecial = false;
+        for (const auto &c : special) {
+            if (c.name.startsWith(QLatin1String("ESP"))) {
+                sawSpecial = true;
+                QCOMPARE(factor(c, QStringLiteral("PARTIDA")), 1.30);
+                QVERIFY(qAbs(factor(c, QStringLiteral("SC")) - 1.30 * 0.4) < 1e-9);
+            }
+        }
+        QVERIFY(sawSpecial);
+    }
     void bucklingMatchesEulerLoad()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
@@ -1246,6 +1663,84 @@ private slots:
         QVERIFY(dxf.contains(QStringLiteral("W_250_X_17_9")));
         QVERIFY(dxf.endsWith(QStringLiteral("EOF\r\n")));
         QVERIFY(dxf.contains(QStringLiteral("11\r\n3.000000")) && dxf.contains(QStringLiteral("21\r\n4.000000")));   // x, z projetados
+        // importacao: o DXF exportado volta como um segmento na camada do perfil (elevacao XZ: x, z projetados em x, y)
+        {
+            const auto imported = Structura::App::Services::DxfImporter::parse(dxf);
+            QVERIFY(!imported.segments.isEmpty());
+            bool found = false;
+            for (const auto &s : imported.segments) {
+                if (s.layer == QLatin1String("W_250_X_17_9") && std::abs(s.b[0] - 3.0) < 1e-6 && std::abs(s.b[1] - 4.0) < 1e-6) {
+                    found = true;
+                }
+            }
+            QVERIFY(found);
+        }
+    }
+    void cadImportersReadDxfAndIfcMembers()
+    {
+        using namespace Structura::App::Services;
+        // DXF em milimetros ($INSUNITS = 4): LINE, LWPOLYLINE e uma entidade ignorada (CIRCLE)
+        const QString dxf = QStringLiteral(
+            "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n"
+            "0\nSECTION\n2\nENTITIES\n"
+            "0\nLINE\n8\nPILAR\n10\n0\n20\n0\n30\n0\n11\n0\n21\n0\n31\n3000\n"
+            "0\nLWPOLYLINE\n8\nVIGA\n90\n3\n70\n0\n10\n0\n20\n0\n10\n6000\n20\n0\n10\n6000\n20\n4000\n"
+            "0\nCIRCLE\n8\nX\n10\n0\n20\n0\n40\n5\n"
+            "0\nENDSEC\n0\nEOF\n");
+        const auto d = DxfImporter::parse(dxf);
+        QCOMPARE(d.segments.size(), 3);
+        QVERIFY(std::abs(d.segments[0].b[2] - 3.0) < 1e-12 && d.segments[0].layer == QLatin1String("PILAR"));
+        QVERIFY(std::abs(d.segments[2].b[1] - 4.0) < 1e-12 && d.segments[2].layer == QLatin1String("VIGA"));
+        bool circleWarned = false;
+        for (const QString &w : d.warnings) {
+            circleWarned = circleWarned || w.contains(QLatin1String("CIRCLE"));
+        }
+        QVERIFY(circleWarned);
+        const auto topology = buildTopology(d.segments, 1e-3);
+        QCOMPARE(topology.nodes.size(), 4);   // (0,0,0) compartilhado entre o pilar e a viga
+        QCOMPARE(topology.bars.size(), 3);
+        // polilinha fechada de R12 (POLYLINE/VERTEX/SEQEND) fecha o contorno; duplicatas e comprimentos nulos sao descartados
+        const QString r12 = QStringLiteral(
+            "0\nSECTION\n2\nENTITIES\n0\nPOLYLINE\n8\nQ\n66\n1\n70\n1\n"
+            "0\nVERTEX\n8\nQ\n10\n0\n20\n0\n30\n0\n0\nVERTEX\n8\nQ\n10\n2\n20\n0\n30\n0\n0\nVERTEX\n8\nQ\n10\n2\n20\n2\n30\n0\n0\nSEQEND\n"
+            "0\nLINE\n8\nQ\n10\n0\n20\n0\n30\n0\n11\n2\n21\n0\n31\n0\n0\nENDSEC\n0\nEOF\n");
+        const auto closed = DxfImporter::parse(r12, 1.0);
+        QCOMPARE(closed.segments.size(), 4);   // 2 lados + fechamento + a linha repetida
+        const auto merged = buildTopology(closed.segments, 1e-3);
+        QCOMPARE(merged.bars.size(), 3);
+        QCOMPARE(merged.mergedDuplicates, 1);
+
+        // IFC em milimetros: pilar com solido extrudado (perfil nomeado) e viga com placement rotacionado filho do primeiro
+        const QString ifc = QStringLiteral(
+            "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n"
+            "#1=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);\n"
+            "#2=IFCCARTESIANPOINT((1000.,2000.,0.));\n#3=IFCAXIS2PLACEMENT3D(#2,$,$);\n#4=IFCLOCALPLACEMENT($,#3);\n"
+            "#5=IFCCARTESIANPOINT((0.,0.,0.));\n#6=IFCAXIS2PLACEMENT3D(#5,$,$);\n#7=IFCDIRECTION((0.,0.,1.));\n"
+            "#8=IFCISHAPEPROFILEDEF(.AREA.,'W 410x53',$,177.,403.,7.5,10.9,$);\n"
+            "#9=IFCEXTRUDEDAREASOLID(#8,#6,#7,3000.);\n#10=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#9));\n#11=IFCPRODUCTDEFINITIONSHAPE($,$,(#10));\n"
+            "#12=IFCCOLUMN('g1',$,'P''1',$,$,#4,#11,$,.COLUMN.);\n"
+            "#14=IFCDIRECTION((1.,0.,0.));\n#13=IFCAXIS2PLACEMENT3D(#5,#14,#7);\n#15=IFCLOCALPLACEMENT(#4,#13);\n"
+            "#16=IFCEXTRUDEDAREASOLID(#8,#6,#7,5000.);\n#17=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#16));\n#18=IFCPRODUCTDEFINITIONSHAPE($,$,(#17));\n"
+            "#19=IFCBEAM('g2',$,'V1',$,$,#15,#18,$,.BEAM.);\n"
+            "#20=IFCCARTESIANPOINT((0.,0.,0.));\n#21=IFCCARTESIANPOINT((0.,0.,2000.));\n#22=IFCPOLYLINE((#20,#21));\n"
+            "#23=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#22));\n#24=IFCPRODUCTDEFINITIONSHAPE($,$,(#23));\n#25=IFCMEMBER('g3',$,'D1',$,$,#4,#24,$,.BRACE.);\n"
+            "ENDSEC;\nEND-ISO-10303-21;\n");
+        const auto i = IfcImporter::parse(ifc);
+        QCOMPARE(i.segments.size(), 3);
+        for (const auto &s : i.segments) {
+            if (s.layer == QLatin1String("IFCCOLUMN")) {
+                QCOMPARE(s.profile, QStringLiteral("W 410x53"));
+                QCOMPARE(s.name, QStringLiteral("P'1"));
+                QVERIFY(std::abs(s.a[0] - 1.0) < 1e-12 && std::abs(s.a[1] - 2.0) < 1e-12 && std::abs(s.b[2] - 3.0) < 1e-12);
+            } else if (s.layer == QLatin1String("IFCBEAM")) {
+                QVERIFY(std::abs(s.a[0] - 1.0) < 1e-12 && std::abs(s.b[0] - 6.0) < 1e-12 && std::abs(s.b[1] - 2.0) < 1e-12 && std::abs(s.b[2]) < 1e-12);   // extrusao ao longo do eixo X global
+            } else if (s.layer == QLatin1String("IFCMEMBER")) {
+                QVERIFY(std::abs(s.b[2] - 2.0) < 1e-12 && std::abs(s.a[0] - 1.0) < 1e-12);   // polilinha "Axis" no sistema do placement
+            } else {
+                QFAIL("peca inesperada");
+            }
+        }
+        QVERIFY(IfcImporter::parse(QStringLiteral("nao e IFC")).segments.isEmpty());
     }
     void dynamicsMatchesSingleDofReference()
     {
@@ -1835,6 +2330,8 @@ private slots:
         layout.views.append({QStringLiteral("plan-proj"), 100.0, false, 0.0, 0.0, 0.5, 0.5});
         layout.views.append({QStringLiteral("elev-xz-0"), 50.0, true, 0.1, 0.55, 0.6, 0.4});
         loaded.extras.sheetLayouts.append(layout);
+        loaded.extras.sheetEdits.append({QStringLiteral("ligacao-n2-b3"), QStringLiteral("n2b3/elev/cotaH"), 7.5, -3.25, false});
+        loaded.extras.sheetEdits.append({QStringLiteral("ligacao-n2-b3"), QStringLiteral("n2b3/secA/chamada 1"), 0.0, 0.0, true});
         const QString second = dir.filePath(QStringLiteral("s2.dat"));
         QString error;
         QVERIFY(service.save(second, &gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, &error));
@@ -1849,6 +2346,12 @@ private slots:
         QVERIFY(back.views.at(1).manual && !back.views.at(0).manual);
         QCOMPARE(back.views.at(1).scale, 50.0);
         QVERIFY(std::abs(back.views.at(1).y - 0.55) < 1e-6 && std::abs(back.views.at(1).w - 0.6) < 1e-6);
+        // anotacoes movidas / excluidas pelo usuario
+        QCOMPARE(again.extras.sheetEdits.size(), 2);
+        QCOMPARE(again.extras.sheetEdits.at(0).key, QStringLiteral("n2b3/elev/cotaH"));
+        QVERIFY(std::abs(again.extras.sheetEdits.at(0).dx - 7.5) < 1e-9 && std::abs(again.extras.sheetEdits.at(0).dy + 3.25) < 1e-9 && !again.extras.sheetEdits.at(0).deleted);
+        QCOMPARE(again.extras.sheetEdits.at(1).key, QStringLiteral("n2b3/secA/chamada 1"));
+        QVERIFY(again.extras.sheetEdits.at(1).deleted);
     }
 
     void sheetsBuildMarksListAndExports()
@@ -2515,6 +3018,626 @@ private slots:
         QVERIFY(std::abs(forces[10]) < 1e-6);
         // Equilibrio da barra: soma das forcas de extremidade + carga = 0.
         QVERIFY(std::abs(forces[2] + forces[8] + load.qz * 5.0) < 1e-6);
+    }
+
+    // ---- cargas de barra com posicao, vinculos, rotulas plasticas e vento estatico --------------------------------------------------------
+
+    void newProjectSectionsRoundTrip()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString first = dir.filePath(QStringLiteral("novo.dat"));
+        QFile file(first);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        file.write("[MATERIALS]\n1 2.0e11 8.0e10\n[MATERIAL_THERMAL]\n1 1.0e-5\n[SECTIONS]\n1 0.01 4e-6 8e-6 1e-5\n"
+                   "[NODES]\n1 0 0 0 1 1 1 1 1 1\n2 5 0 0 0 0 0 0 0 0\n3 5 0 3 0 0 0 0 0 0\n[MEMBERS]\n1 1 2 1 1\n"
+                   "[LOAD_CASES]\nCP CP 1\n"
+                   "[MEMBER_ACTIONS]\n"
+                   "1 0 LOCAL 1.0 3.5 0 -10 0 0 -20 0 CP\n"
+                   "1 1 GLOBAL 2.0 0 0 0 -50 0 0 0 CP\n"
+                   "1 2 LOCAL 4.0 0 0 0 7 0 0 0 CP\n"
+                   "1 3 LOCAL 0 0 3.6e-4 12 0 0 0 0 CP\n"
+                   "1 4 LOCAL 0 0 -2.5e-4 0 0 0 0 0 CP\n"
+                   "[DIAPHRAGMS]\nPavimento_1 2 2 1 3\n"
+                   "[RIGID_LINKS]\n2 3 0 0\n"
+                   "[INCLINED_SUPPORTS]\n2 1 0.7071067812 0 0.7071067812 0 1 0 -0.7071067812 0 0.7071067812\n"
+                   "[LINEAR_CONSTRAINTS]\n1 2 2 0 1 3 0 -1\n"
+                   "[MEMBER_CONNECTIONS]\n1 -1 -1 -1 -1 -1 4000000 -1 -1 -1 -1 -1 -1 1 5 1000000 150 0.02 2000 2\n"
+                   "[LINKS]\n1 Apoio 1 3 0 0 0 0 0 0 0 0 0 2 500000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n"
+                   "[NONLINEAR]\nforce=1 steps=20 maxiter=60 tol=1e-07 criteria=3 cutbacks=5 control=1 node=3 dof=0 target=0.25 lambda=2\n");
+        file.close();
+
+        DatModelIoService service;
+        MemoryGateway gateway;
+        Loaded loaded;
+        QVERIFY(load(service, gateway, first, loaded));
+        QCOMPARE(loaded.materials.first().thermalExpansion, 1.0e-5);
+        QCOMPARE(loaded.extras.memberActions.size(), 5);
+        QCOMPARE(loaded.extras.memberActions[0].kind, ProjectData::MemberActionKind::kTrapezoid);
+        QCOMPARE(loaded.extras.memberActions[0].b, 3.5);
+        QCOMPARE(loaded.extras.memberActions[0].v2[1], -20.0);
+        QCOMPARE(loaded.extras.memberActions[1].system, QStringLiteral("GLOBAL"));
+        QCOMPARE(loaded.extras.memberActions[3].v1[1], 12.0);
+        QCOMPARE(loaded.extras.memberActions[4].kind, ProjectData::MemberActionKind::kShrinkage);
+        QCOMPARE(loaded.extras.diaphragms.size(), 1);
+        QCOMPARE(loaded.extras.diaphragms.first().name, QStringLiteral("Pavimento 1"));
+        QCOMPARE(loaded.extras.diaphragms.first().slaveNodes, QVector<int>({3}));
+        QCOMPARE(loaded.extras.rigidLinks.size(), 1);
+        QCOMPARE(loaded.extras.inclinedSupports.first().mask, 1);
+        QCOMPARE(loaded.extras.constraints.first().coefs, QVector<double>({1.0, -1.0}));
+        QCOMPARE(loaded.extras.memberConnections.size(), 1);
+        QCOMPARE(loaded.extras.memberConnections.first().springK[5], 4.0e6);
+        QCOMPARE(loaded.extras.memberConnections.first().hinges.size(), 1);
+        QCOMPARE(loaded.extras.memberConnections.first().hinges.first().yieldMoment, 150.0);
+        QCOMPARE(loaded.extras.links.size(), 1);
+        QCOMPARE(loaded.extras.links.first().laws[0].kind, 2);
+        QCOMPARE(loaded.extras.links.first().laws[0].k, 5.0e5);
+        QVERIFY(loaded.extras.nonlinear.force);
+        QCOMPARE(loaded.extras.nonlinear.steps, 20);
+        QCOMPARE(loaded.extras.nonlinear.controlMode, 1);
+        QCOMPARE(loaded.extras.nonlinear.controlTarget, 0.25);
+
+        // salva e recarrega: nada pode ser perdido
+        const QString second = dir.filePath(QStringLiteral("novo2.dat"));
+        QString error;
+        QVERIFY(service.save(second, &gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, &error));
+        MemoryGateway gateway2;
+        Loaded again;
+        QVERIFY(load(service, gateway2, second, again));
+        QCOMPARE(again.materials.first().thermalExpansion, 1.0e-5);
+        QCOMPARE(again.extras.memberActions.size(), 5);
+        for (int i = 0; i < 5; ++i) {
+            QCOMPARE(again.extras.memberActions[i].kind, loaded.extras.memberActions[i].kind);
+            QCOMPARE(again.extras.memberActions[i].v1, loaded.extras.memberActions[i].v1);
+            QCOMPARE(again.extras.memberActions[i].v2, loaded.extras.memberActions[i].v2);
+            QCOMPARE(again.extras.memberActions[i].a, loaded.extras.memberActions[i].a);
+        }
+        QVERIFY(again.extras.diaphragms == loaded.extras.diaphragms);
+        QCOMPARE(again.extras.rigidLinks.size(), 1);
+        for (std::size_t i = 0; i < 9; ++i) {
+            QVERIFY(std::abs(again.extras.inclinedSupports.first().axes[i] - loaded.extras.inclinedSupports.first().axes[i]) < 1e-8);
+        }
+        QCOMPARE(again.extras.constraints.first().dofs, loaded.extras.constraints.first().dofs);
+        QCOMPARE(again.extras.memberConnections.first().springK, loaded.extras.memberConnections.first().springK);
+        QCOMPARE(again.extras.memberConnections.first().hinges.first().axialYield, 2000.0);
+        QCOMPARE(again.extras.links.first().laws[0].k, 5.0e5);
+        QCOMPARE(again.extras.nonlinear.maxIterations, 60);
+        QCOMPARE(again.extras.nonlinear.criteria, 3);
+        QCOMPARE(again.extras.nonlinear.loadFactorMax, 2.0);
+    }
+
+    void memberActionsThroughTheBridge()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // balanco de 5 m (eixo local y = Z global): forca em a = 2 m
+        SolverBridge::ModelData model = cantileverModel(0.0, 0.0, 5.0);
+        model.nodalLoads.clear();
+        SolverBridge::MemberActionData point;
+        point.memberId = 1;
+        point.kind = 1;
+        point.a = 2.0;
+        point.v1 = {{0.0, 1000.0, 0.0}};
+        model.memberActions.push_back(point);
+        const auto result = SolverBridge(dll).solve(model);
+        const double expected = 1000.0 * 4.0 * (15.0 - 2.0) / (6.0 * 2.0e11 * 4e-6);   // P a^2 (3L - a) / (6 E I)
+        QVERIFY(std::abs(result.nodeResults[1].displacements[2] - expected) < 1e-9);
+        QVERIFY(std::abs(result.nodeResults[0].reactions[2] + 1000.0) < 1e-6);
+
+        // temperatura: alongamento livre alpha dT L e gradiente: flecha -k L^2 / 2
+        SolverBridge::ModelData thermal = cantileverModel(0.0, 0.0, 5.0);
+        thermal.nodalLoads.clear();
+        SolverBridge::MemberActionData strain;
+        strain.memberId = 1;
+        strain.kind = 3;
+        strain.v1 = {{1.2e-5 * 30.0, 1.2e-5 * 40.0, 0.0}};
+        thermal.memberActions.push_back(strain);
+        const auto thermalResult = SolverBridge(dll).solve(thermal);
+        QVERIFY(std::abs(thermalResult.nodeResults[1].displacements[0] - 1.2e-5 * 30.0 * 5.0) < 1e-12);
+        QVERIFY(std::abs(thermalResult.nodeResults[1].displacements[2] + 1.2e-5 * 40.0 * 25.0 / 2.0) < 1e-12);
+    }
+
+    void plasticHingeThroughTheBridge()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // balanco com rotula plastica no engaste (rz local): Mp = 1000 N.m, k = 1e7, enrijecimento 10 %, carga de ponta 300 N em 5 m
+        SolverBridge::ModelData model = cantileverModel(0.0, 300.0, 5.0);
+        model.nodalLoads[0].values = {{0.0, 0.0, 300.0, 0.0, 0.0, 0.0}};
+        SolverBridge::PlasticHingeData hinge;
+        hinge.memberId = 1;
+        hinge.dof = 5;
+        hinge.kElastic = 1.0e7;
+        hinge.yieldMoment = 1000.0;
+        hinge.hardeningRatio = 0.1;
+        model.plasticHinges.push_back(hinge);
+        QVERIFY(model.hasNonlinearElements());
+        const auto result = SolverBridge(dll).solve(model);
+        QVERIFY(result.nonlinear.used);
+        QVERIFY(result.nonlinear.converged);
+        QCOMPARE(result.nonlinear.hinges.size(), std::size_t(1));
+        QVERIFY(result.nonlinear.hinges.front().yielded);
+        const double rotation = 1000.0 / 1.0e7 + (1500.0 - 1000.0) / (0.1 * 1.0e7);
+        const double expected = 300.0 * 125.0 / (3.0 * 2.0e11 * 4e-6) + rotation * 5.0;
+        QVERIFY(std::abs(result.nodeResults[1].displacements[2] - expected) < 1e-6 * expected);
+        QVERIFY(result.nonlinear.curve.size() >= 2);
+        // sem o recurso novo na DLL o modelo linear continua igual
+        SolverBridge::ModelData linear = cantileverModel(0.0, 300.0, 5.0);
+        linear.nodalLoads[0].values = {{0.0, 0.0, 300.0, 0.0, 0.0, 0.0}};
+        const auto linearResult = SolverBridge(dll).solve(linear);
+        QVERIFY(!linearResult.nonlinear.used);
+        QVERIFY(std::abs(linearResult.nodeResults[1].displacements[2] - 300.0 * 125.0 / (3.0 * 2.0e11 * 4e-6)) < 1e-9);
+    }
+
+    void windStaticFollowsTheStandard()
+    {
+        using Wind = Structura::App::Services::WindStaticService;
+        // S2 (Tabela 3): categoria II, classe B: 0,98 a 10 m; 1,04 a 20 m; 1,21 a 100 m. Abaixo de 5 m vale o de 5 m (0,92)
+        QVERIFY(std::abs(Wind::s2(2, 'B', 10.0) - 0.98) < 0.005);
+        QVERIFY(std::abs(Wind::s2(2, 'B', 20.0) - 1.04) < 0.005);
+        QVERIFY(std::abs(Wind::s2(2, 'B', 100.0) - 1.21) < 0.005);
+        QVERIFY(std::abs(Wind::s2(2, 'B', 2.0) - 0.92) < 0.005);
+        QVERIFY(std::abs(Wind::s2(5, 'A', 3.0) - 0.74) < 0.005);   // categoria V: constante ate 10 m
+        QVERIFY(std::abs(Wind::s2(1, 'A', 50.0) - 1.21) < 0.005);
+        QCOMPARE(Wind::windClass(18.0), 'A');
+        QCOMPARE(Wind::windClass(35.0), 'B');
+        QCOMPARE(Wind::windClass(60.0), 'C');
+
+        // Tabela 6, h/b <= 1/2 e a/b = 1: alfa = 0 -> C = +0,7, D = -0,4; alfa = 90 -> A = +0,7, B = -0,4
+        double w = 0.0, l = 0.0;
+        Wind::wallCoefficients(0.4, 1.0, 0.0, w, l);
+        QCOMPARE(w, 0.7);
+        QCOMPARE(l, -0.4);
+        // 3/2 < h/b <= 6 e 2 <= a/b <= 4, alfa = 0: C = +0,8, D = -0,3
+        Wind::wallCoefficients(3.0, 3.0, 0.0, w, l);
+        QCOMPARE(w, 0.8);
+        QCOMPARE(l, -0.3);
+        // a/b = 1,75 (entre 3/2 e 2): interpolacao linear (nota 2) do sotavento -0,5 -> -0,3 em 1/2 < h/b <= 3/2
+        Wind::wallCoefficients(1.0, 1.75, 0.0, w, l);
+        QVERIFY(std::abs(l - (-0.5 + 0.5 * 0.2)) < 1e-12);
+
+        // edificio de 20 x 10 m, 3 pavimentos de 3 m, vento +X na fachada de 10 m (alfa = 0)
+        Wind::Parameters parameters;
+        parameters.v0 = 40.0;
+        parameters.category = 3;
+        Wind::Building building;
+        building.xMin = 0.0;
+        building.xMax = 20.0;
+        building.yMin = 0.0;
+        building.yMax = 10.0;
+        building.levels = {0.0, 3.0, 6.0, 9.0};
+        const auto result = Wind::compute(parameters, building, 1 << Wind::PlusX, 1);
+        QCOMPARE(result.cases.size(), 3);   // centrada, +e e -e
+        const auto &centered = result.cases.first();
+        QCOMPARE(centered.alpha, 0.0);
+        QCOMPARE(centered.faceWidth, 10.0);
+        QCOMPARE(centered.windClass, 'A');   // maior dimensao frontal = max(10, 9) = 10 m
+        QVERIFY(std::abs(result.cases[1].eccentricityDistance - 0.075 * 10.0) < 1e-12);
+        QVERIFY(std::abs(result.cases[2].eccentricityDistance + 0.075 * 10.0) < 1e-12);
+        // h/b = 0,9 (faixa 1/2 < h/b <= 3/2) e a/b = 2: C = +0,7, D = -0,3
+        QCOMPARE(centered.windwardCoefficient, 0.7);
+        QVERIFY(std::abs(centered.leewardCoefficient + 0.3) < 1e-12);
+        // forca do pavimento intermediario: q (kN/m2) x (0,7 + 0,3) x 10 m x 3 m
+        const auto &mid = centered.floors[1];
+        const double vk = 40.0 * Wind::s2(3, 'A', 6.0);
+        QVERIFY(std::abs(mid.q - 0.613 * vk * vk / 1000.0) < 1e-9);
+        QVERIFY(std::abs(mid.force - mid.q * 1.0 * 10.0 * 3.0) < 1e-9);
+        // o topo recebe so a metade do ultimo vao (sem platibanda)
+        QVERIFY(std::abs(centered.floors[2].tributary - 1.5) < 1e-12);
+        // o vento na outra fachada (20 m) e alfa = 90 graus
+        const auto y = Wind::compute(parameters, building, 1 << Wind::PlusY, 0);
+        QCOMPARE(y.cases.first().alpha, 90.0);
+        QCOMPARE(y.cases.first().faceWidth, 20.0);
+    }
+
+    void effectiveLengthsFromBuckling()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        using Structura::App::Services::BucklingService;
+        using Structura::App::Services::EffectiveLengthService;
+        // coluna de 6 m com 8 elementos sob compressao P; Iz = 8e-6 (plano y local, eixo forte) e Iy = 4e-6 (plano z, eixo fraco)
+        auto column = [](bool cantilever) {
+            SolverBridge::ModelData model;
+            model.materials.push_back({1, 2.0e11, 8.0e10});
+            model.sections.push_back({1, 0.01, 8e-6, 4e-6, 1e-5});
+            const int n = 8;
+            for (int i = 0; i <= n; ++i) {
+                SolverBridge::NodeData node;
+                node.id = i + 1;
+                node.x = 6.0 * i / n;
+                if (i == 0) {
+                    node.restraints = cantilever ? std::array<int, 6> {{1, 1, 1, 1, 1, 1}} : std::array<int, 6> {{1, 1, 1, 1, 0, 0}};
+                } else if (i == n && !cantilever) {
+                    node.restraints = {{0, 1, 1, 0, 0, 0}};
+                }
+                model.nodes.push_back(node);
+            }
+            for (int i = 0; i < n; ++i) {
+                model.members.push_back(SolverBridge::MemberData {i + 1, i + 1, i + 2, 1, 1});
+            }
+            SolverBridge::NodalLoadData load;
+            load.nodeId = n + 1;
+            load.values = {{-1000.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
+            model.nodalLoads.push_back(load);
+            return model;
+        };
+        for (const bool cantilever : {false, true}) {
+            auto model = column(cantilever);
+            model.bucklingModes = 0;
+            SolverBridge::Result result;
+            {
+                auto request = model;
+                result = SolverBridge(dll).solve([&] { auto m = request; m.secondOrder = false; m.bucklingModes = 4; return m; }());
+            }
+            QVERIFY(result.bucklingFactors.size() >= 2);
+            EffectiveLengthService::Options options;
+            const auto out = EffectiveLengthService::compute(model, result, options);
+            QVERIFY(!out.members.isEmpty());
+            const double expectedK = cantilever ? 2.0 : 1.0;
+            const double lambda1 = M_PI * M_PI * 2.0e11 * 4e-6 / (std::pow(expectedK * 6.0, 2.0) * 1000.0);
+            QVERIFY(std::abs(result.bucklingFactors.front() - lambda1) < 0.03 * lambda1);
+            for (const auto &member : out.members) {
+                // plano fraco (Y) flamba no modo 1; o forte (X) em outro modo (lambda maior), mas com o mesmo K
+                QVERIFY(member.y.found);
+                QVERIFY2(std::abs(member.y.k - expectedK) < 0.05 * expectedK, qPrintable(QStringLiteral("member %1 ky=%2 mode=%3 lambda=%4 partic=%5 group=%6").arg(member.memberId).arg(member.y.k).arg(member.y.mode).arg(member.y.lambda).arg(member.y.participation).arg(member.groupSize)));
+                QCOMPARE(member.groupSize, 8);
+                QVERIFY(std::abs(member.groupLength - 6.0) < 1e-9);
+                if (member.x.found) {
+                    QVERIFY(std::abs(member.x.k - expectedK) < 0.05 * expectedK);
+                }
+            }
+            QVERIFY(out.swayClass >= 0);
+        }
+    }
+
+    void orthotropicShellMaterial()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada.");
+        }
+        // laje 4 x 2 m em uma direcao (x): apoios simples em x = 0 e x = 4, bordas y livres; pressao uniforme
+        auto deflection = [&](bool orthotropic, const std::array<double, 3> &axis, double bend1, double bend2, double e2Factor = 1.0) {
+            MemoryGateway gateway;
+            Loaded loaded;
+            Structura::Shell::Model &shell = loaded.extras.shell;
+            Structura::Shell::ensureDefaultMaterials(shell);
+            Structura::Shell::Material material = shell.materials[3];
+            material.nu = 0.0;
+            material.orthotropic = orthotropic;
+            material.E2 = material.E * e2Factor;
+            material.nu12 = 0.0;
+            material.G12 = material.E / 2.0;
+            material.bend1 = bend1;
+            material.bend2 = bend2;
+            material.axis = axis;
+            shell.materials[3] = material;
+            Structura::Shell::Object slab;
+            slab.id = 1;
+            slab.name = "Laje";
+            slab.polygon = {{0, 0, 0}, {4, 0, 0}, {4, 2, 0}, {0, 2, 0}};
+            slab.p = {{"t", 0.15}};
+            slab.meshSize = 0.25;
+            slab.material = 3;
+            shell.objects = {slab};
+            Structura::Shell::Load pressure;
+            pressure.caseName = ProjectData::defaultLoadCaseName().toStdString();
+            pressure.type = Structura::Shell::Load::Pressure;
+            pressure.v = {-1000.0, 0, 0, 0};
+            shell.loads = {pressure};
+            Structura::Shell::Support left, right;
+            left.selector = Structura::Shell::Support::Plane;
+            left.axis = 0;
+            left.value = 0.0;
+            left.fixed = {1, 1, 1, 0, 0, 0};
+            right = left;
+            right.value = 4.0;
+            right.fixed = {0, 0, 1, 0, 0, 0};
+            shell.supports = {left, right};
+            shell.coupled = true;
+            AnalysisService analysis;
+            const auto build = analysis.buildModel(&gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras,
+                                                   ProjectData::defaultLoadCaseName());
+            if (!build.success) {
+                return 0.0;
+            }
+            const auto result = SolverBridge(dll).solve(build.model);
+            double maxW = 0.0;
+            for (const auto &n : result.shellNodeResults) {
+                maxW = std::max(maxW, std::abs(n.displacements[2]));
+            }
+            return maxW;
+        };
+        const double isotropic = deflection(false, {1, 0, 0}, 1.0, 1.0);
+        QVERIFY(isotropic > 0.0);
+        // ortotropico degenerado (E2 = E1, flexao 1:1) = isotropo
+        QVERIFY(std::abs(deflection(true, {1, 0, 0}, 1.0, 1.0) - isotropic) < 1e-6 * isotropic);
+        QVERIFY(std::abs(deflection(true, {0.6, 0.8, 0}, 1.0, 1.0) - isotropic) < 1e-6 * isotropic);
+        // direcao 1 ao longo do vao: a rigidez de flexao no vao e bend1 E; girando o eixo 90 graus passa a ser bend2 E
+        const double alongSpan = deflection(true, {1, 0, 0}, 1.0, 0.25);
+        const double acrossSpan = deflection(true, {0, 1, 0}, 1.0, 0.25);
+        QVERIFY(std::abs(alongSpan - isotropic) < 0.01 * isotropic);
+        QVERIFY(std::abs(acrossSpan / alongSpan - 4.0) < 0.05 * 4.0);
+        // rigidez de flexao 1/16: flecha 16 vezes maior
+        QVERIFY(std::abs(deflection(true, {1, 0, 0}, 1.0 / 16.0, 1.0) / isotropic - 16.0) < 0.05 * 16.0);
+    }
+
+    void loadHypothesesExpandCombinations()
+    {
+        using namespace Structura::App::Services;
+        ProjectData::LoadCombination base;
+        base.name = QStringLiteral("ELU");
+        base.factors = {{QStringLiteral("PP"), 1.35}, {QStringLiteral("SC1"), 1.5}, {QStringLiteral("SC2"), 1.5}, {QStringLiteral("SC3"), 1.5}, {QStringLiteral("T1"), 1.0}, {QStringLiteral("T2"), 1.0}};
+        QVector<LoadHypothesisService::Hypothesis> hyp;
+        // sobrecarga alternada nos 3 vaos: 7 subconjuntos nao vazios
+        hyp.push_back({QStringLiteral("SC"), LoadHypothesisService::Kind::Alternating, {QStringLiteral("SC1"), QStringLiteral("SC2"), QStringLiteral("SC3")}});
+        // carga movel em 2 posicoes (uma por vez)
+        hyp.push_back({QStringLiteral("trem"), LoadHypothesisService::Kind::Exclusive, {QStringLiteral("T1"), QStringLiteral("T2")}});
+        const auto out = LoadHypothesisService::expand(base, hyp);
+        QCOMPARE(out.combinations.size(), 7 * 2);
+        for (const auto &c : out.combinations) {
+            QVERIFY(c.factors.first().first == QLatin1String("PP"));
+            int moving = 0;
+            for (const auto &f : c.factors) {
+                moving += f.first.startsWith(QLatin1Char('T')) ? 1 : 0;
+            }
+            QCOMPARE(moving, 1);
+        }
+        // "age / nao age"
+        QVector<LoadHypothesisService::Hypothesis> optional {{QStringLiteral("SC1"), LoadHypothesisService::Kind::Optional, {QStringLiteral("SC1")}}};
+        const auto opt = LoadHypothesisService::expand(base, optional);
+        QCOMPARE(opt.combinations.size(), 2);
+        QCOMPARE(opt.combinations[1].factors.size(), base.factors.size() - 1);
+        // limite
+        QVERIFY(LoadHypothesisService::expand(base, hyp, 5).truncated);
+    }
+
+    void envelopeFindsGoverningCombinationAlongTheBar()
+    {
+        using namespace Structura::App::Services;
+        // viga biapoiada L = 6: combinacao 0 = carga uniforme (Mz = q x (L-x)/2), combinacao 1 = pontual a 1/4 do vao
+        const double L = 6.0;
+        auto provider = [&](int combo, int, double x) {
+            ResultsEnvelopeService::Forces f {};
+            if (combo == 0) {
+                f[5] = 10.0 * x * (L - x) / 2.0;
+            } else {
+                const double P = 70.0, a = L / 4.0;
+                f[5] = x <= a ? P * (L - a) / L * x : P * a / L * (L - x);
+            }
+            return f;
+        };
+        const auto env = ResultsEnvelopeService::compute(7, L, 2, provider, 25);
+        QCOMPARE(env.points.size(), 25);
+        QCOMPARE(env.points.front().max[5], 0.0);
+        // x = 1,5 (indice 6): pontual 70*0,75*1,5 = 78,75 contra uniforme 33,75 -> governa a combinacao 1
+        QCOMPARE(env.points[6].maxCombo[5], 1);
+        QVERIFY(std::abs(env.points[6].max[5] - 78.75) < 1e-9);
+        // x = 0,5 (indice 2): pontual 70*0,75*0,5 = 26,25 contra uniforme 10*0,5*5,5/2 = 13,75 -> ainda a pontual
+        // x = 5,5 (indice 22): pontual 70*0,25*0,5/... = 70*1.5/6*0.5 = 8,75 contra uniforme 13,75 -> governa a uniforme
+        QCOMPARE(env.points[22].maxCombo[5], 0);
+        QVERIFY(std::abs(env.peak[5] - 78.75) < 1e-9 && env.peakCombo[5] == 1 && std::abs(env.peakX[5] - 1.5) < 1e-9);
+    }
+
+    void constructionStagesAccumulateAndReduceStiffness()
+    {
+        using namespace Structura::App::Services;
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada.");
+        }
+        SolverBridge::ModelData model;
+        model.materials.push_back({1, 2.0e11, 8.0e10});
+        model.sections.push_back({1, 0.01, 4e-6, 8e-6, 1e-5});
+        SolverBridge::NodeData fixed;
+        fixed.id = 1;
+        fixed.restraints = {{1, 1, 1, 1, 1, 1}};
+        SolverBridge::NodeData tip;
+        tip.id = 2;
+        tip.x = 4.0;
+        model.nodes = {fixed, tip};
+        model.members.push_back({1, 1, 2, 1, 1});
+        SolverBridge::NodalLoadData force;
+        force.nodeId = 2;
+        force.values = {0, 0, -1000.0, 0, 0, 0};
+        ConstructionStageService::Stage first, second;
+        first.name = "fase 1";
+        first.loads.nodalLoads = {force};
+        second.name = "fase 2";
+        second.loads.nodalLoads = {force};
+        second.reductions[1] = {1.0, 0.5};   // inercia reduzida pela metade na fase 2
+        const SolverBridge bridge(dll);
+        const auto out = ConstructionStageService::run(model, {first, second}, [&](const SolverBridge::ModelData &m) { return bridge.solve(m); });
+        QCOMPARE(out.perStage.size(), 2);
+        const double w1 = out.perStage[0].nodeResults[1].displacements[2];
+        const double w2 = out.perStage[1].nodeResults[1].displacements[2];
+        QVERIFY(std::abs(w1 + 1000.0 * 64.0 / (3.0 * 2.0e11 * 8e-6)) < 1e-9 || std::abs(w1 + 1000.0 * 64.0 / (3.0 * 2.0e11 * 4e-6)) < 1e-9);
+        QVERIFY(std::abs(w2 / w1 - 2.0) < 1e-6);
+        QVERIFY(std::abs(out.accumulated.nodeResults[1].displacements[2] - (w1 + w2)) < 1e-12);
+        // barra inativa na fase: sem rigidez, sem carregar
+        ConstructionStageService::Stage ghost;
+        ghost.activeMembers = {99};
+        const auto softened = ConstructionStageService::stageModel(model, ghost);
+        QVERIFY(softened.sections.size() == 2 && softened.members[0].sectionId == 2);
+        QVERIFY(std::abs(softened.sections[1].iy - model.sections[0].iy * ConstructionStageService::kInactiveStiffness) < 1e-18);
+    }
+
+    void binaryResultsStoreRoundTripsPerHypothesis()
+    {
+        using namespace Structura::App::Services;
+        ProjectData::StoredResults stored;
+        stored.fingerprint = QStringLiteral("abc123");
+        for (int r = 0; r < 3; ++r) {
+            ProjectData::StoredRun run;
+            run.name = r == 2 ? QStringLiteral("COMB:ELU1") : QStringLiteral("CASO%1").arg(r + 1);
+            for (int n = 1; n <= 4; ++n) {
+                ProjectData::StoredNodeResult node;
+                node.nodeId = n;
+                node.displacements = {1.0 * r + n, 2.0, 3.0, 4.0, 5.0, 6.0 + 1e-13};
+                node.reactions = {-1.0, 0.0, 0.5, 0.0, 0.0, 7.0 * n};
+                run.nodes.push_back(node);
+            }
+            ProjectData::StoredMemberResult member;
+            member.memberId = 9;
+            member.forces[3] = 123.456789012345 * (r + 1);
+            member.hasWarping = r == 1;
+            run.members.push_back(member);
+            stored.runs.push_back(run);
+        }
+        ProjectData::StoredDesignResult design;
+        design.memberId = 9;
+        design.section = QStringLiteral("W 200 x 35,9");
+        design.eta = 0.8765;
+        design.check = QStringLiteral("flexao");
+        design.combination = QStringLiteral("ELU1");
+        design.lengthM = 4.2;
+        stored.design.push_back(design);
+        stored.bucklingCombination = QStringLiteral("ELU1");
+        stored.bucklingFactors = {4.5, 7.25};
+        stored.modalSource = QStringLiteral("CASO1");
+        stored.modalOmega = {12.5, 40.0};
+        stored.modalMassRatio = {{0.6, 0.0, 0.0}, {0.0, 0.3, 0.0}};
+
+        QByteArray bytes;
+        {
+            QBuffer buffer(&bytes);
+            QVERIFY(buffer.open(QIODevice::WriteOnly));
+            QString error;
+            QVERIFY2(ResultsBinaryStore::write(buffer, stored, &error), qPrintable(error));
+        }
+        QBuffer reader(&bytes);
+        QVERIFY(reader.open(QIODevice::ReadOnly));
+        ProjectData::StoredResults loaded;
+        QString error;
+        QVERIFY2(ResultsBinaryStore::read(reader, loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.fingerprint, stored.fingerprint);
+        QCOMPARE(loaded.runs.size(), 3);
+        QCOMPARE(loaded.runs[2].name, QStringLiteral("COMB:ELU1"));
+        QCOMPARE(loaded.runs[1].nodes[2].displacements[5], stored.runs[1].nodes[2].displacements[5]);
+        QCOMPARE(loaded.runs[2].members[0].forces[3], stored.runs[2].members[0].forces[3]);
+        QVERIFY(loaded.runs[1].members[0].hasWarping);
+        QCOMPARE(loaded.design.size(), 1);
+        QCOMPARE(loaded.design[0].section, design.section);
+        QCOMPARE(loaded.bucklingFactors, stored.bucklingFactors);
+        QCOMPARE(loaded.modalOmega, stored.modalOmega);
+        QCOMPARE(loaded.modalMassRatio.size(), 2);
+
+        // leitura de uma unica hipotese e indice
+        QString fingerprint;
+        const QStringList names = ResultsBinaryStore::sections(reader, &fingerprint);
+        QCOMPARE(fingerprint, QStringLiteral("abc123"));
+        QVERIFY(names.contains(QStringLiteral("run:CASO2")) && names.contains(QStringLiteral("modal")));
+        ProjectData::StoredRun one;
+        QVERIFY(ResultsBinaryStore::readRun(reader, QStringLiteral("CASO2"), one));
+        QCOMPARE(one.nodes.size(), 4);
+        QVERIFY(!ResultsBinaryStore::readRun(reader, QStringLiteral("INEXISTENTE"), one, &error));
+
+        // corrupcao detectada pela soma de verificacao
+        QByteArray damaged = bytes;
+        damaged[damaged.size() - 5] = static_cast<char>(damaged[damaged.size() - 5] ^ 0x5A);
+        QBuffer damagedReader(&damaged);
+        QVERIFY(damagedReader.open(QIODevice::ReadOnly));
+        ProjectData::StoredResults broken;
+        QVERIFY(!ResultsBinaryStore::read(damagedReader, broken, &error));
+        // versao futura recusada
+        QByteArray future = bytes;
+        future[7] = static_cast<char>(99);
+        QBuffer futureReader(&future);
+        QVERIFY(futureReader.open(QIODevice::ReadOnly));
+        QVERIFY(!ResultsBinaryStore::read(futureReader, broken, &error));
+        QVERIFY(error.contains(QStringLiteral("nao suportada")));
+    }
+
+    void plasticHingeDefinedInProjectYieldsInAnalysis()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada.");
+        }
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("rotula.dat"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        file.write("[MATERIALS]\n1 2.0e11 8.0e10\n[SECTIONS]\n1 0.01 4e-6 8e-6 1e-5\n"
+                   "[NODES]\n1 0 0 0 1 1 1 1 1 1\n2 4 0 0 0 0 0 0 0 0\n[MEMBERS]\n1 1 2 1 1\n"
+                   "[LOAD_CASES]\nCP CP 1\n"
+                   "[MEMBER_CONNECTIONS]\n1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 1 5 2000 100 0.01 0 2\n");
+        file.close();
+        DatModelIoService service;
+        MemoryGateway gateway;
+        Loaded loaded;
+        QVERIFY(load(service, gateway, path, loaded));
+        QCOMPARE(loaded.extras.memberConnections.size(), 1);
+        QVERIFY(loaded.nodal.isEmpty());
+        // carga na ponta (N): Fz = -50 kN -> M = 200 kN.m no engaste, acima de Mp = 100 kN.m
+        ProjectData::NodalLoad tip;
+        tip.nodeId = 2;
+        tip.loadCase = ProjectData::defaultLoadCaseName();
+        tip.fz = -50000.0;
+        loaded.nodal.append(tip);
+        AnalysisService analysis;
+        const auto build = analysis.buildModel(&gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras,
+                                               ProjectData::defaultLoadCaseName());
+        QVERIFY2(build.success, qPrintable(build.errors.join(QLatin1Char(';'))));
+        QCOMPARE(build.model.plasticHinges.size(), size_t(1));
+        QVERIFY(build.model.hasNonlinearElements());
+        const auto result = SolverBridge(dll).solve(build.model);
+        QVERIFY(result.nonlinear.used);
+        QVERIFY(!result.nonlinear.hinges.empty());
+        QVERIFY(result.nonlinear.hinges.front().yielded);
+    }
+
+    void plasticHingesInPortalFrameAndDialog()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada.");
+        }
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("portico.dat"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        // portico plano XZ: colunas de 3 m e viga de 6 m; rotulas plasticas nas duas pontas da viga (rz, dof 5 em I e 11 em J)
+        file.write("[MATERIALS]\n1 2.0e11 8.0e10\n[SECTIONS]\n1 0.01 4e-5 8e-6 1e-5\n"
+                   "[NODES]\n1 0 0 0 1 1 1 1 1 1\n2 0 0 3 0 0 0 0 0 0\n3 6 0 3 0 0 0 0 0 0\n4 6 0 0 1 1 1 1 1 1\n"
+                   "[MEMBERS]\n1 1 2 1 1\n2 2 3 1 1\n3 3 4 1 1\n"
+                   "[LOAD_CASES]\nCP CP 1\n"
+                   "[MEMBER_CONNECTIONS]\n2 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 2 5 5000 150 0.01 0 2 11 5000 150 0.01 0 2\n");
+        file.close();
+        DatModelIoService service;
+        MemoryGateway gateway;
+        Loaded loaded;
+        QVERIFY(load(service, gateway, path, loaded));
+        QCOMPARE(loaded.extras.memberConnections.first().hinges.size(), 2);
+        ProjectData::MemberLoad q;
+        q.memberId = 2;
+        q.loadCase = ProjectData::defaultLoadCaseName();
+        q.system = QStringLiteral("GLOBAL");
+        q.qz = -60000.0;   // 60 kN/m: Mp,viga ~ qL2/12 = 180 kN.m > 150
+        loaded.member.append(q);
+        AnalysisService analysis;
+        const auto build = analysis.buildModel(&gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras,
+                                               ProjectData::defaultLoadCaseName());
+        QVERIFY2(build.success, qPrintable(build.errors.join(QLatin1Char(';'))));
+        QCOMPARE(build.model.plasticHinges.size(), size_t(2));
+        SolverBridge::Result result;
+        try {
+            result = SolverBridge(dll).solve(build.model);
+        } catch (const std::exception &e) {
+            QFAIL(e.what());
+        }
+        QVERIFY(result.nonlinear.used);
+        QCOMPARE(result.nonlinear.hinges.size(), size_t(2));
+
     }
 };
 

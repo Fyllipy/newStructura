@@ -8,6 +8,8 @@ private:
     double Ay = 0.0;  // Shear area for shear along local y (m²); 0 = rigid in shear
     double Az = 0.0;  // Shear area for shear along local z (m²); 0 = rigid in shear
     double Cw = 0.0;  // Warping constant (m⁶); 0 = no warping torsion
+    double scY = 0.0; // Shear center relative to the centroid along local y (m)
+    double scZ = 0.0; // Shear center relative to the centroid along local z (m)
 
 public:
     Section(int id, double A, double Iz, double Iy, double J);
@@ -29,4 +31,8 @@ public:
 
     double getCw() const;
     void setCw(double Cw);
+
+    double getShearCenterY() const;
+    double getShearCenterZ() const;
+    void setShearCenter(double y, double z);
 };

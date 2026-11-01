@@ -24,6 +24,8 @@ public:
     double shearModulus() const;
     /// Peso especifico em kN/m3 (usado no peso proprio).
     double unitWeight() const;
+    /// Coeficiente de dilatacao termica em 1/degC (cargas de temperatura nas barras).
+    double thermalExpansion() const;
     /// Entrada da biblioteca escolhida (vazio = personalizado).
     QString libraryName() const { return m_library; }
     double fy() const;
@@ -49,6 +51,7 @@ private:
     QDoubleSpinBox *m_fySpin {nullptr};
     QDoubleSpinBox *m_fuSpin {nullptr};
     QDoubleSpinBox *m_weightSpin {nullptr};
+    QDoubleSpinBox *m_alphaSpin {nullptr};
     QLabel *m_note {nullptr};
     QLabel *m_unitsNote {nullptr};
     QCheckBox *m_saveToLibrary {nullptr};

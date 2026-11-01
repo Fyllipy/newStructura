@@ -33,6 +33,7 @@
 #include <QComboBox>
 #include "BusyProgress.h"
 #include "app/services/NotionalLoadService.h"
+#include "app/services/PositionedLoadConversion.h"
 #include "app/services/StructuralChecks.h"
 #include <QFileInfo>
 #include <QMessageBox>
@@ -64,11 +65,13 @@ static void feedPostProcessor(
     // Cargas distribuídas e momentos por barra (todos os casos do termo, ponderados)
     std::unordered_multimap<int, Structura::Visualization::UniformDistributedLoad> loadMap;
     std::unordered_multimap<int, Structura::Visualization::UniformDistributedMoment> momentMap;
+    std::unordered_multimap<int, Structura::Visualization::PositionedLoad> positionedMap;
     for (const auto& term : terms) {
         if (!term.first) {
             continue;
         }
         const double factor = term.second;
+        Structura::App::Services::collectPositionedLoads(*term.first, factor, positionedMap);
         for (const auto& ml : term.first->memberLoads) {
             Structura::Visualization::UniformDistributedLoad udl;
             udl.qx = ml.qx * factor;
@@ -181,6 +184,10 @@ static void feedPostProcessor(
         const auto momentRange = momentMap.equal_range(mr.memberId);
         for (auto it = momentRange.first; it != momentRange.second; ++it) {
             ber.distributedMoments.push_back(it->second);
+        }
+        const auto positionedRange = positionedMap.equal_range(mr.memberId);
+        for (auto it = positionedRange.first; it != positionedRange.second; ++it) {
+            ber.positionedLoads.push_back(it->second);
         }
 
         postResults.push_back(std::move(ber));
@@ -519,7 +526,7 @@ bool MainWindow::executeAnalysis(QString *reportOut)
         // numa combinacao; entao cada combinacao e resolvida com suas cargas ponderadas, como na segunda ordem.
         bool hasTie = false;
         for (const auto &item : built) {
-            hasTie = hasTie || std::any_of(item.second.members.begin(), item.second.members.end(), [](const auto &m) { return m.tensionOnly; });
+            hasTie = hasTie || item.second.hasNonlinearElements() || std::any_of(item.second.members.begin(), item.second.members.end(), [](const auto &m) { return m.tensionOnly; });
         }
         const bool nonlinearCombos = secondOrder || hasTie;
         // Anexo C: B1 e B2 pedem a separacao dos esforcos em estrutura nt (nos dos andares contidos) e lt (= original - nt)
@@ -534,7 +541,14 @@ bool MainWindow::executeAnalysis(QString *reportOut)
             QMap<QString, CaseRun> out;
             Structura::App::SolverBridge solver;
             int step = 0;
+            progress.setCancellable(true);
+            auto checkCancel = [&]() {
+                if (progress.isCancelled()) {
+                    throw Structura::UI::OperationCancelled {};
+                }
+            };
             for (auto &item : built) {
+                checkCancel();
                 progress.report(step, totalSteps, tr("Caso de carga %1 de %2 — %3").arg(step + 1).arg(built.size()).arg(item.first));
                 CaseRun run;
                 run.model = item.second;
@@ -544,6 +558,7 @@ bool MainWindow::executeAnalysis(QString *reportOut)
             }
             if (withNt) {
                 for (auto &item : built) {
+                    checkCancel();
                     progress.report(step, totalSteps, tr("Estrutura nt (Anexo C) — %1").arg(item.first));
                     CaseRun run;
                     run.model = makeNtModel(item.second, storyNodes);
@@ -559,6 +574,7 @@ bool MainWindow::executeAnalysis(QString *reportOut)
                     caseModels.insert(it.key(), it->model);
                 }
                 for (const auto& combination : combinations) {
+                    checkCancel();
                     progress.report(step, totalSteps, tr("Combinação %1 (resolvida com tirantes/segunda ordem)").arg(combination.name));
                     ++step;
                     CaseRun run;
@@ -572,6 +588,9 @@ bool MainWindow::executeAnalysis(QString *reportOut)
             progress.report(totalSteps, totalSteps, tr("Concluindo…"));
             return out;
         });
+    } catch (const Structura::UI::OperationCancelled &) {
+        statusBar()->showMessage(tr("Análise cancelada: os resultados anteriores foram mantidos."), 8000);
+        return false;
     } catch (const Structura::App::SolverBridgeError &error) {
         reportActionableError(tr("Falha na análise estrutural"), QString::fromStdString(error.what()));
         return false;
@@ -695,7 +714,7 @@ bool MainWindow::restoreStoredResults()
     }
     bool restoreHasTie = false;
     for (auto it = caseModels.constBegin(); it != caseModels.constEnd(); ++it) {
-        restoreHasTie = restoreHasTie || std::any_of(it->members.begin(), it->members.end(), [](const auto &m) { return m.tensionOnly; });
+        restoreHasTie = restoreHasTie || it->hasNonlinearElements() || std::any_of(it->members.begin(), it->members.end(), [](const auto &m) { return m.tensionOnly; });
     }
     if (!m_extras.design.secondOrder && !restoreHasTie && m_extras.design.autoB2 && !caseModels.isEmpty()) {
         // estrutura nt de cada caso (Anexo C.2.1), gravada junto dos resultados; arquivos antigos nao a tem: refaz a analise

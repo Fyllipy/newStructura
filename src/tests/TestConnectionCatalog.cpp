@@ -2,6 +2,10 @@
 
 #include "app/services/ConnectionCatalog.h"
 #include "app/services/ConnectionService.h"
+#include "app/services/ConnectionSolids.h"
+#include "app/services/CutListService.h"
+#include "app/services/DstvExporter.h"
+#include "app/services/FabricationModel.h"
 #include "app/services/IntegrityService.h"
 #include "design/PinConnection.h"
 #include "app/services/NodeEquilibrium.h"
@@ -583,6 +587,281 @@ private slots:
             hasRibCheck = hasRibCheck || c.name.rfind("Nervura", 0) == 0;
         }
         QVERIFY(hasRibCheck);
+    }
+
+    void bomAndDstvExportFollowTheFabricationModel()
+    {
+        using Structura::App::ProjectData::NodeConnection;
+        using Structura::App::Services::DstvExporter;
+        using Structura::App::Services::FabricationModel;
+        auto a = ConnectionService::makeDefault(NodeConnection::kShearTab, beam(), 250.0, 400.0);
+        a.id = 1;
+        auto b = a;
+        b.id = 2;
+        const auto single = FabricationModel::bom({a});
+        const auto twice = FabricationModel::bom({a, b});
+        QCOMPARE(twice.plates.size(), single.plates.size());
+        QCOMPARE(twice.plates.first().quantity, 2 * single.plates.first().quantity);
+        QCOMPARE(twice.plates.first().connections, QVector<int>({1, 2}));
+        QVERIFY(std::abs(twice.plateMassKg - 2.0 * single.plateMassKg) < 1e-9);
+        QCOMPARE(twice.bolts.first().quantity, 2 * single.bolts.first().quantity);
+        // NC1: cabecalho, furos e fim
+        const auto fab = FabricationModel::fromConnection(a);
+        const QString nc = DstvExporter::plateToNc1(fab.parts.first(), QStringLiteral("L1-C1"), QStringLiteral("A36"), {});
+        QVERIFY(nc.startsWith(QStringLiteral("ST\n")));
+        QVERIFY(nc.contains(QStringLiteral("\nBO\n")));
+        QVERIFY(nc.trimmed().endsWith(QStringLiteral("EN")));
+        QCOMPARE(nc.count(QStringLiteral("\n  v ")), int(fab.parts.first().holes.size()));
+        QVERIFY(nc.contains(QStringLiteral("  B\n")));   // codigo de perfil: chapa
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QString error;
+        const auto files = DstvExporter::exportConnections({a, b}, dir.path(), {}, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(files.size(), 2 * fab.plateCount() == 0 ? 0 : files.size());
+        QVERIFY(!files.isEmpty());
+        QVERIFY(QFileInfo(files.first()).size() > 100);
+    }
+
+    void copesAndWeldedPlatesAreDetected()
+    {
+        using Structura::App::ProjectData::NodeConnection;
+        using Structura::App::Services::FabricationModel;
+        int withCopes = 0, withWelded = 0;
+        for (const int type : {101, 102, 111, 112, 152, 148, NodeConnection::kEndPlate, NodeConnection::kShearTab}) {
+            const auto c = ConnectionService::makeDefault(type, beam(), 250.0, 400.0);
+            const auto fab = FabricationModel::fromConnection(c);
+            for (const auto &cope : fab.copes) {
+                QVERIFY(cope.length > 0.0 && cope.depth > 0.0);
+            }
+            withCopes += fab.copes.isEmpty() ? 0 : 1;
+            for (const auto &p : fab.parts) {
+                withWelded += (p.kind == Structura::App::Services::FabPart::Kind::Plate && p.weldedToMember) ? 1 : 0;
+            }
+        }
+        qInfo("tipologias com recorte: %d; chapas soldadas ao perfil: %d", withCopes, withWelded);
+        QVERIFY(withWelded >= 1);   // chapa de extremidade: soldada a viga
+        // viga apoiada na alma de viga principal: recorte = (bf - tw)/2 + folga em comprimento e tf da viga ligada + folga em profundidade
+        auto c = ConnectionService::makeDefault(101, beam(), 250.0, 400.0);
+        c.values["support"] = 0.0;
+        c.values["supBf"] = 150.0;
+        c.values["supTw"] = 8.0;
+        c.values["supTf"] = 12.0;
+        c.values["supD"] = 400.0;
+        c.values["copeC"] = 15.0;
+        const auto fab = FabricationModel::fromConnection(c);
+        QVERIFY(!fab.copes.isEmpty());
+        for (const auto &cope : fab.copes) {
+            QVERIFY(std::abs(cope.length - ((150.0 - 8.0) / 2.0 + 15.0)) < 1e-6);
+            QVERIFY(cope.depth > 15.0);
+        }
+    }
+
+    void cutListPacksBarsAndSheets()
+    {
+        using namespace Structura::App::Services;
+        QVector<FabMember> members;
+        FabMember a;
+        a.mark = QStringLiteral("V1");
+        a.section = QStringLiteral("W 310");
+        a.cutLength = 5000.0;
+        a.quantity = 3;
+        a.massPerMeter = 40.0;
+        members.push_back(a);
+        FabMember b;
+        b.mark = QStringLiteral("V2");
+        b.section = QStringLiteral("W 310");
+        b.cutLength = 1900.0;
+        b.quantity = 2;
+        b.massPerMeter = 40.0;
+        members.push_back(b);
+        FabBom bom;
+        FabBom::PlateRow plate;
+        plate.thickness = 9.5;
+        plate.width = 1000.0;
+        plate.height = 500.0;
+        plate.quantity = 4;
+        bom.plates.push_back(plate);
+        FabBom::PlateRow big = plate;
+        big.thickness = 12.5;
+        big.width = 4000.0;
+        big.quantity = 1;
+        bom.plates.push_back(big);
+        CutListService::Options options;
+        const auto plan = CutListService::compute(members, bom, options);
+        QCOMPARE(plan.bars.size(), 1);
+        // 5000+3+5000 = 10003 (+ 3 + 1900 = 11906 <= 12000): barra 1 recebe 2x5000 + 1x1900; barra 2: 5000 + 1900 (6903)
+        QCOMPARE(plan.bars.first().barCount, 2);
+        QVERIFY(std::abs(plan.bars.first().usedLength - (3 * 5000.0 + 2 * 1900.0)) < 1e-9);
+        QVERIFY(plan.bars.first().utilization() > 0.7 && plan.bars.first().utilization() <= 1.0);
+        for (const auto &pattern : plan.bars.first().patterns) {
+            double sum = 0.0;
+            for (const auto &p : pattern) {
+                sum += p.second;
+            }
+            QVERIFY(sum + 3.0 * (pattern.size() - 1) <= options.stockLength + 1e-9);
+        }
+        // chapas: 4 pecas 1000x500 cabem em uma chapa 3000x1200; a de 4000 mm excede a chapa padrao
+        QCOMPARE(plan.sheets.size(), 2);
+        const auto thin = plan.sheets.first();
+        QCOMPARE(thin.sheetCount, 1);
+        QCOMPARE(thin.pieceCount, 4);
+        QVERIFY(thin.utilization() > 0.5);
+        QCOMPARE(plan.sheets.last().oversize, 1);
+        QVERIFY(!plan.warnings.isEmpty());
+    }
+
+    void outsideTheNodeConnectionsKeepTheJointAwayFromTheSupport()
+    {
+        using Structura::App::Services::ConnectionSolids;
+        for (const int id : {147, 148}) {
+            const auto *entry = ConnectionCatalog::find(id);
+            QVERIFY(entry != nullptr);
+            QVERIFY2(entry->usesSupport, "ligacao fora do no deve permitir escolher a barra de apoio");
+            bool hasField = false;
+            for (const auto &field : ConnectionCatalog::fields(id)) {
+                hasField = hasField || field.key == QLatin1String("outDist");
+            }
+            QVERIFY2(hasField, "campo da distancia apoio-junta ausente");
+            auto c = ConnectionService::makeDefault(id, beam(), 250.0, 400.0);
+            QVERIFY(c.values.value(QStringLiteral("outDist")) > 0.0);
+            c.values["outDist"] = 300.0;
+            // a face do apoio (coluna de contexto) fica a outDist da junta (s = 0), do lado oposto da viga
+            double faceS = -1e300;
+            for (const auto &p : ConnectionSolids::build(c, true)) {
+                if (p.role == ConnectionSolids::Role::Concrete && p.kind == ConnectionSolids::Kind::Box) {
+                    faceS = std::max(faceS, p.a[0] + p.size[0] / 2.0);
+                }
+            }
+            QVERIFY2(std::abs(faceS + 300.0) < 1e-6, qPrintable(QStringLiteral("tipo %1: face do apoio em s = %2").arg(id).arg(faceS)));
+            // sem outDist maior, a chapa nao invade a face
+            c.values["outDist"] = 1000.0;
+            double faceFar = -1e300;
+            for (const auto &p : ConnectionSolids::build(c, true)) {
+                if (p.role == ConnectionSolids::Role::Concrete && p.kind == ConnectionSolids::Kind::Box) {
+                    faceFar = std::max(faceFar, p.a[0] + p.size[0] / 2.0);
+                }
+            }
+            QVERIFY(faceFar < faceS);
+            // a viga de contexto do lado do apoio termina na face (nao entra no pilar)
+            c.values["outDist"] = 300.0;
+            for (const auto &p : ConnectionSolids::build(c, true)) {
+                if (p.role == ConnectionSolids::Role::Member && p.kind == ConnectionSolids::Kind::Box) {
+                    QVERIFY2(p.a[0] - p.size[0] / 2.0 >= -300.0 - 1e-6, qPrintable(QStringLiteral("tipo %1: viga entra no apoio (s min = %2)").arg(id).arg(p.a[0] - p.size[0] / 2.0)));
+                }
+            }
+        }
+    }
+
+    void supportWeldIsCheckedProposedAndModelled()
+    {
+        using Structura::App::Services::ConnectionSolids;
+        for (const int id : {147, 148}) {
+            auto c = ConnectionService::makeDefault(id, beam(), 250.0, 400.0);
+            ConnectionService::Forces f;
+            f.shear = 120e3;
+            f.axial = 30e3;
+            f.moment = 90e6;
+            f.tension = 30e3;
+            f.cases.push_back({QStringLiteral("ELU1"), 120e3, 30e3, 90e6, {}, {}, -1.0, 0.0});
+            auto countWeldChecks = [&](const auto &evaluation) {
+                int n = 0;
+                for (const auto &check : evaluation.checks) {
+                    n += check.name.find("Solda viga-apoio") != std::string::npos ? 1 : 0;
+                }
+                return n;
+            };
+            const auto evaluation = ConnectionCatalog::evaluate(c, f);
+            QVERIFY2(countWeldChecks(evaluation) >= 4, qPrintable(QStringLiteral("tipo %1: verificacoes da solda viga-apoio ausentes").arg(id)));
+            // mesas em penetracao total: F = M/(d - tf) + N/2 contra bf tf fy / ga1
+            const double d = c.values.value(QStringLiteral("beamD")), tf = c.values.value(QStringLiteral("tfl")), bf = c.values.value(QStringLiteral("bfl"));
+            const double force = 90e6 / (d - tf) + 15e3;
+            const double fy = c.values.value(QStringLiteral("beamFy"), 250.0);
+            bool found = false;
+            for (const auto &check : evaluation.checks) {
+                if (check.name.find("mesas (penetracao total)") != std::string::npos) {
+                    found = true;
+                    QVERIFY(std::abs(check.demand - force / 1000.0) < 1e-6);
+                    QVERIFY(std::abs(check.resistance - bf * tf * fy / 1.10 / 1000.0) < 1e-3);
+                }
+            }
+            QVERIFY2(found, "mesas em penetracao total");
+            // filete nas mesas: perna pequena reprova, o dimensionamento sobe a perna e aprova
+            c.values["supWeldKind"] = 1.0;
+            c.values["supWeldLegF"] = 3.0;
+            c.values["supWeldLegW"] = 3.0;
+            const auto weak = ConnectionCatalog::evaluate(c, f);
+            auto weldOk = [&](const auto &evaluation2) {
+                for (const auto &check : evaluation2.checks) {
+                    if (check.name.find("Solda viga-apoio") != std::string::npos && !check.ok()) {
+                        return false;
+                    }
+                }
+                return true;
+            };
+            QVERIFY2(!weldOk(weak), "perna de 3 mm nao pode atender");
+            QVERIFY(ConnectionCatalog::propose(c, f));
+            QVERIFY(c.values.value(QStringLiteral("supWeldLegF")) > 3.0);
+            QVERIFY2(weldOk(ConnectionCatalog::evaluate(c, f)), "solda proposta deve atender");
+            // modelo 3D: solda na face do apoio (s = -outDist), entre a face e a junta
+            c.values["outDist"] = 300.0;
+            int welds = 0;
+            for (const auto &p : ConnectionSolids::build(c, false)) {
+                if (p.role == ConnectionSolids::Role::Weld && p.kind == ConnectionSolids::Kind::Box && std::abs(p.a[0] + 300.0 - p.size[0] / 2.0) < 1e-6) {
+                    ++welds;
+                }
+            }
+            QVERIFY2(welds >= 4, qPrintable(QStringLiteral("tipo %1: soldas na face do apoio: %2").arg(id).arg(welds)));
+        }
+    }
+
+    void fabricationModelListsPlatesHolesAndBolts()
+    {
+        using Structura::App::ProjectData::NodeConnection;
+        using Structura::App::Services::FabricationModel;
+        auto c = ConnectionService::makeDefault(NodeConnection::kShearTab, beam(), 250.0, 400.0);
+        c.values["rows"] = 3.0;
+        c.values["db"] = 20.0;
+        c.values["pitch"] = 70.0;
+        c.values["edgeV"] = 35.0;
+        c.values["plateT"] = 9.5;
+        const auto fab = FabricationModel::fromConnection(c);
+        QCOMPARE(fab.plateCount(), 1);
+        const auto &plate = fab.parts.first();
+        QCOMPARE(plate.mark, QStringLiteral("C1"));
+        QCOMPARE(plate.holes.size(), size_t(3));
+        QVERIFY(std::abs(plate.holes[0].diameter - FabricationModel::holeDiameter(20.0)) < 1e-9);
+        QVERIFY(std::abs(plate.thickness - 9.5) < 1e-9);
+        QVERIFY(std::abs(plate.height - (2 * 70.0 + 2 * 35.0)) < 1e-9);
+        // massa liquida = (area bruta - furos) x espessura x 7850 kg/m3
+        const double gross = plate.width * plate.height;
+        const double holes = 3.0 * 3.14159265358979 / 4.0 * plate.holes[0].diameter * plate.holes[0].diameter;
+        QVERIFY(std::abs(plate.massKg - (gross - holes) * 9.5 * 7850e-9) < 1e-6);
+        // espacamento dos furos preservado
+        QVERIFY(std::abs(std::abs(plate.holes[1].b - plate.holes[0].b) - 70.0) < 1e-9);
+        QCOMPARE(fab.bolts.size(), 1);
+        QCOMPARE(fab.bolts.first().quantity, 3);
+        QVERIFY(fab.bolts.first().length >= fab.bolts.first().gripLength);
+        QCOMPARE(fab.welds.size(), 1);
+        // dupla cantoneira: pecas identicas em duplicata compartilham a marca
+        auto angles = ConnectionService::makeDefault(NodeConnection::kDoubleAngle, beam(), 250.0, 400.0);
+        const auto two = FabricationModel::fromConnection(angles);
+        int plates = 0, withTwo = 0;
+        for (const auto &p : two.parts) {
+            if (p.kind == Structura::App::Services::FabPart::Kind::Plate) {
+                ++plates;
+                withTwo += p.quantity >= 2 ? 1 : 0;
+            }
+        }
+        QVERIFY(plates >= 1 && withTwo >= 1);
+        // todas as tipologias geram pecas sem falhar
+        for (const auto &entry : ConnectionCatalog::entries()) {
+            auto catalog = ConnectionService::makeDefault(entry.id, beam(), 250.0, 400.0);
+            const auto assembly = FabricationModel::fromConnection(catalog);
+            for (const auto &p : assembly.parts) {
+                QVERIFY2(p.thickness > 0.0 && p.width > 0.0 && p.height > 0.0, qPrintable(QStringLiteral("tipologia %1: peca invalida").arg(entry.id)));
+            }
+        }
     }
 
     void boltedSinglePlateMatchesTheExistingShearTab()

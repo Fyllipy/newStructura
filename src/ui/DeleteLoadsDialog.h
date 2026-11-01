@@ -20,6 +20,7 @@ public:
     [[nodiscard]] bool nodalForces() const;
     [[nodiscard]] bool distributedForces() const;
     [[nodiscard]] bool distributedMoments() const;
+    [[nodiscard]] bool positionedLoads() const;
     [[nodiscard]] bool areaPanels() const;
     /// Vazio = todos os casos.
     [[nodiscard]] QString loadCase() const;
@@ -29,6 +30,7 @@ private:
     QCheckBox *m_nodal {nullptr};
     QCheckBox *m_distributed {nullptr};
     QCheckBox *m_moments {nullptr};
+    QCheckBox *m_positioned {nullptr};
     QCheckBox *m_panels {nullptr};
     QComboBox *m_case {nullptr};
     QRadioButton *m_selection {nullptr};

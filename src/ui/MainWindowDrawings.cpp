@@ -13,13 +13,9 @@
 
 #include <cmath>
 
-void MainWindow::onGenerateDrawings()
+Structura::App::Services::SheetBuilder::Input MainWindow::buildSheetInput()
 {
     using Structura::App::Services::SheetBuilder;
-    if (!m_sceneController || m_sceneController->bars().empty()) {
-        QMessageBox::information(this, tr("Pranchas"), tr("Não há barras no modelo."));
-        return;
-    }
     SheetBuilder::Input input;
     QHash<QUuid, int> nodeExternal;
     for (const auto &node : m_sceneController->nodeInfos()) {
@@ -103,6 +99,7 @@ void MainWindow::onGenerateDrawings()
     input.axes = m_extras.axes;
     input.views3d = m_extras.views3d;
     input.layouts = m_extras.sheetLayouts;
+    input.edits = m_extras.sheetEdits;
     input.info = m_extras.titleBlock;
     if (input.info.project.isEmpty()) {
         input.info.project = m_projectName.isEmpty() ? tr("Projeto") : m_projectName;
@@ -147,6 +144,17 @@ void MainWindow::onGenerateDrawings()
             input.connections.append(detail);
         }
     }
+    return input;
+}
+
+void MainWindow::onGenerateDrawings()
+{
+    using Structura::App::Services::SheetBuilder;
+    if (!m_sceneController || m_sceneController->bars().empty()) {
+        QMessageBox::information(this, tr("Pranchas"), tr("Não há barras no modelo."));
+        return;
+    }
+    const SheetBuilder::Input input = buildSheetInput();
     Structura::UI::DrawingDialog dialog(input, this);
     connect(&dialog, &Structura::UI::DrawingDialog::titleBlockChanged, this,
             [this](const Structura::App::ProjectData::TitleBlockSettings &settings) {
@@ -171,6 +179,10 @@ void MainWindow::onGenerateDrawings()
     });
     connect(&dialog, &Structura::UI::DrawingDialog::layoutsChanged, this, [this](const QVector<Structura::App::ProjectData::SheetLayoutDef> &layouts) {
         m_extras.sheetLayouts = layouts;
+        markModified();
+    });
+    connect(&dialog, &Structura::UI::DrawingDialog::sheetEditsChanged, this, [this](const QVector<Structura::App::ProjectData::SheetGroupEdit> &edits) {
+        m_extras.sheetEdits = edits;
         markModified();
     });
     connect(&dialog, &Structura::UI::DrawingDialog::views3dChanged, this,

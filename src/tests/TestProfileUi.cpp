@@ -1,4 +1,7 @@
 #include "ui/BusyProgress.h"
+#include "ui/CombinationGeneratorDialog.h"
+#include "ui/TopographicFactorDialog.h"
+#include "ui/WindShedDialog.h"
 #include "ui/ConnectionPreview.h"
 #include "ui/ProfileBrowser.h"
 #include "ui/ProfileEditorWidget.h"
@@ -7,6 +10,9 @@
 #include "ui/ProfilePickerDialog.h"
 #include "ui/SectionPlacementPanel.h"
 #include "ui/SectionPlacementWidget.h"
+#include "ui/TransformDialogs.h"
+
+#include <cmath>
 
 #include <QApplication>
 #include <QComboBox>
@@ -16,6 +22,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QSignalSpy>
 #include <QTest>
 #include <QThread>
@@ -38,6 +45,40 @@ private:
     }
 
 private slots:
+    void arrayCopyDialogBuildsGridOffsets()
+    {
+        ArrayCopyDialog dialog;
+        // padrao: direcao 1 em X (3 copias a 3 m) e direcao 2 em Y (2 copias a 3 m): grade 4 x 3, 11 posicoes novas
+        QCOMPARE(dialog.count1(), 3);
+        QCOMPARE(dialog.count2(), 2);
+        QCOMPARE(dialog.newPositions(), 11);
+        QVERIFY(dialog.validationError().isEmpty());
+        const auto corner = dialog.offset(3, 2);
+        QCOMPARE(corner[0], 9.0);
+        QCOMPARE(corner[1], 6.0);
+        QCOMPARE(corner[2], 0.0);
+        const auto first = dialog.offset(1, 0);
+        QCOMPARE(first[0], 3.0);
+        QCOMPARE(first[1], 0.0);
+        // eixos iguais nas duas direcoes sobreporiam as copias
+        auto combos = dialog.findChildren<QComboBox *>();
+        QCOMPARE(combos.size(), 2);
+        combos[1]->setCurrentIndex(0);
+        QVERIFY(!dialog.validationError().isEmpty());
+        combos[1]->setCurrentIndex(2);   // eixo Z
+        QVERIFY(dialog.validationError().isEmpty());
+        QCOMPARE(dialog.offset(0, 2)[2], 6.0);
+        // sem copias em nenhuma direcao e invalido; so uma direcao e valida (grade 1D)
+        auto counts = dialog.findChildren<QSpinBox *>();
+        QCOMPARE(counts.size(), 2);
+        for (QSpinBox *count : counts) {
+            count->setValue(0);
+        }
+        QVERIFY(!dialog.validationError().isEmpty());
+        counts[0]->setValue(4);
+        QVERIFY(dialog.validationError().isEmpty());
+        QCOMPARE(dialog.newPositions(), 4);
+    }
     void connectionExamplesDrawSomethingForEveryType()
     {
         const QString dir = qEnvironmentVariable("STRUCTURA_PREVIEW_DIR");
@@ -295,6 +336,66 @@ private slots:
         mini.setPlacement(90.0, 3, 0.0, 0.0);
         mini.resize(190, 150);
         QVERIFY(mini.grab().save(outputDir() + QStringLiteral("/placement_mini.png")));
+    }
+
+    void windShedDialogComputesLoadsFromBars()
+    {
+        using Structura::App::Services::WindShedService;
+        QVector<WindShedService::Bar> bars;
+        const double rise = 10.0 * std::tan(10.0 * 3.14159265358979 / 180.0);
+        int id = 1;
+        for (int i = 0; i <= 3; ++i) {
+            const double y = 6.0 * i;
+            bars.append({id++, {0, y, 0}, {0, y, 6}});
+            bars.append({id++, {20, y, 0}, {20, y, 6}});
+            bars.append({id++, {0, y, 6}, {10, y, 6 + rise}});
+            bars.append({id++, {10, y, 6 + rise}, {20, y, 6}});
+        }
+        WindShedDialog dialog(bars);
+        const auto result = dialog.result();
+        QVERIFY(result.cases.size() >= 4);
+        QVERIFY(result.geometry.twoPitch);
+        QCOMPARE(result.rafters, 8);
+        QVERIFY(dialog.parameters().transverse && dialog.parameters().longitudinal);
+        // eixo da cumeeira detectado pelo dialogo: as tesouras estao em planos perpendiculares a Y
+        QCOMPARE(static_cast<int>(dialog.parameters().ridgeAxis), static_cast<int>(WindShedService::RidgeAxis::Y));
+        QVERIFY(dialog.grab().save(outputDir() + QStringLiteral("/wind_shed.png")));
+    }
+
+    void topographicFactorDialogFollowsClause52()
+    {
+        TopographicFactorDialog dialog(1.0);
+        QCOMPARE(dialog.s1(), 1.0);
+        const auto combos = dialog.findChildren<QComboBox *>();
+        QVERIFY(!combos.isEmpty());
+        combos.first()->setCurrentIndex(2);
+        QCOMPARE(dialog.s1(), 0.9);
+        combos.first()->setCurrentIndex(1);
+        QVERIFY(dialog.s1() >= 1.0);
+    }
+
+    void combinationDialogGeneratesExceptionalAndConstructionCases()
+    {
+        using Structura::App::ProjectData::LoadCase;
+        QVector<LoadCase> cases;
+        for (const QString &name : {QStringLiteral("PP"), QStringLiteral("SC"), QStringLiteral("VT1"), QStringLiteral("EXPLOSAO")}) {
+            LoadCase c;
+            c.name = name;
+            c.abbreviation = name;
+            c.selfWeight = (name == QLatin1String("PP"));
+            cases.append(c);
+        }
+        CombinationGeneratorDialog dialog(cases);
+        const auto combos = dialog.combinations();
+        int normal = 0, exceptional = 0, service = 0;
+        for (const auto &c : combos) {
+            normal += c.name.startsWith(QLatin1String("ELU")) ? 1 : 0;
+            exceptional += c.name.startsWith(QLatin1String("EXC")) ? 1 : 0;
+            service += c.name.startsWith(QLatin1String("ELS")) ? 1 : 0;
+        }
+        QVERIFY(normal > 0);
+        QVERIFY(exceptional > 0);   // EXPLOSAO e reconhecida como acao excepcional pelo nome
+        QVERIFY(service > 0);
     }
 };
 

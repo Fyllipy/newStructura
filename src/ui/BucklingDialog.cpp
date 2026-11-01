@@ -59,6 +59,11 @@ BucklingDialog::BucklingDialog(const QStringList &combinations, QWidget *parent)
     m_status = new QLabel;
     m_status->setWordWrap(true);
     root->addWidget(m_status);
+    m_effective = new QPushButton(tr("Comprimentos efetivos (K) das barras…"));
+    m_effective->setToolTip(tr("Obtém Kx e Ky de cada barra comprimida pelos autovalores (Ncr = λ·N) e permite aplicá-los ao dimensionamento"));
+    m_effective->setEnabled(false);
+    root->addWidget(m_effective);
+    connect(m_effective, &QPushButton::clicked, this, &BucklingDialog::effectiveLengthsRequested);
 
     connect(run, &QPushButton::clicked, this, [this]() {
         m_status->setStyleSheet(QString());
@@ -71,6 +76,7 @@ BucklingDialog::BucklingDialog(const QStringList &combinations, QWidget *parent)
 
 void BucklingDialog::setResults(const QVector<double> &factors)
 {
+    m_effective->setEnabled(!factors.isEmpty());
     m_table->setRowCount(factors.size());
     for (int i = 0; i < factors.size(); ++i) {
         m_table->setItem(i, 0, new QTableWidgetItem(QString::number(i + 1)));

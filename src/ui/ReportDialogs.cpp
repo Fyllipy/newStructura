@@ -17,7 +17,11 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QPageSize>
+#include <QPdfWriter>
+#include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSettings>
 #include <QSplitter>
 #include <QTextBrowser>
 #include <QTextDocument>
@@ -61,6 +65,42 @@ bool exportDocx(QWidget *parent, const Structura::Report::ReportDocument &docume
     return true;
 }
 
+bool exportPdf(QWidget *parent, const Structura::Report::ReportDocument &document, const QString &suggestedName)
+{
+    const QString path = QFileDialog::getSaveFileName(parent, QObject::tr("Exportar para PDF"), suggestedName, QObject::tr("PDF (*.pdf)"));
+    if (path.isEmpty()) {
+        return false;
+    }
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const auto html = Structura::Report::toHtml(document, 19.0, true);
+    QTextDocument text;
+    text.setHtml(html.html);
+    for (auto it = html.images.constBegin(); it != html.images.constEnd(); ++it) {
+        text.addResource(QTextDocument::ImageResource, QUrl(it.key()), it.value());
+    }
+    bool ok = false;
+    {
+        QPdfWriter writer(path);
+        writer.setResolution(150);
+        writer.setPageSize(QPageSize(QPageSize::A4));
+        writer.setPageMargins(QMarginsF(18, 16, 18, 16), QPageLayout::Millimeter);
+        writer.setTitle(QString::fromStdString(document.title));
+        writer.setCreator(QStringLiteral("Structura"));
+        text.setPageSize(QSizeF(writer.width(), writer.height()));
+        text.print(&writer);
+        ok = true;
+    }
+    QApplication::restoreOverrideCursor();
+    if (!ok || !QFile::exists(path)) {
+        QMessageBox::warning(parent, QObject::tr("Exportar"), QObject::tr("Não foi possível gravar o PDF (ele pode estar aberto em outro programa)."));
+        return false;
+    }
+    if (QMessageBox::question(parent, QObject::tr("Exportar"), QObject::tr("Arquivo gerado:\n%1\n\nAbrir agora?").arg(path)) == QMessageBox::Yes) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    }
+    return true;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // ReportDialog
 // ---------------------------------------------------------------------------------------------------------------------
@@ -85,6 +125,13 @@ ReportDialog::ReportDialog(const ReportService::Input &input, const QVector<int>
         c->setChecked(true);
         gl->addWidget(c);
     }
+    m_revisions = new QPlainTextEdit;
+    m_revisions->setMaximumHeight(90);
+    m_revisions->setPlaceholderText(tr("Uma revisão por linha:\nA; 26/10/2026; Emissão inicial; Responsável"));
+    m_revisions->setToolTip(tr("Controle de revisões do documento: Rev.; data; descrição; responsável (separados por ponto e vírgula). Fica salvo neste computador."));
+    m_revisions->setPlainText(QSettings().value(QStringLiteral("report/revisions")).toString());
+    gl->addWidget(new QLabel(tr("Controle de revisões:")));
+    gl->addWidget(m_revisions);
     side->addWidget(general);
 
     auto *data = new QGroupBox(tr("Dados do projeto"));
@@ -138,8 +185,10 @@ ReportDialog::ReportDialog(const ReportService::Input &input, const QVector<int>
     auto *exportButton = new QPushButton(tr("Exportar para Word (.docx)…"));
     exportButton->setStyleSheet(QStringLiteral("QPushButton { background: #0d7fb9; color: white; font-weight: 600; padding: 7px 14px; border-radius: 4px; }"
                                                "QPushButton:hover { background: #0b6fa3; }"));
+    auto *pdfButton = new QPushButton(tr("Exportar para PDF…"));
     side->addWidget(refresh);
     side->addWidget(exportButton);
+    side->addWidget(pdfButton);
     auto *sideWidget = new QWidget;
     sideWidget->setLayout(side);
     sideWidget->setFixedWidth(360);
@@ -158,6 +207,7 @@ ReportDialog::ReportDialog(const ReportService::Input &input, const QVector<int>
 
     connect(refresh, &QPushButton::clicked, this, &ReportDialog::refreshPreview);
     connect(exportButton, &QPushButton::clicked, this, &ReportDialog::exportFile);
+    connect(pdfButton, &QPushButton::clicked, this, &ReportDialog::exportPdfFile);
     refreshPreview();
 }
 
@@ -180,6 +230,8 @@ ReportService::Options ReportDialog::options() const
     o.showFormulas = m_formulas->isChecked();
     o.scope = static_cast<ReportService::BarScope>(m_scope->currentData().toInt());
     o.selectedMembers = m_selectedMembers;
+    o.revisions = m_revisions->toPlainText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QSettings().setValue(QStringLiteral("report/revisions"), m_revisions->toPlainText());
     bool all = true;
     for (int i = 0; i < m_items->count(); ++i) {
         const auto *it = m_items->item(i);
@@ -203,6 +255,12 @@ void ReportDialog::refreshPreview()
     const auto doc = ReportService::buildGlobal(m_input, o);
     showReport(m_preview, doc, true);
     m_status->setText(tr("Prévia: o detalhamento mostra no máximo %1 barras; o arquivo exportado segue as opções escolhidas.").arg(o.maxDetailBars));
+}
+
+void ReportDialog::exportPdfFile()
+{
+    const auto doc = ReportService::buildGlobal(m_input, options());
+    exportPdf(this, doc, QStringLiteral("Memorial de calculo - %1.pdf").arg(m_input.projectName.isEmpty() ? QStringLiteral("projeto") : m_input.projectName));
 }
 
 void ReportDialog::exportFile()

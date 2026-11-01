@@ -1,10 +1,13 @@
 #include "SheetBuilder.h"
 
 #include "app/services/SheetBuilderInternal.h"
+#include "app/services/MemberFabrication.h"
+#include "app/services/FabricationModel.h"
 
 #include <QMap>
 
 #include "drawing/HiddenLine.h"
+#include "drawing/SheetGroups.h"
 #include "viz/structure/SectionShapes.h"
 
 #include <memory>
@@ -353,6 +356,30 @@ QString SheetBuilder::paperName(Paper paper)
 
 QHash<int, QString> SheetBuilder::assignMarks(const Input &input, QVector<MarkRow> *rows)
 {
+    if (!input.connections.isEmpty()) {
+        // com ligacoes: marca unica por perfil, comprimento de corte real e furacao das extremidades
+        QHash<int, QString> marks;
+        QVector<MarkRow> list;
+        for (const auto &m : MemberFabrication::build(input)) {
+            MarkRow row;
+            row.mark = m.mark;
+            row.section = m.section;
+            row.count = m.quantity;
+            row.lengthMm = m.cutLength;
+            row.massPerMeter = m.massPerMeter;
+            row.unitMass = m.assemblyMassKg;
+            row.totalMass = m.assemblyMassKg * m.quantity;
+            row.bars = m.bars;
+            for (const int id : m.bars) {
+                marks.insert(id, m.mark);
+            }
+            list.append(row);
+        }
+        if (rows) {
+            *rows = list;
+        }
+        return marks;
+    }
     const auto nodes = nodeMap(input);
     struct Key {
         QString prefix;
@@ -505,6 +532,46 @@ QVector<SheetBuilder::ViewDef> SheetBuilder::availableViews(const Input &input)
         v.kind = ViewKind::ConnectionDetail;
         v.connectionIndex = i;
         v.barCount = 1;
+        views.append(v);
+    }
+    if (!input.connections.isEmpty()) {
+        const auto members = MemberFabrication::build(input);
+        for (int i = 0; i < members.size(); ++i) {
+            ViewDef v;
+            v.id = QStringLiteral("member-%1").arg(members[i].mark);
+            v.title = QStringLiteral("Peça %1 — %2").arg(members[i].mark, members[i].section);
+            v.kind = ViewKind::MemberFabrication;
+            v.connectionIndex = i;   // indice da peca em MemberFabrication::build
+            v.barCount = members[i].quantity;
+            v.defaultOn = false;
+            views.append(v);
+        }
+    }
+    if (!input.connections.isEmpty()) {
+        ViewDef v;
+        v.id = QStringLiteral("assemblies");
+        v.title = QStringLiteral("Quadro de conjuntos");
+        v.kind = ViewKind::Assemblies;
+        v.barCount = input.bars.size();
+        v.defaultOn = true;
+        views.append(v);
+    }
+    if (!input.connections.isEmpty()) {
+        ViewDef v;
+        v.id = QStringLiteral("cut-list");
+        v.title = QStringLiteral("Plano de corte (perfis e chapas)");
+        v.kind = ViewKind::CutList;
+        v.barCount = input.bars.size();
+        v.defaultOn = true;
+        views.append(v);
+    }
+    if (!input.connections.isEmpty()) {
+        ViewDef v;
+        v.id = QStringLiteral("conn-bom");
+        v.title = QStringLiteral("Lista de peças das ligações");
+        v.kind = ViewKind::ConnectionBom;
+        v.barCount = input.connections.size();
+        v.defaultOn = true;
         views.append(v);
     }
     // vistas 3D (em linhas): as salvas no projeto ou, se nao houver, uma isometrica padrao
@@ -926,6 +993,39 @@ void drawView(Sheet &s, const Layers &l, const Region &region, const SheetBuilde
             }
         }
         pending.push_back({it, a, b, halfBand});
+    }
+    // marcas das chapas das ligacoes junto aos nos (vista de montagem): "L<ligacao>: C1 C2"
+    if (!ctx.input.connections.isEmpty()) {
+        std::set<std::pair<long, long>> seenNodes;
+        for (const auto &detail : ctx.input.connections) {
+            const auto node = nodes.constFind(detail.connection.nodeId);
+            if (node == nodes.constEnd()) {
+                continue;
+            }
+            const Projected pn = project(pos(*node));
+            bool inView = false;
+            for (const auto &it : items) {
+                inView = inView || (std::abs(it.nodeA.u - pn.u) < 1.0 && std::abs(it.nodeA.v - pn.v) < 1.0) || (std::abs(it.nodeB.u - pn.u) < 1.0 && std::abs(it.nodeB.v - pn.v) < 1.0);
+            }
+            if (!inView) {
+                continue;
+            }
+            const auto fab = FabricationModel::fromConnection(detail.connection);
+            std::string text = "L" + std::to_string(detail.connection.id) + ":";
+            for (const auto &part : fab.parts) {
+                if (part.kind == FabPart::Kind::Plate) {
+                    text += " " + part.mark.toStdString() + (part.quantity > 1 ? "x" + std::to_string(part.quantity) : "");
+                }
+            }
+            if (text.size() <= 4) {
+                continue;
+            }
+            const Point at = P(pn);
+            const double step = 4.0 * static_cast<double>(seenNodes.count({std::lround(pn.u), std::lround(pn.v)}));
+            seenNodes.insert({std::lround(pn.u), std::lround(pn.v)});
+            s.line(at, {at.x + 4.0, at.y + 4.0 + step}, l.textSmall);
+            s.text({at.x + 4.5, at.y + 4.0 + step}, text, 1.8, l.textSmall);
+        }
     }
     // pilares em planta: contorno real (I ou retangulo)
     std::set<std::pair<long, long>> done;
@@ -1416,12 +1516,32 @@ std::vector<Sheet> SheetBuilder::build(const Input &input, const Options &option
         if (view.kind == ViewKind::ConnectionDetail) {
             scale = internal::drawConnectionDetail(s, input.connections[view.connectionIndex], region.x0, region.y0, region.x1, region.y1, options.barLabels, options.scaleDenominator,
                                                    options.profiles != ProfileDetail::Axis);
+        } else if (view.kind == ViewKind::Assemblies) {
+            internal::drawAssemblyScheduleSheet(s, input, region.x0, region.y0, region.x1, region.y1);
+            scale = 0.0;
+        } else if (view.kind == ViewKind::CutList) {
+            internal::drawCutListSheet(s, input, options, region.x0, region.y0, region.x1, region.y1);
+            scale = 0.0;
+        } else if (view.kind == ViewKind::MemberFabrication) {
+            const auto members = MemberFabrication::build(input);
+            if (view.connectionIndex >= 0 && view.connectionIndex < members.size()) {
+                internal::drawMemberFabricationSheet(s, members[view.connectionIndex], region.x0, region.y0, region.x1, region.y1);
+            }
+            scale = 0.0;
+        } else if (view.kind == ViewKind::ConnectionBom) {
+            std::vector<ConnectionDetail> details(input.connections.begin(), input.connections.end());
+            internal::drawConnectionBomSheet(s, details, region.x0, region.y0, region.x1, region.y1);
+            scale = 0.0;
+        } else if (view.kind == ViewKind::Fabrication) {
+            internal::drawFabricationSheet(s, input.connections[view.connectionIndex], region.x0, region.y0, region.x1, region.y1);
+            scale = 0.0;
         } else if (view.kind == ViewKind::View3D) {
             draw3DView(s, l, region, view, ctx, scale);
         } else {
             drawView(s, l, region, view, ctx, scale);
         }
-        drawTitleBlock(s, l, input.info, view.title.toStdString(), scale > 0 ? "1:" + num(scale, 0) : "—", counter, 0, view.kind != ViewKind::ConnectionDetail);
+        drawTitleBlock(s, l, input.info, view.title.toStdString(), view.kind == ViewKind::Fabrication || view.kind == ViewKind::ConnectionBom || view.kind == ViewKind::MemberFabrication || view.kind == ViewKind::CutList || view.kind == ViewKind::Assemblies ? "INDICADA" : (scale > 0 ? "1:" + num(scale, 0) : "—"), counter, 0,
+                       view.kind != ViewKind::ConnectionDetail && view.kind != ViewKind::Fabrication && view.kind != ViewKind::ConnectionBom && view.kind != ViewKind::MemberFabrication && view.kind != ViewKind::CutList && view.kind != ViewKind::Assemblies);
         sheets.push_back(std::move(s));
     }
     // folhas compostas: varias vistas na mesma folha, cada uma com a sua escala
@@ -1519,7 +1639,28 @@ std::vector<Sheet> SheetBuilder::build(const Input &input, const Options &option
             }
         }
     }
+    applyEdits(sheets, input.edits);
     return sheets;
+}
+
+void SheetBuilder::applyEdits(std::vector<Sheet> &sheets, const QVector<Structura::App::ProjectData::SheetGroupEdit> &edits)
+{
+    for (const auto &edit : edits) {
+        for (auto &sheet : sheets) {
+            if (QString::fromStdString(sheet.fileStem) != edit.sheet) {
+                continue;
+            }
+            const int group = Structura::Drawing::findGroup(sheet, edit.key.toStdString());
+            if (group <= 0) {
+                continue;
+            }
+            if (edit.deleted) {
+                Structura::Drawing::eraseGroup(sheet, group);
+            } else {
+                Structura::Drawing::translateGroup(sheet, group, edit.dx, edit.dy);
+            }
+        }
+    }
 }
 
 } // namespace Structura::App::Services

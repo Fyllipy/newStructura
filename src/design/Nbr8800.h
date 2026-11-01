@@ -93,6 +93,9 @@ TorsionData torsion(const DesignSection &s, const SteelGrade &steel, double barL
 /// Fator de modificacao para momento nao uniforme (5.4.2.3 a): Cb = 12,5 Mmax / (2,5 Mmax + 3 MA + 4 MB + 3 MC) * Rm.
 double cbFromQuarterMoments(double mMax, double mA, double mB, double mC, double rm = 1.0);
 
+/// Momento critico elastico de FLT (D.2.8-a) de perfis I/H e U (0 nas demais secoes, sem Cw/J ou com Lb nulo). Usado pela verificacao em incendio (NBR 14323).
+double lateralBucklingMoment(const DesignSection &s, const SteelGrade &steel, double lb, double cb);
+
 /// Texto formatado (printf) para memoria de calculo.
 std::string fmt(const char *format, ...);
 

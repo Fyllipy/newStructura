@@ -25,6 +25,7 @@ public:
         const QVector<NodalLoad> *nodalLoads {nullptr};
         const QVector<MemberLoad> *memberLoads {nullptr};
         const QVector<MemberMoment> *memberMoments {nullptr};
+        const QVector<Structura::App::ProjectData::MemberAction> *memberActions {nullptr};   ///< cargas de barra com posicao
         const QVector<MaterialInfo> *materials {nullptr};
         const QVector<SectionInfo> *sections {nullptr};
         const QVector<Structura::App::ProjectData::MemberPlacement> *placements {nullptr}; ///< Giro de secao por barra

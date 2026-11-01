@@ -4,6 +4,7 @@
 #include "design/GrossSection.h"
 #include "design/Sectorial.h"
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,10 @@ struct DesignSection {
     double leg {0.0};      ///< aba de cantoneira / largura plana de tubo
     double lip {0.0};      ///< enrijecedor de borda (formados)
     double flatWidthB {0.0}, flatWidthH {0.0};   ///< largura plana (tubo retangular): mesas / almas
+    bool welded {false};   ///< perfil armado de chapas soldadas (I Soldado ou Caixao Soldado)
+    bool box {false};      ///< secao-caixao soldada (SectionKind::RectTube com espessuras de mesa e alma distintas, NBR 8800 Tabela 4 grupo 2 e D.2.7)
+    double bfTop {0.0}, tfTop {0.0}, bfBot {0.0}, tfBot {0.0};   ///< perfil I: mesas superior (b > 0) e inferior; iguais nos duplamente simetricos
+    double tFlange {0.0}, tWeb {0.0};   ///< tubular/caixao: espessuras das mesas (paredes horizontais) e das almas (paredes verticais)
     bool flangeUp {true};  ///< T: mesa na fibra superior (b > 0)
     bool webLeft {true};   ///< U: alma do lado -a (abertura para +a)
 
@@ -61,6 +66,11 @@ struct DesignSection {
 
     [[nodiscard]] double weightPerMeter() const { return g.area * 1e-6 * 7850.0; }   ///< kg/m
     [[nodiscard]] bool doublySymmetric() const { return symmetricAboutX && symmetricAboutY; }
+    /// Perfil I armado com mesas diferentes (um eixo de simetria no plano medio da alma): NBR 8800 Tabela D.1, linha "I e H com apenas um eixo de simetria".
+    [[nodiscard]] bool monoSymmetricI() const
+    {
+        return kind == SectionKind::I && welded && (std::abs(bfTop - bfBot) > 1e-6 || std::abs(tfTop - tfBot) > 1e-6);
+    }
     [[nodiscard]] bool composite() const
     {
         return kind == SectionKind::DoubleAngleT || kind == SectionKind::DoubleChannelBack || kind == SectionKind::DoubleChannelBox;

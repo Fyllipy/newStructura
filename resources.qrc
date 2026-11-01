@@ -75,6 +75,7 @@
         <file alias="bar-force.svg">icons/svg/bar-force.svg</file>
         <file alias="bar-id.svg">icons/svg/bar-id.svg</file>
         <file alias="bar-moment.svg">icons/svg/bar-moment.svg</file>
+        <file alias="bar-positioned.svg">icons/svg/bar-positioned.svg</file>
         <file alias="cases.svg">icons/svg/cases.svg</file>
         <file alias="chevron-left.svg">icons/svg/chevron-left.svg</file>
         <file alias="chevron-right.svg">icons/svg/chevron-right.svg</file>
@@ -86,6 +87,7 @@
         <file alias="plane-only.svg">icons/svg/plane-only.svg</file>
         <file alias="levels-all.svg">icons/svg/levels-all.svg</file>
         <file alias="local-axes.svg">icons/svg/local-axes.svg</file>
+        <file alias="bar-glyphs.svg">icons/svg/bar-glyphs.svg</file>
         <file alias="mirror.svg">icons/svg/mirror.svg</file>
         <file alias="move.svg">icons/svg/move.svg</file>
         <file alias="node-force.svg">icons/svg/node-force.svg</file>
@@ -102,6 +104,7 @@
         <file alias="section-place.svg">icons/svg/section-place.svg</file>
         <file alias="select.svg">icons/svg/select.svg</file>
         <file alias="serial.svg">icons/svg/serial.svg</file>
+        <file alias="array.svg">icons/svg/array.svg</file>
         <file alias="snap.svg">icons/svg/snap.svg</file>
         <file alias="solids.svg">icons/svg/solids.svg</file>
         <file alias="truss.svg">icons/svg/truss.svg</file>

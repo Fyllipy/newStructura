@@ -11,6 +11,7 @@ class QComboBox;
 class QLabel;
 class QListWidget;
 class QListWidgetItem;
+class QPlainTextEdit;
 class QPushButton;
 class QTextBrowser;
 
@@ -19,6 +20,7 @@ namespace Structura::UI {
 /// Utilidades compartilhadas pelos dialogos: mostra o relatorio no QTextBrowser e exporta para .docx.
 void showReport(QTextBrowser *browser, const Structura::Report::ReportDocument &document, bool includeCover);
 bool exportDocx(QWidget *parent, const Structura::Report::ReportDocument &document, const QString &suggestedName);
+bool exportPdf(QWidget *parent, const Structura::Report::ReportDocument &document, const QString &suggestedName);
 
 /// Memorial / relatorio geral do projeto: escolha do conteudo, previa e exportacao para .docx.
 class ReportDialog final : public QDialog
@@ -32,6 +34,7 @@ private:
     Structura::App::Services::ReportService::Options options() const;
     void refreshPreview();
     void exportFile();
+    void exportPdfFile();
 
     Structura::App::Services::ReportService::Input m_input;
     QVector<int> m_selectedMembers;
@@ -52,6 +55,7 @@ private:
     QCheckBox *m_formulas {nullptr};
     QComboBox *m_scope {nullptr};
     QListWidget *m_items {nullptr};
+    QPlainTextEdit *m_revisions {nullptr};
 };
 
 /// Memorial de uma barra: lista de itens de calculo (como o CYPE 3D) e memorial completo.

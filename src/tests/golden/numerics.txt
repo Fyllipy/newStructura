@@ -1749,7 +1749,7 @@ chk Pino - esmagamento (chapa 2) | 6.4.2.3 | 60 562.5 kN 0.106666666667 000
 peca Chapa 30.0 x 165 x 268 mm com furo 55.5 mm (a = 90 mm) 1 10.39438125 0
 peca Pino d = 55 mm, comprimento 82 mm 1 1.52932141328 0
 solidos 6 5746.25
-### Viga–pilar com talas fora do nó tipo 148 campos 39
+### Viga–pilar com talas fora do nó tipo 148 campos 44
 descricao Talas de mesa t = 12.5 mm (6 parafusos por lado), 2 talas de alma t = 6.3 mm (3 parafusos por lado), d20 ASTM A325 / F1852 governa Mesa da viga: tracao na secao liquida caso ELU1 max 1.10811091405
 chk Distribuicao dos esforcos | 6.1 | 0 1 - 0 000
    Mesas: Ff = M/(d - tf) +- N Af/A = 120.00 / 0.3 +- 19.60 = 419.20 kN (tracao) e 380.00 kN (compressao)
@@ -1812,11 +1812,25 @@ chk Talas de alma: cisalhamento de bloco | 6.5.6 | 80 349.533333333 kN 0.2288765
    Rd = 349.53 kN
 chk Talas de alma: flexao pela excentricidade | 5.4.2 | 3.6 31.5715909091 kN*m 0.114026563006 000
    Z = 2 t h^2/4 = 138915 mm3; Md = Z fy/ga1 = 31.57 kN.m
+chk Solda viga-apoio - mesas (penetracao total) | 6.2.4 | 429.6003996 501.975 kN 0.85582030898 000
+   Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (6.2.4): bf tf fy / ga1 = 165 x 9.7 x 345 / 1.10 = 501.97 kN
+   F = M/(d - tf) + N/2 = 120.00 kN.m / 0.300 m + 60.00 kN / 2 = 429.60 kN (a mesa tracionada governa; a comprimida e atendida pela mesma solda)
+chk Solda viga-apoio - alma (filetes) | 6.2.5 | 137.64624914 838.187777778 N/mm 0.164218869314 000
+   2 filetes de 5.5 mm (te = 3.89 mm) x 291 mm; fv = V/(2 hw) = 80.0 kN/(2 x 291 mm) = 137.65 N/mm
+   fv <= 0,60 te fw / gw2 = 0,60 x 3.89 x 485 / 1.35 = 838.19 N/mm
+chk Solda viga-apoio - alma (metal-base) | 6.2.5 e 5.4.3 | 275.292498279 1091.45454545 N/mm 0.252225344084 000
+   2 fv = 275.29 N/mm <= min(0,6 tw fy/ga1 ; 0,6 tw fu/ga2) = 1091.45 N/mm (cisalhamento do metal-base da alma)
+chk Solda viga-apoio - perna minima da alma | Tabela 11 | 5.5 3 mm 0.545454545455 100
+   perna adotada 5.5 mm >= minima 3.0 mm
+chk Solda viga-apoio - perna maxima da alma | 6.2.5.2 | 5.5 5.8 mm 0 010
+   perna adotada 5.5 mm <= maxima 5.8 mm na borda da alma (tw = 5.8 mm)
 peca Tala de mesa externa 12.5 x 165 x 370 mm 2 5.99053125 0
 peca Tala de alma 6.3 x 90 x 210 mm 2 0.9346995 0
 peca Parafuso d = 20 mm das mesas (+ porca e arruelas) 24 0.147203550631 0
 peca Parafuso d = 20 mm da alma (+ porca e arruelas) 6 0.134552199936 0
-solidos 103 33937.6
+peca Solda viga-apoio: penetracao total nas mesas (comprimento total) 1 0 330
+peca Solda viga-apoio: filete 5 mm na alma (2 filetes) 1 0 581.2
+solidos 107 35976.97
 ### Viga–viga flexível com cantoneiras tipo 152 campos 38
 descricao 2 cantoneiras t = 9.5 mm, 3 parafuso(s) d20 ASTM A325 / F1852 governa Pressao de contato / rasgamento - alma da viga caso  max 0.99515518663
 chk Cisalhamento do parafuso - lado da alma (corte duplo) | 6.3.3.2 | 27.7051203958 86.9173967493 kN 0.318752303129 000
@@ -2509,7 +2523,7 @@ peca Chapa de extremidade 22.4 mm, 185 x 530 mm 1 17.241112 0
 peca Parafuso d = 20 mm 6 0.289031850535 0
 peca Filete de solda 8 mm (mesas) e 6 mm (alma) 1 0 1229.6
 solidos 30 33206
-### Viga–pilar flangeada fora do nó tipo 147 campos 38
+### Viga–pilar flangeada fora do nó tipo 147 campos 43
 descricao 2 chapas de extremidade 22.4 × 185 mm, 6 parafusos d20 ASTM A325 / F1852, solda 8/6 mm governa Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade caso ELU1 max 1.40818082337
 chk Parafusos tracionados | NBR 8800:2024, 6.3.3.1 | 107.4000999 144.862327916 kN 0.741394270308 000
    F_t = M/(d - tf) + N/2 = 429.6 kN na mesa tracionada; 4 parafusos: F_t,0,Sd = 107.4 kN (sem alavanca)
@@ -2554,10 +2568,24 @@ chk Distancia do parafuso a borda lateral | NBR 8800:2024, 6.3.11 | 43 26 mm 0.6
    (b - g)/2 = 43.0 mm >= 26.0 mm (Tabela 16)
 chk Distancia do parafuso a mesa da viga | detalhamento | 40 26.4 mm 0.66 100
    firstRow = 40 mm >= solda + 0,5 db + folga = 26 mm
+chk Solda viga-apoio - mesas (penetracao total) | 6.2.4 | 429.6003996 501.975 kN 0.85582030898 000
+   Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (6.2.4): bf tf fy / ga1 = 165 x 9.7 x 345 / 1.10 = 501.97 kN
+   F = M/(d - tf) + N/2 = 120.00 kN.m / 0.300 m + 60.00 kN / 2 = 429.60 kN (a mesa tracionada governa; a comprimida e atendida pela mesma solda)
+chk Solda viga-apoio - alma (filetes) | 6.2.5 | 137.64624914 838.187777778 N/mm 0.164218869314 000
+   2 filetes de 5.5 mm (te = 3.89 mm) x 291 mm; fv = V/(2 hw) = 80.0 kN/(2 x 291 mm) = 137.65 N/mm
+   fv <= 0,60 te fw / gw2 = 0,60 x 3.89 x 485 / 1.35 = 838.19 N/mm
+chk Solda viga-apoio - alma (metal-base) | 6.2.5 e 5.4.3 | 275.292498279 1091.45454545 N/mm 0.252225344084 000
+   2 fv = 275.29 N/mm <= min(0,6 tw fy/ga1 ; 0,6 tw fu/ga2) = 1091.45 N/mm (cisalhamento do metal-base da alma)
+chk Solda viga-apoio - perna minima da alma | Tabela 11 | 5.5 3 mm 0.545454545455 100
+   perna adotada 5.5 mm >= minima 3.0 mm
+chk Solda viga-apoio - perna maxima da alma | 6.2.5.2 | 5.5 5.8 mm 0 010
+   perna adotada 5.5 mm <= maxima 5.8 mm na borda da alma (tw = 5.8 mm)
 peca Chapa de extremidade 22.4 mm, 185 x 530 mm 1 17.241112 0
 peca Parafuso d = 20 mm 6 0.289031850535 0
 peca Filete de solda 8 mm (mesas) e 6 mm (alma) 1 0 1229.6
-solidos 33 41885.8
+peca Solda viga-apoio: penetracao total nas mesas (comprimento total) 1 0 330
+peca Solda viga-apoio: filete 5 mm na alma (2 filetes) 1 0 581.2
+solidos 37 45626.87
 ### Nó de treliça soldado: peças soldadas direto no banzo tipo 121 campos 50
 descricao 2 barra(s) soldada(s) direto no banzo governa Solda barra - banzo (filetes) - barra 0 caso ELU1 max 0.656177547063
 chk Solda barra - banzo (filetes) - barra 0 | 6.2.5 | 80 121.918222222 kN 0.656177547063 000
@@ -3296,6 +3324,7 @@ chk shear_z | Cortante na direcao da largura (mesas) | NBR 8800:2024, 5.4.3 | 5 
 chk bracing | Contencoes laterais (requisitos) | NBR 8800:2024, 4.12 | 0 0 0 - 1
    Pilar (4.12.2.2), N_Sd = 100.0 kN, Lbc = 2750 mm, n = 1 contencoes: F_br = 0,01 N_Sd = 1.00 kN; S_br = 2 (4 - 2/n) gr N_Sd / Lbc = 0.196 kN/mm (gr = 1,35)
    Viga (4.12.3.3), M_Sd = 80.0 kN*m, ho = 288 mm, Lbb = 2750 mm, Cd = 1,0: F_br = 0,02 M_Sd Cd/ho = 5.56 kN; S_br = 10 gr M_Sd Cd/(Lbb ho) = 1.364 kN/mm (Cd = 2,0 para a contencao proxima ao ponto de inflexao em curvatura reversa)
+   Contencao de torcao nodal (4.12.3.6): S_sec = 42.2 kN*m/rad nao supera S_T = 84.3 kN*m/rad; a distorcao da alma torna a contencao inefetiva (S_Tb < 0): enrijeca-la (largura x espessura do enrijecedor) ou usar contencao de translacao.
    As contencoes adotadas (travessas, correntes, contraventamentos) devem ter resistencia e rigidez de calculo no minimo iguais a estes valores; nao e verificado pelo programa.
 resumo Perfil:  (Perfil I/H laminado), A = 5895 mm2, Ix = 9.031e+07 mm4, Iy = 6.765e+06 mm4, peso = 46.27 kg/m
 resumo Aco: aco (fy = 345 MPa, fu = 450 MPa, E = 200000 MPa)
@@ -3337,6 +3366,7 @@ chk tension | Tracao axial | NBR 8800:2024, 5.2 | 300 2565.62207697 0.1169307056
    N_t,Sd = 300.00 kN -> N_t,Sd / N_t,Rd = 0.117  (combinacao ELU1, x = 0 mm)
 chk bracing | Contencoes laterais (requisitos) | NBR 8800:2024, 4.12 | 0 0 0 - 1
    Viga (4.12.3.3), M_Sd = 250.0 kN*m, ho = 514 mm, Lbb = 2750 mm, Cd = 1,0: F_br = 0,02 M_Sd Cd/ho = 9.73 kN; S_br = 10 gr M_Sd Cd/(Lbb ho) = 2.388 kN/mm (Cd = 2,0 para a contencao proxima ao ponto de inflexao em curvatura reversa)
+   Contencao de torcao nodal (4.12.3.6): S_sec = 60.1 kN*m/rad nao supera S_T = 225.2 kN*m/rad; a distorcao da alma torna a contencao inefetiva (S_Tb < 0): enrijeca-la (largura x espessura do enrijecedor) ou usar contencao de translacao.
    As contencoes adotadas (travessas, correntes, contraventamentos) devem ter resistencia e rigidez de calculo no minimo iguais a estes valores; nao e verificado pelo programa.
 resumo Perfil:  (Perfil I/H laminado), A = 11289 mm2, Ix = 5.419e+08 mm4, Iy = 2.473e+07 mm4, peso = 88.62 kg/m
 resumo Aco: aco (fy = 250 MPa, fu = 400 MPa, E = 200000 MPa)
@@ -3384,18 +3414,15 @@ resumo Perfil:  (Perfil U simples (formado a frio)), A = 783 mm2, Ix = 2.641e+06
 resumo Aco: aco (fy = 345 MPa, fu = 450 MPa, E = 200000 MPa)
 resumo Comprimento L = 4000 mm; Lx = 4000 mm, Ly = 4000 mm, Lz = 4000 mm; Lb = 4000 mm (1 trecho(s))
 ### barra U Formado caso 1
-supported 1 ABNT NBR 14762:2010 max 248687.698447 interaction ELU1 x 2750
-chk interaction | Flexo-compressao | NBR 14762:2010, 9.9 | 248687.698447 1 248687.698447  1
-   NBR 14762, 9.9: N_Sd/N_Rd + Mx,Sd/Mx,Rd + My,Sd/My,Rd = 1.009 + 0.529 + 248686.160 = 248687.698  (combinacao ELU1, x = 2750 mm)
-chk flexure_y | Flexao em torno do eixo Y (menor inercia) | NBR 14762:2010, 9.8.2 | 432000 1.73712923729 248686.16032 kN*m 1
-   mesa superior (AL): k = 0.773, lambda_p = 0.730, bef = 51.7 mm (b = 54.0 mm)
-   mesa inferior (AL): k = 0.773, lambda_p = 0.730, bef = 51.7 mm (b = 54.0 mm)
-   Inicio de escoamento da secao efetiva (9.8.2.1): Wef = 5539 mm3 (W bruto = 5862 mm3) -> M_Rd = Wef fy / 1.10 = 1.74 kN*m
-   Flambagem distorcional: a curva de assinatura (analise de faixas finitas) so apresenta o modo local e o global: nao ha modo distorcional.
-   M_y,Sd = 432000.00 kN*m (B1 = 1000000.000) -> M_y,Sd / M_y,Rd = 248686.160; governa: escoamento da secao efetiva  (combinacao ELU1, x = 2750 mm)
+supported 1 ABNT NBR 14762:2010 max 1.78681363134 interaction ELU1 x 2750
+chk interaction | Flexo-compressao | NBR 14762:2010, 9.9 | 1.78681363134 1 1.78681363134  1
+   NBR 14762, 9.9: N_Sd/N_Rd + Mx,Sd/Mx,Rd + My,Sd/My,Rd = 1.009 + 0.529 + 0.249 = 1.787  (combinacao ELU1, x = 2750 mm)
 chk slenderness | Limitacao de esbeltez (compressao) | NBR 14762:2010, 9.7.4 | 238.698554149 200 1.19349277075  1
    lambda = KL / r = 238.7 (maior indice de esbeltez entre os eixos)  (combinacao ELU1, x = 0 mm)
    lambda <= 200 (limite da norma)
+chk amplification | Amplificacao dos momentos: B1 <= 20 e N_Sd < N_e | NBR 14762:2010, Anexo C.2 | 1.18783385308 1 1.18783385308  1
+   N_c,Sd = 20.00 kN >= N_e,plano = 17.36 kN (flambagem elastica por flexao no plano Y (eixo de menor inercia), comprimento 5500 mm): B1 = Cm / (1 - N_Sd/N_e) nao existe
+   a barra e instavel nesse plano: aumente a secao, reduza o comprimento destravado ou contenha lateralmente. Razao = N_Sd / [(1 - Cm/20) N_e] = 1.188  (combinacao ELU1, x = 0 mm)
 chk compression | Compressao axial | NBR 14762:2010, 9.7 | 20 19.8217017095 1.00899510512 kN 1
    Nex = 172.32 kN, Ney = 27.12 kN, Nez = 40.73 kN (Cw = 1.020e+09 mm6, J = 2376.0 mm4, x0 = -49.1 mm, y0 = 0.0 mm, r0 = 78.3 mm)
    Perfil monossimetrico (9.7.2.2): N flexo-torcao = 36.80 kN; Ne = 27.12 kN
@@ -3416,6 +3443,12 @@ chk geometry | Relacao largura-espessura maxima | NBR 14762:2010, 9.1.2 (Tabela 
    mesa inferior (AL): b/t = 18.0; (b/t)max = 60 (Tabela 4) -> 0.300
 chk mv_x | Momento fletor e forca cortante combinados (eixo X) | NBR 14762:2010, 9.8.4 | 0.280640088831 1 0.280640088831  1
    (M_Sd/M_Rd)^2 + (V_Sd/V_Rd)^2 = (0.529)^2 + (0.026)^2 = 0.281  (combinacao ELU1, x = 2750 mm)
+chk flexure_y | Flexao em torno do eixo Y (menor inercia) | NBR 14762:2010, 9.8.2 | 0.432 1.73712923729 0.24868616032 kN*m 1
+   mesa superior (AL): k = 0.773, lambda_p = 0.730, bef = 51.7 mm (b = 54.0 mm)
+   mesa inferior (AL): k = 0.773, lambda_p = 0.730, bef = 51.7 mm (b = 54.0 mm)
+   Inicio de escoamento da secao efetiva (9.8.2.1): Wef = 5539 mm3 (W bruto = 5862 mm3) -> M_Rd = Wef fy / 1.10 = 1.74 kN*m
+   Flambagem distorcional: a curva de assinatura (analise de faixas finitas) so apresenta o modo local e o global: nao ha modo distorcional.
+   M_y,Sd = 0.43 kN*m (B1 = 1.000) -> M_y,Sd / M_y,Rd = 0.249; governa: escoamento da secao efetiva  (combinacao ELU1, x = 2750 mm)
 chk shear_y | Cortante na direcao da altura (alma) | NBR 14762:2010, 9.8.3 | 4 77.9072727273 0.0513430885202 kN 1
    Cortante (9.8.3): h = 138.0 mm, t = 3.00 mm, h/t = 46.0, kv = 5.0
    Limites de esbeltez: lambda_p = 1,08 sqrt(E kv / fy) = 58.1, lambda_r = 1,40 sqrt(E kv / fy) = 75.4

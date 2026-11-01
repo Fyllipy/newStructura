@@ -104,6 +104,16 @@ QPair<QString, QString> webShearSteelKeys();
 
 // ---- variantes das tipologias anteriores (nervuras de base, ligacoes mistas, decoracoes 3D) -----------------------------------------------
 QVector<ConnectionService::FieldDef> baseRibFields();
+/// Campo da distancia entre a face do apoio e a junta das ligacoes "fora do no" (mm).
+QVector<ConnectionService::FieldDef> outsideFields();
+/// Solda da viga ao apoio (face do apoio, s = -outDist) das ligacoes fora do no: filetes/groove ao redor da secao da viga.
+void addSupportWeldSolids(const Structura::App::ProjectData::NodeConnection &c, std::vector<ConnectionSolids::Primitive> &out);
+/// Valores padrao da solda viga-apoio (tipo, pernas).
+void supportWeldDefaults(Structura::App::ProjectData::NodeConnection &c);
+/// Verificacoes e pecas da solda viga-apoio de uma ligacao fora do no; acrescenta a `evaluation` e atualiza a razao maxima.
+void appendSupportWeld(const Structura::App::ProjectData::NodeConnection &c, const ConnectionCatalog::Forces &forces, ConnectionCatalog::Evaluation &evaluation);
+/// Dimensiona a solda viga-apoio (pernas minimas que atendem). Devolve true se alterou algum valor.
+bool proposeSupportWeld(Structura::App::ProjectData::NodeConnection &c, const ConnectionCatalog::Forces &forces);
 void baseRibDefaults(Structura::App::ProjectData::NodeConnection &c, const ConnectionService::BeamInfo &beam);
 void variantDecorate(const Structura::App::ProjectData::NodeConnection &c, bool context, std::vector<ConnectionSolids::Primitive> &out);
 

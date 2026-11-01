@@ -3,6 +3,7 @@
 #include <vtkActor.h>
 #include <vtkCellArray.h>
 #include <vtkCellData.h>
+#include <vtkCubeSource.h>
 #include <vtkGlyph3D.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
@@ -50,15 +51,23 @@ void BarTypeRenderer::attach(vtkRenderer *renderer)
     }
 }
 
-vtkSmartPointer<vtkActor> BarTypeRenderer::makeGlyphActor(vtkPolyData *points, double radius, bool outlineOnly)
+vtkSmartPointer<vtkActor> BarTypeRenderer::makeGlyphActor(vtkPolyData *points, double radius, bool outlineOnly, Shape shape)
 {
-    auto sphere = vtkSmartPointer<vtkSphereSource>::New();
-    sphere->SetRadius(radius);
-    sphere->SetThetaResolution(20);
-    sphere->SetPhiResolution(14);
     auto glyph = vtkSmartPointer<vtkGlyph3D>::New();
     glyph->SetInputData(points);
-    glyph->SetSourceConnection(sphere->GetOutputPort());
+    if (shape == Shape::Cube) {
+        auto cube = vtkSmartPointer<vtkCubeSource>::New();
+        cube->SetXLength(2.0 * radius);
+        cube->SetYLength(2.0 * radius);
+        cube->SetZLength(2.0 * radius);
+        glyph->SetSourceConnection(cube->GetOutputPort());
+    } else {
+        auto sphere = vtkSmartPointer<vtkSphereSource>::New();
+        sphere->SetRadius(radius);
+        sphere->SetThetaResolution(20);
+        sphere->SetPhiResolution(14);
+        glyph->SetSourceConnection(sphere->GetOutputPort());
+    }
     glyph->SetScaleModeToDataScalingOff();
     glyph->SetColorModeToColorByScalar();
     glyph->Update();
@@ -106,6 +115,27 @@ void BarTypeRenderer::render(const std::vector<Marker> &markers, bool visible)
     auto darkColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
     darkColors->SetNumberOfComponents(3);
     darkColors->SetName("color");
+    // rotulas plasticas (cubo vermelho) e ligacoes semirrigidas (esfera verde-agua): contorno escuro + preenchimento
+    auto plasticFill = vtkSmartPointer<vtkPolyData>::New();
+    auto plasticFillPoints = vtkSmartPointer<vtkPoints>::New();
+    auto plasticFillColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    plasticFillColors->SetNumberOfComponents(3);
+    plasticFillColors->SetName("color");
+    auto plasticEdge = vtkSmartPointer<vtkPolyData>::New();
+    auto plasticEdgePoints = vtkSmartPointer<vtkPoints>::New();
+    auto plasticEdgeColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    plasticEdgeColors->SetNumberOfComponents(3);
+    plasticEdgeColors->SetName("color");
+    auto semiFill = vtkSmartPointer<vtkPolyData>::New();
+    auto semiFillPoints = vtkSmartPointer<vtkPoints>::New();
+    auto semiFillColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    semiFillColors->SetNumberOfComponents(3);
+    semiFillColors->SetName("color");
+    auto semiEdge = vtkSmartPointer<vtkPolyData>::New();
+    auto semiEdgePoints = vtkSmartPointer<vtkPoints>::New();
+    auto semiEdgeColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    semiEdgeColors->SetNumberOfComponents(3);
+    semiEdgeColors->SetName("color");
     auto tieMarks = vtkSmartPointer<vtkPolyData>::New();
     auto markVertices = vtkSmartPointer<vtkPoints>::New();
     auto markColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
@@ -128,21 +158,28 @@ void BarTypeRenderer::render(const std::vector<Marker> &markers, bool visible)
         if (len < 1e-9) {
             continue;
         }
-        const double offset = hingeRadius * 2.2;   // a esfera fica ao lado do no, sobre a barra
-        if (m.hingeStart) {
-            const Vec3 p = inset(m.start, m.end, offset);
-            hingeVertices->InsertNextPoint(p[0], p[1], p[2]);
-            hingeWhite->InsertNextTuple3(255, 255, 255);
-            darkVertices->InsertNextPoint(p[0], p[1], p[2]);
-            darkColors->InsertNextTuple3(30, 35, 43);
-        }
-        if (m.hingeEnd) {
-            const Vec3 p = inset(m.end, m.start, offset);
-            hingeVertices->InsertNextPoint(p[0], p[1], p[2]);
-            hingeWhite->InsertNextTuple3(255, 255, 255);
-            darkVertices->InsertNextPoint(p[0], p[1], p[2]);
-            darkColors->InsertNextTuple3(30, 35, 43);
-        }
+        const double offset = hingeRadius * 2.2;   // o glifo fica ao lado do no, sobre a barra
+        // um glifo por extremidade; prioridade: rotula plastica > semirrigida > rotula (articulacao)
+        auto addEnd = [&](const Vec3 &p, bool hinge, bool semi, bool plastic) {
+            if (plastic) {
+                plasticFillPoints->InsertNextPoint(p[0], p[1], p[2]);
+                plasticFillColors->InsertNextTuple3(220, 53, 69);
+                plasticEdgePoints->InsertNextPoint(p[0], p[1], p[2]);
+                plasticEdgeColors->InsertNextTuple3(30, 35, 43);
+            } else if (semi) {
+                semiFillPoints->InsertNextPoint(p[0], p[1], p[2]);
+                semiFillColors->InsertNextTuple3(0, 168, 150);
+                semiEdgePoints->InsertNextPoint(p[0], p[1], p[2]);
+                semiEdgeColors->InsertNextTuple3(30, 35, 43);
+            } else if (hinge) {
+                hingeVertices->InsertNextPoint(p[0], p[1], p[2]);
+                hingeWhite->InsertNextTuple3(255, 255, 255);
+                darkVertices->InsertNextPoint(p[0], p[1], p[2]);
+                darkColors->InsertNextTuple3(30, 35, 43);
+            }
+        };
+        addEnd(inset(m.start, m.end, offset), m.hingeStart, m.semiStart, m.plasticStart);
+        addEnd(inset(m.end, m.start, offset), m.hingeEnd, m.semiEnd, m.plasticEnd);
         if (m.kind == 1 || m.kind == 2) {
             const bool tie = m.kind == 2;
             const unsigned char r = tie ? 230 : 142, g = tie ? 126 : 68, b = tie ? 34 : 173;
@@ -170,14 +207,27 @@ void BarTypeRenderer::render(const std::vector<Marker> &markers, bool visible)
     build(hingePoints, hingeVertices, hingeWhite);
     build(hingeDark, darkVertices, darkColors);
     build(tieMarks, markVertices, markColors);
+    build(plasticFill, plasticFillPoints, plasticFillColors);
+    build(plasticEdge, plasticEdgePoints, plasticEdgeColors);
+    build(semiFill, semiFillPoints, semiFillColors);
+    build(semiEdge, semiEdgePoints, semiEdgeColors);
 
     if (hingeVertices->GetNumberOfPoints() > 0) {
         m_actors.push_back(makeGlyphActor(hingeDark, hingeRadius * 1.3, true));
         m_actors.push_back(makeGlyphActor(hingePoints, hingeRadius, false));
     }
+    if (plasticFillPoints->GetNumberOfPoints() > 0) {
+        m_actors.push_back(makeGlyphActor(plasticEdge, hingeRadius * 1.25, true, Shape::Cube));
+        m_actors.push_back(makeGlyphActor(plasticFill, hingeRadius * 0.95, false, Shape::Cube));
+    }
+    if (semiFillPoints->GetNumberOfPoints() > 0) {
+        m_actors.push_back(makeGlyphActor(semiEdge, hingeRadius * 1.3, true));
+        m_actors.push_back(makeGlyphActor(semiFill, hingeRadius, false));
+    }
     if (markVertices->GetNumberOfPoints() > 0) {
         m_actors.push_back(makeGlyphActor(tieMarks, hingeRadius * 0.55, false));
     }
+    m_visible = visible;
     for (auto &actor : m_actors) {
         actor->SetVisibility(visible);
         m_renderer->AddActor(actor);
@@ -194,7 +244,17 @@ void BarTypeRenderer::render(const std::vector<Marker> &markers, bool visible)
     m_lineActor->GetProperty()->SetLineWidth(4.0f);
     m_lineActor->GetProperty()->LightingOff();
     m_lineActor->PickableOff();
-    m_lineActor->SetVisibility(visible && lineCells->GetNumberOfCells() > 0);
+    m_hasLines = lineCells->GetNumberOfCells() > 0;
+    m_lineActor->SetVisibility(visible && m_hasLines);
+}
+
+void BarTypeRenderer::setVisible(bool visible)
+{
+    m_visible = visible;
+    for (auto &actor : m_actors) {
+        actor->SetVisibility(visible);
+    }
+    m_lineActor->SetVisibility(visible && m_hasLines);
 }
 
 } // namespace Structura::Visualization

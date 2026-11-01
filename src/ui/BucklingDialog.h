@@ -5,6 +5,7 @@
 
 class QComboBox;
 class QLabel;
+class QPushButton;
 class QSlider;
 class QSpinBox;
 class QTableWidget;
@@ -24,6 +25,8 @@ public:
 
 signals:
     void computeRequested(const QString &combination, int modes);
+    /// Calcula e mostra os comprimentos efetivos (K) das barras a partir dos modos calculados.
+    void effectiveLengthsRequested();
     /// `fraction`: tamanho da deformada como fracao da maior dimensao do modelo.
     void modeChanged(int mode, double fraction);
     void closedByUser();
@@ -39,6 +42,7 @@ private:
     QTableWidget *m_table {nullptr};
     QSlider *m_scale {nullptr};
     QLabel *m_status {nullptr};
+    QPushButton *m_effective {nullptr};
 };
 
 } // namespace Structura::UI

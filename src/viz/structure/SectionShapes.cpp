@@ -243,6 +243,30 @@ QString wPath(double d, double bf, double tw, double tf, double r)
         .arg(n(yBottomInner - r), n(yBottomInner), n(yBottom), n(-htw - r), n(-htw), n(yBottomInner - r));
 }
 
+/// Perfil I soldado (monossimetrico quando a mesa inferior difere da superior): mesa superior bf x tf, alma tw, mesa inferior bfi x tfi; altura total d. Sem raios de concordancia.
+QString weldedIPath(double d, double bf, double tw, double tf, double bfi, double tfi)
+{
+    if (bfi <= 0.0) {
+        bfi = bf;
+    }
+    if (tfi <= 0.0) {
+        tfi = tf;
+    }
+    if (std::min({d, bf, tw, tf, bfi, tfi}) <= 0.0) {
+        throw std::runtime_error("As dimensoes do perfil I soldado devem ser maiores que zero.");
+    }
+    if (d <= tf + tfi) {
+        throw std::runtime_error("A altura do perfil I soldado deve ser maior que a soma das espessuras das mesas.");
+    }
+    if (tw >= bf || tw >= bfi) {
+        throw std::runtime_error("A alma do perfil I soldado e mais larga que uma das mesas.");
+    }
+    const double yBottomInner = d - tfi;
+    return QStringLiteral("M %1,0 H %2 V %3 H %4 V %5 H %6 V %7 H %8 V %5 H %9 V %3 H %1 Z")
+        .arg(n(-bf / 2.0), n(bf / 2.0), n(tf), n(tw / 2.0), n(yBottomInner))
+        .arg(n(bfi / 2.0), n(d), n(-bfi / 2.0), n(-tw / 2.0));
+}
+
 QString uPath(double d, double bf, double tw, double tf, double r, double r1, double angleDeg)
 {
     const double radius = r > 0.0 ? r : std::max(2.0, 1.5 * tf);
@@ -381,6 +405,86 @@ QString formedCPath(double d, double bf, double c, double t)
         .arg(n(x0 + ro), n(y0), n(x2 - ro), n(x2), n(y0 + ro), n(y1 + c), n(x2 - t), n(y1 + ri))
         .arg(n(y1), n(x2 - t - ri), n(x1 + ri), n(x1), n(y2 - ri), n(y2), n(y2 - ri), n(y2 - c))
         .arg(n(y3 - ro), n(y3), n(x0));
+}
+
+/// Contorno de uma chapa dobrada de espessura constante `t` a partir da linha media (poligonal aberta, y para baixo como no SVG):
+/// cantos arredondados com raio interno `ri` (raio da linha media ri + t/2); extremidades em corte reto.
+Loop thickPolylineLoop(const std::vector<Point> &mid, double t, double ri)
+{
+    const double rm = ri + 0.5 * t;
+    // pontos densos da linha media com a tangente em cada um
+    std::vector<Point> dense;
+    const std::size_t n = mid.size();
+    auto unit = [](Point a, Point b) {
+        const double dx = b[0] - a[0], dy = b[1] - a[1];
+        const double len = std::hypot(dx, dy);
+        return Point {dx / len, dy / len};
+    };
+    dense.push_back(mid.front());
+    for (std::size_t i = 1; i + 1 < n; ++i) {
+        const Point u = unit(mid[i - 1], mid[i]);
+        const Point v = unit(mid[i], mid[i + 1]);
+        const double cross = u[0] * v[1] - u[1] * v[0];
+        const double dot = std::clamp(u[0] * v[0] + u[1] * v[1], -1.0, 1.0);
+        const double phi = std::atan2(cross, dot);   // angulo de giro com sinal
+        if (std::abs(phi) < 1e-9) {
+            dense.push_back(mid[i]);
+            continue;
+        }
+        const double tangent = rm * std::tan(std::abs(phi) / 2.0);
+        const Point a {mid[i][0] - u[0] * tangent, mid[i][1] - u[1] * tangent};
+        // centro do arco: a partir de a, na normal de u do lado do giro
+        const double side = phi > 0 ? 1.0 : -1.0;
+        const Point normal {-u[1] * side, u[0] * side};
+        const Point centre {a[0] + normal[0] * rm, a[1] + normal[1] * rm};
+        const double a0 = std::atan2(a[1] - centre[1], a[0] - centre[0]);
+        constexpr int steps = 8;
+        for (int k = 0; k <= steps; ++k) {
+            const double ang = a0 + phi * static_cast<double>(k) / steps;
+            dense.push_back({centre[0] + rm * std::cos(ang), centre[1] + rm * std::sin(ang)});
+        }
+    }
+    dense.push_back(mid.back());
+    // normais esquerdas (por diferencas finitas) e deslocamentos
+    std::vector<Point> left, right;
+    for (std::size_t i = 0; i < dense.size(); ++i) {
+        const Point a = dense[i == 0 ? 0 : i - 1];
+        const Point b = dense[i + 1 == dense.size() ? i : i + 1];
+        const Point tan = unit(a, b);
+        const Point nl {-tan[1], tan[0]};
+        left.push_back({dense[i][0] + nl[0] * 0.5 * t, dense[i][1] + nl[1] * 0.5 * t});
+        right.push_back({dense[i][0] - nl[0] * 0.5 * t, dense[i][1] - nl[1] * 0.5 * t});
+    }
+    Loop loop = left;
+    loop.insert(loop.end(), right.rbegin(), right.rend());
+    return loop;
+}
+
+/// Z enrijecido (formado a frio): alma d, mesas bf (projecao alem da face da alma), enrijecedores de borda c, espessura t.
+Loop formedLippedZLoop(double d, double bf, double c, double t)
+{
+    if (t <= 0.0 || c <= 0.0 || d <= 2.0 * (t + c) || bf <= 3.0 * t) {
+        throw std::runtime_error("A secao Z enrijecida requer d > 2(t + c), bf > 3t e c > 0.");
+    }
+    const double hm = d - t;               // altura da linha media da alma
+    const double fl = bf + 0.5 * t;        // projecao da linha media das mesas
+    const double tipUp = hm / 2.0 - 0.5 * t - c;   // ponta do enrijecedor da mesa superior (y para cima)
+    const std::vector<Point> mid {{fl, -tipUp}, {fl, -hm / 2.0}, {0.0, -hm / 2.0}, {0.0, hm / 2.0}, {-fl, hm / 2.0}, {-fl, tipUp}};   // y do SVG para baixo
+    return thickPolylineLoop(mid, t, t);
+}
+
+/// Cantoneira enrijecida (formada a frio): abas d (vertical) e bf (horizontal), enrijecedores de borda c voltados para o interior, espessura t.
+Loop formedLippedAngleLoop(double d, double bf, double c, double t)
+{
+    if (t <= 0.0 || c <= 0.0 || d <= 2.0 * t + c || bf <= 2.0 * t + c) {
+        throw std::runtime_error("A cantoneira enrijecida requer abas maiores que 2t + c e c > 0.");
+    }
+    // linha media (y para cima); vertice no canto superior esquerdo, aba vertical para baixo e horizontal para a direita
+    const double xv = -bf / 2.0 + 0.5 * t, yh = d / 2.0 - 0.5 * t;
+    const double yb = -d / 2.0 + 0.5 * t, xr = bf / 2.0 - 0.5 * t;
+    const double tipL = -bf / 2.0 + t + c, tipR = d / 2.0 - t - c;
+    const std::vector<Point> mid {{tipL, -yb}, {xv, -yb}, {xv, -yh}, {xr, -yh}, {xr, -tipR}};   // y do SVG para baixo
+    return thickPolylineLoop(mid, t, t);
 }
 
 QString formedZPath(double d, double bf, double t)
@@ -549,6 +653,19 @@ std::vector<Loop> rawLoops(const QString &family, const SectionShapes::Parameter
         // barra de secao variavel (NBR 8800, Anexo G): o contorno e o da altura media; as propriedades (peso, quantitativos) sao exatas pela media das alturas
         return sv(wPath(0.5 * (param(p, "d1") + param(p, "d2")), param(p, "bf"), param(p, "tw", 6.0), param(p, "tf", 8.0), 0.01));   // wPath exige raio > 0
     }
+    if (family == QLatin1String("I Soldado")) {
+        return sv(weldedIPath(param(p, "d"), param(p, "bf"), param(p, "tw"), param(p, "tf"), param(p, "bfi"), param(p, "tfi")));
+    }
+    if (family == QLatin1String("Caixao Soldado")) {
+        const double d = param(p, "d"), bf = param(p, "bf"), tw = param(p, "tw"), tf = param(p, "tf");
+        if (std::min({d, bf, tw, tf}) <= 0.0 || d <= 2.0 * tf || bf <= 2.0 * tw) {
+            throw std::runtime_error("As dimensoes do caixao soldado devem comportar as espessuras das chapas.");
+        }
+        auto outer = sv(rectPath(-bf / 2.0, -d / 2.0, bf, d));
+        auto inner = sv(rectPath(-bf / 2.0 + tw, -d / 2.0 + tf, bf - 2.0 * tw, d - 2.0 * tf));
+        outer.insert(outer.end(), inner.begin(), inner.end());
+        return outer;
+    }
     if (family == QLatin1String("U Laminado") || family == QLatin1String("U Inclinado Laminado")) {
         return sv(uPath(param(p, "d"), param(p, "bf"), param(p, "tw"), param(p, "tf"), param(p, "r"), param(p, "r1"),
                         param(p, "flange_angle_deg", 2.0)));
@@ -570,15 +687,21 @@ std::vector<Loop> rawLoops(const QString &family, const SectionShapes::Parameter
         return sv(formedCPath(param(p, "d"), param(p, "bf"), param(p, "c"), param(p, "t")));
     }
     if (family == QLatin1String("Z Formado")) {
+        if (param(p, "c") > 0.0) {
+            return {formedLippedZLoop(param(p, "d"), param(p, "bf"), param(p, "c"), param(p, "t"))};
+        }
         return sv(formedZPath(param(p, "d"), param(p, "bf"), param(p, "t")));
     }
     if (family == QLatin1String("L Formado")) {
+        if (param(p, "c") > 0.0) {
+            return {formedLippedAngleLoop(param(p, "d"), param(p, "bf"), param(p, "c"), param(p, "t"))};
+        }
         return sv(formedLPath(param(p, "d"), param(p, "bf"), param(p, "t")));
     }
     if (family == QLatin1String("Cartola Formado")) {
         return sv(formedCartolaPath(param(p, "d"), param(p, "bf"), param(p, "c"), param(p, "t")));
     }
-    if (family == QLatin1String("Tubular Circular")) {
+    if (family == QLatin1String("Tubular Circular") || family == QLatin1String("Tubo Soldado")) {
         const double outer = param(p, "D");
         const double inner = outer - 2.0 * param(p, "t");
         if (inner <= 0.0) {
@@ -638,6 +761,32 @@ std::vector<Loop> rawLoops(const QString &family, const SectionShapes::Parameter
         }
         return {circleLoop(param(p, "d")), circleLoop(inner)};
     }
+    if (family == QLatin1String("Quatro Cantoneiras")) {
+        // quatro cantoneiras iguais com o dorso nos cantos de uma caixa bf x d (abas para dentro); coordenadas de desenho (y para baixo)
+        const double b = param(p, "b"), w = param(p, "bf"), h = param(p, "d");
+        if (w <= 2.0 * b || h <= 2.0 * b) {
+            throw std::runtime_error("As abas das cantoneiras se sobrepoem: aumente a largura e a altura da caixa ou reduza a aba.");
+        }
+        const Loop base = sv(lPath(b, param(p, "t"), param(p, "r1"), param(p, "r2"))).front();   // dorso no canto inferior esquerdo
+        std::vector<Loop> loops;
+        for (const bool right : {false, true}) {
+            for (const bool top : {false, true}) {
+                Loop loop = base;
+                for (Point &pt : loop) {
+                    if (right) {
+                        pt[0] = -pt[0];
+                    }
+                    if (top) {
+                        pt[1] = -pt[1];
+                    }
+                    pt[0] += right ? (w / 2.0 - b / 2.0) : (-w / 2.0 + b / 2.0);
+                    pt[1] += top ? (-h / 2.0 + b / 2.0) : (h / 2.0 - b / 2.0);
+                }
+                loops.push_back(std::move(loop));
+            }
+        }
+        return loops;
+    }
     if (family == QLatin1String("Dupla Cantoneira T") || family == QLatin1String("Duplo U Costas") || family == QLatin1String("Duplo U Face a Face")) {
         // dois perfis iguais separados pelo afastamento e (chapa espacadora/chapa de no); coordenadas de desenho (y para baixo), centradas em x = 0
         const double gap = std::max(0.0, param(p, "e", 10.0));
@@ -696,6 +845,11 @@ const QVector<SectionFamily> &SectionShapes::families()
         {QStringLiteral("I Laminado"), QStringLiteral("Aco"),
          {P("d", "Altura d (mm)", 203), P("bf", "Mesa bf (mm)", 101), P("tw", "Alma tw (mm)", 5.8), P("tf", "Mesa tf (mm)", 10.8),
           P("r1", "Raio interno r1 (mm)", 0, true), P("r2", "Raio da ponta r2 (mm)", 0, true), P("flange_angle_deg", "Inclinacao da mesa (graus)", 0, true)}},
+        {QStringLiteral("I Soldado"), QStringLiteral("Aco"),
+         {P("d", "Altura total d (mm)", 400), P("bf", "Mesa superior bf (mm)", 200), P("tw", "Alma tw (mm)", 6.3), P("tf", "Mesa superior tf (mm)", 12.5),
+          P("bfi", "Mesa inferior bfi (mm; 0 = igual a bf)", 0, true), P("tfi", "Mesa inferior tfi (mm; 0 = igual a tf)", 0, true)}},
+        {QStringLiteral("Caixao Soldado"), QStringLiteral("Aco"),
+         {P("d", "Altura total d (mm)", 400), P("bf", "Largura total bf (mm)", 300), P("tw", "Almas tw (mm)", 8), P("tf", "Mesas tf (mm)", 12.5)}},
         {QStringLiteral("U Laminado"), QStringLiteral("Aco"),
          {P("d", "Altura d (mm)", 203), P("bf", "Mesa bf (mm)", 57), P("tw", "Alma tw (mm)", 5.6), P("tf", "Mesa tf (mm)", 9.5),
           P("r", "Raio da alma r (mm)", 0, true), P("r1", "Raio da ponta r1 (mm)", 0, true), P("flange_angle_deg", "Inclinacao da mesa (graus)", 0, true)}},
@@ -710,6 +864,9 @@ const QVector<SectionFamily> &SectionShapes::families()
         {QStringLiteral("Dupla Cantoneira T"), QStringLiteral("Aco"),
          {P("b", "Aba b de cada cantoneira (mm)", 76), P("t", "Espessura t (mm)", 6.35), P("e", "Afastamento entre as cantoneiras e (mm)", 10),
           P("r1", "Raio interno r1 (mm)", 0, true), P("r2", "Raio da ponta r2 (mm)", 0, true)}},
+        {QStringLiteral("Quatro Cantoneiras"), QStringLiteral("Aco"),
+         {P("b", "Aba b de cada cantoneira (mm)", 76), P("t", "Espessura t (mm)", 6.35), P("bf", "Largura externa da caixa bf (mm)", 400), P("d", "Altura externa da caixa d (mm)", 400),
+          P("r1", "Raio interno r1 (mm)", 0, true), P("r2", "Raio da ponta r2 (mm)", 0, true)}},
         {QStringLiteral("Duplo U Costas"), QStringLiteral("Aco"),
          {P("d", "Altura d (mm)", 203), P("bf", "Mesa bf (mm)", 57), P("tw", "Alma tw (mm)", 5.6), P("tf", "Mesa tf (mm)", 9.5), P("e", "Afastamento entre as almas e (mm)", 10),
           P("r", "Raio da alma r (mm)", 0, true), P("r1", "Raio da ponta r1 (mm)", 0, true), P("flange_angle_deg", "Inclinacao da mesa (graus)", 0, true)}},
@@ -719,11 +876,14 @@ const QVector<SectionFamily> &SectionShapes::families()
         {QStringLiteral("U Formado"), QStringLiteral("Aco"), {P("d", "Altura d (mm)", 150), P("bf", "Mesa bf (mm)", 60), P("t", "Espessura t (mm)", 3)}},
         {QStringLiteral("C Formado"), QStringLiteral("Aco"),
          {P("d", "Altura d (mm)", 150), P("bf", "Mesa bf (mm)", 60), P("c", "Enrijecedor c (mm)", 20), P("t", "Espessura t (mm)", 3)}},
-        {QStringLiteral("Z Formado"), QStringLiteral("Aco"), {P("d", "Altura d (mm)", 150), P("bf", "Mesa bf (mm)", 60), P("t", "Espessura t (mm)", 3)}},
-        {QStringLiteral("L Formado"), QStringLiteral("Aco"), {P("d", "Altura d (mm)", 60), P("bf", "Aba bf (mm)", 60), P("t", "Espessura t (mm)", 3)}},
+        {QStringLiteral("Z Formado"), QStringLiteral("Aco"),
+         {P("d", "Altura d (mm)", 150), P("bf", "Mesa bf (mm)", 60), P("t", "Espessura t (mm)", 3), P("c", "Enrijecedor c (mm; 0 = sem)", 0, true)}},
+        {QStringLiteral("L Formado"), QStringLiteral("Aco"),
+         {P("d", "Altura d (mm)", 60), P("bf", "Aba bf (mm)", 60), P("t", "Espessura t (mm)", 3), P("c", "Enrijecedor c (mm; 0 = sem)", 0, true)}},
         {QStringLiteral("Cartola Formado"), QStringLiteral("Aco"),
          {P("d", "Altura d (mm)", 40), P("bf", "Largura bf (mm)", 80), P("c", "Aba c (mm)", 20), P("t", "Espessura t (mm)", 3)}},
         {QStringLiteral("Tubular Circular"), QStringLiteral("Aco"), {P("D", "Diametro D (mm)", 114.3), P("t", "Espessura t (mm)", 4.5)}},
+        {QStringLiteral("Tubo Soldado"), QStringLiteral("Aco"), {P("D", "Diametro D (mm)", 508), P("t", "Espessura t (mm)", 9.5)}},
         {QStringLiteral("Tubular Quadrado"), QStringLiteral("Aco"), {P("b", "Lado b (mm)", 100), P("t", "Espessura t (mm)", 5)}},
         {QStringLiteral("Tubular Retangular"), QStringLiteral("Aco"), {P("b", "Largura b (mm)", 100), P("h", "Altura h (mm)", 60), P("t", "Espessura t (mm)", 4)}},
         {QStringLiteral("Barra Circular"), QStringLiteral("Aco"), {P("d", "Diametro d (mm)", 20)}},
@@ -782,7 +942,7 @@ std::optional<SectionShape> SectionShapes::build(const QString &family, const Pa
         }
 
         // Centroide ponderado (contornos externos menos furos); as barras compostas tem dois contornos externos.
-        const std::size_t outer = isComposite(family) ? loops.size() : 1;
+        const std::size_t outer = (isComposite(family) || family == QLatin1String("Quatro Cantoneiras")) ? loops.size() : 1;
         double totalArea = 0.0;
         double sumX = 0.0;
         double sumY = 0.0;
@@ -876,8 +1036,8 @@ std::optional<SectionProperties> SectionShapes::properties(const QString &family
     // Constante de torcao aproximada por familia (pre-dimensionamento).
     double j = 0.0;
     const bool open = family.contains(QLatin1String("Laminado")) || family.contains(QLatin1String("Formado"));
-    if (family == QLatin1String("Tubular Circular") || family == QLatin1String("Circular Vazado")) {
-        const double outer = family == QLatin1String("Tubular Circular") ? param(p, "D") : param(p, "d");
+    if (family == QLatin1String("Tubular Circular") || family == QLatin1String("Tubo Soldado") || family == QLatin1String("Circular Vazado")) {
+        const double outer = (family == QLatin1String("Tubular Circular") || family == QLatin1String("Tubo Soldado")) ? param(p, "D") : param(p, "d");
         const double inner = outer - 2.0 * param(p, "t");
         j = kPi / 32.0 * (std::pow(outer, 4) - std::pow(inner, 4));
     } else if (family == QLatin1String("Barra Circular") || family == QLatin1String("Circular")) {
@@ -893,12 +1053,22 @@ std::optional<SectionProperties> SectionShapes::properties(const QString &family
     } else if (family == QLatin1String("Dupla Cantoneira T")) {
         // dois perfis L (soma das constantes de torcao; sem acao conjunta dos perfis)
         j = 2.0 * 2.0 * (param(p, "b") - param(p, "t") / 2.0) * std::pow(param(p, "t"), 3) / 3.0;
+    } else if (family == QLatin1String("Quatro Cantoneiras")) {
+        j = 4.0 * 2.0 * (param(p, "b") - param(p, "t") / 2.0) * std::pow(param(p, "t"), 3) / 3.0;
     } else if (family == QLatin1String("Duplo U Costas") || family == QLatin1String("Duplo U Face a Face")) {
         j = 2.0 * (2.0 * param(p, "bf") * std::pow(param(p, "tf"), 3) + (param(p, "d") - param(p, "tf")) * std::pow(param(p, "tw"), 3)) / 3.0;
     } else if (family == QLatin1String("Barra Quadrada")) {
         j = rectangleTorsion(param(p, "b"), param(p, "b"));
     } else if (family == QLatin1String("Barra Retangular") || family == QLatin1String("Retangular")) {
         j = rectangleTorsion(param(p, "b"), param(p, "h"));
+    } else if (family == QLatin1String("I Soldado")) {
+        const double tf = param(p, "tf"), tfi = param(p, "tfi") > 0.0 ? param(p, "tfi") : tf;
+        const double bf = param(p, "bf"), bfi = param(p, "bfi") > 0.0 ? param(p, "bfi") : bf;
+        j = (bf * std::pow(tf, 3) + bfi * std::pow(tfi, 3) + (param(p, "d") - 0.5 * (tf + tfi)) * std::pow(param(p, "tw"), 3)) / 3.0;
+    } else if (family == QLatin1String("Caixao Soldado")) {
+        // Bredt: J = 4 Am^2 / soma(l/t) na linha media
+        const double bm = param(p, "bf") - param(p, "tw"), hm = param(p, "d") - param(p, "tf");
+        j = 4.0 * bm * hm * bm * hm / (2.0 * bm / param(p, "tf") + 2.0 * hm / param(p, "tw"));
     } else if (family == QLatin1String("I Alma Variavel")) {
         const double tw = param(p, "tw", 6.0), tf = param(p, "tf", 8.0), dMean = 0.5 * (param(p, "d1") + param(p, "d2"));
         j = (2.0 * param(p, "bf") * std::pow(tf, 3) + (dMean - 2.0 * tf) * std::pow(tw, 3)) / 3.0;
@@ -921,9 +1091,9 @@ std::optional<SectionProperties> SectionShapes::properties(const QString &family
         } else if (family == QLatin1String("C Formado")) {
             length = param(p, "d") + 2.0 * param(p, "bf") + 2.0 * param(p, "c") - 4.0 * t;
         } else if (family == QLatin1String("Z Formado")) {
-            length = param(p, "d") + 2.0 * param(p, "bf") - 2.0 * t;
+            length = param(p, "d") + 2.0 * param(p, "bf") - 2.0 * t + 2.0 * std::max(0.0, param(p, "c") - 0.5 * t);
         } else if (family == QLatin1String("L Formado")) {
-            length = param(p, "d") + param(p, "bf") - t;
+            length = param(p, "d") + param(p, "bf") - t + 2.0 * std::max(0.0, param(p, "c") - 0.5 * t);
         } else {
             length = param(p, "bf") + 2.0 * param(p, "d") + 2.0 * param(p, "c") - 4.0 * t;
         }

@@ -2,6 +2,7 @@
 
 #include "fem_model.h"
 
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <string>
@@ -57,6 +58,36 @@ int fem_add_material(void *h, int id, double E, double nu, double density, doubl
     m.alpha = alpha;
     s->materialIndex[id] = static_cast<int>(s->model.materials.size());
     s->model.materials.push_back(m);
+    return 0;
+}
+
+int fem_set_material_orthotropy(void *h, int id, double E2, double nu12, double G12, double bend1, double bend2, double ax, double ay, double az)
+{
+    Handle *s = get(h);
+    if (!s || E2 <= 0.0 || G12 <= 0.0 || bend1 <= 0.0 || bend2 <= 0.0 || std::abs(nu12) >= 1.0) {
+        return 1;
+    }
+    const auto it = s->materialIndex.find(id);
+    if (it == s->materialIndex.end()) {
+        return 2;
+    }
+    fem::Material &m = s->model.materials[static_cast<std::size_t>(it->second)];
+    const fem::Vec3 axis(ax, ay, az);
+    if (axis.norm() < 1e-12) {
+        return 3;
+    }
+    m.orthotropic = true;
+    m.E2 = E2;
+    m.nu12 = nu12;
+    m.G12 = G12;
+    m.bend1 = bend1;
+    m.bend2 = bend2;
+    m.axis = axis.normalized();
+    // estabilidade do estado plano: 1 - nu12 nu21 > 0
+    if (1.0 - nu12 * nu12 * E2 / m.E <= 0.0) {
+        m.orthotropic = false;
+        return 4;
+    }
     return 0;
 }
 
@@ -150,6 +181,19 @@ int fem_add_spring(void *h, int node, const double *k6, int compressionOnly, dou
     sp.normal = fem::Vec3(nx, ny, nz);
     s->model.springs.push_back(sp);
     return 0;
+}
+
+int fem_add_tie_masked(void *h, int slave, int count, const int *masters, const double *weights, int dofMask)
+{
+    const int before = h ? static_cast<int>(get(h)->model.ties.size()) : 0;
+    const int code = fem_add_tie(h, slave, count, masters, weights);
+    if (code == 0) {
+        Handle *s = get(h);
+        if (static_cast<int>(s->model.ties.size()) > before) {
+            s->model.ties.back().dofMask = dofMask & 63;
+        }
+    }
+    return code;
 }
 
 int fem_add_tie(void *h, int slave, int count, const int *masters, const double *weights)

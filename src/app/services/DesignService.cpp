@@ -1,6 +1,7 @@
 #include "core/math/Vec3Ops.h"
 #include "DesignService.h"
 #include "design/CompositeColumn.h"
+#include "design/LatticedColumn.h"
 #include "design/TaperedMember.h"
 
 #include <array>
@@ -9,7 +10,9 @@
 
 #include "app/services/MaterialLibrary.h"
 #include "design/Nbr14762.h"
+#include "design/Nbr14323.h"
 #include "app/services/SectionPlacementService.h"
+#include "app/services/PositionedLoadConversion.h"
 #include "viz/postprocessor/UniformLoadForceEvaluator.h"
 #include "viz/structure/SectionCatalog.h"
 #include "viz/structure/SectionShapes.h"
@@ -77,10 +80,15 @@ std::pair<double, double> DesignService::shearAreasMm2(const Structura::Design::
     case SectionKind::Tee:
         return {d * tw, bf * tf};
     case SectionKind::RectTube: {
+        if (section.box) {
+            const double hClear = std::max(0.0, d - 2.0 * section.tFlange), wClear = std::max(0.0, bf - 2.0 * section.tWeb);
+            return {2.0 * hClear * section.tWeb, 2.0 * wClear * section.tFlange};
+        }
         const double h = std::max(0.0, d - 2.0 * t), w = std::max(0.0, bf - 2.0 * t);
         return {2.0 * h * t, 2.0 * w * t};
     }
     case SectionKind::RoundTube:
+    case SectionKind::LatticedAngles:
         return {section.g.area / 2.0, section.g.area / 2.0};
     case SectionKind::DoubleAngleT:
         return {2.0 * section.leg * t, 2.0 * section.leg * t};
@@ -180,6 +188,11 @@ bool DesignService::isExceptionalCombination(const QString &name)
     return name.startsWith(QLatin1String("EXC"), Qt::CaseInsensitive);
 }
 
+bool DesignService::isFireCombination(const QString &name)
+{
+    return name.startsWith(QLatin1String("FOGO"), Qt::CaseInsensitive);
+}
+
 QStringList DesignService::defaultUltimateCombinations(const QStringList &allNames)
 {
     QStringList list;
@@ -213,10 +226,12 @@ std::vector<DesignService::ElementData> DesignService::buildElements(const Struc
     }
     std::unordered_multimap<int, UniformDistributedLoad> loads;
     std::unordered_multimap<int, UniformDistributedMoment> moments;
+    std::unordered_multimap<int, PositionedLoad> positioned;
     for (const auto &term : set.terms) {
         if (!term.first) {
             continue;
         }
+        collectPositionedLoads(*term.first, term.second, positioned);
         for (const auto &ml : term.first->memberLoads) {
             UniformDistributedLoad udl;
             udl.qx = ml.qx * term.second;
@@ -270,6 +285,21 @@ std::vector<DesignService::ElementData> DesignService::buildElements(const Struc
             const Vec3 q {it->second.qx, it->second.qy, it->second.qz};
             data.qy += it->second.isLocalSystem ? it->second.qy : dot(q, ber.yLocal);
             data.qz += it->second.isLocalSystem ? it->second.qz : dot(q, ber.zLocal);
+        }
+        const auto pr = positioned.equal_range(mr.memberId);
+        for (auto it = pr.first; it != pr.second; ++it) {
+            ber.positionedLoads.push_back(it->second);
+            if (it->second.kind != PositionedLoad::Kind::PointMoment) {
+                // so a presenca de carga transversal importa (Cb/curvatura); o sentido nao
+                auto local = [&](const std::array<double, 3> &v, int axis) {
+                    if (it->second.isLocalSystem) {
+                        return std::abs(v[static_cast<std::size_t>(axis)]);
+                    }
+                    return std::abs(dot(Vec3 {v[0], v[1], v[2]}, axis == 1 ? ber.yLocal : ber.zLocal));
+                };
+                data.qy += local(it->second.v1, 1) + local(it->second.v2, 1);
+                data.qz += local(it->second.v1, 2) + local(it->second.v2, 2);
+            }
         }
         const auto mrg = moments.equal_range(mr.memberId);
         for (auto it = mrg.first; it != mrg.second; ++it) {
@@ -576,6 +606,15 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
     in.coverWeldLeg = params.coverWeldLeg;
     in.coverEndWeld = params.coverEndWeld;
     in.plasticAnalysis = params.plasticAnalysis;
+    in.vonMises = settings.vonMises;
+    in.stiffSides = params.stiffSides;
+    in.stiffWidth = params.stiffWidth;
+    in.stiffThickness = params.stiffThickness;
+    in.stiffCut = params.stiffCut;
+    in.stiffFitted = params.stiffFitted;
+    in.stiffWeldLeg = params.stiffWeldLeg;
+    in.stiffBearing = params.stiffBearing;
+    in.stiffForce = params.stiffForce;
     in.warping = effects.warping;
     in.torsionReleasedStart = effects.torsionReleasedStart;
     in.torsionReleasedEnd = effects.torsionReleasedEnd;
@@ -590,21 +629,50 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
     in.openingOffset = params.openingOffset;
     in.openingNeighbourD = params.openingNeighbourD;
     in.openingSpacing = params.openingSpacing;
-    in.combos = effects.combos;
+    // Combinacoes de incendio (FOGO*) so entram na verificacao de incendio; as demais, a temperatura ambiente
+    std::vector<Structura::Design::ComboEffects> fireCombos;
+    for (const auto &c : effects.combos) {
+        (isFireCombination(QString::fromStdString(c.name)) ? fireCombos : in.combos).push_back(c);
+    }
     // Combinacoes selecionadas
     if (!settings.combinations.isEmpty()) {
-        std::vector<Structura::Design::ComboEffects> filtered;
-        for (const auto &c : in.combos) {
-            QString name = QString::fromStdString(c.name);
-            // variantes com forcas nocionais ("ELU1 +NX") seguem a selecao da combinacao de origem
-            static const QRegularExpression variant(QStringLiteral(" [+-][NI][XY]$"));
-            if (settings.combinations.contains(name) || settings.combinations.contains(name.remove(variant))) {
-                filtered.push_back(c);
+        static const QRegularExpression variant(QStringLiteral(" [+-][NI][XY]$"));
+        auto select = [&](std::vector<Structura::Design::ComboEffects> &list) {
+            std::vector<Structura::Design::ComboEffects> filtered;
+            for (const auto &c : list) {
+                QString name = QString::fromStdString(c.name);
+                // variantes com forcas nocionais ("ELU1 +NX") seguem a selecao da combinacao de origem
+                if (settings.combinations.contains(name) || settings.combinations.contains(name.remove(variant))) {
+                    filtered.push_back(c);
+                }
             }
-        }
-        in.combos = std::move(filtered);
+            list = std::move(filtered);
+        };
+        select(in.combos);
+        select(fireCombos);
     }
     verdict.supported = true;
+    // Pilar de quatro cantoneiras (5.3.6.4): banzos da propria secao, diagonais dos parametros da barra
+    if (ds.kind == Structura::Design::SectionKind::LatticedAngles) {
+        auto angle = [&](double leg, double thickness, double r1, double r2) {
+            SectionInfo slice = section;
+            slice.family = QStringLiteral("L Laminado");
+            slice.geometry = {{QStringLiteral("b"), leg}, {QStringLiteral("t"), thickness}, {QStringLiteral("r1"), r1}, {QStringLiteral("r2"), r2}};
+            return makeSection(slice, settings.rectTubeStandard);
+        };
+        const auto &g = section.geometry;
+        const Structura::Design::DesignSection chord = angle(g.value(QStringLiteral("b")), g.value(QStringLiteral("t")), g.value(QStringLiteral("r1")), g.value(QStringLiteral("r2")));
+        const Structura::Design::DesignSection diagonal = angle(params.latDiagB, params.latDiagT, 0.0, 0.0);
+        in.latticeChord = &chord;
+        in.latticeDiagonal = params.latType == 2 ? nullptr : &diagonal;
+        Structura::Design::LatticeSystem system;
+        system.type = std::clamp(params.latType, 0, 2);
+        system.panel = params.latPanel;
+        system.battenDepth = params.latBattenDepth;
+        system.battenThickness = params.latBattenThickness;
+        verdict.output = Structura::Design::designLatticedColumn(in, system);
+        return verdict;
+    }
     // Pilar misto (Anexo M): perfil de aco da propria secao da barra, revestimento/preenchimento de concreto e armadura dos parametros
     Structura::Design::CompositeColumnSection mixed;
     if (params.mixType > 0) {
@@ -687,6 +755,59 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
         const auto largest = sectionAtDepth(std::max(geometry.d1, geometry.d2));
         return Structura::Design::designTaperedBar(input, geometry, stations, smallest, largest);
     };
+    // Verificacao em situacao de incendio (NBR 14323:2013): combinacoes FOGO* (6.3) ou, sem elas, 70 % dos esforcos a frio (8.2.3); entra em maxRatio e na escolha dos perfis
+    auto applyFire = [&](Structura::Design::BarDesignOutput &o) {
+        if (!settings.fireCheck || !o.supported || tapered) {
+            return;
+        }
+        Structura::Design::Nbr14323::FireInput fire;
+        fire.trrf = std::max(settings.fireTrrf, 0.0);
+        fire.protection.type = std::clamp(params.fireProtection, 0, 2);
+        fire.protection.thickness = params.fireThickness;
+        fire.protection.conductivity = params.fireConductivity;
+        fire.protection.density = params.fireDensity;
+        fire.protection.specificHeat = params.fireSpecificHeat;
+        fire.threeSides = params.fireExposure == 1;
+        if (!fireCombos.empty()) {
+            fire.combos = fireCombos;
+            fire.basis = "Esforcos de incendio: combinacoes FOGO* (NBR 14323:2013, 6.3: gama_g FGk + FQ,exc + psi FQ,k), analise elastica com propriedades a frio (8.2.1).";
+        } else {
+            constexpr double kFactor = 0.70;
+            for (const auto &c : in.combos) {
+                if (isExceptionalCombination(QString::fromStdString(c.name))) {
+                    continue;
+                }
+                Structura::Design::ComboEffects scaled = c;
+                scaled.name = "0,70 x " + c.name;
+                auto scale = [&](Structura::Design::Effects &e) {
+                    e.N *= kFactor; e.Mx *= kFactor; e.My *= kFactor; e.Vy *= kFactor; e.Vz *= kFactor; e.T *= kFactor; e.B *= kFactor; e.Tw *= kFactor;
+                };
+                for (auto &st : scaled.stations) {
+                    scale(st.e);
+                    scale(st.nt);
+                }
+                fire.combos.push_back(std::move(scaled));
+            }
+            fire.basis = "Esforcos de incendio: 70 % dos esforcos a frio das combinacoes selecionadas (NBR 14323:2013, 8.2.3; vale em estruturas de pequena e media deslocabilidade). "
+                         "Nao ha combinacoes FOGO*; as combinacoes com vento entram sem distincao (a favor da seguranca). Gere as combinacoes de incendio para a verificacao do item 6.3.";
+        }
+        Structura::Design::BarDesignOutput fo = Structura::Design::Nbr14323::designBarFire(in, fire);
+        for (auto &check : fo.checks) {
+            o.checks.push_back(std::move(check));
+        }
+        for (auto &w : fo.warnings) {
+            o.warnings.push_back(std::move(w));
+        }
+        for (auto &line : fo.summaryLines) {
+            o.summaryLines.push_back(std::move(line));
+        }
+        if (fo.maxRatio > o.maxRatio) {
+            o.maxRatio = fo.maxRatio;
+            o.governingCheck = fo.governingCheck;
+            o.governingCombo = fo.governingCombo;
+            o.governingX = fo.governingX;
+        }
+    };
     // Tabela 3 da NBR 8800:2024: nas combinacoes excepcionais gama_a1 = 1,00 e gama_a2 = 1,15 (aco laminado e tubulares circulares); cada grupo e verificado com os seus
     // coeficientes e prevalece a pior razao de cada verificacao.
     std::vector<Structura::Design::ComboEffects> normal, exceptional;
@@ -696,6 +817,7 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
     }
     if (exceptional.empty()) {
         verdict.output = runDesign(in);
+        applyFire(verdict.output);
         return verdict;
     }
     Structura::Design::BarDesignOutput merged;
@@ -739,6 +861,7 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
         }
     }
     merged.summaryLines.push_back("Combinacoes excepcionais (nome iniciado por EXC): gama_a1 = 1,00 e gama_a2 = 1,15 (NBR 8800:2024, Tabela 3).");
+    applyFire(merged);
     verdict.output = std::move(merged);
     return verdict;
 }
@@ -894,6 +1017,43 @@ QVector<DesignService::SectionInfo> DesignService::candidateSeries(const Section
                     continue;
                 }
                 items.push_back({QStringLiteral("C %1x%2").arg(num(D), num(t)), params({{"D", D}, {"t", t}})});
+            }
+        }
+    } else if (family == QLatin1String("I Soldado")) {
+        // series tipicas de perfis armados (chapas comerciais): d x bf x tw x tf; proporcoes usuais de CS/CVS/VS (NBR 5884)
+        for (const double d : {200.0, 250.0, 300.0, 350.0, 400.0, 450.0, 500.0, 550.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1200.0}) {
+            for (const double bf : {100.0, 125.0, 150.0, 200.0, 250.0, 300.0, 350.0, 400.0, 450.0}) {
+                if (bf < d / 4.0 - 1.0 || bf > d * 0.9 + 1.0 || bf > 450.0) {
+                    continue;
+                }
+                for (const double tf : {8.0, 9.5, 12.5, 16.0, 19.0, 22.4, 25.0, 31.5}) {
+                    if (tf * 2.0 > d / 5.0 || bf / (2.0 * tf) > 14.0 || bf / (2.0 * tf) < 3.0) {
+                        continue;
+                    }
+                    for (const double tw : {4.75, 6.3, 8.0, 9.5, 12.5, 16.0}) {
+                        const double h = d - 2.0 * tf;
+                        if (tw > tf || h / tw > 170.0 || h / tw < 40.0) {
+                            continue;
+                        }
+                        items.push_back({QStringLiteral("I %1x%2x%3x%4").arg(num(d), num(bf), num(tw), num(tf)), params({{"d", d}, {"bf", bf}, {"tw", tw}, {"tf", tf}})});
+                    }
+                }
+            }
+        }
+    } else if (family == QLatin1String("Caixao Soldado")) {
+        for (const double d : {200.0, 250.0, 300.0, 400.0, 500.0, 600.0, 800.0, 1000.0}) {
+            for (const double bf : {150.0, 200.0, 250.0, 300.0, 400.0, 500.0, 600.0}) {
+                if (bf < d / 4.0 || bf > d * 1.6 + 1.0) {
+                    continue;
+                }
+                for (const double tf : {8.0, 9.5, 12.5, 16.0, 19.0, 25.0}) {
+                    for (const double tw : {6.3, 8.0, 9.5, 12.5, 16.0}) {
+                        if (tw > tf * 1.01 || (d - 2.0 * tf) / tw > 150.0 || (bf - 2.0 * tw) / tf > 70.0 || 2.0 * tf > d / 4.0) {
+                            continue;
+                        }
+                        items.push_back({QStringLiteral("CX %1x%2x%3x%4").arg(num(d), num(bf), num(tw), num(tf)), params({{"d", d}, {"bf", bf}, {"tw", tw}, {"tf", tf}})});
+                    }
+                }
             }
         }
     } else {

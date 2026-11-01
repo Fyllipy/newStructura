@@ -4,6 +4,11 @@
 #include <cmath>
 #include <algorithm>
 #include <cctype>
+#include <array>
+#include <string>
+#include <vector>
+#include "material.h"
+#include "section.h"
 
 // NodalLoad Implementation
 NodalLoad::NodalLoad(int nodeId, const std::vector<double>& forces)
@@ -96,7 +101,7 @@ void DistributedLoad::localComponents(const Member* member, Eigen::VectorXd& loc
     rigidAtNodeEnds = member->rigidStubLoads(qLocal, Eigen::Vector3d::Zero());
 }
 
-std::vector<double> DistributedLoad::getEquivalentNodalForces(const Member* member) const {
+std::vector<double> BarLoad::getEquivalentNodalForces(const Member* member) const {
     Eigen::VectorXd localForces, rigid;
     localComponents(member, localForces, rigid);
 
@@ -172,23 +177,6 @@ void DistributedMoment::localComponents(const Member* member, Eigen::VectorXd& l
         extended(13) = -clamped(3);
         localForces = extended;
     }
-}
-
-std::vector<double> DistributedMoment::getEquivalentNodalForces(const Member* member) const {
-    Eigen::VectorXd localForces, rigid;
-    localComponents(member, localForces, rigid);
-
-    Eigen::VectorXd globalForces = member->localAxisForcesToGlobalNodal(localForces);
-    if (member->hasRigidZones()) {
-        globalForces.head(12) += member->calculateNodeToAxisMatrix(false).transpose() * rigid;
-    }
-
-    // 12 components; 14 when the member has torsion with warping (the last two are the equivalent loads of the warping parameters)
-    std::vector<double> equivalentForces(static_cast<size_t>(globalForces.size() == 14 ? 14 : 12));
-    for (size_t i = 0; i < equivalentForces.size(); ++i) {
-        equivalentForces[i] = globalForces(static_cast<Eigen::Index>(i));
-    }
-    return equivalentForces;
 }
 
 DistributedLoad::CoordinateSystem DistributedLoad::coordinateSystemFromString(const std::string& token) {

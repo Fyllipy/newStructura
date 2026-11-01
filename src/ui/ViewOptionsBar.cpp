@@ -24,6 +24,7 @@ const QString ViewOptionsBar::kReferenceAxes = QStringLiteral("reference_axes");
 const QString ViewOptionsBar::kNodeLabels = QStringLiteral("node_labels");
 const QString ViewOptionsBar::kBarLabels = QStringLiteral("bar_labels");
 const QString ViewOptionsBar::kLocalAxes = QStringLiteral("local_axes");
+const QString ViewOptionsBar::kBarGlyphs = QStringLiteral("bar_glyphs");
 const QString ViewOptionsBar::kNodes = QStringLiteral("nodes");
 const QString ViewOptionsBar::kSupports = QStringLiteral("supports");
 const QString ViewOptionsBar::kConstraints = QStringLiteral("constraints");
@@ -75,6 +76,7 @@ ViewOptionsBar::ViewOptionsBar(QWidget *parent)
     addToggle(kNodeLabels, QStringLiteral("node-id.svg"), tr("Identificadores dos nos"), false);
     addToggle(kBarLabels, QStringLiteral("bar-id.svg"), tr("Identificadores das barras"), false);
     addToggle(kLocalAxes, QStringLiteral("local-axes.svg"), tr("Eixos locais das barras"), false);
+    addToggle(kBarGlyphs, QStringLiteral("bar-glyphs.svg"), tr("Indicacoes de barra: rotulas, ligacoes semirrigidas, rotulas plasticas, trelicas e tirantes"));
     addToggle(kNodes, QStringLiteral("nodes.svg"), tr("Nos"));
     addToggle(kSolids, QStringLiteral("solids.svg"), tr("Secoes extrudadas (solido)"), false);
     addToggle(kSupports, QStringLiteral("supports.svg"), tr("Apoios (engaste, articulado e movel: restringem o deslocamento Z)"));

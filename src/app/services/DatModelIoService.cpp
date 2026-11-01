@@ -48,6 +48,26 @@ QString extraTokens(const Structura::App::ProjectData::DesignMemberParams &p)
     num("mxv", p.mixBarsV, def.mixBarsV);
     num("mxc", p.mixCover, def.mixCover);
     num("mxe", p.mixAlphaE, def.mixAlphaE);
+    num("stn", p.stiffSides, def.stiffSides);
+    num("stw", p.stiffWidth, def.stiffWidth);
+    num("stt", p.stiffThickness, def.stiffThickness);
+    num("stc", p.stiffCut, def.stiffCut);
+    num("stf", p.stiffFitted ? 1 : 0, def.stiffFitted ? 1 : 0);
+    num("stl", p.stiffWeldLeg, def.stiffWeldLeg);
+    num("stb", p.stiffBearing, def.stiffBearing);
+    num("stp", p.stiffForce, def.stiffForce);
+    num("ltn", p.latType, def.latType);
+    num("ltp", p.latPanel, def.latPanel);
+    num("ltb", p.latDiagB, def.latDiagB);
+    num("ltt", p.latDiagT, def.latDiagT);
+    num("ltd", p.latBattenDepth, def.latBattenDepth);
+    num("lte", p.latBattenThickness, def.latBattenThickness);
+    num("fpr", p.fireProtection, def.fireProtection);
+    num("fpt", p.fireThickness, def.fireThickness);
+    num("fpl", p.fireConductivity, def.fireConductivity);
+    num("fpd", p.fireDensity, def.fireDensity);
+    num("fpc", p.fireSpecificHeat, def.fireSpecificHeat);
+    num("fex", p.fireExposure, def.fireExposure);
     return out;
 }
 
@@ -87,6 +107,26 @@ void applyExtraTokens(Structura::App::ProjectData::DesignMemberParams &p, const 
         else if (key == QLatin1String("mxv")) p.mixBarsV = static_cast<int>(v);
         else if (key == QLatin1String("mxc")) p.mixCover = v;
         else if (key == QLatin1String("mxe")) p.mixAlphaE = v;
+        else if (key == QLatin1String("stn")) p.stiffSides = static_cast<int>(v);
+        else if (key == QLatin1String("stw")) p.stiffWidth = v;
+        else if (key == QLatin1String("stt")) p.stiffThickness = v;
+        else if (key == QLatin1String("stc")) p.stiffCut = v;
+        else if (key == QLatin1String("stf")) p.stiffFitted = v != 0.0;
+        else if (key == QLatin1String("stl")) p.stiffWeldLeg = v;
+        else if (key == QLatin1String("stb")) p.stiffBearing = v;
+        else if (key == QLatin1String("stp")) p.stiffForce = v;
+        else if (key == QLatin1String("ltn")) p.latType = static_cast<int>(v);
+        else if (key == QLatin1String("ltp")) p.latPanel = v;
+        else if (key == QLatin1String("ltb")) p.latDiagB = v;
+        else if (key == QLatin1String("ltt")) p.latDiagT = v;
+        else if (key == QLatin1String("ltd")) p.latBattenDepth = v;
+        else if (key == QLatin1String("lte")) p.latBattenThickness = v;
+        else if (key == QLatin1String("fpr")) p.fireProtection = static_cast<int>(v);
+        else if (key == QLatin1String("fpt")) p.fireThickness = v;
+        else if (key == QLatin1String("fpl")) p.fireConductivity = v;
+        else if (key == QLatin1String("fpd")) p.fireDensity = v;
+        else if (key == QLatin1String("fpc")) p.fireSpecificHeat = v;
+        else if (key == QLatin1String("fex")) p.fireExposure = static_cast<int>(v);
     }
 }
 
@@ -117,7 +157,7 @@ bool DatModelIoService::load(const QString &filePath,
     QTextStream stream(&file);
     stream.setLocale(QLocale::c());
 
-    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor, ShellModel };
+    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, MemberActions, MaterialThermal, Diaphragms, RigidLinks, InclinedSupports, LinearConstraints, MemberConnections, Links, Nonlinear, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor, ShellModel };
     Section current = Section::None;
 
     QVector<MaterialInfo> materialsTmp;
@@ -142,6 +182,15 @@ bool DatModelIoService::load(const QString &filePath,
     QVector<NodalLoad> nodalLoadsTmp;
     QVector<MemberLoad> memberLoadsTmp;
     QVector<Structura::App::ProjectData::MemberMoment> memberMomentsTmp;
+    QVector<Structura::App::ProjectData::MemberAction> memberActionsTmp;
+    QVector<Structura::App::ProjectData::RigidDiaphragm> diaphragmsTmp;
+    QVector<Structura::App::ProjectData::RigidLink> rigidLinksTmp;
+    QVector<Structura::App::ProjectData::InclinedSupport> inclinedTmp;
+    QVector<Structura::App::ProjectData::LinearConstraint> constraintsTmp;
+    QVector<Structura::App::ProjectData::MemberConnectionSpec> connectionSpecsTmp;
+    QVector<Structura::App::ProjectData::LinkElement> linksTmp;
+    Structura::App::ProjectData::NonlinearSettings nonlinearTmp;
+    QHash<int, double> thermalByMaterial;
     QVector<Structura::App::ProjectData::MemberPlacement> placementsTmp;
     QHash<int, double> unitWeightByMaterial;
     struct MaterialExtra {
@@ -159,6 +208,7 @@ bool DatModelIoService::load(const QString &filePath,
     Structura::App::ProjectData::TitleBlockSettings titleBlockTmp;
     QVector<Structura::App::ProjectData::SavedView3D> views3dTmp;
     QVector<Structura::App::ProjectData::SheetLayoutDef> sheetLayoutsTmp;
+    QVector<Structura::App::ProjectData::SheetGroupEdit> sheetEditsTmp;
     QMap<int, QMap<QString, double>> compositeBeamsTmp;
     QMap<QString, double> deckSlabTmp;
     Structura::Shell::Model shellTmp;
@@ -220,6 +270,24 @@ bool DatModelIoService::load(const QString &filePath,
                 current = Section::ViewOptions;
             } else if (trimmed.compare(QStringLiteral("[MEMBER_MOMENTS]"), Qt::CaseInsensitive) == 0) {
                 current = Section::MemberMoments;
+            } else if (trimmed.compare(QStringLiteral("[MEMBER_ACTIONS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::MemberActions;
+            } else if (trimmed.compare(QStringLiteral("[MATERIAL_THERMAL]"), Qt::CaseInsensitive) == 0) {
+                current = Section::MaterialThermal;
+            } else if (trimmed.compare(QStringLiteral("[DIAPHRAGMS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Diaphragms;
+            } else if (trimmed.compare(QStringLiteral("[RIGID_LINKS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::RigidLinks;
+            } else if (trimmed.compare(QStringLiteral("[INCLINED_SUPPORTS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::InclinedSupports;
+            } else if (trimmed.compare(QStringLiteral("[LINEAR_CONSTRAINTS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::LinearConstraints;
+            } else if (trimmed.compare(QStringLiteral("[MEMBER_CONNECTIONS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::MemberConnections;
+            } else if (trimmed.compare(QStringLiteral("[LINKS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Links;
+            } else if (trimmed.compare(QStringLiteral("[NONLINEAR]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Nonlinear;
             } else if (trimmed.compare(QStringLiteral("[AREA_LOADS]"), Qt::CaseInsensitive) == 0) {
                 current = Section::AreaLoads;
             } else if (trimmed.compare(QStringLiteral("[VIEWS_3D]"), Qt::CaseInsensitive) == 0) {
@@ -558,6 +626,18 @@ bool DatModelIoService::load(const QString &filePath,
                 m.fy = toDouble(parts[8], &ok);
                 m.fu = toDouble(parts[9], &ok);
                 shellTmp.materials.push_back(m);
+            } else if (key == QLatin1String("ORTHO") && parts.size() >= 10) {
+                const int index = toInt(parts[1], &ok);
+                if (ok && index >= 0 && index < static_cast<int>(shellTmp.materials.size())) {
+                    auto &m = shellTmp.materials[static_cast<std::size_t>(index)];
+                    m.orthotropic = true;
+                    m.E2 = toDouble(parts[2], &ok);
+                    m.nu12 = toDouble(parts[3], &ok);
+                    m.G12 = toDouble(parts[4], &ok);
+                    m.bend1 = toDouble(parts[5], &ok);
+                    m.bend2 = toDouble(parts[6], &ok);
+                    m.axis = {toDouble(parts[7], &ok), toDouble(parts[8], &ok), toDouble(parts[9], &ok)};
+                }
             } else if (key == QLatin1String("OBJ") && parts.size() >= 7) {
                 Structura::Shell::Object o;
                 o.id = toInt(parts[1], &ok);
@@ -625,6 +705,14 @@ bool DatModelIoService::load(const QString &filePath,
                 Structura::App::ProjectData::SheetLayoutDef layout;
                 layout.name = parts.size() > 1 && parts[1] != QLatin1String("-") ? decodeName(parts[1]) : QString();
                 sheetLayoutsTmp.append(layout);
+            } else if (key == QLatin1String("EDIT") && parts.size() >= 6) {
+                Structura::App::ProjectData::SheetGroupEdit edit;
+                edit.sheet = decodeName(parts[1]);
+                edit.key = decodeName(parts[2]);
+                edit.dx = toDouble(parts[3], &ok);
+                edit.dy = toDouble(parts[4], &ok);
+                edit.deleted = toInt(parts[5], &ok) != 0;
+                sheetEditsTmp.append(edit);
             } else if (key == QLatin1String("VIEW") && parts.size() >= 8 && !sheetLayoutsTmp.isEmpty()) {
                 Structura::App::ProjectData::SheetLayoutDef::Placement p;
                 p.viewId = decodeName(parts[1]);
@@ -762,6 +850,12 @@ bool DatModelIoService::load(const QString &filePath,
                 designTmp.shearDeformation = toInt(parts[1], &ok) != 0;
             } else if (key == QLatin1String("WARPING_TORSION")) {
                 designTmp.warpingTorsion = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("VON_MISES")) {
+                designTmp.vonMises = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("FIRE_CHECK")) {
+                designTmp.fireCheck = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("FIRE_TRRF")) {
+                designTmp.fireTrrf = toDouble(parts[1], &ok);
             } else if (key == QLatin1String("GEOMETRIC_IMPERFECTION")) {
                 designTmp.geometricImperfection = toInt(parts[1], &ok) != 0;
             } else if (key == QLatin1String("IMPERFECTION_RATIO")) {
@@ -969,6 +1063,172 @@ bool DatModelIoService::load(const QString &filePath,
             memberMomentsTmp.append(moment);
             break;
         }
+        case Section::MemberActions: {
+            if (parts.size() < 12) {
+                break;
+            }
+            Structura::App::ProjectData::MemberAction action;
+            action.memberId = toInt(parts[0], &ok);
+            if (!ok) {
+                break;
+            }
+            action.kind = toInt(parts[1], &ok);
+            action.system = parts[2].toUpper();
+            action.a = toDouble(parts[3], &ok);
+            action.b = toDouble(parts[4], &ok);
+            for (int i = 0; i < 3; ++i) {
+                action.v1[static_cast<std::size_t>(i)] = toDouble(parts[5 + i], &ok);
+                action.v2[static_cast<std::size_t>(i)] = toDouble(parts[8 + i], &ok);
+            }
+            action.loadCase = parts[11] == QLatin1String("-") ? QString() : QString(parts[11]).replace(QLatin1Char('_'), QLatin1Char(' '));
+            if (action.kind >= 0 && action.kind <= 4) {
+                memberActionsTmp.append(action);
+            }
+            break;
+        }
+        case Section::Diaphragms: {
+            if (parts.size() < 4) {
+                break;
+            }
+            Structura::App::ProjectData::RigidDiaphragm d;
+            d.name = parts[0] == QLatin1String("-") ? QString() : QString(parts[0]).replace(QLatin1Char('_'), QLatin1Char(' '));
+            d.masterNode = toInt(parts[1], &ok);
+            d.normalAxis = std::clamp(toInt(parts[2], &ok), 0, 2);
+            const int count = toInt(parts[3], &ok);
+            for (int i = 0; i < count && 4 + i < parts.size(); ++i) {
+                d.slaveNodes.append(toInt(parts[4 + i], &ok));
+            }
+            diaphragmsTmp.append(d);
+            break;
+        }
+        case Section::RigidLinks: {
+            if (parts.size() < 4) {
+                break;
+            }
+            Structura::App::ProjectData::RigidLink l;
+            l.masterNode = toInt(parts[0], &ok);
+            l.slaveNode = toInt(parts[1], &ok);
+            l.kind = std::clamp(toInt(parts[2], &ok), 0, 3);
+            l.dof = std::clamp(toInt(parts[3], &ok), 0, 5);
+            rigidLinksTmp.append(l);
+            break;
+        }
+        case Section::InclinedSupports: {
+            if (parts.size() < 11) {
+                break;
+            }
+            Structura::App::ProjectData::InclinedSupport s;
+            s.nodeId = toInt(parts[0], &ok);
+            s.mask = toInt(parts[1], &ok) & 63;
+            for (int i = 0; i < 9; ++i) {
+                s.axes[static_cast<std::size_t>(i)] = toDouble(parts[2 + i], &ok);
+            }
+            inclinedTmp.append(s);
+            break;
+        }
+        case Section::LinearConstraints: {
+            if (parts.size() < 2) {
+                break;
+            }
+            Structura::App::ProjectData::LinearConstraint c;
+            c.reportReaction = toInt(parts[0], &ok) != 0;
+            const int count = toInt(parts[1], &ok);
+            for (int i = 0; i < count && 4 + i * 3 < parts.size(); ++i) {
+                c.nodes.append(toInt(parts[2 + i * 3], &ok));
+                c.dofs.append(std::clamp(toInt(parts[3 + i * 3], &ok), 0, 5));
+                c.coefs.append(toDouble(parts[4 + i * 3], &ok));
+            }
+            constraintsTmp.append(c);
+            break;
+        }
+        case Section::MemberConnections: {
+            if (parts.size() < 14) {
+                break;
+            }
+            Structura::App::ProjectData::MemberConnectionSpec spec;
+            spec.memberId = toInt(parts[0], &ok);
+            for (int i = 0; i < 12; ++i) {
+                spec.springK[static_cast<std::size_t>(i)] = toDouble(parts[1 + i], &ok);
+            }
+            const int count = toInt(parts[13], &ok);
+            for (int i = 0; i < count && 14 + i * 6 + 5 < parts.size(); ++i) {
+                Structura::App::ProjectData::PlasticHingeSpec h;
+                h.dof = std::clamp(toInt(parts[14 + i * 6], &ok), 0, 11);
+                h.kElastic = toDouble(parts[15 + i * 6], &ok);
+                h.yieldMoment = toDouble(parts[16 + i * 6], &ok);
+                h.hardeningRatio = toDouble(parts[17 + i * 6], &ok);
+                h.axialYield = toDouble(parts[18 + i * 6], &ok);
+                h.exponent = toDouble(parts[19 + i * 6], &ok);
+                spec.hinges.append(h);
+            }
+            connectionSpecsTmp.append(spec);
+            break;
+        }
+        case Section::Links: {
+            // id nome noI noJ ex ey ez(9 valores) e 6 leis: tipo k p1 p2 nPontos (def forca)*
+            if (parts.size() < 13) {
+                break;
+            }
+            Structura::App::ProjectData::LinkElement link;
+            link.id = toInt(parts[0], &ok);
+            link.name = parts[1] == QLatin1String("-") ? QString() : QString(parts[1]).replace(QLatin1Char('_'), QLatin1Char(' '));
+            link.nodeI = toInt(parts[2], &ok);
+            link.nodeJ = toInt(parts[3], &ok);
+            for (int i = 0; i < 9; ++i) {
+                link.axes[static_cast<std::size_t>(i)] = toDouble(parts[4 + i], &ok);
+            }
+            int cursor = 13;
+            for (std::size_t d = 0; d < 6 && cursor + 4 < parts.size(); ++d) {
+                auto &law = link.laws[d];
+                law.kind = std::clamp(toInt(parts[cursor], &ok), 0, 7);
+                law.k = toDouble(parts[cursor + 1], &ok);
+                law.p1 = toDouble(parts[cursor + 2], &ok);
+                law.p2 = toDouble(parts[cursor + 3], &ok);
+                const int points = toInt(parts[cursor + 4], &ok);
+                cursor += 5;
+                for (int p = 0; p < points && cursor + 1 < parts.size(); ++p) {
+                    law.table.append({toDouble(parts[cursor], &ok), toDouble(parts[cursor + 1], &ok)});
+                    cursor += 2;
+                }
+            }
+            linksTmp.append(link);
+            break;
+        }
+        case Section::Nonlinear: {
+            // chave=valor ...
+            for (const QString &token : parts) {
+                const int eq = token.indexOf(QLatin1Char('='));
+                if (eq <= 0) {
+                    continue;
+                }
+                const QString key = token.left(eq).toLower();
+                const QString value = token.mid(eq + 1);
+                auto &n = nonlinearTmp;
+                if (key == QLatin1String("force")) n.force = value.toInt() != 0;
+                else if (key == QLatin1String("steps")) n.steps = std::max(1, value.toInt());
+                else if (key == QLatin1String("maxiter")) n.maxIterations = std::max(2, value.toInt());
+                else if (key == QLatin1String("tol")) n.tolerance = value.toDouble();
+                else if (key == QLatin1String("criteria")) n.criteria = value.toInt();
+                else if (key == QLatin1String("cutbacks")) n.maxCutbacks = std::max(0, value.toInt());
+                else if (key == QLatin1String("control")) n.controlMode = value.toInt();
+                else if (key == QLatin1String("node")) n.controlNode = value.toInt();
+                else if (key == QLatin1String("dof")) n.controlDof = std::clamp(value.toInt(), 0, 5);
+                else if (key == QLatin1String("target")) n.controlTarget = value.toDouble();
+                else if (key == QLatin1String("lambda")) n.loadFactorMax = value.toDouble();
+            }
+            break;
+        }
+        case Section::MaterialThermal: {
+            if (parts.size() < 2) {
+                break;
+            }
+            const int materialId = toInt(parts[0], &ok);
+            const double alpha = toDouble(parts[1], &ok);
+            if (ok && alpha > 0.0) {
+                thermalByMaterial.insert(materialId, alpha);
+            }
+            break;
+        }
         case Section::Sections: {
             if (parts.size() < 5) {
                 if (errorMessage) {
@@ -1126,6 +1386,14 @@ bool DatModelIoService::load(const QString &filePath,
     nodalLoads = nodalLoadsTmp;
     memberLoads = memberLoadsTmp;
     extras.memberMoments = memberMomentsTmp;
+    extras.memberActions = memberActionsTmp;
+    extras.diaphragms = diaphragmsTmp;
+    extras.rigidLinks = rigidLinksTmp;
+    extras.inclinedSupports = inclinedTmp;
+    extras.constraints = constraintsTmp;
+    extras.memberConnections = connectionSpecsTmp;
+    extras.links = linksTmp;
+    extras.nonlinear = nonlinearTmp;
     extras.placements = placementsTmp;
     std::sort(axesTmp.levels.begin(), axesTmp.levels.end(),
               [](const Structura::App::ProjectData::AxisLevel &a, const Structura::App::ProjectData::AxisLevel &b) {
@@ -1141,6 +1409,7 @@ bool DatModelIoService::load(const QString &filePath,
     extras.titleBlock = titleBlockTmp;
     extras.views3d = views3dTmp;
     extras.sheetLayouts = sheetLayoutsTmp;
+    extras.sheetEdits = sheetEditsTmp;
     extras.compositeBeams = compositeBeamsTmp;
     extras.deckSlab = deckSlabTmp;
     if (shellTmp.materials.empty()) {
@@ -1171,9 +1440,15 @@ bool DatModelIoService::load(const QString &filePath,
             moment.loadCase = fallbackCase;
         }
     }
+    for (auto &action : extras.memberActions) {
+        if (action.loadCase.isEmpty()) {
+            action.loadCase = fallbackCase;
+        }
+    }
 
     for (MaterialInfo &mat : materials) {
         mat.unitWeight = unitWeightByMaterial.value(mat.externalId, 0.0);
+        mat.thermalExpansion = thermalByMaterial.value(mat.externalId, 1.2e-5);
         const auto extraIt = materialExtras.constFind(mat.externalId);
         if (extraIt != materialExtras.constEnd()) {
             if (!extraIt->name.isEmpty()) {
@@ -1491,6 +1766,129 @@ bool DatModelIoService::save(const QString &filePath,
         }
     }
 
+    if (!extras.memberActions.isEmpty()) {
+        stream << "\n[MEMBER_ACTIONS]\n";
+        stream << "# Member_ID  Tipo(0=trapezoidal,1=forca pontual,2=momento pontual,3=temperatura,4=retracao)  Sistema(LOCAL/GLOBAL)  a(m)  b(m)  v1x v1y v1z  v2x v2y v2z  Caso('_'=espaco)\n";
+        stream << "# Trapezoidal: v1/v2 = q (forca/comprimento) em a e em b. Pontual: v1 = F ou M. Temperatura: v1 = dT, grad_y, grad_z (degC, degC/m). Retracao: v1x = deformacao.\n";
+        for (const auto &action : extras.memberActions) {
+            const QByteArray systemBytes = action.system.isEmpty() ? QByteArray("LOCAL") : action.system.toUpper().toLatin1();
+            stream << QString::asprintf("%-8d %d %-7s %12.6f %12.6f %14.8g %14.8g %14.8g %14.8g %14.8g %14.8g %s\n",
+                                        action.memberId, action.kind, systemBytes.constData(), action.a, action.b,
+                                        action.v1[0], action.v1[1], action.v1[2], action.v2[0], action.v2[1], action.v2[2],
+                                        caseToken(action.loadCase).constData());
+        }
+    }
+
+    auto nameToken = [](QString text) { return text.isEmpty() ? QStringLiteral("-") : text.replace(QLatin1Char(' '), QLatin1Char('_')); };
+    if (!extras.diaphragms.isEmpty()) {
+        stream << "\n[DIAPHRAGMS]\n";
+        stream << "# Nome('_'=espaco)  No_mestre  Eixo_normal(0=X,1=Y,2=Z)  N_escravos  nos_escravos...\n";
+        for (const auto &d : extras.diaphragms) {
+            stream << nameToken(d.name) << " " << d.masterNode << " " << d.normalAxis << " " << d.slaveNodes.size();
+            for (const int slave : d.slaveNodes) {
+                stream << " " << slave;
+            }
+            stream << "\n";
+        }
+    }
+    if (!extras.rigidLinks.isEmpty()) {
+        stream << "\n[RIGID_LINKS]\n";
+        stream << "# No_mestre  No_escravo  Tipo(0=corpo rigido 6 gdl,1=3 translacoes,2=3 rotacoes,3=1 gdl)  gdl(0-5, tipo 3)\n";
+        for (const auto &l : extras.rigidLinks) {
+            stream << l.masterNode << " " << l.slaveNode << " " << l.kind << " " << l.dof << "\n";
+        }
+    }
+    if (!extras.inclinedSupports.isEmpty()) {
+        stream << "\n[INCLINED_SUPPORTS]\n";
+        stream << "# No  Mascara(bits 0-2 deslocamentos, 3-5 rotacoes segundo e1,e2,e3)  e1x e1y e1z e2x e2y e2z e3x e3y e3z\n";
+        for (const auto &s : extras.inclinedSupports) {
+            stream << s.nodeId << " " << s.mask;
+            for (const double a : s.axes) {
+                stream << QString::asprintf(" %.12g", a);
+            }
+            stream << "\n";
+        }
+    }
+    if (!extras.constraints.isEmpty()) {
+        stream << "\n[LINEAR_CONSTRAINTS]\n";
+        stream << "# Reacao(0/1)  N_termos  (no gdl coeficiente)...   soma(coef x u) = 0\n";
+        for (const auto &c : extras.constraints) {
+            stream << (c.reportReaction ? 1 : 0) << " " << c.nodes.size();
+            for (int i = 0; i < c.nodes.size(); ++i) {
+                stream << QString::asprintf(" %d %d %.9g", c.nodes[i], c.dofs.value(i), c.coefs.value(i));
+            }
+            stream << "\n";
+        }
+    }
+    {
+        bool any = false;
+        for (const auto &spec : extras.memberConnections) {
+            any = any || !spec.isDefault();
+        }
+        if (any) {
+            stream << "\n[MEMBER_CONNECTIONS]\n";
+            stream << "# Barra  k[12] (ux uy uz rx ry rz em I e em J; <0 = rigido, 0 = articulado, kN/m ou kN.m/rad)  N_rotulas  (gdl kEl Mp razao Ny expoente)...\n";
+            for (const auto &spec : extras.memberConnections) {
+                if (spec.isDefault()) {
+                    continue;
+                }
+                stream << spec.memberId;
+                for (const double k : spec.springK) {
+                    stream << QString::asprintf(" %.9g", k);
+                }
+                stream << " " << spec.hinges.size();
+                for (const auto &h : spec.hinges) {
+                    stream << QString::asprintf(" %d %.9g %.9g %.9g %.9g %.9g", h.dof, h.kElastic, h.yieldMoment, h.hardeningRatio, h.axialYield, h.exponent);
+                }
+                stream << "\n";
+            }
+        }
+    }
+    if (!extras.links.isEmpty()) {
+        stream << "\n[LINKS]\n";
+        stream << "# Id  Nome  No_I  No_J  eixos locais x,y,z (9; nulos = direcao I->J)  e 6 leis (ux uy uz rx ry rz): tipo k p1 p2 N_pontos (def forca)...\n";
+        stream << "# Tipos: 0 linear, 1 so tracao, 2 so compressao, 3 folga de tracao, 4 folga de compressao, 5 elastoplastica (p1 = escoamento, p2 = enrijecimento), 6 multilinear, 7 rigida\n";
+        for (const auto &link : extras.links) {
+            stream << link.id << " " << nameToken(link.name) << " " << link.nodeI << " " << link.nodeJ;
+            for (const double a : link.axes) {
+                stream << QString::asprintf(" %.9g", a);
+            }
+            for (const auto &law : link.laws) {
+                stream << QString::asprintf(" %d %.9g %.9g %.9g %d", law.kind, law.k, law.p1, law.p2, static_cast<int>(law.table.size()));
+                for (const auto &point : law.table) {
+                    stream << QString::asprintf(" %.9g %.9g", point.first, point.second);
+                }
+            }
+            stream << "\n";
+        }
+    }
+    {
+        const auto &n = extras.nonlinear;
+        const Structura::App::ProjectData::NonlinearSettings defaults;
+        if (n.force || n.steps != defaults.steps || n.controlMode != 0 || n.tolerance != defaults.tolerance || n.maxIterations != defaults.maxIterations
+            || n.criteria != defaults.criteria || n.maxCutbacks != defaults.maxCutbacks || n.loadFactorMax != defaults.loadFactorMax) {
+            stream << "\n[NONLINEAR]\n";
+            stream << "# Analise nao linear incremental: criterio = soma de 1 (forcas), 2 (deslocamentos), 4 (energia); control 0 = carga, 1 = deslocamento\n";
+            stream << QString::asprintf("force=%d steps=%d maxiter=%d tol=%.9g criteria=%d cutbacks=%d control=%d node=%d dof=%d target=%.9g lambda=%.9g\n",
+                                        n.force ? 1 : 0, n.steps, n.maxIterations, n.tolerance, n.criteria, n.maxCutbacks, n.controlMode, n.controlNode, n.controlDof,
+                                        n.controlTarget, n.loadFactorMax);
+        }
+    }
+
+    {
+        bool anyThermal = false;
+        for (const auto &mat : materialsSorted) {
+            anyThermal = anyThermal || std::abs(mat.thermalExpansion - 1.2e-5) > 1e-12;
+        }
+        if (anyThermal) {
+            stream << "\n[MATERIAL_THERMAL]\n";
+            stream << "# ID  Coeficiente de dilatacao termica (1/degC)\n";
+            for (const auto &mat : materialsSorted) {
+                stream << QString::asprintf("%-8d %12.6e\n", mat.externalId, mat.thermalExpansion);
+            }
+        }
+    }
+
     if (!extras.placements.isEmpty()) {
         stream << "\n[MEMBER_PLACEMENT]\n";
         stream << "# Member_ID  Giro(graus)  Ponto_ref(0-8)  Desloc_z_I(m)  Desloc_y_I(m)  J_diferente(0/1)  Desloc_z_J(m)  Desloc_y_J(m)  Liberacoes(mascara: bit0-5 ux..rz em I, bit6-11 em J)  Tipo(0=normal,1=trelica,2=tirante)\n";
@@ -1569,6 +1967,15 @@ bool DatModelIoService::save(const QString &filePath,
         }
         if (ds.warpingTorsion) {
             stream << "WARPING_TORSION 1\n";
+        }
+        if (ds.vonMises) {
+            stream << "VON_MISES 1\n";
+        }
+        if (ds.fireCheck) {
+            stream << "FIRE_CHECK 1\n";
+        }
+        if (ds.fireTrrf != 60.0) {
+            stream << "FIRE_TRRF " << ds.fireTrrf << "\n";
         }
         if (ds.geometricImperfection) {
             stream << "GEOMETRIC_IMPERFECTION 1\n";
@@ -1652,6 +2059,10 @@ bool DatModelIoService::save(const QString &filePath,
             const auto &m = sm.materials[i];
             stream << "MAT " << i << ' ' << enc(m.name) << ' ' << (m.concrete ? 1 : 0) << ' ' << num(m.E) << ' ' << num(m.nu) << ' ' << num(m.unitWeight) << ' ' << num(m.alpha)
                    << ' ' << num(m.fy) << ' ' << num(m.fu) << "\n";
+            if (m.orthotropic) {
+                stream << "ORTHO " << i << ' ' << num(m.E2) << ' ' << num(m.nu12) << ' ' << num(m.G12) << ' ' << num(m.bend1) << ' ' << num(m.bend2) << ' ' << num(m.axis[0])
+                       << ' ' << num(m.axis[1]) << ' ' << num(m.axis[2]) << "\n";
+            }
         }
         for (const auto &o : sm.objects) {
             stream << "OBJ " << o.id << ' ' << enc(o.name) << ' ' << static_cast<int>(o.kind) << ' ' << o.material << ' ' << num(o.meshSize) << ' ' << (o.visible ? 1 : 0) << "\n";
@@ -1686,8 +2097,13 @@ bool DatModelIoService::save(const QString &filePath,
             stream << "DECK " << v.key() << ' ' << QString::number(v.value(), 'g', 10) << "\n";
         }
     }
-    if (!extras.sheetLayouts.isEmpty()) {
+    if (!extras.sheetLayouts.isEmpty() || !extras.sheetEdits.isEmpty()) {
         stream << "\n[SHEET_LAYOUTS]\n";
+        stream << "# EDIT prancha chave dx dy excluida(0/1)  |  anotacao movida (mm do papel) ou excluida pelo usuario\n";
+        for (const auto &e : extras.sheetEdits) {
+            stream << "EDIT " << QString::fromLatin1(QUrl::toPercentEncoding(e.sheet)) << ' ' << QString::fromLatin1(QUrl::toPercentEncoding(e.key)) << ' ' << QString::number(e.dx, 'g', 8) << ' '
+                   << QString::number(e.dy, 'g', 8) << ' ' << (e.deleted ? 1 : 0) << "\n";
+        }
         stream << "# LAYOUT nome  |  VIEW id_da_vista escala(0=auto) manual(0/1) x y largura altura (fracoes da area util)\n";
         for (const auto &layout : extras.sheetLayouts) {
             stream << "LAYOUT " << QString::fromLatin1(QUrl::toPercentEncoding(layout.name.isEmpty() ? QStringLiteral("-") : layout.name)) << "\n";

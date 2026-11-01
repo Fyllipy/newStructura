@@ -22,6 +22,7 @@ struct Tie {
     int slave {0};
     std::vector<int> masters;
     std::vector<double> weights;
+    int dofMask {63};   ///< graus de liberdade ligados (bits ux uy uz rx ry rz); 7 = so translacoes (ligacao articulada entre objetos)
 };
 
 struct Mesh {

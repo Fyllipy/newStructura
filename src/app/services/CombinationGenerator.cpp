@@ -6,42 +6,38 @@ namespace Structura::App::Services {
 
 using Structura::App::ProjectData::LoadCombination;
 using Kind = CombinationGenerator::Kind;
+using Situation = CombinationGenerator::Situation;
 
 CombinationGenerator::CaseSetup CombinationGenerator::defaults(const QString &name, Kind kind)
 {
     CaseSetup s;
     s.name = name;
     s.kind = kind;
+    // gamma normal / especial-construcao / excepcional (NBR 8800:2024, tabela 1); psi0, psi1, psi2 (tabela 2)
+    auto set = [&](double normal, double special, double exceptional, double favorable, double p0, double p1, double p2) {
+        s.gammaUnfavorable = normal;
+        s.gammaSpecial = special;
+        s.gammaExceptional = exceptional;
+        s.gammaFavorable = favorable;
+        s.psi0 = p0;
+        s.psi1 = p1;
+        s.psi2 = p2;
+    };
     switch (kind) {
-    case Kind::SteelSelfWeight:
-        s.gammaUnfavorable = 1.25;
-        s.gammaFavorable = 1.0;
-        break;
-    case Kind::Permanent:
-        s.gammaUnfavorable = 1.35;
-        s.gammaFavorable = 1.0;
-        break;
-    case Kind::Variable:   // sobrecarga em locais sem predominancia de pesos/equipamentos fixos
-        s.gammaUnfavorable = 1.5;
-        s.gammaFavorable = 0.0;
-        s.psi0 = 0.5;
-        s.psi1 = 0.4;
-        s.psi2 = 0.3;
-        break;
-    case Kind::Wind:
-        s.gammaUnfavorable = 1.4;
-        s.gammaFavorable = 0.0;
-        s.psi0 = 0.6;
-        s.psi1 = 0.3;
-        s.psi2 = 0.0;
-        break;
-    case Kind::Temperature:
-        s.gammaUnfavorable = 1.2;
-        s.gammaFavorable = 0.0;
-        s.psi0 = 0.6;
-        s.psi1 = 0.5;
-        s.psi2 = 0.3;
-        break;
+    case Kind::SteelSelfWeight: set(1.25, 1.15, 1.10, 1.0, 1.0, 1.0, 1.0); break;
+    case Kind::PermanentPrecast: set(1.30, 1.20, 1.15, 1.0, 1.0, 1.0, 1.0); break;
+    case Kind::Permanent: set(1.35, 1.25, 1.15, 1.0, 1.0, 1.0, 1.0); break;
+    case Kind::PermanentGeneral: set(1.50, 1.40, 1.30, 1.0, 1.0, 1.0, 1.0); break;
+    case Kind::Indirect: set(1.20, 1.20, 0.0, 0.0, 1.0, 1.0, 1.0); break;
+    case Kind::Variable: set(1.5, 1.3, 1.0, 0.0, 0.5, 0.4, 0.3); break;
+    case Kind::VariableHeavy: set(1.5, 1.3, 1.0, 0.0, 0.7, 0.6, 0.4); break;
+    case Kind::VariableStorage: set(1.5, 1.3, 1.0, 0.0, 0.8, 0.7, 0.6); break;
+    case Kind::Footbridge: set(1.5, 1.3, 1.0, 0.0, 0.6, 0.4, 0.3); break;
+    case Kind::Wind: set(1.4, 1.2, 1.0, 0.0, 0.6, 0.3, 0.0); break;
+    case Kind::Temperature: set(1.2, 1.0, 1.0, 0.0, 0.6, 0.5, 0.3); break;
+    case Kind::TemperatureEquipment: set(1.5, 1.3, 1.0, 0.0, 0.7, 0.6, 0.4); break;
+    case Kind::Crane: set(1.5, 1.3, 1.0, 0.0, 1.0, 0.8, 0.5); break;
+    case Kind::Accidental: set(1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0); break;
     }
     return s;
 }
@@ -52,13 +48,20 @@ Kind CombinationGenerator::guessKind(const QString &name, bool selfWeight)
     if (selfWeight || n == QLatin1String("PP") || n.startsWith(QLatin1String("PESO"))) {
         return Kind::SteelSelfWeight;
     }
+    if (n.startsWith(QLatin1String("EXC")) || n.startsWith(QLatin1String("ACID")) || n.startsWith(QLatin1String("IMP")) || n.startsWith(QLatin1String("EXPL"))
+        || n.startsWith(QLatin1String("INC")) || n.startsWith(QLatin1String("SISM"))) {
+        return Kind::Accidental;
+    }
     if (n.startsWith(QLatin1String("VT")) || n.startsWith(QLatin1String("VENTO")) || n.startsWith(QLatin1String("W"))) {
         return Kind::Wind;
+    }
+    if (n.startsWith(QLatin1String("PR")) || n.startsWith(QLatin1String("PONTE")) || n.startsWith(QLatin1String("CRANE"))) {
+        return Kind::Crane;
     }
     if (n.startsWith(QLatin1String("SC")) || n.startsWith(QLatin1String("SOBRE")) || n.startsWith(QLatin1String("Q")) || n.startsWith(QLatin1String("USO"))) {
         return Kind::Variable;
     }
-    if (n.startsWith(QLatin1String("TEMP")) || n.startsWith(QLatin1String("T")) ) {
+    if (n.startsWith(QLatin1String("TEMP")) || n.startsWith(QLatin1String("T"))) {
         return Kind::Temperature;
     }
     return Kind::Permanent;
@@ -66,7 +69,10 @@ Kind CombinationGenerator::guessKind(const QString &name, bool selfWeight)
 
 namespace {
 
-bool isPermanent(Kind k) { return k == Kind::SteelSelfWeight || k == Kind::Permanent; }
+bool isPermanent(Kind k)
+{
+    return k == Kind::SteelSelfWeight || k == Kind::Permanent || k == Kind::PermanentPrecast || k == Kind::PermanentGeneral || k == Kind::Indirect;
+}
 
 void add(QVector<QPair<QString, double>> &factors, const QString &name, double value)
 {
@@ -80,14 +86,22 @@ void add(QVector<QPair<QString, double>> &factors, const QString &name, double v
 QVector<LoadCombination> CombinationGenerator::generate(const QVector<CaseSetup> &cases, const Options &options)
 {
     QVector<LoadCombination> out;
-    QVector<CaseSetup> permanents, variables;
+    // permanentes; variaveis de situacao normal (entram nas combinacoes normais e de servico); especiais/de construcao; excepcionais
+    QVector<CaseSetup> permanents, variables, specials, constructions, accidentals;
     for (const auto &c : cases) {
-        (isPermanent(c.kind) ? permanents : variables).append(c);
+        if (isPermanent(c.kind)) {
+            permanents.append(c);
+        } else if (c.kind == Kind::Accidental) {
+            accidentals.append(c);
+        } else if (c.situation == Situation::Special) {
+            specials.append(c);
+        } else if (c.situation == Situation::Construction) {
+            constructions.append(c);
+        } else {
+            variables.append(c);
+        }
     }
-    // grupos exclusivos: todos os ventos entre si
-    auto exclusive = [](const CaseSetup &a, const CaseSetup &b) { return a.kind == Kind::Wind && b.kind == Kind::Wind; };
-
-    // Para cada acao principal, as demais entram uma vez; ventos (exclusivos) alternam: sem vento ou um vento por vez.
+    // Ventos sao exclusivos entre si. Para cada acao principal, as demais entram uma vez; o vento alterna: sem vento ou um vento por vez.
     auto windChoices = [&](const CaseSetup &main) {
         QVector<QString> choices;
         if (main.kind == Kind::Wind) {
@@ -160,6 +174,105 @@ QVector<LoadCombination> CombinationGenerator::generate(const QVector<CaseSetup>
         ultimate(false);
         if (options.favorablePermanents && std::any_of(variables.begin(), variables.end(), [](const CaseSetup &s) { return s.kind == Kind::Wind; })) {
             ultimate(true);
+        }
+    }
+
+    // Combinacoes especiais e de construcao (4.8.7.2.2 e 4.8.7.2.3): uma por acao variavel especial; as demais com psi0,ef
+    auto specialLike = [&](const QVector<CaseSetup> &mains, const QString &prefix) {
+        int index = 1;
+        for (const auto &main : mains) {
+            for (const QString &wind : windChoices(main)) {
+                LoadCombination c;
+                for (const auto &p : permanents) {
+                    add(c.factors, p.name, p.gammaSpecial);
+                }
+                add(c.factors, main.name, main.gammaSpecial);
+                for (const auto &o : variables) {
+                    if (o.kind == Kind::Wind && o.name != wind) {
+                        continue;
+                    }
+                    const double psiEf = main.shortDuration ? o.psi2 : o.psi0;
+                    add(c.factors, o.name, o.gammaSpecial * psiEf);
+                }
+                appendUnique(c, prefix, index);
+            }
+        }
+    };
+    if (options.special) {
+        specialLike(specials, QStringLiteral("ESP"));
+    }
+    if (options.construction) {
+        specialLike(constructions, QStringLiteral("CONS"));
+    }
+
+    // Combinacoes excepcionais (4.8.7.2.4): F_Q,exc sem majoracao; as demais variaveis com psi2 (psi0,ef de acao de duracao muito pequena)
+    if (options.exceptional) {
+        int index = 1;
+        for (const auto &main : accidentals) {
+            for (int pass = 0; pass < 2; ++pass) {
+                const bool favorable = (pass == 1);
+                if (favorable && !options.favorablePermanents) {
+                    continue;
+                }
+                for (const QString &wind : windChoices(main)) {
+                    LoadCombination c;
+                    for (const auto &p : permanents) {
+                        add(c.factors, p.name, favorable ? p.gammaFavorable : p.gammaExceptional);
+                    }
+                    add(c.factors, main.name, main.gammaExceptional);
+                    for (const auto &o : variables) {
+                        if (o.kind == Kind::Wind && o.name != wind) {
+                            continue;
+                        }
+                        add(c.factors, o.name, o.gammaExceptional * o.psi2);
+                    }
+                    appendUnique(c, QStringLiteral("EXC"), index);
+                }
+            }
+        }
+    }
+
+    // Combinacoes de incendio (NBR 14323:2013, 6.3): gama_g FG,k (1,0 se favoravel) + F_Q,exc + psi_fi FQ,k; sobrecargas de uso: 0,21 (sem predominancia de pesos fixos nem
+    // grandes concentracoes de pessoas), 0,28 (comercial, escritorios, acesso publico) e 0,42 (bibliotecas, arquivos, depositos, oficinas e garagens). Vento: G + 0,20 W (6.3.2).
+    if (options.fire) {
+        int index = 1;
+        auto fireFactor = [](const CaseSetup &c) {
+            switch (c.kind) {
+            case Kind::Variable: return 0.21;
+            case Kind::VariableHeavy:
+            case Kind::Footbridge: return 0.28;
+            case Kind::VariableStorage: return 0.42;
+            default: return 0.0;
+            }
+        };
+        auto permanentsOf = [&](bool favorable) {
+            QVector<QPair<QString, double>> terms;
+            for (const auto &p : permanents) {
+                add(terms, p.name, favorable ? p.gammaFavorable : p.gammaExceptional);
+            }
+            return terms;
+        };
+        LoadCombination base;
+        base.factors = permanentsOf(false);
+        for (const auto &v : variables) {
+            add(base.factors, v.name, fireFactor(v));
+        }
+        if (!base.factors.isEmpty()) {
+            appendUnique(base, QStringLiteral("FOGO"), index);
+        }
+        for (const auto &v : variables) {
+            if (v.kind != Kind::Wind) {
+                continue;
+            }
+            for (int pass = 0; pass < 2; ++pass) {
+                if (pass == 1 && !options.favorablePermanents) {
+                    continue;
+                }
+                LoadCombination c;
+                c.factors = permanentsOf(pass == 1);
+                add(c.factors, v.name, 0.20);
+                appendUnique(c, QStringLiteral("FOGO"), index);
+            }
         }
     }
 

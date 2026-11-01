@@ -85,7 +85,8 @@ void MainWindow::syncLoadVisuals()
     // a carga destacada pode ter deixado de existir (desfazer, exclusao, troca de caso): descarta o destaque
     if (const auto selected = m_sceneController->highlightedLoad(); selected.valid()) {
         const bool exists = (selected.kind == 0 && selected.index < m_nodalLoads.size()) || (selected.kind == 1 && selected.index < m_memberLoads.size())
-            || (selected.kind == 2 && selected.index < m_extras.memberMoments.size()) || selected.kind == 3;
+            || (selected.kind == 2 && selected.index < m_extras.memberMoments.size()) || selected.kind == 3
+            || (selected.kind == 4 && selected.index < m_extras.memberActions.size());
         if (!exists) {
             m_sceneController->setHighlightedLoad({});
         }
@@ -95,6 +96,7 @@ void MainWindow::syncLoadVisuals()
     context.nodalLoads = &m_nodalLoads;
     context.memberLoads = &m_memberLoads;
     context.memberMoments = &m_extras.memberMoments;
+    context.memberActions = &m_extras.memberActions;
     context.materials = &m_materials;
     context.sections = &m_sections;
     context.placements = &m_extras.placements;
@@ -145,7 +147,7 @@ void MainWindow::syncSupportVisuals()
 void MainWindow::updateLoadActionsEnabled()
 {
     // sem selecao previa o comando escolhe os alvos na viewport (Enter ou botao direito concluem), por isso fica sempre habilitado
-    for (QAction *action : {m_applyNodalLoadAction, m_applyDistributedLoadAction, m_applyMemberMomentAction}) {
+    for (QAction *action : {m_applyNodalLoadAction, m_applyDistributedLoadAction, m_applyMemberMomentAction, m_applyMemberActionAction}) {
         if (action) {
             action->setEnabled(true);
         }
@@ -454,6 +456,11 @@ void MainWindow::onEditLoadCases()
     for (auto &moment : m_extras.memberMoments) {
         if (!names.contains(moment.loadCase)) {
             moment.loadCase = fallback;
+        }
+    }
+    for (auto &action : m_extras.memberActions) {
+        if (!names.contains(action.loadCase)) {
+            action.loadCase = fallback;
         }
     }
 

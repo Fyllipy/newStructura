@@ -1,4 +1,5 @@
 #include "design/BarDesign.h"
+#include "design/StiffenerDesign.h"
 
 #include "design/BeamExtras.h"
 
@@ -274,7 +275,7 @@ BarDesignOutput designBar(const BarDesignInput &in)
             const double m1 = std::min(std::abs(ma), std::abs(mb));
             const bool reverse = (ma * mb < 0.0);
             const double ratio = (reverse ? 1.0 : -1.0) * m1 / m2;
-            return std::max(0.4, 0.60 - 0.40 * ratio);
+            return 0.60 - 0.40 * ratio;   // C.2.2: sem limite inferior (M1/M2 = +1 em curvatura reversa da 0,20)
         };
         const double cmX = cmFor(&Effects::Mx, combo.transverseLoadX);
         const double cmY = cmFor(&Effects::My, combo.transverseLoadY);
@@ -356,10 +357,46 @@ BarDesignOutput designBar(const BarDesignInput &in)
             // Amplificacao dos momentos (Anexo C)
             double b1x = 1.0;
             double b1y = 1.0;
+            // N_Sd >= N_e: B1 = Cm/(1 - N_Sd/N_e) deixa de existir (a barra flamba elasticamente nesse plano). Em vez de um fator artificial (que gerava
+            // momentos e razoes sem sentido), os momentos ficam sem amplificar e a barra reprova na verificacao propria "amplification" (N_Sd/N_e > 1).
+            double unstableRatio = 0.0;
+            const char *unstablePlane = "";
+            double unstableB1 = 0.0, unstableNe = 0.0;
             if (in.amplifyB1 && e.N < 0.0) {
                 const double nc = -e.N;
-                b1x = nc >= nexPlane ? 1e6 : std::max(1.0, cmX / (1.0 - nc / nexPlane));
-                b1y = nc >= neyPlane ? 1e6 : std::max(1.0, cmY / (1.0 - nc / neyPlane));
+                // B1 > 20 (N_Sd muito proximo de N_e) e tratado como instabilidade, como o limite B2 > 20 dos andares: o valor deixa de ter significado fisico
+                constexpr double kB1Max = 20.0;
+                auto amplify = [&](double ne, double cm, double &b1, const char *plane) {
+                    // limite: B1 = Cm/(1 - N/Ne) <= 20  <=>  N <= (1 - Cm/20) Ne; a razao N / [(1 - Cm/20) Ne] fica limitada e e > 1 quando reprova
+                    const double allowed = (1.0 - cm / kB1Max) * ne;
+                    const double ratio = allowed > 0.0 ? nc / allowed : 1e9;
+                    if (nc >= allowed) {
+                        if (ratio > unstableRatio) {
+                            unstableRatio = ratio;
+                            unstablePlane = plane;
+                            unstableB1 = nc >= ne ? 0.0 : cm / (1.0 - nc / ne);
+                            unstableNe = ne;
+                        }
+                        return;
+                    }
+                    b1 = std::max(1.0, cm / (1.0 - nc / ne));
+                };
+                amplify(nexPlane, cmX, b1x, "X (eixo de maior inercia)");
+                amplify(neyPlane, cmY, b1y, "Y (eixo de menor inercia)");
+            }
+            if (unstableRatio >= 1.0 && col.wants("amplification", unstableRatio)) {
+                const double neShown = unstableNe > 0.0 ? unstableNe : std::min(nexPlane, neyPlane);
+                std::vector<std::string> lines;
+                if (unstableB1 > 0.0) {
+                    lines.push_back(fmt("N_c,Sd = %.2f kN, N_e,plano = %.2f kN (plano %s, comprimento %.0f mm): B1 = Cm / (1 - N_Sd/N_e) = %.1f > 20 (N_Sd/N_e = %.4f): sem significado fisico; limite 20, como no B2 dos andares",
+                                        -e.N / kKn, neShown / kKn, unstablePlane, L, unstableB1, -e.N / neShown));
+                } else {
+                    lines.push_back(fmt("N_c,Sd = %.2f kN >= N_e,plano = %.2f kN (flambagem elastica por flexao no plano %s, comprimento %.0f mm): B1 = Cm / (1 - N_Sd/N_e) nao existe", -e.N / kKn, neShown / kKn,
+                                        unstablePlane, L));
+                }
+                lines.push_back(fmt("a barra e instavel nesse plano: aumente a secao, reduza o comprimento destravado ou contenha lateralmente. Razao = N_Sd / [(1 - Cm/20) N_e] = %s%.3f  (%s)", "",
+                                    unstableRatio, whereOf().c_str()));
+                col.offer(makeCheck("amplification", "Amplificacao dos momentos: B1 <= 20 e N_Sd < N_e", clauseTag + ", Anexo C.2", unstableRatio, 1.0, "", 1.0, std::move(lines)), combo.name, st.x);
             }
             const double b2All = in.b2 * combo.b2;
             double mxSd, mySd;
@@ -595,7 +632,23 @@ BarDesignOutput designBar(const BarDesignInput &in)
             }
 
             // --- torcao em secoes abertas (5.5.2.3): tensoes normais e de cisalhamento pela Teoria da Elasticidade ---
-            if (warpingCheck && (std::abs(e.T) > 1e-9 || std::abs(e.B) > 1e-9)) {
+            // A verificacao e a de barras sob torcao: com torcao desprezivel (tensoes de cisalhamento de torcao < 5 % de 0,60 fy/gamma e de empenamento < 5 % de fy/gamma) as tensoes
+            // de N e M ja estao cobertas por 5.3, 5.4 e 5.5.1, que admitem a plastificacao e usam o estado-limite de instabilidade proprio de cada esforco.
+            auto torsionRelevant = [&]() {
+                const double fyLocal = in.steel.fy / (cold ? o14.gammaFlexure : o8.gammaA1);
+                const SectorialData &sc = s.sectorial;
+                const bool warp = in.warping && sc.Cw > 0.0;
+                const double tsvLocal = e.T - (warp ? e.Tw : 0.0);
+                for (const SectorialData::Sample &p : sc.samples) {
+                    const double tauTorsion = std::abs(tsvLocal) * p.t / s.J + (warp ? std::abs(e.Tw) * std::abs(p.sw) / (sc.Cw * p.t) : 0.0);
+                    const double sigmaWarp = warp ? std::abs(e.B * p.omega / sc.Cw) : 0.0;
+                    if (tauTorsion > 0.05 * 0.60 * fyLocal || sigmaWarp > 0.05 * fyLocal) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            if (warpingCheck && (std::abs(e.T) > 1e-9 || std::abs(e.B) > 1e-9) && torsionRelevant()) {
                 const double gammaStress = cold ? o14.gammaFlexure : o8.gammaA1;
                 const double fyd = in.steel.fy / gammaStress;
                 const SectorialData &sec = s.sectorial;
@@ -614,37 +667,44 @@ BarDesignOutput designBar(const BarDesignInput &in)
                     sigmaCompression = std::max(sigmaCompression, -sigma);
                     sigmaWarpMax = std::max(sigmaWarpMax, std::abs(sigmaW));
                 }
-                // chi: menor fator entre os estados-limite de instabilidade ja avaliados (5.3 e 5.4), adotado para a tensao normal de compressao
-                double chi = 1.0;
-                std::string chiNote = "chi = 1,00 (sem compressao)";
-                if (sigmaCompression > 0.0) {
-                    std::string governing = "escoamento";
-                    auto take = [&](double value, const char *name) {
-                        if (value > 0.0 && value < chi) {
-                            chi = value;
-                            governing = name;
-                        }
-                    };
-                    if (e.N < 0.0 && comp.NcRd > 0.0) {
-                        take(comp.NcRd / (s.g.area * fyd), "compressao axial");
-                    }
-                    if (absMx > 0.0 && mxRd > 0.0) {
-                        take(mxRd / (s.g.Wx() * fyd), "flexao eixo X");
-                    }
-                    if (absMy > 0.0 && myRd > 0.0) {
-                        take(myRd / (s.g.Wy() * fyd), "flexao eixo Y");
-                    }
-                    chi = std::min(chi, 1.0);
-                    chiNote = fmt("chi = %.3f (menor fator entre os estados-limite de instabilidade ja avaliados: %s)", chi, governing.c_str());
+                // chi de cada parcela da tensao de compressao: a de N usa o da compressao axial (5.3); as de M e do empenamento, o menor dos fatores de flexao (5.4: MRd/(W fy/gamma));
+                // a razao de compressao soma as parcelas ponderadas por seus fatores (em vez de aplicar o menor chi a toda a tensao)
+                const double chiN = (e.N < 0.0 && comp.NcRd > 0.0) ? std::min(1.0, comp.NcRd / (s.g.area * fyd)) : 1.0;
+                double chiM = 1.0;
+                if (absMx > 0.0 && mxRd > 0.0) {
+                    chiM = std::min(chiM, mxRd / (s.g.Wx() * fyd));
                 }
-                const double ratioNormal = std::max(sigmaTension / fyd, sigmaCompression / (chi * fyd));
+                if (absMy > 0.0 && myRd > 0.0) {
+                    chiM = std::min(chiM, myRd / (s.g.Wy() * fyd));
+                }
+                chiM = std::min(1.0, chiM);
+                double compressionRatio = 0.0, chi = 1.0;
+                for (const SectorialData::Sample &p : sec.samples) {
+                    const double sigmaN = e.N / s.g.area;
+                    const double sigmaOther = -mxSd * p.y / s.g.Ix - mySd * p.z / s.g.Iy + (withWarping ? bimoment * p.omega / sec.Cw : 0.0);
+                    if (sigmaN + sigmaOther >= 0.0) {
+                        continue;
+                    }
+                    const double a = std::max(-sigmaN, 0.0), b = std::max(-sigmaOther, 0.0);
+                    const double ratio = (a / chiN + b / chiM) / fyd;
+                    if (ratio > compressionRatio) {
+                        compressionRatio = ratio;
+                        chi = (a + b) / (a / chiN + b / chiM);
+                    }
+                }
+                const std::string chiNote = sigmaCompression > 0.0
+                    ? fmt("chi_N = %.3f (compressao axial, 5.3); chi_M = %.3f (flexao, 5.4: MRd/(W fy/gamma)); parcelas de compressao ponderadas por seus fatores (chi equivalente = %.3f)", chiN, chiM, chi)
+                    : std::string("chi = 1,00 (sem compressao)");
+                const double ratioNormal = std::max(sigmaTension / fyd, compressionRatio);
                 if (col.wants("warping_normal", ratioNormal)) {
                     CheckResult c;
                     c.id = "warping_normal";
                     c.title = in.warping ? "Torcao com empenamento: tensoes normais" : "Torcao: tensoes normais";
                     c.clause = clauseTag + ", 5.5.2.3-a e 5.5.2.3-c";
-                    c.demand = std::max(sigmaTension, sigmaCompression);
-                    c.resistance = fyd;
+                    // demanda e resistencia coerentes com a razao: no lado comprimido o limite e chi fy/gamma
+                    const bool compressionGoverns = compressionRatio >= sigmaTension / fyd;
+                    c.demand = compressionGoverns ? sigmaCompression : sigmaTension;
+                    c.resistance = compressionGoverns ? chi * fyd : fyd;
                     c.unit = "MPa";
                     c.ratio = ratioNormal;
                     c.lines.push_back(fmt("Linha media da secao (paredes finas): Cw = %.4g mm6; omega_max = %.0f mm2; centro de cisalhamento a (y_s, z_s) = (%.1f, %.1f) mm do centroide", sec.Cw, sec.omegaMax, sec.ys, sec.zs));
@@ -655,7 +715,7 @@ BarDesignOutput designBar(const BarDesignInput &in)
                         c.lines.push_back(fmt("Barra analisada sem empenamento (so Saint-Venant): tensoes de empenamento desprezadas; N = %.2f kN, Mx = %.2f kN*m, My = %.2f kN*m", e.N / kKn, mxSd / kKnm, mySd / kKnm));
                     }
                     c.lines.push_back(fmt("sigma_Sd,max: tracao %.1f MPa, compressao %.1f MPa; fy/gamma = %.1f MPa (escoamento, 5.5.2.3-a)", sigmaTension, sigmaCompression, fyd));
-                    c.lines.push_back(chiNote + fmt("; compressao: sigma_Sd/(chi fy/gamma) = %.3f  (%s)", sigmaCompression / (chi * fyd), whereOf().c_str()));
+                    c.lines.push_back(chiNote + fmt("; compressao: razao = %.3f  (%s)", compressionRatio, whereOf().c_str()));
                     col.offer(std::move(c), combo.name, st.x);
                 }
                 // tensoes de cisalhamento em todos os pontos de amostragem; parcelas somadas em modulo (sentidos relativos nao conhecidos): envoltoria conservadora
@@ -690,6 +750,70 @@ BarDesignOutput designBar(const BarDesignInput &in)
                     c.lines.push_back(fmt("T = %.2f kN*m = T_sv + T_w = %.2f + %.2f kN*m (T_w: parcela de empenamento)", e.T / kKnm, tsv / kKnm, tw / kKnm));
                     c.lines.push_back(fmt("Ponto mais solicitado: tau = tau_sv (T_sv t/J = %.1f) + tau_w (T_w S_w/(Cw t) = %.1f) + tau_V (V S/(I t) = %.1f) = %.1f MPa", tauSvAt, tauWAt, tauVAt, tauMax));
                     c.lines.push_back(fmt("Limite: 0,60 chi fy/gamma = %.1f MPa (chi = %.3f da flambagem por cisalhamento da alma, VRd/Vpl, nas paredes paralelas ao eixo y, 5.5.2.3-d)  (%s)", limitAt, chiV, whereOf().c_str()));
+                    col.offer(std::move(c), combo.name, st.x);
+                }
+            }
+
+            // --- tensoes combinadas (von Mises): verificacao elastica complementar, ligada pelo usuario ---
+            if (in.vonMises) {
+                const double fyd = in.steel.fy / (cold ? o14.gammaFlexure : o8.gammaA1);
+                const double nStress = e.N / s.g.area;
+                double vmMax = 0.0, sigmaAt = 0.0, tauAt = 0.0;
+                std::string where;
+                auto consider = [&](double sigma, double tau, const char *point) {
+                    const double vm = std::sqrt(sigma * sigma + 3.0 * tau * tau);
+                    if (vm > vmMax) {
+                        vmMax = vm;
+                        sigmaAt = sigma;
+                        tauAt = tau;
+                        where = point;
+                    }
+                };
+                if (thinOpenCheck) {
+                    // paredes finas abertas: todos os pontos de amostragem da linha media (mesmas parcelas de 5.5.2.3, somadas em modulo nas tensoes de cisalhamento)
+                    const SectorialData &sec = s.sectorial;
+                    const bool withWarp = in.warping && sec.Cw > 0.0;
+                    const double tsv = e.T - (withWarp ? e.Tw : 0.0);
+                    for (const SectorialData::Sample &p : sec.samples) {
+                        const double sigmaW = withWarp ? e.B * p.omega / sec.Cw : 0.0;
+                        const double sigma = nStress - mxSd * p.y / s.g.Ix - mySd * p.z / s.g.Iy + sigmaW;
+                        const double tau = std::abs(tsv) * p.t / s.J + std::abs(e.Vy) * std::abs(p.sy) / (s.g.Ix * p.t) + std::abs(e.Vz) * std::abs(p.sz) / (s.g.Iy * p.t)
+                                           + (withWarp ? std::abs(e.Tw) * std::abs(p.sw) / (sec.Cw * p.t) : 0.0);
+                        consider(sigma, tau, "ponto da linha media");
+                    }
+                } else if (s.kind == SectionKind::RectTube && s.flatWidthB > 0.0 && s.flatWidthH > 0.0) {
+                    // tubular/caixao: Bredt na torcao; cortante nas duas almas (tau = V Q / (2 tw I)); cantos com a flexao biaxial
+                    const double tFl = s.tFlange > 0.0 ? s.tFlange : s.t, tWb = s.tWeb > 0.0 ? s.tWeb : s.t;
+                    const double am = (s.bf - tWb) * (s.d - tFl);
+                    const double tauT = std::abs(e.T) / (2.0 * am * std::min(tFl, tWb));
+                    const double hClear = s.flatWidthH, wClear = s.flatWidthB;
+                    const double qNa = s.bf * tFl * (s.d - tFl) / 2.0 + tWb * hClear * hClear / 4.0;
+                    const double tauVy = std::abs(e.Vy) * qNa / (s.g.Ix * 2.0 * tWb);
+                    const double qNaZ = s.d * tWb * (s.bf - tWb) / 2.0 + tFl * wClear * wClear / 4.0;
+                    const double tauVz = std::abs(e.Vz) * qNaZ / (s.g.Iy * 2.0 * tFl);
+                    consider(nStress + absMx / s.g.Wx() + absMy / s.g.Wy(), tauT, "canto (fibra mais afastada)");
+                    consider(-(nStress - absMx / s.g.Wx() - absMy / s.g.Wy()), tauT, "canto (fibra oposta)");
+                    consider(nStress + absMy * (s.bf / 2.0) / s.g.Iy, tauT + tauVy, "alma, na linha neutra");
+                    consider(nStress + absMx * (s.d / 2.0) / s.g.Ix, tauT + tauVz, "mesa, na linha neutra");
+                } else if (s.kind == SectionKind::RoundTube && s.D > 0.0) {
+                    const double mRes = std::hypot(mxSd, mySd);
+                    const double tauT = std::abs(e.T) * (s.D / 2.0) / s.J;
+                    const double tauV = 2.0 * std::hypot(e.Vy, e.Vz) / s.g.area;
+                    consider(std::abs(nStress) + mRes * (s.D / 2.0) / s.g.Ix, tauT, "fibra mais afastada");
+                    consider(std::abs(nStress), tauT + tauV, "linha neutra");
+                }
+                if (vmMax > 0.0 && col.wants("von_mises", vmMax / fyd)) {
+                    CheckResult c;
+                    c.id = "von_mises";
+                    c.title = "Tensoes combinadas (von Mises, regime elastico)";
+                    c.clause = clauseTag + ", verificacao elastica complementar";
+                    c.demand = vmMax;
+                    c.resistance = fyd;
+                    c.unit = "MPa";
+                    c.ratio = vmMax / fyd;
+                    c.lines.push_back(fmt("sigma_vM = sqrt(sigma^2 + 3 tau^2) = sqrt(%.1f^2 + 3 x %.1f^2) = %.1f MPa em: %s", sigmaAt, tauAt, vmMax, where.c_str()));
+                    c.lines.push_back(fmt("Limite elastico fy/gamma = %.1f MPa. Verificacao opcional e mais restritiva que a norma nas secoes compactas (a NBR 8800 admite a plastificacao); tensoes de cisalhamento somadas em modulo.", fyd));
+                    c.lines.push_back(fmt("N = %.2f kN, Mx = %.2f kN*m, My = %.2f kN*m, Vy = %.2f kN, Vz = %.2f kN, T = %.2f kN*m  (%s)", e.N / kKn, mxSd / kKnm, mySd / kKnm, e.Vy / kKn, e.Vz / kKn, e.T / kKnm, whereOf().c_str()));
                     col.offer(std::move(c), combo.name, st.x);
                 }
             }
@@ -743,7 +867,7 @@ BarDesignOutput designBar(const BarDesignInput &in)
     }
 
     // --- NBR 8800: solda mesa-alma (5.4.5), lamelas (5.4.4) e comprimento destravado entre rotulas plasticas (4.11.5) ---
-    if (!cold && (in.webWeldLeg > 0.0 || in.coverB > 0.0 || in.plasticAnalysis)) {
+    if (!cold && (in.webWeldLeg > 0.0 || in.coverB > 0.0 || in.plasticAnalysis || in.stiffSides > 0)) {
         BeamExtraContext ctx;
         ctx.length = L;
         ctx.segments = segments;
@@ -759,6 +883,81 @@ BarDesignOutput designBar(const BarDesignInput &in)
             const std::string id = extra.id;
             col.offer(std::move(extra), "envoltoria", 0.0);
             (void)id;
+        }
+    }
+
+    // --- NBR 14762: enrijecedores transversais de alma (9.5): reacoes de extremidade, forca interna e enrijecedor de cortante ---
+    if (cold && in.stiffSides > 0 && in.stiffWidth > 0.0 && in.stiffThickness > 0.0
+        && (s.kind == SectionKind::ColdChannel || s.kind == SectionKind::ColdLippedChannel || s.kind == SectionKind::ColdZ)) {
+        namespace St = Structura::Design::Stiffeners;
+        St::ColdStiffenerInput ci;
+        ci.h = s.d;
+        ci.t = s.t;
+        ci.fy = in.steel.fy;
+        ci.E = in.steel.E;
+        ci.sides = in.stiffSides;
+        ci.b = in.stiffWidth;
+        ci.ts = in.stiffThickness;
+        double vStart = 0.0, vEnd = 0.0;
+        for (const ComboEffects &combo : in.combos) {
+            if (!combo.stations.empty()) {
+                vStart = std::max(vStart, std::abs(combo.stations.front().e.Vy));
+                vEnd = std::max(vEnd, std::abs(combo.stations.back().e.Vy));
+            }
+        }
+        auto emit = [&](const char *id, const char *title, double force, bool interior) {
+            if (force <= 0.0) {
+                return;
+            }
+            ci.force = force;
+            ci.interior = interior;
+            const St::StiffenerResult r = St::checkColdStiffener(ci);
+            CheckResult c;
+            c.id = id;
+            c.title = title;
+            c.clause = clauseTag + ", 9.5.1";
+            const St::StiffenerCheck *worst = &r.checks.front();
+            for (const St::StiffenerCheck &sub : r.checks) {
+                if (sub.ratio > worst->ratio) {
+                    worst = &sub;
+                }
+                c.lines.push_back(fmt("%s [%s]  (%s): razao %.3f", sub.title.c_str(), sub.ratio <= 1.0 + 1e-9 ? "atende" : "NAO ATENDE", sub.clause.c_str(), sub.ratio));
+                for (const std::string &line : sub.lines) {
+                    c.lines.push_back("   " + line);
+                }
+            }
+            c.demand = worst->demand / (worst->unit == "N" ? kKn : 1.0);
+            c.resistance = worst->resistance / (worst->unit == "N" ? kKn : 1.0);
+            c.unit = worst->unit == "N" ? "kN" : worst->unit;
+            c.ratio = r.maxRatio;
+            col.offer(std::move(c), "envoltoria", 0.0);
+        };
+        emit("stiffener_support_start", "Enrijecedor de apoio (extremidade inicial)", vStart, false);
+        emit("stiffener_support_end", "Enrijecedor de apoio (extremidade final)", vEnd, false);
+        emit("stiffener_load", "Enrijecedor sob forca concentrada", in.stiffForce, true);
+        if (in.stiffenerSpacing > 0.0) {
+            const std::vector<St::StiffenerCheck> shear = St::checkColdShearStiffener(ci, in.stiffenerSpacing);
+            if (!shear.empty()) {
+                CheckResult c;
+                c.id = "stiffener_shear";
+                c.title = "Enrijecedor transversal intermediario (cortante)";
+                c.clause = clauseTag + ", 9.5.2";
+                const St::StiffenerCheck *worst = &shear.front();
+                for (const St::StiffenerCheck &sub : shear) {
+                    if (sub.ratio > worst->ratio) {
+                        worst = &sub;
+                    }
+                    c.lines.push_back(fmt("%s [%s]  (%s): razao %.3f", sub.title.c_str(), sub.ratio <= 1.0 + 1e-9 ? "atende" : "NAO ATENDE", sub.clause.c_str(), sub.ratio));
+                    for (const std::string &line : sub.lines) {
+                        c.lines.push_back("   " + line);
+                    }
+                }
+                c.demand = worst->demand;
+                c.resistance = worst->resistance;
+                c.unit = worst->unit;
+                c.ratio = worst->ratio;
+                col.offer(std::move(c), "envoltoria", 0.0);
+            }
         }
     }
 
@@ -916,6 +1115,25 @@ BarDesignOutput designBar(const BarDesignInput &in)
             const double sbr = 10.0 * gammaR * mMax / (lbc * ho);
             c.lines.push_back(fmt("Viga (4.12.3.3), M_Sd = %.1f kN*m, ho = %.0f mm, Lbb = %.0f mm, Cd = 1,0: F_br = 0,02 M_Sd Cd/ho = %.2f kN; S_br = 10 gr M_Sd Cd/(Lbb ho) = %.3f kN/mm "
                                   "(Cd = 2,0 para a contencao proxima ao ponto de inflexao em curvatura reversa)", mMax / kKnm, ho, lbc, fbr / kKn, sbr / kKn));
+        }
+        if (mMax > 0.0 && s.kind == SectionKind::I && s.g.Iy > 0.0) {
+            // contencao de torcao nodal (4.12.3.6): Mbr = 0,024 M_Sd L/(n Cb Lbb); S_Tb = 1/(1/S_T - 1/S_sec), S_T = 2,4 gr L M_Sd2/(n E Iy Cb2) e
+            // S_sec = 3,3 E/ho (1,5 ho tw3/12 + tst bst3/12) (com Cb = 1,0 e sem enrijecedor, a favor da seguranca)
+            const double ho = s.d - s.tf;
+            const double cb = 1.0;
+            const double stiffener = in.stiffSides > 0 ? in.stiffThickness * std::pow(in.stiffSides * in.stiffWidth, 3) / 12.0 : 0.0;
+            const double mbr = 0.024 * mMax * L / (braces * cb * lbc);
+            const double stRequired = 2.4 * gammaR * L * mMax * mMax / (braces * in.steel.E * s.g.Iy * cb * cb);
+            const double sSec = 3.3 * in.steel.E / ho * (1.5 * ho * std::pow(s.tw, 3) / 12.0 + stiffener);
+            if (sSec > stRequired) {
+                const double stb = 1.0 / (1.0 / stRequired - 1.0 / sSec);
+                c.lines.push_back(fmt("Se as contencoes forem de torcao nodais (4.12.3.6, n = %d): M_br = 0,024 M_Sd L/(n Cb Lbb) = %.2f kN*m; S_T = %.1f kN*m/rad; S_sec (distorcao da alma%s) = %.1f kN*m/rad; "
+                                      "S_Tb = 1/(1/S_T - 1/S_sec) = %.1f kN*m/rad (rigidez minima do portico ou diafragma, Cb = 1,0)",
+                                      braces, mbr / kKnm, stRequired / 1e6, in.stiffSides > 0 ? " com enrijecedor" : "", sSec / 1e6, stb / 1e6));
+            } else {
+                c.lines.push_back(fmt("Contencao de torcao nodal (4.12.3.6): S_sec = %.1f kN*m/rad nao supera S_T = %.1f kN*m/rad; a distorcao da alma torna a contencao inefetiva (S_Tb < 0): enrijeca-la (largura x espessura do enrijecedor) ou usar contencao de translacao.",
+                                      sSec / 1e6, stRequired / 1e6));
+            }
         }
         if (!c.lines.empty()) {
             c.lines.push_back("As contencoes adotadas (travessas, correntes, contraventamentos) devem ter resistencia e rigidez de calculo no minimo iguais a estes valores; nao e verificado pelo programa.");

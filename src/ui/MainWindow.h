@@ -21,6 +21,7 @@
 #include "app/services/ReportService.h"
 #include "app/services/ModelCheckService.h"
 #include "app/services/ConnectionService.h"
+#include "app/services/SheetBuilder.h"
 #include "shell/ShellMesh.h"
 #include "shell/ShellResults.h"
 #include <optional>
@@ -97,6 +98,13 @@ private slots:
     void onApplyNodalLoad();
     void onApplyDistributedLoad();
     void onApplyMemberMoment();
+    void onApplyMemberAction();
+    void onWindStatic();
+    void onWindShed();
+    void onEditConnectivity();
+    void onEditMemberEnds();
+    void onNonlinearOptions();
+    void onShowCapacityCurve();
     void onLoadCaseVisibility();
     void onEditLoadCases();
     void onGenerateCombinations();
@@ -109,11 +117,15 @@ private slots:
     bool restoreStoredResults();
     void collectResultsForSave();
     void onExportDxf();
+    void onExportDstv();
+    void onExportIfc();
+    Structura::App::Services::SheetBuilder::Input buildSheetInput();
     void onGenerateDrawings();
     void onApplyRestraints();
     void onCopyElements();
     void onMoveElements();
     void onSerialCopy();
+    void onArrayCopy();
     void onRotateElements();
     void onMirrorElements();
     void onToggleAxesPanel();
@@ -128,6 +140,7 @@ private slots:
     void onDynamics();
     void onCompositeFloor();
     void onGenerateTruss();
+    void onImportCad();
     void onShellEditor();
     bool newFromTemplateDialog();
     bool addSteelMaterial(const QString &name);
@@ -190,8 +203,6 @@ private slots:
     void onBarReport();
     bool buildReportInput(Structura::App::Services::ReportService::Input &input, bool withDesign);
     void onApplyAreaLoad();
-    void onApplyWindLoad();
-    void applyAreaLoad(bool wind);
     void refreshGroupsPanel();
     void setGroupHidden(int groupId, bool hidden);
     void adoptGroupProperties(int referenceMember, const QVector<int> &newMembers);
@@ -479,9 +490,15 @@ private:
     QAction *m_applyNodalLoadAction;
     QAction *m_applyDistributedLoadAction;
     QAction *m_applyMemberMomentAction {nullptr};
+    QAction *m_applyMemberActionAction {nullptr};
+    QAction *m_connectivityAction {nullptr};
+    QAction *m_memberEndsAction {nullptr};
+    QAction *m_nonlinearOptionsAction {nullptr};
+    QAction *m_capacityCurveAction {nullptr};
     QAction *m_copyElementsAction {nullptr};
     QAction *m_moveElementsAction {nullptr};
     QAction *m_serialCopyAction {nullptr};
+    QAction *m_arrayCopyAction {nullptr};
     QAction *m_rotateElementsAction {nullptr};
     QAction *m_mirrorElementsAction {nullptr};
     QAction *m_loadCasesAction {nullptr};
@@ -495,6 +512,9 @@ private:
     QPointer<Structura::UI::ShellDialog> m_shellDialog;
     QAction *m_quantitiesAction {nullptr};
     QAction *m_exportDxfAction {nullptr};
+    QAction *m_exportDstvAction {nullptr};
+    QAction *m_exportIfcAction {nullptr};
+    QAction *m_importCadAction {nullptr};
     QAction *m_sheetsAction {nullptr};
     QAction *m_applyRestraintsAction;
     QAction *m_resetCameraAction;
@@ -554,7 +574,8 @@ private:
     QAction *m_areaLoadAction {nullptr};
     QAction *m_loadCaseVisibilityAction {nullptr};
     QAction *m_deleteLoadsAction {nullptr};
-    QAction *m_windLoadAction {nullptr};
+    QAction *m_windStaticAction {nullptr};
+    QAction *m_windShedAction {nullptr};
     QAction *m_groupsPanelAction {nullptr};
     class QDockWidget *m_groupsDock {nullptr};
     Structura::UI::GroupsPanel *m_groupsPanel {nullptr};
@@ -625,7 +646,7 @@ private:
     QSet<QString> m_visibleLoadCases;
     bool loadCaseShown(const QString &loadCase) const;
     // Comando de carga sem selecao previa: os alvos sao escolhidos na viewport e o comando conclui com Enter ou botao direito
-    enum class LoadPick { None, Nodal, Distributed, Moment };
+    enum class LoadPick { None, Nodal, Distributed, Moment, Positioned };
     LoadPick m_loadPick {LoadPick::None};
     void beginLoadPick(LoadPick kind);
     void cancelLoadPick();
@@ -635,6 +656,9 @@ private:
     bool trySelectLoadAt(const QPoint &widgetPos);
     void clearSelectedLoad();
     bool deleteSelectedLoad();
+    // Cargas de barra com posicao (trapezoidal/parcial, pontual, momento pontual, temperatura, retracao)
+    QString describeMemberAction(const Structura::App::ProjectData::MemberAction &action) const;
+    bool editMemberAction(int index);
     NodalLoadPreset m_lastNodalPreset;
     DistributedLoadPreset m_lastDistributedPreset;
 

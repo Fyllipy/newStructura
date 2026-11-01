@@ -24,6 +24,8 @@ FEM_API int fem_version();
 
 // --- modelo -----------------------------------------------------------------------------------------------------------
 FEM_API int fem_add_material(void* h, int id, double E, double nu, double density, double alpha);
+/// Torna ortotropico o material `id` (ja adicionado): E2, nu12, G12, multiplicadores de rigidez de flexao nas direcoes 1 e 2 e o eixo 1 (global, projetado em cada elemento).
+FEM_API int fem_set_material_orthotropy(void* h, int id, double E2, double nu12, double G12, double bend1, double bend2, double ax, double ay, double az);
 /// restraint6: 1 = restrito (ux uy uz rx ry rz); pode ser nulo (= livre).
 FEM_API int fem_add_node(void* h, int id, double x, double y, double z, const int* restraint6);
 /// Nos em ordem anti-horaria vista do lado da normal positiva. Espessura na unidade de comprimento do modelo.
@@ -34,6 +36,8 @@ FEM_API int fem_add_spring(void* h, int node, const double* k6, int compressionO
 
 /// Liga o no `slave` aos nos mestres (count <= 8) com os pesos dados: u_slave = soma(w_i u_mestre_i) nos 6 graus de liberdade.
 FEM_API int fem_add_tie(void* h, int slave, int count, const int* masters, const double* weights);
+/// Como fem_add_tie, ligando so os graus de liberdade da mascara (bits 0..5 = ux uy uz rx ry rz; 7 = so translacoes: ligacao articulada entre chapas).
+FEM_API int fem_add_tie_masked(void* h, int slave, int count, const int* masters, const double* weights, int dofMask);
 
 // --- casos de carga -----------------------------------------------------------------------------------------------------
 /// Cria um caso de carga e devolve seu indice (>= 0).

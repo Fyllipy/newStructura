@@ -31,6 +31,11 @@ struct WarpingSectionEntry {
     double cw = 0.0;
 };
 std::vector<WarpingSectionEntry> g_warpingSections;
+struct ShearCenterEntry {
+    int sectionId = 0;
+    double y = 0.0, z = 0.0;
+};
+std::vector<ShearCenterEntry> g_shearCenters;
 struct WarpingMemberEntry {
     int memberId = 0;
     int modeStart = 0, modeEnd = 0;
@@ -43,6 +48,20 @@ struct TaperEntry {
 };
 std::vector<TaperEntry> g_tapers;
 std::vector<int> g_tensionOnly;
+std::vector<MemberActionData> g_memberActions;
+std::vector<EndSpringData> g_endSprings;
+std::vector<PlasticHingeData> g_plasticHinges;
+std::vector<DiaphragmData> g_diaphragms;
+std::vector<RigidLinkData> g_rigidLinks;
+std::vector<InclinedSupportData> g_inclinedSupports;
+std::vector<LinearConstraintData> g_constraints;
+std::vector<LinkData> g_links;
+NonlinearOptions g_nonlinear;
+int g_linearSolver = 0;
+int g_eigenSolver = 0;
+int g_eigenDenseLimit = 400;
+double g_iterativeTolerance = 1e-10;
+int g_iterativeMaxIterations = 5000;
 int g_bucklingModes = 0;
 int g_modalModes = 0;
 std::vector<std::pair<int, double>> g_modalDensities;   // material id, density
@@ -129,6 +148,24 @@ extern "C" int structura_set_shell_alpha(int shellCount, const double* alphas) {
     return 0;
 }
 
+extern "C" int structura_set_shell_orthotropy(int shellCount, const int* flags, const double* E2, const double* nu12, const double* G12, const double* bend1,
+                                              const double* bend2, const double* axis3) {
+    if (shellCount != static_cast<int>(g_shells.size()) || (shellCount > 0 && (!flags || !E2 || !nu12 || !G12 || !bend1 || !bend2 || !axis3))) {
+        return 1;
+    }
+    for (int i = 0; i < shellCount; ++i) {
+        ShellElementData& s = g_shells[static_cast<size_t>(i)];
+        s.orthotropic = flags[i] != 0;
+        s.E2 = E2[i];
+        s.nu12 = nu12[i];
+        s.G12 = G12[i];
+        s.bend1 = bend1[i];
+        s.bend2 = bend2[i];
+        s.axis = {axis3[i * 3], axis3[i * 3 + 1], axis3[i * 3 + 2]};
+    }
+    return 0;
+}
+
 extern "C" int structura_get_shell_results(int shellCount, double* values40, double* axes9) {
     const int available = static_cast<int>(g_lastOutput.shells.size());
     if (values40 == nullptr || axes9 == nullptr || shellCount != available) {
@@ -185,6 +222,13 @@ extern "C" void structura_set_warping_sections(int count, const int* sectionIds,
     }
 }
 
+extern "C" void structura_set_shear_centers(int count, const int* sectionIds, const double* scY, const double* scZ) {
+    g_shearCenters.clear();
+    for (int i = 0; i < count; ++i) {
+        g_shearCenters.push_back({sectionIds[i], scY[i], scZ[i]});
+    }
+}
+
 extern "C" void structura_set_warping_members(int count, const int* memberIds, const int* modeStart, const int* modeEnd) {
     g_warpingMembers.clear();
     for (int i = 0; i < count; ++i) {
@@ -230,6 +274,215 @@ extern "C" int structura_get_warnings(char* buffer, int bufferSize) {
 
 extern "C" void structura_set_tension_only(int count, const int* memberIds) {
     g_tensionOnly.assign(memberIds, memberIds + std::max(0, count));
+}
+
+extern "C" void structura_set_member_actions(int count, const int* memberIds, const int* kinds, const int* coordSystems, const double* a, const double* b,
+                                             const double* v1_3, const double* v2_3) {
+    g_memberActions.clear();
+    for (int i = 0; i < count && memberIds && kinds && coordSystems && a && b && v1_3 && v2_3; ++i) {
+        MemberActionData action;
+        action.memberId = memberIds[i];
+        action.kind = kinds[i];
+        action.system = coordSystems[i] == 0 ? DistributedLoadSystem::Local : DistributedLoadSystem::Global;
+        action.a = a[i];
+        action.b = b[i];
+        for (size_t k = 0; k < 3; ++k) {
+            action.v1[k] = v1_3[i * 3 + static_cast<int>(k)];
+            action.v2[k] = v2_3[i * 3 + static_cast<int>(k)];
+        }
+        g_memberActions.push_back(action);
+    }
+}
+
+extern "C" void structura_set_end_springs(int count, const int* memberIds, const double* k12) {
+    g_endSprings.clear();
+    for (int i = 0; i < count && memberIds && k12; ++i) {
+        EndSpringData spring;
+        spring.memberId = memberIds[i];
+        for (int k = 0; k < 12; ++k) {
+            spring.k[static_cast<size_t>(k)] = k12[i * 12 + k];
+        }
+        g_endSprings.push_back(spring);
+    }
+}
+
+extern "C" void structura_set_plastic_hinges(int count, const int* memberIds, const int* dofs, const double* kElastic, const double* yieldMoment,
+                                             const double* hardeningRatio, const double* axialYield, const double* exponent) {
+    g_plasticHinges.clear();
+    for (int i = 0; i < count && memberIds && dofs && kElastic && yieldMoment && hardeningRatio; ++i) {
+        PlasticHingeData hinge;
+        hinge.memberId = memberIds[i];
+        hinge.dof = dofs[i];
+        hinge.kElastic = kElastic[i];
+        hinge.yieldMoment = yieldMoment[i];
+        hinge.hardeningRatio = hardeningRatio[i];
+        hinge.axialYield = axialYield ? axialYield[i] : 0.0;
+        hinge.exponent = exponent ? exponent[i] : 2.0;
+        g_plasticHinges.push_back(hinge);
+    }
+}
+
+extern "C" void structura_set_constraints(int diaphragmCount, const int* diaMasters, const int* diaNormals, const int* diaSlaveCounts, const int* diaSlaves,
+                                          int linkCount, const int* linkMasters, const int* linkSlaves, const int* linkKinds, const int* linkDofs,
+                                          int inclinedCount, const int* incNodes, const double* incAxes9, const int* incMasks,
+                                          int genericCount, const int* genTermCounts, const int* genNodes, const int* genDofs, const double* genCoefs,
+                                          const int* genReport) {
+    g_diaphragms.clear();
+    g_rigidLinks.clear();
+    g_inclinedSupports.clear();
+    g_constraints.clear();
+    int cursor = 0;
+    for (int i = 0; i < diaphragmCount && diaMasters && diaSlaveCounts && diaSlaves; ++i) {
+        DiaphragmData d;
+        d.masterNodeId = diaMasters[i];
+        d.normalAxis = diaNormals ? diaNormals[i] : 2;
+        for (int k = 0; k < diaSlaveCounts[i]; ++k) {
+            d.slaveNodeIds.push_back(diaSlaves[cursor + k]);
+        }
+        cursor += diaSlaveCounts[i];
+        g_diaphragms.push_back(std::move(d));
+    }
+    for (int i = 0; i < linkCount && linkMasters && linkSlaves && linkKinds; ++i) {
+        RigidLinkData l;
+        l.masterNodeId = linkMasters[i];
+        l.slaveNodeId = linkSlaves[i];
+        l.kind = linkKinds[i];
+        l.dof = linkDofs ? linkDofs[i] : 0;
+        g_rigidLinks.push_back(l);
+    }
+    for (int i = 0; i < inclinedCount && incNodes && incAxes9 && incMasks; ++i) {
+        InclinedSupportData s;
+        s.nodeId = incNodes[i];
+        for (int k = 0; k < 9; ++k) {
+            s.axes[static_cast<size_t>(k)] = incAxes9[i * 9 + k];
+        }
+        s.mask = incMasks[i];
+        g_inclinedSupports.push_back(s);
+    }
+    cursor = 0;
+    for (int i = 0; i < genericCount && genTermCounts && genNodes && genDofs && genCoefs; ++i) {
+        LinearConstraintData c;
+        for (int k = 0; k < genTermCounts[i]; ++k) {
+            c.nodeIds.push_back(genNodes[cursor + k]);
+            c.dofs.push_back(genDofs[cursor + k]);
+            c.coefs.push_back(genCoefs[cursor + k]);
+        }
+        cursor += genTermCounts[i];
+        c.reportReaction = genReport && genReport[i] != 0;
+        g_constraints.push_back(std::move(c));
+    }
+}
+
+extern "C" void structura_set_links(int count, const int* ids, const int* nodeI, const int* nodeJ, const double* axes9,
+                                    const int* lawKinds6, const double* lawK6, const double* lawP1_6, const double* lawP2_6, const int* tableCounts6,
+                                    const double* tableDef, const double* tableForce) {
+    g_links.clear();
+    int cursor = 0;
+    for (int i = 0; i < count && ids && nodeI && nodeJ && lawKinds6 && lawK6; ++i) {
+        LinkData link;
+        link.id = ids[i];
+        link.nodeI = nodeI[i];
+        link.nodeJ = nodeJ[i];
+        if (axes9) {
+            for (int k = 0; k < 9; ++k) {
+                link.axes[static_cast<size_t>(k)] = axes9[i * 9 + k];
+            }
+        }
+        for (int d = 0; d < 6; ++d) {
+            LinkLawData& law = link.laws[static_cast<size_t>(d)];
+            law.kind = lawKinds6[i * 6 + d];
+            law.k = lawK6[i * 6 + d];
+            law.p1 = lawP1_6 ? lawP1_6[i * 6 + d] : 0.0;
+            law.p2 = lawP2_6 ? lawP2_6[i * 6 + d] : 0.0;
+            const int points = tableCounts6 ? tableCounts6[i * 6 + d] : 0;
+            for (int p = 0; p < points && tableDef && tableForce; ++p) {
+                law.table.emplace_back(tableDef[cursor + p], tableForce[cursor + p]);
+            }
+            cursor += points;
+        }
+        g_links.push_back(std::move(link));
+    }
+}
+
+extern "C" void structura_set_nonlinear_options(int force, int steps, int maxIterations, double tolerance, int criteria, int maxCutbacks, int controlMode,
+                                                int controlNode, int controlDof, double controlTarget, double loadFactorMax) {
+    g_nonlinear.force = force != 0;
+    g_nonlinear.steps = std::max(1, steps);
+    g_nonlinear.maxIterations = maxIterations > 0 ? maxIterations : 40;
+    g_nonlinear.tolerance = tolerance > 0.0 ? tolerance : 1e-6;
+    g_nonlinear.criteria = criteria > 0 ? criteria : 5;
+    g_nonlinear.maxCutbacks = std::max(0, maxCutbacks);
+    g_nonlinear.controlMode = controlMode;
+    g_nonlinear.controlNodeId = controlNode;
+    g_nonlinear.controlDof = controlDof;
+    g_nonlinear.controlTarget = controlTarget;
+    g_nonlinear.loadFactorMax = loadFactorMax > 0.0 ? loadFactorMax : 1.0;
+}
+
+extern "C" void structura_set_solver_options(int linearSolver, int eigenSolver, int eigenDenseLimit, double iterativeTolerance, int iterativeMaxIterations) {
+    g_linearSolver = linearSolver == 1 ? 1 : 0;
+    g_eigenSolver = eigenSolver >= 1 && eigenSolver <= 2 ? eigenSolver : 0;
+    g_eigenDenseLimit = eigenDenseLimit > 0 ? eigenDenseLimit : 400;
+    g_iterativeTolerance = iterativeTolerance > 0.0 ? iterativeTolerance : 1e-10;
+    g_iterativeMaxIterations = iterativeMaxIterations > 0 ? iterativeMaxIterations : 5000;
+}
+
+extern "C" void structura_get_nonlinear_summary(double* out8) {
+    if (!out8) {
+        return;
+    }
+    const NonlinearSummary& s = g_lastOutput.nonlinear;
+    out8[0] = s.used ? 1.0 : 0.0;
+    out8[1] = s.converged ? 1.0 : 0.0;
+    out8[2] = s.loadFactor;
+    out8[3] = s.steps;
+    out8[4] = s.iterations;
+    out8[5] = static_cast<double>(s.curve.size());
+    out8[6] = static_cast<double>(s.hinges.size());
+    out8[7] = static_cast<double>(s.links.size());
+}
+
+extern "C" int structura_get_nonlinear_curve(int maxCount, double* out2) {
+    const int count = std::min(static_cast<int>(g_lastOutput.nonlinear.curve.size()), std::max(0, maxCount));
+    for (int i = 0; out2 && i < count; ++i) {
+        out2[i * 2] = g_lastOutput.nonlinear.curve[static_cast<size_t>(i)][0];
+        out2[i * 2 + 1] = g_lastOutput.nonlinear.curve[static_cast<size_t>(i)][1];
+    }
+    return count;
+}
+
+extern "C" int structura_get_hinge_results(int maxCount, int* memberDof2, double* out3) {
+    const int count = std::min(static_cast<int>(g_lastOutput.nonlinear.hinges.size()), std::max(0, maxCount));
+    for (int i = 0; memberDof2 && out3 && i < count; ++i) {
+        const HingeResult& h = g_lastOutput.nonlinear.hinges[static_cast<size_t>(i)];
+        memberDof2[i * 2] = h.memberId;
+        memberDof2[i * 2 + 1] = h.dof;
+        out3[i * 3] = h.plasticRotation;
+        out3[i * 3 + 1] = h.moment;
+        out3[i * 3 + 2] = h.yielded ? 1.0 : 0.0;
+    }
+    return count;
+}
+
+extern "C" int structura_get_link_results(int maxCount, int* ids, double* deformation6, double* force6) {
+    const int count = std::min(static_cast<int>(g_lastOutput.nonlinear.links.size()), std::max(0, maxCount));
+    for (int i = 0; ids && deformation6 && force6 && i < count; ++i) {
+        const LinkResult& l = g_lastOutput.nonlinear.links[static_cast<size_t>(i)];
+        ids[i] = l.id;
+        for (int k = 0; k < 6; ++k) {
+            deformation6[i * 6 + k] = l.deformation[static_cast<size_t>(k)];
+            force6[i * 6 + k] = l.force[static_cast<size_t>(k)];
+        }
+    }
+    return count;
+}
+
+extern "C" int structura_get_constraint_forces(int maxCount, double* forces) {
+    const int count = std::min(static_cast<int>(g_lastOutput.constraintForces.size()), std::max(0, maxCount));
+    for (int i = 0; forces && i < count; ++i) {
+        forces[i] = g_lastOutput.constraintForces[static_cast<size_t>(i)];
+    }
+    return count;
 }
 
 extern "C" void structura_set_buckling(int modes) {
@@ -392,6 +645,20 @@ extern "C" int structura_solve_v4(
     SolverInput input;
     input.secondOrder = g_options.secondOrder;
     input.tensionOnlyMembers = g_tensionOnly;
+    input.memberActions = g_memberActions;
+    input.endSprings = g_endSprings;
+    input.plasticHinges = g_plasticHinges;
+    input.diaphragms = g_diaphragms;
+    input.rigidLinks = g_rigidLinks;
+    input.inclinedSupports = g_inclinedSupports;
+    input.constraints = g_constraints;
+    input.links = g_links;
+    input.nonlinear = g_nonlinear;
+    input.linearSolver = g_linearSolver;
+    input.eigenSolver = g_eigenSolver;
+    input.eigenDenseLimit = g_eigenDenseLimit;
+    input.iterativeTolerance = g_iterativeTolerance;
+    input.iterativeMaxIterations = g_iterativeMaxIterations;
     input.bucklingModes = g_bucklingModes;
     input.modalModes = g_modalModes;
     input.extraNodalMasses = g_modalMasses;
@@ -440,6 +707,12 @@ extern "C" int structura_solve_v4(
         for (const auto& entry : g_warpingSections) {
             if (entry.sectionId == section.id) {
                 section.Cw = entry.cw;
+            }
+        }
+        for (const auto& entry : g_shearCenters) {
+            if (entry.sectionId == section.id) {
+                section.scY = entry.y;
+                section.scZ = entry.z;
             }
         }
         input.sections.push_back(section);

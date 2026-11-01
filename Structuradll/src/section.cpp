@@ -60,3 +60,16 @@ double Section::getCw() const {
 void Section::setCw(double Cw) {
     this->Cw = Cw;
 }
+
+double Section::getShearCenterY() const {
+    return scY;
+}
+
+double Section::getShearCenterZ() const {
+    return scZ;
+}
+
+void Section::setShearCenter(double y, double z) {
+    scY = y;
+    scZ = z;
+}

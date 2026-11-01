@@ -167,6 +167,93 @@ QString ResultsPersistence::fingerprint(const std::vector<const SolverBridge::Mo
             put(bytes, l.my);
             put(bytes, l.mz);
         }
+        bytes += "|X";
+        for (const auto &spring : model->endSprings) {
+            put(bytes, spring.memberId);
+            for (const double k : spring.k) {
+                put(bytes, k);
+            }
+        }
+        for (const auto &h : model->plasticHinges) {
+            put(bytes, h.memberId);
+            put(bytes, h.dof);
+            put(bytes, h.kElastic);
+            put(bytes, h.yieldMoment);
+            put(bytes, h.hardeningRatio);
+            put(bytes, h.axialYield);
+            put(bytes, h.exponent);
+        }
+        for (const auto &d : model->diaphragms) {
+            put(bytes, d.masterNodeId);
+            put(bytes, d.normalAxis);
+            for (const int slave : d.slaveNodeIds) {
+                put(bytes, slave);
+            }
+        }
+        for (const auto &l : model->rigidLinks) {
+            put(bytes, l.masterNodeId);
+            put(bytes, l.slaveNodeId);
+            put(bytes, l.kind);
+            put(bytes, l.dof);
+        }
+        for (const auto &s : model->inclinedSupports) {
+            put(bytes, s.nodeId);
+            put(bytes, s.mask);
+            for (const double a : s.axes) {
+                put(bytes, a);
+            }
+        }
+        for (const auto &c : model->constraints) {
+            for (std::size_t i = 0; i < c.nodeIds.size(); ++i) {
+                put(bytes, c.nodeIds[i]);
+                put(bytes, c.dofs[i]);
+                put(bytes, c.coefs[i]);
+            }
+        }
+        for (const auto &link : model->links) {
+            put(bytes, link.id);
+            put(bytes, link.nodeI);
+            put(bytes, link.nodeJ);
+            for (const double a : link.axes) {
+                put(bytes, a);
+            }
+            for (const auto &law : link.laws) {
+                put(bytes, law.kind);
+                put(bytes, law.k);
+                put(bytes, law.p1);
+                put(bytes, law.p2);
+                for (const auto &point : law.table) {
+                    put(bytes, point.first);
+                    put(bytes, point.second);
+                }
+            }
+        }
+        {
+            const auto &o = model->nonlinear;
+            put(bytes, o.force ? 1 : 0);
+            put(bytes, o.steps);
+            put(bytes, o.maxIterations);
+            put(bytes, o.tolerance);
+            put(bytes, o.criteria);
+            put(bytes, o.controlMode);
+            put(bytes, o.controlNodeId);
+            put(bytes, o.controlDof);
+            put(bytes, o.controlTarget);
+            put(bytes, o.loadFactorMax);
+        }
+        for (const auto &l : model->memberActions) {
+            put(bytes, l.memberId);
+            put(bytes, l.kind);
+            put(bytes, static_cast<int>(l.coordSystem));
+            put(bytes, l.a);
+            put(bytes, l.b);
+            for (const double v : l.v1) {
+                put(bytes, v);
+            }
+            for (const double v : l.v2) {
+                put(bytes, v);
+            }
+        }
     }
     return QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha1).toHex());
 }

@@ -140,6 +140,10 @@ set(APP_SOURCES
     src/design/Sectorial.cpp
     src/design/BeamExtras.h
     src/design/BeamExtras.cpp
+    src/design/StiffenerDesign.h
+    src/design/StiffenerDesign.cpp
+    src/design/LatticedColumn.h
+    src/design/LatticedColumn.cpp
     src/design/CompositeColumn.h
     src/design/CompositeColumn.cpp
     src/design/TaperedMember.h
@@ -155,6 +159,8 @@ set(APP_SOURCES
     src/design/PinConnection.cpp
     src/design/BasePlate.h
     src/design/BasePlate.cpp
+    src/design/SupportWeld.h
+    src/design/SupportWeld.cpp
     src/design/ColdFormedConnections.h
     src/design/ColdFormedConnections.cpp
     src/design/EndPlateConnection.h
@@ -181,6 +187,8 @@ set(APP_SOURCES
     src/design/Nbr8800.cpp
     src/design/Nbr14762.h
     src/design/Nbr14762.cpp
+    src/design/Nbr14323.h
+    src/design/Nbr14323.cpp
     src/design/FiniteStrip.h
     src/design/FiniteStrip.cpp
     src/design/BarDesign.h
@@ -299,6 +307,23 @@ set(UI_SOURCES
     src/ui/TrussDialog.cpp
     src/app/services/ConnectionSolids.h
     src/app/services/ConnectionSolids.cpp
+    src/app/services/FabricationModel.h
+    src/app/services/FabricationModel.cpp
+    src/app/services/IfcExporter.h
+    src/app/services/IfcExporter.cpp
+    src/app/services/CadImport.h
+    src/app/services/CadImport.cpp
+    src/app/services/CutListService.h
+    src/app/services/CutListService.cpp
+    src/app/services/MemberFabrication.h
+    src/app/services/MemberFabrication.cpp
+    src/app/services/DstvExporter.h
+    src/app/services/DstvExporter.cpp
+    src/app/services/FabricationDrawing.cpp
+    src/drawing/DrawingSymbols.h
+    src/drawing/DrawingSymbols.cpp
+    src/drawing/SheetGroups.h
+    src/drawing/SheetGroups.cpp
     src/app/services/ConnectionCatalog.h
     src/app/services/ConnectionCatalog.cpp
     src/app/services/ConnectionCatalogInternal.h
@@ -427,6 +452,41 @@ set(UI_SOURCES
     src/ui/DistributedLoadDialog.cpp
     src/ui/MemberMomentDialog.h
     src/ui/MemberMomentDialog.cpp
+    src/ui/MemberActionDialog.h
+    src/ui/MemberActionDialog.cpp
+    src/ui/MainWindowMemberActions.cpp
+    src/ui/MainWindowConstraints.cpp
+    src/ui/EffectiveLengthDialog.h
+    src/ui/EffectiveLengthDialog.cpp
+    src/app/services/EffectiveLengthService.h
+    src/app/services/EffectiveLengthService.cpp
+    src/app/services/LoadHypothesisService.h
+    src/app/services/LoadHypothesisService.cpp
+    src/app/services/ResultsEnvelopeService.h
+    src/app/services/ResultsEnvelopeService.cpp
+    src/app/services/ConstructionStageService.h
+    src/app/services/ConstructionStageService.cpp
+    src/app/services/ResultsBinaryStore.h
+    src/app/services/ResultsBinaryStore.cpp
+    src/ui/MainWindowWind.cpp
+    src/ui/WindStaticDialog.h
+    src/ui/WindStaticDialog.cpp
+    src/ui/WindShedDialog.h
+    src/ui/WindShedDialog.cpp
+    src/ui/TopographicFactorDialog.h
+    src/ui/TopographicFactorDialog.cpp
+    src/app/services/WindStaticService.h
+    src/app/services/WindStaticService.cpp
+    src/app/services/WindShedService.h
+    src/app/services/WindShedService.cpp
+    src/ui/ConnectivityDialog.h
+    src/ui/ConnectivityDialog.cpp
+    src/ui/MemberEndsDialog.h
+    src/ui/MemberEndsDialog.cpp
+    src/ui/NonlinearOptionsDialog.h
+    src/ui/NonlinearOptionsDialog.cpp
+    src/ui/CapacityCurveDialog.h
+    src/ui/CapacityCurveDialog.cpp
     src/ui/LoadCasesDialog.h
     src/ui/LoadCasesDialog.cpp
     src/ui/CombinationGeneratorDialog.h

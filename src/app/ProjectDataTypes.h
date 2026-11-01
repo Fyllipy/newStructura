@@ -25,6 +25,7 @@ struct MaterialInfo {
     QString library;         // entrada da biblioteca de materiais (aco/concreto); vazio = personalizado
     double fy {0.0};         // MPa (aco) ou fck (concreto); 0 = nao informado
     double fu {0.0};         // MPa (aco)
+    double thermalExpansion {1.2e-5}; // 1/degC: cargas de temperatura nas barras (aco 1,2e-5; concreto 1,0e-5)
 };
 
 struct SectionInfo {
@@ -74,6 +75,131 @@ struct MemberMoment {
     double my {0.0};
     double mz {0.0};
     QString loadCase;
+};
+
+/// Carga geral de barra com posicao. Posicoes `a` e `b` em metros, medidas sobre o eixo a partir do no I (comprimento total).
+namespace MemberActionKind {
+constexpr int kTrapezoid = 0;     ///< carga trapezoidal/parcial: v1 = (qx,qy,qz) em `a`, v2 em `b` (forca por comprimento)
+constexpr int kPointForce = 1;    ///< forca concentrada em `a`: v1 = (Fx,Fy,Fz)
+constexpr int kPointMoment = 2;   ///< momento concentrado em `a`: v1 = (Mx,My,Mz)
+constexpr int kTemperature = 3;   ///< temperatura em toda a barra: v1 = (dT uniforme [degC], gradiente em y [degC/m], gradiente em z [degC/m]) nos eixos locais
+constexpr int kShrinkage = 4;     ///< retracao (deformacao livre uniforme, tipicamente negativa): v1[0] = eps_cs
+} // namespace MemberActionKind
+
+struct MemberAction {
+    int memberId {0};
+    QString loadCase;
+    int kind {MemberActionKind::kTrapezoid};
+    QString system;                       ///< "LOCAL" ou "GLOBAL" (temperatura e retracao sao sempre locais)
+    double a {0.0};
+    double b {0.0};
+    std::array<double, 3> v1 {{0.0, 0.0, 0.0}};
+    std::array<double, 3> v2 {{0.0, 0.0, 0.0}};
+
+    [[nodiscard]] bool isZero() const
+    {
+        auto zero = [](const std::array<double, 3> &v) { return std::abs(v[0]) < 1e-12 && std::abs(v[1]) < 1e-12 && std::abs(v[2]) < 1e-12; };
+        return zero(v1) && (kind != MemberActionKind::kTrapezoid || zero(v2));
+    }
+};
+
+/// Diafragma rigido: os nos escravos acompanham o mestre como corpo rigido no plano normal ao eixo global `normalAxis` (0 = X, 1 = Y, 2 = Z).
+struct RigidDiaphragm {
+    QString name;
+    int masterNode {0};
+    QVector<int> slaveNodes;
+    int normalAxis {2};
+    bool operator==(const RigidDiaphragm &o) const { return name == o.name && masterNode == o.masterNode && slaveNodes == o.slaveNodes && normalAxis == o.normalAxis; }
+};
+
+/// Ligacao rigida entre dois nos: kind 0 = corpo rigido (6 graus), 1 = tres translacoes iguais, 2 = tres rotacoes iguais, 3 = um grau `dof` (0..5).
+struct RigidLink {
+    int masterNode {0};
+    int slaveNode {0};
+    int kind {0};
+    int dof {0};
+};
+
+/// Apoio inclinado: restringe deslocamentos (bits 0..2 da mascara) e rotacoes (bits 3..5) segundo as direcoes e1,e2,e3 (linhas de `axes`, globais).
+struct InclinedSupport {
+    int nodeId {0};
+    std::array<double, 9> axes {{1, 0, 0, 0, 1, 0, 0, 0, 1}};
+    int mask {0};
+};
+
+/// Vinculo linear geral entre graus de liberdade: soma(coef x u) = 0.
+struct LinearConstraint {
+    QVector<int> nodes;
+    QVector<int> dofs;
+    QVector<double> coefs;
+    bool reportReaction {false};
+};
+
+/// Rotula plastica bilinear em uma rotacao de extremidade (dof 3..5 no no I, 9..11 no no J, eixos locais).
+struct PlasticHingeSpec {
+    int dof {4};
+    double kElastic {0.0};        ///< kN.m/rad
+    double yieldMoment {0.0};     ///< kN.m
+    double hardeningRatio {0.01}; ///< rigidez pos-escoamento / elastica
+    double axialYield {0.0};      ///< kN: 0 = sem interacao N-M; senao My,ef = My (1 - |N/Ny|^expoente)
+    double exponent {2.0};
+};
+
+/// Ligacoes semirrigidas (molas de extremidade) e rotulas plasticas de uma barra.
+struct MemberConnectionSpec {
+    int memberId {0};
+    /// Rigidez do vinculo em cada grau de liberdade local (ux uy uz rx ry rz em I e depois em J): < 0 = rigido (sem mola), 0 = articulado,
+    /// > 0 = semirrigido (kN/m ou kN.m/rad).
+    std::array<double, 12> springK {{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}};
+    QVector<PlasticHingeSpec> hinges;
+
+    [[nodiscard]] bool isDefault() const
+    {
+        if (!hinges.isEmpty()) {
+            return false;
+        }
+        for (const double k : springK) {
+            if (k >= 0.0) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
+
+/// Lei de um grau de liberdade de uma ligacao entre nos (0 linear, 1 so tracao, 2 so compressao, 3 folga de tracao, 4 folga de compressao,
+/// 5 elastoplastica, 6 multilinear, 7 rigida). Forca em kN (ou kN.m), deformacao em m (ou rad); k em kN/m (kN.m/rad).
+struct LinkLaw {
+    int kind {0};
+    double k {0.0};
+    double p1 {0.0};   ///< folga (kinds 3 e 4) ou forca de escoamento (kind 5)
+    double p2 {0.0};   ///< razao de enrijecimento (kind 5)
+    QVector<QPair<double, double>> table;   ///< pontos (deformacao, forca) da lei multilinear
+};
+
+/// Ligacao entre dois nos (mola/apoio elastico/elemento de interface) com uma lei por grau de liberdade relativo.
+struct LinkElement {
+    int id {0};
+    QString name;
+    int nodeI {0};
+    int nodeJ {0};
+    std::array<double, 9> axes {{0, 0, 0, 0, 0, 0, 0, 0, 0}};   ///< eixos locais x,y,z (globais); nulos = direcao I->J
+    std::array<LinkLaw, 6> laws;
+};
+
+/// Controle da analise nao linear incremental (rotulas plasticas, ligacoes nao lineares).
+struct NonlinearSettings {
+    bool force {false};
+    int steps {10};
+    int maxIterations {40};
+    double tolerance {1e-6};
+    int criteria {5};          ///< bit 0 = forcas, bit 1 = deslocamentos, bit 2 = energia
+    int maxCutbacks {8};
+    int controlMode {0};       ///< 0 = controle de carga, 1 = controle de deslocamento
+    int controlNode {0};
+    int controlDof {0};
+    double controlTarget {0.0};
+    double loadFactorMax {1.0};
 };
 
 /// Ponto de referencia da secao que fica sobre o eixo (no) da barra. Numeracao no
@@ -374,6 +500,22 @@ struct DesignMemberParams {
     double coverWeldLeg {0.0};       ///< perna do filete da lamela (mm)
     bool coverEndWeld {true};        ///< solda de filete na extremidade da lamela (5.4.4.2)
     bool plasticAnalysis {false};    ///< viga continua com analise rigido-plastica: limite do comprimento destravado entre rotulas (4.11.5)
+    // Enrijecedores transversais de alma (NBR 8800:2024, 5.7.9 e 5.4.3.1.3): aplicados as reacoes de extremidade e a uma forca concentrada opcional
+    int stiffSides {0};              ///< 0 = nao verificar; 1 = chapa de um lado da alma; 2 = par
+    double stiffWidth {0.0};         ///< largura de cada chapa (mm)
+    double stiffThickness {0.0};     ///< espessura (mm)
+    double stiffCut {25.0};          ///< recorte de canto (mm)
+    bool stiffFitted {true};         ///< extremidade ajustada (usinada) a mesa carregada; falso: soldada
+    double stiffWeldLeg {0.0};       ///< perna do filete enrijecedor-alma (mm); 0 = nao verifica
+    double stiffBearing {100.0};     ///< n: comprimento de atuacao da forca na mesa (mm)
+    double stiffForce {0.0};         ///< forca concentrada interna adicional (N); 0 = so as reacoes de extremidade
+    // Pilar de quatro cantoneiras (NBR 8800:2024, 5.3.6.4): trelica simples/dupla ou presilhas entre os banzos
+    int latType {0};                 ///< 0 = trelica simples; 1 = trelica dupla em X; 2 = presilhas
+    double latPanel {0.0};           ///< a: espacamento dos pontos de ligacao ao longo da barra (mm); 0 = automatico
+    double latDiagB {50.0};          ///< aba da cantoneira das diagonais (mm)
+    double latDiagT {5.0};           ///< espessura da cantoneira das diagonais (mm)
+    double latBattenDepth {150.0};   ///< altura da presilha (mm)
+    double latBattenThickness {8.0}; ///< espessura da presilha (mm)
     // Pilar misto de aco e concreto (NBR 8800:2024, Anexo M): o perfil de aco e o da secao da barra (I/H, tubular retangular ou circular)
     int mixType {0};                 ///< 0 = barra de aco; 1 = I/H totalmente revestido; 2 = I/H parcialmente revestido; 3 = tubular preenchido
     int mixModel {1};                ///< modelo de calculo: 1 (M.5.2), 2 (M.5.3), 3 (M.5.4, so tubulares)
@@ -386,6 +528,13 @@ struct DesignMemberParams {
     int mixBarsV {0};                ///< barras intermediarias em cada face lateral
     double mixCover {0.0};           ///< distancia do centro das barras a face do concreto (mm)
     double mixAlphaE {1.0};          ///< alfa_E do agregado (NBR 6118)
+    // Incendio (NBR 14323): protecao termica e exposicao da barra
+    int fireProtection {0};          ///< 0 = sem revestimento; 1 = revestimento tipo contorno; 2 = tipo caixa (8.5.1.2)
+    double fireThickness {20.0};     ///< espessura do revestimento tm (mm)
+    double fireConductivity {0.2};   ///< condutividade termica do revestimento (W/m C)
+    double fireDensity {300.0};      ///< massa especifica do revestimento (kg/m3)
+    double fireSpecificHeat {1200.0};///< calor especifico do revestimento (J/kg C)
+    int fireExposure {0};            ///< 0 = todos os lados expostos; 1 = tres lados (laje no quarto lado)
     bool operator==(const DesignMemberParams &o) const
     {
         return memberId == o.memberId && steel == o.steel && kx == o.kx && ky == o.ky && kz == o.kz && lx == o.lx && ly == o.ly && lz == o.lz
@@ -403,7 +552,12 @@ struct DesignMemberParams {
             && coverB == o.coverB && coverT == o.coverT && coverStart == o.coverStart && coverEnd == o.coverEnd && coverFlanges == o.coverFlanges
             && coverWeldLeg == o.coverWeldLeg && coverEndWeld == o.coverEndWeld && plasticAnalysis == o.plasticAnalysis
             && mixType == o.mixType && mixModel == o.mixModel && mixHc == o.mixHc && mixBc == o.mixBc && mixFck == o.mixFck && mixFsk == o.mixFsk
-            && mixBarArea == o.mixBarArea && mixBarsH == o.mixBarsH && mixBarsV == o.mixBarsV && mixCover == o.mixCover && mixAlphaE == o.mixAlphaE;
+            && mixBarArea == o.mixBarArea && mixBarsH == o.mixBarsH && mixBarsV == o.mixBarsV && mixCover == o.mixCover && mixAlphaE == o.mixAlphaE
+            && stiffSides == o.stiffSides && stiffWidth == o.stiffWidth && stiffThickness == o.stiffThickness && stiffCut == o.stiffCut && stiffFitted == o.stiffFitted
+            && stiffWeldLeg == o.stiffWeldLeg && stiffBearing == o.stiffBearing && stiffForce == o.stiffForce
+            && latType == o.latType && latPanel == o.latPanel && latDiagB == o.latDiagB && latDiagT == o.latDiagT && latBattenDepth == o.latBattenDepth && latBattenThickness == o.latBattenThickness
+            && fireProtection == o.fireProtection && fireThickness == o.fireThickness && fireConductivity == o.fireConductivity && fireDensity == o.fireDensity
+            && fireSpecificHeat == o.fireSpecificHeat && fireExposure == o.fireExposure;
     }
 };
 
@@ -416,6 +570,9 @@ struct DesignSettings {
     bool secondOrder {false};           ///< Analise de segunda ordem (P-delta global e local) nas combinacoes
     bool stabilityFunctions {false};    ///< 2a ordem pelas funcoes de estabilidade (Livesley): P-delta e P-delta local exatos em cada barra, sem subdividi-las
     bool shearDeformation {false};      ///< Deformacao por cortante (Timoshenko) nas barras, com as areas de cisalhamento das secoes
+    bool vonMises {false};              ///< Verificacao elastica complementar das tensoes combinadas (von Mises)
+    bool fireCheck {false};             ///< Verificacao em situacao de incendio (NBR 14323:2013, metodo simplificado); entra na escolha dos perfis
+    double fireTrrf {60.0};             ///< Tempo requerido de resistencia ao fogo (min), NBR 14432
     bool warpingTorsion {false};        ///< Torcao com empenamento (Vlasov, 7o grau de liberdade) nas barras de secao I/H; senao so Saint-Venant
     double rigidZoneFactor {0.0};       ///< Zonas rigidas nas extremidades das barras: fracao (0 a 1) da penetracao da barra no perfil que a recebe; 0 = desligado
     int loadSteps {0};                  ///< 2a ordem: 0 = iteracao direta com incremento automatico de carga se divergir; n > 1 = sempre em n passos
@@ -451,7 +608,7 @@ struct DesignSettings {
     [[nodiscard]] bool isDefault() const
     {
         return members.isEmpty() && defaultSteel == QLatin1String("MR250") && rectTubeStandard == QLatin1String("AUTO")
-            && amplifyB1 && slendernessGoverns && !secondOrder && !stabilityFunctions && !shearDeformation && !warpingTorsion && loadSteps == 0 && rigidZoneFactor == 0.0 && stiffnessReduction == 0.8 && autoB2 && rs == 0.85 && !singleStorey && !notionalLoads && !geometricImperfection && imperfectionRatio == 1.0 / 333.0 && notionalFactor == 0.003 && !groupByFamily && targetEta == 1.0
+            && amplifyB1 && slendernessGoverns && !secondOrder && !stabilityFunctions && !shearDeformation && !vonMises && !fireCheck && fireTrrf == 60.0 && !warpingTorsion && loadSteps == 0 && rigidZoneFactor == 0.0 && stiffnessReduction == 0.8 && autoB2 && rs == 0.85 && !singleStorey && !notionalLoads && !geometricImperfection && imperfectionRatio == 1.0 / 333.0 && notionalFactor == 0.003 && !groupByFamily && targetEta == 1.0
             && combinations.isEmpty() && defaults == DesignMemberParams {};
     }
 };
@@ -608,8 +765,24 @@ struct SheetLayoutDef {
     QVector<Placement> views;
 };
 
+/// Ajuste manual de uma anotacao de prancha (cadeia de cotas, chamada, marca de corte...): deslocamento em mm do papel ou exclusao.
+struct SheetGroupEdit {
+    QString sheet;   ///< fileStem da prancha
+    QString key;     ///< chave estavel do grupo (Sheet::Group::key)
+    double dx {0.0}, dy {0.0};
+    bool deleted {false};
+};
+
 struct ProjectExtras {
     QVector<MemberMoment> memberMoments;
+    QVector<MemberAction> memberActions;   ///< cargas gerais de barra (trapezoidal/parcial, pontual, momento pontual, temperatura, retracao)
+    QVector<RigidDiaphragm> diaphragms;
+    QVector<RigidLink> rigidLinks;
+    QVector<InclinedSupport> inclinedSupports;
+    QVector<LinearConstraint> constraints;
+    QVector<MemberConnectionSpec> memberConnections;   ///< molas de extremidade e rotulas plasticas (so barras com algum dado)
+    QVector<LinkElement> links;
+    NonlinearSettings nonlinear;
     QVector<MemberPlacement> placements; ///< So barras com posicionamento nao padrao.
     QVector<LoadCase> loadCases;
     QVector<LoadCombination> combinations;
@@ -625,6 +798,7 @@ struct ProjectExtras {
     TitleBlockSettings titleBlock;
     QVector<SavedView3D> views3d;
     QVector<SheetLayoutDef> sheetLayouts;   ///< folhas compostas das pranchas
+    QVector<SheetGroupEdit> sheetEdits;     ///< anotacoes movidas ou excluidas pelo usuario nas pranchas
     QMap<int, QMap<QString, double>> compositeBeams;   ///< entradas da viga mista por barra (id externo)
     QMap<QString, double> deckSlab;                    ///< entradas da laje mista (steel deck)
     Structura::Shell::Model shell;                     ///< cascas e chapas (placas, tanques, vasos de pressao)

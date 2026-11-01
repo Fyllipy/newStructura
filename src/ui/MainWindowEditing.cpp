@@ -7,6 +7,7 @@
 #include "viz/SceneController.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QHash>
 #include <QMessageBox>
 #include <QSet>
@@ -65,7 +66,7 @@ void MainWindow::updateEditActionsEnabled()
     if (m_moveElementsAction) {
         m_moveElementsAction->setEnabled(hasSelection);
     }
-    for (QAction *action : {m_serialCopyAction, m_rotateElementsAction, m_mirrorElementsAction}) {
+    for (QAction *action : {m_serialCopyAction, m_arrayCopyAction, m_rotateElementsAction, m_mirrorElementsAction}) {
         if (action) {
             action->setEnabled(hasSelection);
         }
@@ -144,6 +145,44 @@ void MainWindow::onSerialCopy()
         });
     }
     showStatusMessage(tr("%1 copia(s) em serie criada(s).").arg(dialog.count()), 4000);
+}
+
+void MainWindow::onArrayCopy()
+{
+    if (editNodeIds().isEmpty()) {
+        QMessageBox::information(this, tr("Copia em matriz"), tr("Selecione nos e/ou barras antes de usar este comando."));
+        return;
+    }
+    Structura::UI::ArrayCopyDialog dialog(this);
+    while (true) {
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        const QString error = dialog.validationError();
+        if (error.isEmpty()) {
+            break;
+        }
+        QMessageBox::warning(this, tr("Copia em matriz"), error);
+    }
+    if (dialog.newPositions() > 2000
+        && QMessageBox::question(this, tr("Copia em matriz"), tr("A grade cria %1 copias. Continuar?").arg(dialog.newPositions())) != QMessageBox::Yes) {
+        return;
+    }
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    int created = 0;
+    for (int j = 0; j <= dialog.count2(); ++j) {
+        for (int i = 0; i <= dialog.count1(); ++i) {
+            if (i == 0 && j == 0) {
+                continue;   // posicao do original
+            }
+            const std::array<double, 3> d = dialog.offset(i, j);
+            if (applyTransform(true, [d](const std::array<double, 3> &p) { return std::array<double, 3> {p[0] + d[0], p[1] + d[1], p[2] + d[2]}; })) {
+                ++created;
+            }
+        }
+    }
+    QApplication::restoreOverrideCursor();
+    showStatusMessage(tr("Copia em matriz: %1 copia(s) criada(s) (grade %2 x %3).").arg(created).arg(dialog.count1() + 1).arg(dialog.count2() + 1), 5000);
 }
 
 void MainWindow::onRotateElements()
@@ -369,6 +408,16 @@ bool MainWindow::applyTransform(bool copy, const std::function<std::array<double
                 m_memberLoads.append(copied);
             }
         }
+        // parametros de dimensionamento proprios da barra (K, contencao lateral, protecao contra fogo...) acompanham a copia
+        const auto designMembers = m_extras.design.members;
+        for (const auto &params : designMembers) {
+            const auto it = externalBarMap.constFind(params.memberId);
+            if (it != externalBarMap.constEnd()) {
+                auto copied = params;
+                copied.memberId = it.value();
+                m_extras.design.members.append(copied);
+            }
+        }
         const auto placements = m_extras.placements;
         for (const auto &placement : placements) {
             const auto it = externalBarMap.constFind(placement.memberId);
@@ -376,6 +425,24 @@ bool MainWindow::applyTransform(bool copy, const std::function<std::array<double
                 auto copied = placement;
                 copied.memberId = it.value();
                 m_extras.placements.append(copied);
+            }
+        }
+        const auto connections = m_extras.memberConnections;
+        for (const auto &spec : connections) {
+            const auto it = externalBarMap.constFind(spec.memberId);
+            if (it != externalBarMap.constEnd()) {
+                auto copied = spec;
+                copied.memberId = it.value();
+                m_extras.memberConnections.append(copied);
+            }
+        }
+        const auto actions = m_extras.memberActions;
+        for (const auto &action : actions) {
+            const auto it = externalBarMap.constFind(action.memberId);
+            if (it != externalBarMap.constEnd()) {
+                auto copied = action;
+                copied.memberId = it.value();
+                m_extras.memberActions.append(copied);
             }
         }
         const auto moments = m_extras.memberMoments;

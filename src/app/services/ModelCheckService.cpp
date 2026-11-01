@@ -209,7 +209,7 @@ QVector<ModelCheckService::Issue> ModelCheckService::run(const Input &in)
     for (const auto &c : in.extras.loadCases) {
         caseNames.insert(c.name);
     }
-    const bool anyLoad = !in.nodalLoads.isEmpty() || !in.memberLoads.isEmpty() || !in.extras.memberMoments.isEmpty()
+    const bool anyLoad = !in.nodalLoads.isEmpty() || !in.memberLoads.isEmpty() || !in.extras.memberMoments.isEmpty() || !in.extras.memberActions.isEmpty()
                          || std::any_of(in.extras.loadCases.begin(), in.extras.loadCases.end(), [](const auto &c) { return c.selfWeight; });
     if (!anyLoad) {
         ctx.add(Severity::Warning, QStringLiteral("NO_LOADS"), QStringLiteral("Não há cargas no modelo (nem peso próprio)."));
@@ -228,6 +228,38 @@ QVector<ModelCheckService::Issue> ModelCheckService::run(const Input &in)
         }
         if (!l.loadCase.isEmpty() && !caseNames.contains(l.loadCase)) {
             ctx.add(Severity::Warning, QStringLiteral("LOAD_CASE_MISSING"), QStringLiteral("Carga na barra %1 usa o caso inexistente \"%2\".").arg(l.memberId).arg(l.loadCase), Kind::Bar, l.memberId);
+        }
+    }
+    {
+        // cargas de barra com posicao: barra e caso existentes, posicoes dentro do comprimento, material com alfa para a temperatura
+        QHash<int, Node> nodeLookup;
+        for (const Node &n : in.nodes) {
+            nodeLookup.insert(n.id, n);
+        }
+        QHash<int, double> barLength;
+        for (const Bar &b : in.bars) {
+            if (nodeLookup.contains(b.nodeI) && nodeLookup.contains(b.nodeJ)) {
+                const Node &p = nodeLookup[b.nodeI], &q = nodeLookup[b.nodeJ];
+                barLength.insert(b.id, std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z)));
+            }
+        }
+        namespace ActionKind = Structura::App::ProjectData::MemberActionKind;
+        for (const auto &l : in.extras.memberActions) {
+            if (!barIds.contains(l.memberId)) {
+                ctx.add(Severity::Warning, QStringLiteral("LOAD_BAR_MISSING"), QStringLiteral("Carga de barra com posição em barra inexistente (%1).").arg(l.memberId));
+                continue;
+            }
+            if (!l.loadCase.isEmpty() && !caseNames.contains(l.loadCase)) {
+                ctx.add(Severity::Warning, QStringLiteral("LOAD_CASE_MISSING"), QStringLiteral("Carga com posição na barra %1 usa o caso inexistente \"%2\".").arg(l.memberId).arg(l.loadCase), Kind::Bar, l.memberId);
+            }
+            const double length = barLength.value(l.memberId, 0.0);
+            if (l.kind <= ActionKind::kPointMoment && length > 0.0 && (l.a < -1e-9 || l.a > length + 1e-9 || l.b < -1e-9 || l.b > length + 1e-9)) {
+                ctx.add(Severity::Error, QStringLiteral("LOAD_POSITION"),
+                        QStringLiteral("Carga com posição na barra %1 fora do comprimento (%2 m).").arg(l.memberId).arg(length, 0, 'f', 3), Kind::Bar, l.memberId);
+            }
+            if (l.kind == ActionKind::kTrapezoid && std::abs(l.b - l.a) < 1e-9) {
+                ctx.add(Severity::Error, QStringLiteral("LOAD_SPAN"), QStringLiteral("Carga trapezoidal na barra %1 sem extensão (a = b).").arg(l.memberId), Kind::Bar, l.memberId);
+            }
         }
     }
     for (const auto &c : in.extras.combinations) {

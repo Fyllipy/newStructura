@@ -40,6 +40,7 @@ enum class SectionKind {
     DoubleAngleT,       ///< duas cantoneiras em T (abas verticais costas com costas)
     DoubleChannelBack,  ///< dois U em forma de I (almas voltadas uma para a outra)
     DoubleChannelBox,   ///< dois U face a face (caixa com afastamento)
+    LatticedAngles,     ///< quatro cantoneiras nos cantos de uma caixa, ligadas por trelica ou presilhas (5.3.6.4)
     // formados a frio (NBR 14762)
     ColdChannel,        ///< U simples
     ColdLippedChannel,  ///< U enrijecido

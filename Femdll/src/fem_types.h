@@ -20,7 +20,17 @@ struct Material {
     double nu {0.3};
     double density {0.0};   ///< massa especifica (modal)
     double alpha {1.2e-5};  ///< dilatacao termica
-    double G() const { return E / (2.0 * (1.0 + nu)); }
+    /// Material ortotropico (lajes nervuradas, chapas corrugadas, compositos): E1 = E ao longo do eixo 1 do material, E2 e G12 proprios, nu12 (Poisson de 1 sobre 2).
+    /// `bend1` e `bend2` multiplicam as rigidezes de flexao nas direcoes 1 e 2 (nervuras: a flexao pode diferir da membrana). O eixo 1 e `axis` (global),
+    /// projetado no plano de cada elemento; se for normal ao elemento, usa-se o eixo local e1 do elemento.
+    bool orthotropic {false};
+    double E2 {0.0};
+    double nu12 {0.3};
+    double G12 {0.0};
+    double bend1 {1.0};
+    double bend2 {1.0};
+    Vec3 axis {1.0, 0.0, 0.0};
+    double G() const { return orthotropic ? G12 : E / (2.0 * (1.0 + nu)); }
 };
 
 struct Node {
@@ -61,6 +71,7 @@ struct Tie {
     int slave {0};
     std::vector<int> masters;
     std::vector<double> weights;
+    int dofMask {63};   ///< graus de liberdade ligados (bits 0..5 = ux uy uz rx ry rz); 7 = so translacoes (ligacao articulada)
 };
 
 struct ShellPressure {

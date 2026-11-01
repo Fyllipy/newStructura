@@ -2,12 +2,16 @@
 
 #include "app/services/ConnectionCatalog.h"
 #include "app/services/ConnectionService.h"
+#include "app/services/FabricationModel.h"
+#include "drawing/DrawingSymbols.h"
 #include "drawing/HiddenLine.h"
+#include "drawing/SheetGroups.h"
 #include "design/BasePlate.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <map>
 
 namespace Structura::App::Services::internal {
 
@@ -17,7 +21,7 @@ using Structura::App::ProjectData::NodeConnection;
 namespace {
 
 struct L {
-    int outline {0}, hidden {0}, centre {0}, dim {0}, text {0}, bolt {0}, weld {0}, hatch {0}, plate {0}, frame {0};
+    int outline {0}, hidden {0}, centre {0}, dim {0}, text {0}, bolt {0}, weld {0}, hatch {0}, plate {0}, frame {0}, support {0};
 };
 
 L layers(Sheet &s)
@@ -33,6 +37,7 @@ L layers(Sheet &s)
     l.bolt = s.addLayer("PARAFUSOS", {150, 60, 0}, 0.25);
     l.weld = s.addLayer("SOLDA", {200, 0, 0}, 0.3);
     l.hatch = s.addLayer("HACHURA", {150, 150, 150}, 0.09);
+    l.support = s.addLayer("APOIO", {90, 100, 115}, 0.2);
     return l;
 }
 
@@ -271,7 +276,14 @@ double drawGussetDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, doubl
     const double t = std::max(1.6, weldLeg * k);
     weldTriangle(s, l, P(-W / 2.0, 0.0), 1.0, -1.0, t);
     weldTriangle(s, l, P(W / 2.0, 0.0), -1.0, -1.0, t);
-    s.text(P(-W / 2.0 - 6.0, -weldLeg - 4.0), "FILETE " + fmtNum(weldLeg, 0) + " mm", 2.0, l.text, TextAlign::Right);
+    {
+        WeldSymbol symbol;
+        symbol.arrowTip = P(-W / 2.0, 0.0);
+        symbol.tail = {symbol.arrowTip.x - 24.0, symbol.arrowTip.y - 12.0};
+        symbol.size = weldLeg;
+        symbol.bothSides = true;
+        drawWeldSymbol(s, symbol, l.weld, l.text);
+    }
     // cotas
     const double off = 9.0;
     for (int i = 0; i + 1 < rows; ++i) {
@@ -902,65 +914,953 @@ CatalogGeometry catalogGeometry(const std::vector<ConnectionSolids::Primitive> &
     return g;
 }
 
-double drawCatalogDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, double rx0, double ry0, double rx1, double ry1, bool notes, double fixedScale)
+/// Pedaco da barra de apoio (pilar ou viga principal) para o detalhe, quando a tipologia nao o modela: face do apoio em s = 0, dimensoes de `sup*` (ou padrao).
+void addSupportContext(const NodeConnection &c, std::vector<ConnectionSolids::Primitive> &prims)
 {
-    const L l = layers(s);
-    const NodeConnection &c = d.connection;
-    const auto prims = ConnectionSolids::build(c, true);
-    const CatalogGeometry geo = catalogGeometry(prims);
-    const Panels p = panelsFor(rx0, ry0, rx1, ry1);
-    const double target = ConnectionSolids::extent(prims);
-    const auto front = Structura::Drawing::computeHiddenLines(Structura::Drawing::cameraFromAngles(0.0, 0.0, {0.0, 0.0, 0.0}, 4.0 * target + 1000.0), geo.faces, geo.edges, true);
-    const auto top = Structura::Drawing::computeHiddenLines(Structura::Drawing::cameraFromAngles(0.0, 90.0, {0.0, 0.0, 0.0}, 4.0 * target + 1000.0), geo.faces, geo.edges, true);
-    if (!front.ok) {
+    for (const auto &p : prims) {
+        if (p.role == ConnectionSolids::Role::Concrete) {
+            return;
+        }
+    }
+    auto box = [](double s0, double t0, double u0, double ds, double dt, double du) {
+        ConnectionSolids::Primitive p;
+        p.kind = ConnectionSolids::Kind::Box;
+        p.role = ConnectionSolids::Role::Concrete;
+        p.a = {s0, t0, u0};
+        p.size = {ds, dt, du};
+        return p;
+    };
+    const double supD = val(c, "supD", 0.0) > 0.0 ? val(c, "supD") : 240.0;
+    const double supBf = val(c, "supBf", 0.0) > 0.0 ? val(c, "supBf") : 170.0;
+    const double supTf = val(c, "supTf", 0.0) > 0.0 ? val(c, "supTf") : 12.0;
+    const double supTw = val(c, "supTw", 0.0) > 0.0 ? val(c, "supTw") : 8.0;
+    const double beamD = std::max(val(c, "beamD", 0.0), val(c, "beamDepth", 0.0));
+    const double height = std::max(beamD + 220.0, 400.0);
+    const int support = static_cast<int>(val(c, "support", 2.0) + 0.5);
+    if (support == 1) {
+        // a viga chega na alma do pilar: alma no plano da face e mesas perpendiculares
+        prims.push_back(box(-supTw / 2.0, 0.0, 0.0, supTw, height, std::max(supD - 2.0 * supTf, 40.0)));
+        for (const double side : {-1.0, 1.0}) {
+            prims.push_back(box(-supBf / 2.0, 0.0, side * (supD - supTf) / 2.0, supBf, height, supTf));
+        }
+    } else if (support == 0) {
+        // viga principal: a alma da viga de apoio e o plano da face
+        prims.push_back(box(-supTw / 2.0, 0.0, 0.0, supTw, std::max(supD, beamD + 40.0), 300.0));
+        for (const double side : {-1.0, 1.0}) {
+            prims.push_back(box(-supBf / 2.0, side * (std::max(supD, beamD + 40.0) - supTf) / 2.0, 0.0, supBf, supTf, 300.0));
+        }
+    } else {
+        // viga na mesa do pilar: mesa no plano da face
+        for (const double s0 : {-supTf / 2.0, -supD + supTf / 2.0}) {
+            prims.push_back(box(s0, 0.0, 0.0, supTf, height, supBf));
+        }
+        prims.push_back(box(-supD / 2.0, 0.0, 0.0, std::max(supD - 2.0 * supTf, 20.0), height, supTw));
+    }
+}
+
+// ---- cortes: planos axiais (s, t ou u) atravessando os solidos da ligacao ---------------------------------------------------------------------
+
+/// Cotas encadeadas por valores-chave (mm do modelo) com o ponto correspondente no papel; chaves a menos de 3 mm de papel da anterior sao fundidas.
+/// `horizontal`: cadeia de cima para baixo (offset < 0 desloca para baixo); senao vertical (offset > 0 desloca para a esquerda).
+std::string fmtDim(double v)
+{
+    return fmtNum(v, std::abs(v - std::round(v)) < 0.05 ? 0 : 1);
+}
+
+void drawChain(Sheet &s, const L &l, const std::vector<std::pair<double, Point>> &kept, double offsetChain, double offsetTotal)
+{
+    for (std::size_t i = 0; i + 1 < kept.size() && kept.size() <= 14; ++i) {
+        dimLinear(s, l, kept[i].second, kept[i + 1].second, offsetChain, fmtDim(kept[i + 1].first - kept[i].first), 1.8);
+    }
+    if (kept.size() > 2) {
+        dimLinear(s, l, kept.front().second, kept.back().second, offsetTotal, fmtDim(kept.back().first - kept.front().first), 1.8);
+    }
+}
+
+/// Cotas encadeadas por valores-chave (mm do modelo) com o ponto correspondente no papel; chaves a menos de 3 mm de papel da anterior sao fundidas.
+/// `horizontal`: cadeia de cima para baixo (offset < 0 desloca para baixo); senao vertical (offset > 0 desloca para a esquerda).
+/// A cadeia e um grupo editavel (`groupKey`) e e afastada de 5 em 5 mm ate nao cobrir anotacoes ja posicionadas.
+void chainDims(Sheet &s, const L &l, std::vector<std::pair<double, Point>> keyed, bool horizontal, double offsetChain, double offsetTotal, const std::string &groupKey)
+{
+    std::sort(keyed.begin(), keyed.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+    std::vector<std::pair<double, Point>> kept;
+    for (const auto &k : keyed) {
+        if (!kept.empty() && std::abs(k.first - kept.back().first) < 0.05) {
+            continue;
+        }
+        if (!kept.empty()) {
+            const double gap = horizontal ? std::abs(k.second.x - kept.back().second.x) : std::abs(k.second.y - kept.back().second.y);
+            if (gap < 3.0) {
+                continue;
+            }
+        }
+        kept.push_back(k);
+    }
+    if (kept.size() < 2) {
+        return;
+    }
+    const double direction = offsetChain < 0.0 ? -1.0 : 1.0;
+    Sheet best;
+    double bestScore = 1e300;
+    for (int attempt = 0; attempt < 8 && bestScore > 0.0; ++attempt) {
+        Sheet tmp;
+        tmp.layers = s.layers;
+        const double shift = direction * 5.0 * attempt;
+        drawChain(tmp, l, kept, offsetChain + shift, offsetTotal + shift);
+        const Rect bounds = sheetBounds(tmp);
+        const double score = bounds.x0 <= bounds.x1 ? overlapWithOccupied(s, bounds) : 0.0;
+        if (score < bestScore) {
+            bestScore = score;
+            best = std::move(tmp);
+        }
+    }
+    commitGroup(s, best, groupKey);
+}
+
+/// Cota unica como grupo editavel, afastada ate nao cobrir outras anotacoes ja posicionadas.
+void placedDim(Sheet &s, const L &l, Point p1, Point p2, double offset, const std::string &text, const std::string &groupKey)
+{
+    Sheet best;
+    double bestScore = 1e300;
+    for (int attempt = 0; attempt < 13 && bestScore > 0.0; ++attempt) {
+        Sheet tmp;
+        tmp.layers = s.layers;
+        const double shift = ((attempt + 1) / 2) * 5.0 * (attempt % 2 == 1 ? 1.0 : -1.0);   // 0, +5, -5, +10, -10...
+        dimLinear(tmp, l, p1, p2, offset + shift, text, 1.9);
+        const double score = overlapWithOccupied(s, sheetBounds(tmp));
+        if (score < bestScore) {
+            bestScore = score;
+            best = std::move(tmp);
+        }
+    }
+    commitGroup(s, best, groupKey);
+}
+
+/// Chamada de marca como grupo editavel; tenta posicoes vizinhas do rotulo ate nao cobrir outras anotacoes.
+void placedCallout(Sheet &s, const L &l, Point tip, Point label, const std::string &mark, int layer, const std::string &groupKey)
+{
+    static const double offsets[][2] = {{0, 0}, {0, 7}, {7, 0}, {-7, 0}, {0, -7}, {7, 7}, {-7, 7}, {14, 0}, {0, 14}, {-14, 0}, {14, 7}, {-14, 7}};
+    Sheet best;
+    double bestScore = 1e300;
+    for (const auto &o : offsets) {
+        if (bestScore <= 0.0) {
+            break;
+        }
+        Sheet tmp;
+        tmp.layers = s.layers;
+        drawMarkCallout(tmp, tip, {label.x + o[0], label.y + o[1]}, mark, layer, l.text, 3.0);
+        const Rect bounds = sheetBounds(tmp);
+        const double score = overlapWithOccupied(s, bounds);
+        if (score < bestScore) {
+            bestScore = score;
+            best = std::move(tmp);
+        }
+    }
+    commitGroup(s, best, groupKey);
+}
+
+/// Simbolo de solda como grupo editavel; a cauda e deslocada ate nao cobrir outras anotacoes.
+void placedWeld(Sheet &s, const L &l, WeldSymbol symbol, const std::string &groupKey)
+{
+    static const double offsets[][2] = {{0, 0}, {0, 9}, {-9, 0}, {0, -9}, {-9, 9}, {-18, 0}, {-18, 9}, {0, 18}};
+    Sheet best;
+    double bestScore = 1e300;
+    const Point tail = symbol.tail;
+    for (const auto &o : offsets) {
+        if (bestScore <= 0.0) {
+            break;
+        }
+        Sheet tmp;
+        tmp.layers = s.layers;
+        symbol.tail = {tail.x + o[0], tail.y + o[1]};
+        drawWeldSymbol(tmp, symbol, l.weld, l.text);
+        const Rect bounds = sheetBounds(tmp);
+        const double score = overlapWithOccupied(s, bounds);
+        if (score < bestScore) {
+            bestScore = score;
+            best = std::move(tmp);
+        }
+    }
+    commitGroup(s, best, groupKey);
+}
+
+struct Cell {
+    double x0 {0.0}, y0 {0.0}, x1 {0.0}, y1 {0.0};
+    double width() const { return x1 - x0; }
+    double height() const { return y1 - y0; }
+};
+
+struct CutPoly {
+    std::vector<std::array<double, 3>> st;   ///< vertices (s, t, u) sobre o plano de corte
+    int role {0};
+    std::size_t prim {0};                    ///< indice da primitiva
+};
+
+using Vec3d = Structura::Drawing::Vec3;
+
+Vec3d worldOf(const std::array<double, 3> &stu) { return {stu[0], stu[2], stu[1]}; }   // X = s, Y = u, Z = t (espaco do desenho)
+
+struct ViewBasis {
+    Vec3d forward {}, up {}, right {}, upv {};
+};
+
+ViewBasis basisFor(int k, bool keepLowerHalf)
+{
+    ViewBasis b;
+    Vec3d f {0, 0, 0};
+    if (k == 0) {
+        f = {keepLowerHalf ? -1.0 : 1.0, 0.0, 0.0};
+        b.up = {0, 0, 1};
+    } else if (k == 2) {
+        f = {0.0, keepLowerHalf ? -1.0 : 1.0, 0.0};
+        b.up = {0, 0, 1};
+    } else {
+        f = {0.0, 0.0, keepLowerHalf ? -1.0 : 1.0};
+        b.up = {0, 1, 0};
+    }
+    b.forward = f;
+    b.right = {f[1] * b.up[2] - f[2] * b.up[1], f[2] * b.up[0] - f[0] * b.up[2], f[0] * b.up[1] - f[1] * b.up[0]};
+    b.upv = {b.right[1] * f[2] - b.right[2] * f[1], b.right[2] * f[0] - b.right[0] * f[2], b.right[0] * f[1] - b.right[1] * f[0]};
+    return b;
+}
+
+std::array<double, 2> screenOf(const ViewBasis &b, const Vec3d &w)
+{
+    return {w[0] * b.right[0] + w[1] * b.right[1] + w[2] * b.right[2], w[0] * b.upv[0] + w[1] * b.upv[1] + w[2] * b.upv[2]};
+}
+
+std::vector<CutPoly> cutPolygons(const std::vector<ConnectionSolids::Primitive> &prims, int k, double c)
+{
+    std::vector<CutPoly> out;
+    const int o1 = (k + 1) % 3, o2 = (k + 2) % 3;
+    for (std::size_t index = 0; index < prims.size(); ++index) {
+        const auto &p = prims[index];
+        CutPoly cp;
+        cp.role = static_cast<int>(p.role);
+        cp.prim = index;
+        auto rect = [&](double a1, double a2, double b1, double b2) {
+            const double xs[4] = {a1, a2, a2, a1}, ys[4] = {b1, b1, b2, b2};
+            for (int i = 0; i < 4; ++i) {
+                std::array<double, 3> v {};
+                v[static_cast<std::size_t>(k)] = c;
+                v[static_cast<std::size_t>(o1)] = xs[i];
+                v[static_cast<std::size_t>(o2)] = ys[i];
+                cp.st.push_back(v);
+            }
+        };
+        if (p.kind == ConnectionSolids::Kind::Box) {
+            std::array<double, 3> lo {}, hi {};
+            for (std::size_t i = 0; i < 3; ++i) {
+                lo[i] = p.a[i] - p.size[i] / 2.0;
+                hi[i] = p.a[i] + p.size[i] / 2.0;
+            }
+            if (c <= lo[static_cast<std::size_t>(k)] + 1e-9 || c >= hi[static_cast<std::size_t>(k)] - 1e-9) {
+                continue;
+            }
+            rect(lo[static_cast<std::size_t>(o1)], hi[static_cast<std::size_t>(o1)], lo[static_cast<std::size_t>(o2)], hi[static_cast<std::size_t>(o2)]);
+        } else if (p.kind == ConnectionSolids::Kind::Cylinder) {
+            int axis = 0;
+            double span = 0.0;
+            for (int i = 0; i < 3; ++i) {
+                const double diff = std::abs(p.b[static_cast<std::size_t>(i)] - p.a[static_cast<std::size_t>(i)]);
+                if (diff > span) {
+                    span = diff;
+                    axis = i;
+                }
+            }
+            bool aligned = span > 1e-9;
+            for (int i = 0; i < 3; ++i) {
+                aligned = aligned && (i == axis || std::abs(p.b[static_cast<std::size_t>(i)] - p.a[static_cast<std::size_t>(i)]) < 1e-6 * span);
+            }
+            if (!aligned) {
+                continue;   // barras tubulares inclinadas: sem corte
+            }
+            const double lo = std::min(p.a[static_cast<std::size_t>(axis)], p.b[static_cast<std::size_t>(axis)]), hi = std::max(p.a[static_cast<std::size_t>(axis)], p.b[static_cast<std::size_t>(axis)]);
+            const double r = p.radius;
+            if (k == axis) {
+                if (c <= lo + 1e-9 || c >= hi - 1e-9) {
+                    continue;
+                }
+                for (int i = 0; i < 24; ++i) {
+                    const double angle = 2.0 * 3.14159265358979323846 * i / 24.0;
+                    std::array<double, 3> v {};
+                    v[static_cast<std::size_t>(k)] = c;
+                    v[static_cast<std::size_t>(o1)] = p.a[static_cast<std::size_t>(o1)] + r * std::cos(angle);
+                    v[static_cast<std::size_t>(o2)] = p.a[static_cast<std::size_t>(o2)] + r * std::sin(angle);
+                    cp.st.push_back(v);
+                }
+            } else {
+                const double distance = std::abs(c - p.a[static_cast<std::size_t>(k)]);
+                if (distance >= r - 1e-9) {
+                    continue;
+                }
+                const double half = std::sqrt(r * r - distance * distance);
+                const int m = 3 - k - axis;
+                const double along[4] = {lo, hi, hi, lo};
+                const double across[4] = {p.a[static_cast<std::size_t>(m)] - half, p.a[static_cast<std::size_t>(m)] - half, p.a[static_cast<std::size_t>(m)] + half, p.a[static_cast<std::size_t>(m)] + half};
+                for (int i = 0; i < 4; ++i) {
+                    std::array<double, 3> v {};
+                    v[static_cast<std::size_t>(k)] = c;
+                    v[static_cast<std::size_t>(axis)] = along[i];
+                    v[static_cast<std::size_t>(m)] = across[i];
+                    cp.st.push_back(v);
+                }
+            }
+        } else {   // prisma extrudado em u
+            const double u0 = std::min(p.u0, p.u1), u1 = std::max(p.u0, p.u1);
+            if (k == 2) {
+                if (c <= u0 + 1e-9 || c >= u1 - 1e-9) {
+                    continue;
+                }
+                for (const auto &v : p.polygon) {
+                    cp.st.push_back({v[0], v[1], c});
+                }
+            } else {
+                const int inPlane = 1 - k;   // 0 -> t, 1 -> s
+                double vmin = 1e300, vmax = -1e300;
+                const std::size_t n = p.polygon.size();
+                for (std::size_t i = 0; i < n; ++i) {
+                    const auto &a = p.polygon[i];
+                    const auto &b = p.polygon[(i + 1) % n];
+                    const double da = a[static_cast<std::size_t>(k)] - c, db = b[static_cast<std::size_t>(k)] - c;
+                    if ((da < 0.0 && db > 0.0) || (da > 0.0 && db < 0.0)) {
+                        const double t = da / (da - db);
+                        const double v = a[static_cast<std::size_t>(inPlane)] + t * (b[static_cast<std::size_t>(inPlane)] - a[static_cast<std::size_t>(inPlane)]);
+                        vmin = std::min(vmin, v);
+                        vmax = std::max(vmax, v);
+                    }
+                }
+                if (vmax - vmin < 1e-9) {
+                    continue;
+                }
+                // retangulo no outro eixo do plano e em u
+                const double xs[4] = {vmin, vmax, vmax, vmin}, us[4] = {u0, u0, u1, u1};
+                for (int i = 0; i < 4; ++i) {
+                    std::array<double, 3> v {};
+                    v[static_cast<std::size_t>(k)] = c;
+                    v[static_cast<std::size_t>(inPlane)] = xs[i];
+                    v[2] = us[i];
+                    cp.st.push_back(v);
+                }
+            }
+        }
+        if (cp.st.size() >= 3) {
+            out.push_back(std::move(cp));
+        }
+    }
+    return out;
+}
+
+double polygonArea2D(const std::vector<std::array<double, 2>> &poly)
+{
+    double sum = 0.0;
+    for (std::size_t i = 0; i < poly.size(); ++i) {
+        const auto &a = poly[i], &b = poly[(i + 1) % poly.size()];
+        sum += a[0] * b[1] - b[0] * a[1];
+    }
+    return std::abs(sum) / 2.0;
+}
+
+/// Hachura a 45 graus dentro de um poligono (coordenadas do papel).
+void hatchPolygon(Sheet &s, int layer, const std::vector<Point> &poly, double step)
+{
+    if (poly.size() < 3) {
+        return;
+    }
+    double minC = 1e300, maxC = -1e300;
+    for (const auto &p : poly) {
+        minC = std::min(minC, p.y - p.x);
+        maxC = std::max(maxC, p.y - p.x);
+    }
+    for (double c = minC + step / 2.0; c < maxC; c += step) {
+        // reta y = x + c
+        std::vector<double> xs;
+        for (std::size_t i = 0; i < poly.size(); ++i) {
+            const Point &a = poly[i], &b = poly[(i + 1) % poly.size()];
+            const double fa = a.y - a.x - c, fb = b.y - b.x - c;
+            if ((fa < 0.0 && fb > 0.0) || (fa > 0.0 && fb < 0.0)) {
+                const double t = fa / (fa - fb);
+                xs.push_back(a.x + t * (b.x - a.x));
+            }
+        }
+        std::sort(xs.begin(), xs.end());
+        for (std::size_t i = 0; i + 1 < xs.size(); i += 2) {
+            s.line({xs[i], xs[i] + c}, {xs[i + 1], xs[i + 1] + c}, layer);
+        }
+    }
+}
+
+std::vector<Vec3d> clipPolygon(const std::vector<Vec3d> &poly, int worldAxis, double c, bool keepLower)
+{
+    auto dist = [&](const Vec3d &v) { return keepLower ? (c - v[static_cast<std::size_t>(worldAxis)]) : (v[static_cast<std::size_t>(worldAxis)] - c); };
+    std::vector<Vec3d> out;
+    for (std::size_t i = 0; i < poly.size(); ++i) {
+        const Vec3d &a = poly[i], &b = poly[(i + 1) % poly.size()];
+        const double da = dist(a), db = dist(b);
+        if (da >= 0.0) {
+            out.push_back(a);
+        }
+        if ((da >= 0.0) != (db >= 0.0)) {
+            const double t = da / (da - db);
+            out.push_back({a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])});
+        }
+    }
+    return out;
+}
+
+struct SectionDef {
+    int axis {0};            ///< 0 = s, 1 = t, 2 = u
+    double value {0.0};
+    bool keepLower {true};   ///< mantem a parte com coordenada <= value (vista de cima/de fora); false: >= value
+    std::string letter;
+};
+
+/// Marca de um corte desenhada sobre outra vista: plano axial `axis` em `value`, olhando para o lado positivo ou negativo.
+struct CutMark {
+    int axis {0};
+    double value {0.0};
+    bool lookPositive {true};
+    std::string letter;
+};
+
+struct SectionNames {
+    std::string beam, plate, bolt, weld, support;
+    std::vector<std::string> plateByPrim;   ///< indice da primitiva -> rotulo da chapa (vazio = nenhum)
+};
+
+/// Desenha um corte na celula. Devolve a escala (denominador).
+double drawSectionView(Sheet &s, const L &l, const std::vector<ConnectionSolids::Primitive> &prims, const CatalogGeometry &geo, const SectionDef &def, const Cell &cell, double fixedScale,
+                       const SectionNames &names, const std::string &titleSuffix, const std::vector<CutMark> &marks = {})
+{
+    using namespace Structura::Drawing;
+    const int cutLayer = s.addLayer("CORTE", {0, 0, 0}, 0.5);
+    const auto basis = basisFor(def.axis, def.keepLower);
+    const auto cuts = cutPolygons(prims, def.axis, def.value);
+    const int worldAxis = def.axis == 0 ? 0 : (def.axis == 1 ? 2 : 1);
+
+    // geometria remanescente (parte mantida) + tampas do corte, como oclusores
+    std::vector<Triangle3D> faces;
+    std::vector<Edge3D> edges;
+    auto dist = [&](const Vec3d &v) { return def.keepLower ? (def.value - v[static_cast<std::size_t>(worldAxis)]) : (v[static_cast<std::size_t>(worldAxis)] - def.value); };
+    for (const auto &t : geo.faces) {
+        const auto poly = clipPolygon({t.a, t.b, t.c}, worldAxis, def.value, def.keepLower);
+        for (std::size_t i = 1; i + 1 < poly.size(); ++i) {
+            faces.push_back({poly[0], poly[i], poly[i + 1]});
+        }
+    }
+    for (const auto &e : geo.edges) {
+        const double da = dist(e.a), db = dist(e.b);
+        if (da < 0.0 && db < 0.0) {
+            continue;
+        }
+        Edge3D clipped = e;
+        if (da < 0.0 || db < 0.0) {
+            const double t = da / (da - db);
+            const Vec3d mid {e.a[0] + t * (e.b[0] - e.a[0]), e.a[1] + t * (e.b[1] - e.a[1]), e.a[2] + t * (e.b[2] - e.a[2])};
+            (da < 0.0 ? clipped.a : clipped.b) = mid;
+        }
+        edges.push_back(clipped);
+    }
+    double minX = 1e300, maxX = -1e300, minY = 1e300, maxY = -1e300;
+    auto grow = [&](const std::array<double, 2> &p) {
+        minX = std::min(minX, p[0]);
+        maxX = std::max(maxX, p[0]);
+        minY = std::min(minY, p[1]);
+        maxY = std::max(maxY, p[1]);
+    };
+    std::vector<std::vector<std::array<double, 2>>> cutScreen;
+    for (const auto &cp : cuts) {
+        std::vector<std::array<double, 2>> pts;
+        std::vector<Vec3d> world;
+        for (const auto &v : cp.st) {
+            world.push_back(worldOf(v));
+            pts.push_back(screenOf(basis, world.back()));
+            grow(pts.back());
+        }
+        const auto tri = triangulatePolygon(pts);
+        for (std::size_t i = 0; i + 2 < tri.size(); i += 3) {
+            faces.push_back({world[static_cast<std::size_t>(tri[i])], world[static_cast<std::size_t>(tri[i + 1])], world[static_cast<std::size_t>(tri[i + 2])]});
+        }
+        cutScreen.push_back(std::move(pts));
+    }
+    double target = 0.0;
+    for (const auto &t : geo.faces) {
+        for (const auto &v : {t.a, t.b, t.c}) {
+            target = std::max({target, std::abs(v[0]), std::abs(v[1]), std::abs(v[2])});
+        }
+    }
+    Camera3D camera;
+    const double distanceEye = 4.0 * target + 1000.0;
+    camera.target = {0.0, 0.0, 0.0};
+    camera.position = {-basis.forward[0] * distanceEye, -basis.forward[1] * distanceEye, -basis.forward[2] * distanceEye};
+    camera.up = basis.up;
+    camera.perspective = false;
+    HiddenLineResult lines = computeHiddenLines(camera, faces, edges, false);
+    for (const auto &seg : lines.segments) {
+        grow({seg.x0, seg.y0});
+        grow({seg.x1, seg.y1});
+    }
+    if (minX > maxX) {
+        s.text({cell.x0 + 4.0, cell.y1 - 8.0}, "SEÇÃO " + def.letter + "-" + def.letter + ": sem material no plano de corte", 2.4, l.text);
         return 1.0;
     }
-    const double fw = front.maxX - front.minX, fh = front.maxY - front.minY, tw = top.ok ? top.maxX - top.minX : 0.0, th = top.ok ? top.maxY - top.minY : 0.0;
-    const double leftW = p.lx1 - p.lx0, rightW = p.rx1 - p.rx0, height = p.y1 - p.y0 - 8.0;
-    const double scale = std::max(pickScaleMargin(fw + 60.0, fh + 60.0, leftW, height, 16.0, fixedScale), pickScaleMargin(tw + 60.0, th + 60.0, rightW, height, 16.0, fixedScale));
+    const double marginX = 30.0, marginTop = 12.0, marginBottom = 4.0;
+    const double scale = pickScaleMargin(maxX - minX, maxY - minY, cell.width() - 2.0 * marginX, cell.height() - marginTop - marginBottom, 6.0, fixedScale);
     const double k = 1.0 / scale;
-    const double fcx = (front.minX + front.maxX) / 2.0, fcy = (front.minY + front.maxY) / 2.0;
-    const double tcx = (top.minX + top.maxX) / 2.0, tcy = (top.minY + top.maxY) / 2.0;
-    const double cxF = (p.lx0 + p.lx1) / 2.0, cyF = (p.y0 + p.y1) / 2.0 - 4.0;
-    const double cxT = (p.rx0 + p.rx1) / 2.0, cyT = cyF;
+    const double cx = (cell.x0 + cell.x1) / 2.0, cy = (cell.y0 + cell.y1) / 2.0 - (marginTop - marginBottom) / 2.0;
+    const double mx = (minX + maxX) / 2.0, my = (minY + maxY) / 2.0;
+    auto P = [&](double x, double y) { return Point {cx + (x - mx) * k, cy + (y - my) * k}; };
     auto layerOf = [&](int tag) {
         switch (static_cast<ConnectionSolids::Role>(tag)) {
         case ConnectionSolids::Role::Plate: return l.plate;
         case ConnectionSolids::Role::Bolt: return l.bolt;
         case ConnectionSolids::Role::Weld: return l.weld;
+        case ConnectionSolids::Role::Concrete: return l.support;
         default: return l.outline;
         }
     };
-    auto draw = [&](const Structura::Drawing::HiddenLineResult &view, double cx, double cy, double mx, double my) {
-        for (const auto &seg : view.segments) {
-            s.line({cx + (seg.x0 - mx) * k, cy + (seg.y0 - my) * k}, {cx + (seg.x1 - mx) * k, cy + (seg.y1 - my) * k}, seg.hidden ? l.hidden : layerOf(seg.tag));
-        }
-    };
-    s.text({p.lx0 + 6.0, p.y1}, "VISTA FRONTAL (PLANO DA LIGAÇÃO)", 3.2, l.text, TextAlign::Left, 0.0, true);
-    draw(front, cxF, cyF, fcx, fcy);
-    if (top.ok) {
-        s.text({p.rx0 + 6.0, p.y1}, "VISTA SUPERIOR", 3.2, l.text, TextAlign::Left, 0.0, true);
-        draw(top, cxT, cyT, tcx, tcy);
+    for (const auto &seg : lines.segments) {
+        s.line(P(seg.x0, seg.y0), P(seg.x1, seg.y1), layerOf(seg.tag));
     }
-    // cotas da familia (vista frontal: s horizontal, t vertical)
-    const auto *entry = ConnectionCatalog::find(c.type);
-    if (entry) {
-        const auto &ops = ConnectionCatalog::ops(entry->family);
-        if (ops.dims) {
-            for (const auto &dim : ops.dims(c)) {
-                dimLinear(s, l, {cxF + (dim.s1 - fcx) * k, cyF + (dim.t1 - fcy) * k}, {cxF + (dim.s2 - fcx) * k, cyF + (dim.t2 - fcy) * k}, dim.offset, dim.text);
+    // faces cortadas: hachura e contorno forte
+    struct Label {
+        std::string text;
+        Point target;
+        double area {0.0};
+        int layer {0};
+    };
+    std::map<std::string, Label> labels;
+    for (std::size_t i = 0; i < cuts.size(); ++i) {
+        std::vector<Point> paper;
+        for (const auto &p : cutScreen[i]) {
+            paper.push_back(P(p[0], p[1]));
+        }
+        const auto role = static_cast<ConnectionSolids::Role>(cuts[i].role);
+        const int hatchLayer = role == ConnectionSolids::Role::Concrete ? l.support : (role == ConnectionSolids::Role::Weld ? l.weld : l.hatch);
+        hatchPolygon(s, hatchLayer, paper, role == ConnectionSolids::Role::Concrete ? 2.4 : 1.4);
+        s.polyline(paper, true, role == ConnectionSolids::Role::Weld ? l.weld : cutLayer);
+        std::string text;
+        switch (role) {
+        case ConnectionSolids::Role::Plate: text = cuts[i].prim < names.plateByPrim.size() && !names.plateByPrim[cuts[i].prim].empty() ? names.plateByPrim[cuts[i].prim] : names.plate; break;
+        case ConnectionSolids::Role::Bolt: text = names.bolt; break;
+        case ConnectionSolids::Role::Weld: text = names.weld; break;
+        case ConnectionSolids::Role::Concrete: text = names.support; break;
+        case ConnectionSolids::Role::Member: text = names.beam; break;
+        default: break;
+        }
+        if (text.empty()) {
+            continue;
+        }
+        const double area = polygonArea2D(cutScreen[i]) * k * k;
+        double sx = 0.0, sy = 0.0;
+        for (const auto &p : paper) {
+            sx += p.x;
+            sy += p.y;
+        }
+        const Point centre {sx / paper.size(), sy / paper.size()};
+        auto &label = labels[text];
+        if (area >= label.area) {
+            label.text = text;
+            label.target = centre;
+            label.area = area;
+            label.layer = layerOf(cuts[i].role);
+        }
+    }
+    // simbolos de parafuso nos cortes: eixo tracejado (haste cortada) ou cruz de eixo (parafuso cortado transversalmente)
+    std::vector<std::pair<double, Point>> keyX, keyY;
+    const double minPx = P(minX, minY).x, maxPx = P(maxX, minY).x, minPy = P(minX, minY).y, maxPy = P(minX, maxY).y;
+    for (std::size_t i = 0; i < cuts.size(); ++i) {
+        const auto role = static_cast<ConnectionSolids::Role>(cuts[i].role);
+        double bx0 = 1e300, bx1 = -1e300, by0 = 1e300, by1 = -1e300;
+        for (const auto &p : cutScreen[i]) {
+            bx0 = std::min(bx0, p[0]);
+            bx1 = std::max(bx1, p[0]);
+            by0 = std::min(by0, p[1]);
+            by1 = std::max(by1, p[1]);
+        }
+        const double w = bx1 - bx0, h = by1 - by0;
+        if (role == ConnectionSolids::Role::Bolt) {
+            const double mx2 = (bx0 + bx1) / 2.0, my2 = (by0 + by1) / 2.0;
+            if (cutScreen[i].size() > 6) {
+                // parafuso cortado transversalmente: cruz de eixo
+                drawBoltAxisLine(s, P(bx0, my2), P(bx1, my2), l.centre);
+                drawBoltAxisLine(s, P(mx2, by0), P(mx2, by1), l.centre);
+                keyX.push_back({mx2, P(mx2, minY)});
+                keyY.push_back({my2, P(minX, my2)});
+            } else if (w >= h) {
+                drawBoltAxisLine(s, P(bx0, my2), P(bx1, my2), l.centre);   // haste horizontal
+                keyY.push_back({my2, P(minX, my2)});
+            } else {
+                drawBoltAxisLine(s, P(mx2, by0), P(mx2, by1), l.centre);   // haste vertical
+                keyX.push_back({mx2, P(mx2, minY)});
+            }
+        } else if (role == ConnectionSolids::Role::Plate || role == ConnectionSolids::Role::Member) {
+            keyX.push_back({bx0, P(bx0, minY)});
+            keyX.push_back({bx1, P(bx1, minY)});
+            keyY.push_back({by0, P(minX, by0)});
+            keyY.push_back({by1, P(minX, by1)});
+        }
+    }
+    (void)minPx;
+    (void)maxPx;
+    (void)minPy;
+    (void)maxPy;
+    // cotas encadeadas: horizontais abaixo da vista e verticais a esquerda (valores-chave: bordas de chapas e do perfil, eixos dos parafusos)
+    {
+        const double baseY = P(0.0, minY).y, baseX = P(minX, 0.0).x;
+        for (auto &k : keyX) {
+            k.second = {k.second.x, baseY};
+        }
+        for (auto &k : keyY) {
+            k.second = {baseX, k.second.y};
+        }
+        chainDims(s, l, keyX, true, -7.0, -13.0, "sec" + def.letter + "/cotaH");
+        chainDims(s, l, keyY, false, 7.0, 13.0, "sec" + def.letter + "/cotaV");
+    }
+    // chamadas: coluna da esquerda e da direita, na ordem vertical dos alvos
+    std::vector<Label> list;
+    for (auto &kv : labels) {
+        list.push_back(kv.second);
+    }
+    std::sort(list.begin(), list.end(), [](const Label &a, const Label &b) { return a.target.y > b.target.y; });
+    int leftSlot = 0, rightSlot = 0;
+    for (const auto &label : list) {
+        if (leftSlot + rightSlot >= 8) {
+            break;
+        }
+        const bool left = label.target.x < cx;
+        const int slot = left ? leftSlot++ : rightSlot++;
+        const double y = cell.y1 - marginTop - 4.0 - 7.5 * slot;
+        const double x = left ? cell.x0 + marginX - 3.0 : cell.x1 - marginX + 3.0;
+        s.beginGroup("sec" + def.letter + "/chamada" + std::to_string(leftSlot + rightSlot));
+        s.line(label.target, {x, y}, l.text);
+        s.line({x, y}, {left ? x - 1.0 : x + 1.0, y}, l.text);
+        s.circle(label.target, 0.5, l.text, true);
+        s.text({left ? x - 1.5 : x + 1.5, y + 0.6}, label.text, 1.8, l.text, left ? TextAlign::Right : TextAlign::Left);
+        s.endGroup();
+    }
+    // marcas de outros cortes sobre esta vista (linha de corte com setas no sentido de observacao)
+    for (const auto &mark : marks) {
+        const Vec3d zero {0.0, 0.0, 0.0};
+        std::array<double, 3> stu {};
+        stu[static_cast<std::size_t>(mark.axis)] = mark.value;
+        const auto at = screenOf(basis, worldOf(stu));
+        const auto origin = screenOf(basis, zero);
+        const int wa = mark.axis == 0 ? 0 : (mark.axis == 1 ? 2 : 1);
+        Vec3d axisDir {0, 0, 0};
+        axisDir[static_cast<std::size_t>(wa)] = mark.lookPositive ? 1.0 : -1.0;
+        const auto look = screenOf(basis, axisDir);
+        const auto zeroLook = screenOf(basis, {0, 0, 0});
+        const double lx = look[0] - zeroLook[0], ly = look[1] - zeroLook[1];
+        const bool vertical = std::abs(screenOf(basis, {wa == 0 ? 1.0 : 0.0, wa == 1 ? 1.0 : 0.0, wa == 2 ? 1.0 : 0.0})[0] - origin[0]) > 0.5;
+        Point a, b;
+        if (vertical) {
+            a = P(at[0], minY - 6.0 * scale);
+            b = P(at[0], maxY + 6.0 * scale);
+        } else {
+            a = P(minX - 6.0 * scale, at[1]);
+            b = P(maxX + 6.0 * scale, at[1]);
+        }
+        const double leftX = -(b.y - a.y), leftY = b.x - a.x;
+        const double side = (leftX * lx + leftY * ly) >= 0.0 ? 1.0 : -1.0;
+        Sheet cut;
+        cut.layers = s.layers;
+        drawSectionCut(cut, a, b, mark.letter, side, l.weld, l.text);
+        commitGroup(s, cut, "sec" + def.letter + "/corte" + mark.letter);
+    }
+    s.beginGroup("sec" + def.letter + "/titulo");
+    s.text({cell.x0 + 3.0, cell.y1 - 4.0}, "SEÇÃO " + def.letter + "-" + def.letter + titleSuffix + " — ESC. 1:" + fmtNum(scale, scale == std::round(scale) ? 0 : 1), 2.6, l.text, TextAlign::Left, 0.0, true);
+    s.endGroup();
+    return scale;
+}
+
+double drawCatalogDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, double rx0, double ry0, double rx1, double ry1, bool notes, double fixedScale)
+{
+    using namespace Structura::Drawing;
+    const L l = layers(s);
+    const NodeConnection &c = d.connection;
+    auto prims = ConnectionSolids::build(c, true);
+    if (const auto *supportEntry = ConnectionCatalog::find(c.type); supportEntry && supportEntry->usesSupport) {
+        addSupportContext(c, prims);
+    }
+    const CatalogGeometry geo = catalogGeometry(prims);
+    const FabAssembly fab = FabricationModel::fromConnection(c);
+    const std::string previousPrefix = s.groupPrefix;
+    s.groupPrefix = "n" + std::to_string(c.nodeId) + "b" + std::to_string(c.memberId) + "/";
+
+    // ---- nomes para as chamadas dos cortes
+    SectionNames names;
+    names.beam = d.beamSection.isEmpty() ? "Perfil ligado" : "Viga " + d.beamSection.toStdString();
+    names.plate = "Chapa";
+    names.support = "Barra de apoio";
+    if (!fab.bolts.isEmpty()) {
+        names.bolt = fab.bolts.first().mark.toStdString() + " parafuso d" + fmtNum(fab.bolts.first().diameter, 0) + " " + fab.bolts.first().grade.toStdString();
+    } else {
+        names.bolt = "Parafuso";
+    }
+    names.weld = fab.welds.isEmpty() ? "Solda" : "Solda filete " + fmtNum(fab.welds.first().leg, 0);
+    {
+        std::size_t plateCounter = 0;
+        names.plateByPrim.assign(prims.size(), std::string());
+        for (std::size_t i = 0; i < prims.size(); ++i) {
+            if (prims[i].role == ConnectionSolids::Role::Plate && prims[i].kind != ConnectionSolids::Kind::Cylinder) {
+                if (plateCounter < static_cast<std::size_t>(fab.plateInstances.size())) {
+                    const auto &part = fab.plateInstances[static_cast<int>(plateCounter)];
+                    names.plateByPrim[i] = part.mark.toStdString() + " " + part.name.toStdString();
+                }
+                ++plateCounter;
             }
         }
-        if (notes) {
-            auto text = connectionNotes(d, "");
-            if (ops.notes) {
-                for (const auto &line : ops.notes(c)) {
-                    text.push_back(line);
+    }
+
+    // ---- planos de corte: A-A no grupo de parafusos (perpendicular a viga), B-B longitudinal pela alma, C-C horizontal a meia altura, D-D junto das chapas / da solda do apoio
+    double sA = 0.0, plateMax = -1e300;
+    bool haveBolts = false;
+    for (const auto &b : fab.bolts) {
+        if (b.axis == 2 && !haveBolts) {
+            sA = b.position[0];
+            haveBolts = true;
+        }
+    }
+    for (const auto &part : fab.parts) {
+        if (part.kind != FabPart::Kind::Plate) {
+            continue;
+        }
+        const auto centre = FabricationModel::centre(part);
+        if (!haveBolts) {
+            sA = centre[0];
+            haveBolts = true;
+        }
+        const double top = part.planeAxes[0] == 0 ? part.origin[0] + part.width : (part.thicknessAxis == 0 ? part.midOffset + part.thickness / 2.0 : centre[0]);
+        plateMax = std::max(plateMax, top);
+    }
+    double sD = plateMax > -1e299 ? plateMax - 8.0 : sA + 40.0;
+    const bool outside = val(c, "outside", 0.0) != 0.0;
+    if (outside) {
+        sD = -val(c, "outDist", 260.0) + 0.5 * std::min(std::max(3.0, val(c, "supWeldLegW", 6.0)), 6.0);
+    }
+    SectionDef secA {0, sA, true, "A"}, secB {2, 0.0, false, "B"}, secC {1, 0.0, true, "C"}, secD {0, sD, true, "D"};
+
+    // ---- distribuicao da prancha: chapas no alto, tres vistas no meio, dois cortes e as tabelas embaixo
+    const double W = rx1 - rx0, H = ry1 - ry0 - 2.0;
+    std::vector<const FabPart *> plates;
+    for (const auto &part : fab.parts) {
+        if (part.kind == FabPart::Kind::Plate) {
+            plates.push_back(&part);
+        }
+    }
+    const double plateH = plates.empty() ? 0.0 : 0.30 * H;
+    const double rowH = (H - plateH) / 2.0;
+    const double yTop = ry1 - 2.0;
+    const Cell plateRow {rx0, yTop - plateH, rx1, yTop};
+    const Cell row2 {rx0, yTop - plateH - rowH, rx1, yTop - plateH};
+    const Cell row3 {rx0, ry0, rx1, ry0 + rowH};
+    auto third = [&](const Cell &row, int index) { return Cell {row.x0 + index * row.width() / 3.0, row.y0, row.x0 + (index + 1) * row.width() / 3.0, row.y1}; };
+    for (const Cell &frame : {row2, row3}) {
+        for (int i = 0; i < 3; ++i) {
+            const Cell cell = third(frame, i);
+            s.rect({cell.x0 + 0.5, cell.y0 + 0.5}, {cell.x1 - 0.5, cell.y1 - 0.5}, l.hatch);
+        }
+    }
+
+    // ---- chapas (contorno, furos, cotas)
+    if (!plates.empty()) {
+        const int n = std::min<int>(static_cast<int>(plates.size()), 6);
+        const double cw = plateRow.width() / n;
+        for (int i = 0; i < n; ++i) {
+            s.rect({plateRow.x0 + i * cw + 0.5, plateRow.y0 + 0.5}, {plateRow.x0 + (i + 1) * cw - 0.5, plateRow.y1 - 0.5}, l.hatch);
+            s.beginGroup("chapa/" + plates[static_cast<std::size_t>(i)]->mark.toStdString());
+            drawPlatePanel(s, *plates[static_cast<std::size_t>(i)], plateRow.x0 + i * cw, plateRow.y1, cw, plateRow.height());
+            s.endGroup();
+        }
+        if (static_cast<int>(plates.size()) > n) {
+            s.text({plateRow.x1 - 2.0, plateRow.y0 + 2.0}, "+ " + std::to_string(plates.size() - static_cast<std::size_t>(n)) + " chapa(s) na lista", 1.8, l.text, TextAlign::Right);
+        }
+    }
+
+    // ---- elevacao (vista frontal) com chamadas e marcas dos cortes
+    const Cell elevation = third(row2, 0);
+    double scale = 1.0;
+    {
+        const double target = ConnectionSolids::extent(prims);
+        const auto front = computeHiddenLines(cameraFromAngles(0.0, 0.0, {0.0, 0.0, 0.0}, 4.0 * target + 1000.0), geo.faces, geo.edges, true);
+        if (front.ok) {
+            const double fw = front.maxX - front.minX, fh = front.maxY - front.minY;
+            scale = pickScaleMargin(fw, fh, elevation.width() - 36.0, elevation.height() - 34.0, 6.0, fixedScale);
+            const double k = 1.0 / scale;
+            const double fcx = (front.minX + front.maxX) / 2.0, fcy = (front.minY + front.maxY) / 2.0;
+            const double cxF = (elevation.x0 + elevation.x1) / 2.0, cyF = (elevation.y0 + elevation.y1) / 2.0 - 4.0;
+            auto F = [&](double s_, double t_) { return Point {cxF + (s_ - fcx) * k, cyF + (t_ - fcy) * k}; };
+            auto layerOf = [&](int tag) {
+                switch (static_cast<ConnectionSolids::Role>(tag)) {
+                case ConnectionSolids::Role::Plate: return l.plate;
+                case ConnectionSolids::Role::Bolt: return l.bolt;
+                case ConnectionSolids::Role::Weld: return l.weld;
+                case ConnectionSolids::Role::Concrete: return l.support;
+                default: return l.outline;
+                }
+            };
+            bool boltsAsSymbols = false;
+            for (const auto &b : fab.bolts) {
+                boltsAsSymbols = boltsAsSymbols || b.axis == 2;
+            }
+            for (const auto &seg : front.segments) {
+                if (boltsAsSymbols && seg.tag == static_cast<int>(ConnectionSolids::Role::Bolt)) {
+                    continue;   // parafusos vistos pelo eixo: simbolo normalizado (abaixo)
+                }
+                s.line({cxF + (seg.x0 - fcx) * k, cyF + (seg.y0 - fcy) * k}, {cxF + (seg.x1 - fcx) * k, cyF + (seg.y1 - fcy) * k}, seg.hidden ? l.hidden : layerOf(seg.tag));
+            }
+            for (const auto &b : fab.bolts) {
+                if (b.axis != 2) {
+                    continue;
+                }
+                for (const auto &position : b.positions) {
+                    drawBoltEndSymbol(s, F(position[0], position[1]), b.diameter * k, l.bolt, l.centre);
                 }
             }
-            notesFinish(s, l, rx0, ry0, text, d, "ABNT NBR 8800:2024, SEÇÕES 5, 6.2, 6.3 E 6.5 - LIGAÇÃO CONFORME CATÁLOGO.");
+            // cotas encadeadas: s (horizontal) e t (vertical) pelas bordas das chapas, eixos dos parafusos e (fora do no) face do apoio e junta
+            {
+                std::vector<std::pair<double, Point>> keyS, keyT;
+                const double baseY = cyF - fh * k / 2.0 - 3.0, baseX = cxF - fw * k / 2.0 - 3.0;
+                auto addS = [&](double v) { keyS.push_back({v, Point {F(v, 0.0).x, baseY}}); };
+                auto addT = [&](double v) { keyT.push_back({v, Point {baseX, F(0.0, v).y}}); };
+                for (const auto &part : plates) {
+                    double s0 = 0.0, s1 = 0.0, t0 = 0.0, t1 = 0.0;
+                    const auto centre = FabricationModel::centre(*part);
+                    auto extent = [&](int axis, double &lo, double &hi) {
+                        if (part->planeAxes[0] == axis) {
+                            lo = part->origin[0];
+                            hi = part->origin[0] + part->width;
+                        } else if (part->planeAxes[1] == axis) {
+                            lo = part->origin[1];
+                            hi = part->origin[1] + part->height;
+                        } else {
+                            lo = centre[static_cast<std::size_t>(axis)] - part->thickness / 2.0;
+                            hi = centre[static_cast<std::size_t>(axis)] + part->thickness / 2.0;
+                        }
+                    };
+                    extent(0, s0, s1);
+                    extent(1, t0, t1);
+                    addS(s0);
+                    addS(s1);
+                    addT(t0);
+                    addT(t1);
+                }
+                for (const auto &b : fab.bolts) {
+                    if (b.axis != 2) {
+                        continue;
+                    }
+                    for (const auto &position : b.positions) {
+                        addS(position[0]);
+                        addT(position[1]);
+                    }
+                }
+                if (outside) {
+                    addS(-val(c, "outDist", 0.0));
+                    addS(0.0);
+                }
+                chainDims(s, l, keyS, true, -7.0, -13.0, "elev/cotaH");
+                chainDims(s, l, keyT, false, 7.0, 13.0, "elev/cotaV");
+            }
+            s.beginGroup("elev/titulo");
+            s.text({elevation.x0 + 3.0, elevation.y1 - 4.0}, "VISTA FRONTAL — ESC. 1:" + fmtNum(scale, scale == std::round(scale) ? 0 : 1), 2.6, l.text, TextAlign::Left, 0.0, true);
+            s.endGroup();
+            // marcas dos cortes: A-A e D-D (verticais, olhando para o apoio), C-C (horizontal, olhando para baixo)
+            const double yLo = cyF - fh * k / 2.0 - 7.0, yHi = cyF + fh * k / 2.0 + 7.0, xLo = cxF - fw * k / 2.0 - 7.0, xHi = cxF + fw * k / 2.0 + 7.0;
+            auto cutMark = [&](Point a, Point b, const std::string &letter, double side) {
+                Sheet cut;
+                cut.layers = s.layers;
+                drawSectionCut(cut, a, b, letter, side, l.weld, l.text);
+                commitGroup(s, cut, "elev/corte" + letter);
+            };
+            cutMark({F(sA, 0.0).x, yLo}, {F(sA, 0.0).x, yHi}, "A", +1.0);
+            cutMark({F(sD, 0.0).x, yLo}, {F(sD, 0.0).x, yHi}, "D", +1.0);
+            cutMark({xLo, F(0.0, 0.0).y}, {xHi, F(0.0, 0.0).y}, "C", -1.0);
+            // chamadas de marca: chapas (C), parafusos (B) e simbolos de solda
+            const double topY = cyF + fh * k / 2.0 + 12.0;
+            int slot = 0;
+            for (const auto &part : plates) {
+                const auto centre = FabricationModel::centre(*part);
+                const Point tip = F(centre[0], centre[1]);
+                placedCallout(s, l, tip, {tip.x + 4.0 + 8.0 * slot, topY + 4.0 * (slot % 2)}, part->mark.toStdString(), l.text, "elev/marca" + part->mark.toStdString());
+                ++slot;
+            }
+            int boltSlot = 0;
+            for (const auto &b : fab.bolts) {
+                if (b.axis != 2) {
+                    continue;
+                }
+                const Point tip = F(b.position[0], b.position[1]);
+                placedCallout(s, l, tip, {tip.x + 10.0 + 8.0 * boltSlot, cyF - fh * k / 2.0 - 14.0 - 3.0 * (boltSlot % 2)}, b.mark.toStdString(), l.bolt, "elev/marca" + b.mark.toStdString());
+                ++boltSlot;
+            }
+            int weldSlot = 0;
+            for (const auto &w : fab.welds) {
+                WeldSymbol symbol;
+                symbol.arrowTip = F(w.position[0], w.position[1]);
+                symbol.tail = {symbol.arrowTip.x - 22.0 - 5.0 * weldSlot, symbol.arrowTip.y + 12.0 + 7.0 * weldSlot};
+                symbol.size = w.leg;
+                symbol.arrowSide = true;
+                placedWeld(s, l, symbol, "elev/solda" + std::to_string(weldSlot));
+                ++weldSlot;
+            }
+            // cotas da familia (s horizontal, t vertical)
+            const auto *entry = ConnectionCatalog::find(c.type);
+            if (entry && entry->legacyType < 0) {
+                const auto &ops = ConnectionCatalog::ops(entry->family);
+                if (ops.dims) {
+                    int familyIndex = 0;
+                    for (const auto &dim : ops.dims(c)) {
+                        placedDim(s, l, {cxF + (dim.s1 - fcx) * k, cyF + (dim.t1 - fcy) * k}, {cxF + (dim.s2 - fcx) * k, cyF + (dim.t2 - fcy) * k}, dim.offset, dim.text, "elev/cotaFamilia" + std::to_string(familyIndex++));
+                    }
+                }
+            }
         }
     }
+
+    // ---- cortes
+    drawSectionView(s, l, prims, geo, secA, third(row2, 1), fixedScale, names, " (OLHANDO PARA O APOIO)");
+    drawSectionView(s, l, prims, geo, secB, third(row2, 2), fixedScale, names, " (LONGITUDINAL PELA ALMA)");
+    {
+        // C-C em planta; a marca B-B (u = 0) fica sobre ele
+        const Cell cell = third(row3, 0);
+        const double used = drawSectionView(s, l, prims, geo, secC, cell, fixedScale, names, " (EM PLANTA)", {CutMark {2, 0.0, true, "B"}});
+        (void)used;
+    }
+    drawSectionView(s, l, prims, geo, secD, third(row3, 1), fixedScale, names, outside ? " (SOLDA VIGA-APOIO)" : " (EXTREMIDADE DAS CHAPAS)");
+
+    // ---- tabelas de materiais da ligacao e notas, na mesma vista
+    {
+        const Cell cell = third(row3, 2);
+        double y = cell.y1 - 5.0;
+        s.beginGroup("notas");
+        s.text({cell.x0 + 3.0, y}, "LIGAÇÃO: " + ConnectionService::typeName(c.type).toStdString() + " — NÓ " + std::to_string(c.nodeId) + ", BARRA " + std::to_string(c.memberId), 2.3, l.text, TextAlign::Left, 0.0, true);
+        y -= 4.4;
+        std::vector<std::string> lines;
+        if (!d.beamSection.isEmpty()) {
+            lines.push_back("Perfil: " + d.beamSection.toStdString());
+        }
+        if (d.hasForces) {
+            lines.push_back("Esforços: V = " + fmtNum(d.shearKN, 1) + " kN; N = " + fmtNum(d.axialKN, 1) + " kN; η = " + fmtNum(d.eta, 2));
+        } else {
+            lines.push_back("η = " + fmtNum(d.eta, 2));
+        }
+        if (outside) {
+            lines.push_back("Junta a " + fmtNum(val(c, "outDist", 0.0), 0) + " mm da face do apoio; solda viga-apoio: mesas " + std::string(val(c, "supWeldKind", 0.0) < 0.5 ? "penetração total" : "filete " + fmtNum(val(c, "supWeldLegF", 0.0), 0) + " mm") +
+                            ", alma filete " + fmtNum(val(c, "supWeldLegW", 0.0), 0) + " mm");
+        }
+        lines.push_back("NBR 8800:2024, 6.2 (soldas), 6.3 (parafusos). Cotas em mm.");
+        for (const auto &line : lines) {
+            s.text({cell.x0 + 3.0, y}, line.size() > 78 ? line.substr(0, 77) + "." : line, 1.9, l.text);
+            y -= 3.6;
+        }
+        s.endGroup();
+        s.beginGroup("tabelas");
+        drawFabricationTables(s, fab, cell.x0 + 3.0, y - 2.0, cell.width() - 6.0, y - cell.y0 - 3.0);
+        s.endGroup();
+    }
+    (void)notes;
+    s.groupPrefix = previousPrefix;
     return scale;
 }
 
@@ -984,7 +1884,7 @@ double drawConnectionDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, d
     const NodeConnection &c = d.connection;
     if (ConnectionCatalog::isCatalog(c.type)) {
         const auto *entry = ConnectionCatalog::find(c.type);
-        if (entry && entry->legacyType >= 0) {
+        if (entry && entry->legacyType >= 0 && entry->preset.value(QStringLiteral("outside"), 0.0) == 0.0) {
             SheetBuilder::ConnectionDetail legacy = d;
             legacy.connection = ConnectionCatalog::asLegacy(c);
             return drawConnectionDetail(s, legacy, rx0, ry0, rx1, ry1, notes, fixedScale, profileOutline);
@@ -1078,9 +1978,13 @@ double drawConnectionDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, d
             const Point corner = E(0.0, sign * H / 2.0);
             s.polyline({corner, {corner.x + t, corner.y}, {corner.x, corner.y - sign * t}}, true, l.weld, true);
         }
-        const Point lead = E(0.0, H / 2.0);
-        s.line({lead.x + 1.5, lead.y - 1.0}, {lead.x + 14.0, lead.y + 9.0}, l.weld);
-        s.text({lead.x + 15.0, lead.y + 9.0}, "FILETE " + fmtNum(leg, 0) + " mm - 2 LADOS", 2.2, l.weld == 0 ? l.text : l.text);
+        // simbolo normalizado: filete dos dois lados, perna `leg`
+        WeldSymbol symbol;
+        symbol.arrowTip = E(0.0, H / 2.0);
+        symbol.tail = {symbol.arrowTip.x + 16.0, symbol.arrowTip.y + 12.0};
+        symbol.size = leg;
+        symbol.bothSides = true;
+        drawWeldSymbol(s, symbol, l.weld, l.text);
     }
     // cotas da vista
     {

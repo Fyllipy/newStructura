@@ -200,6 +200,22 @@ ThinWalled buildThinWalled(const DesignSection &s)
         const double yt = d / 2.0 - t / 2.0;
         const double yb = -d / 2.0 + t / 2.0;
         add({0.0, -d / 2.0 + 2.0 * t}, {0.0, d / 2.0 - 2.0 * t}, false, false, "alma");
+        if (c > 0.0) {
+            // Z enrijecido: mesas com enrijecedor de borda simples (9.2.3), como no U enrijecido
+            const double fl = t / 2.0 + bf;
+            const double tipTop = d / 2.0 - t - c;
+            const double tipBot = -d / 2.0 + t + c;
+            const std::size_t bot = add({-1.5 * t, yb}, {-fl + 1.5 * t, yb}, false, false, "mesa inferior");
+            const std::size_t top = add({1.5 * t, yt}, {fl - 1.5 * t, yt}, false, false, "mesa superior");
+            add({fl, yt - 1.5 * t}, {fl, tipTop}, false, true, "enrijecedor superior");
+            add({-fl, yb + 1.5 * t}, {-fl, tipBot}, false, true, "enrijecedor inferior");
+            for (std::size_t idx : {top, bot}) {
+                tw.elements[idx].lipStiffened = true;
+                tw.elements[idx].lipLength = c - t;
+            }
+            path({{-fl, tipBot}, {-fl, yb}, {0.0, yb}, {0.0, yt}, {fl, yt}, {fl, tipTop}});
+            break;
+        }
         add({-1.5 * t, yb}, {-t / 2.0 - bf, yb}, false, true, "mesa inferior");
         add({1.5 * t, yt}, {t / 2.0 + bf, yt}, false, true, "mesa superior");
         path({{-t / 2.0 - bf, yb}, {0.0, yb}, {0.0, yt}, {t / 2.0 + bf, yt}});
@@ -209,6 +225,23 @@ ThinWalled buildThinWalled(const DesignSection &s)
         const double x0 = -bf / 2.0;
         const double xv = x0 + t / 2.0;
         const double yh = d / 2.0 - t / 2.0;
+        if (c > 0.0) {
+            // cantoneira enrijecida: enrijecedores de borda simples (9.2.3) nas duas abas, voltados para o interior
+            const double yb = -d / 2.0 + t / 2.0;
+            const double xr = bf / 2.0 - t / 2.0;
+            const double tipL = x0 + t + c;
+            const double tipR = d / 2.0 - t - c;
+            const std::size_t vertical = add({xv, d / 2.0 - 2.0 * t}, {xv, yb + 1.5 * t}, false, false, "aba vertical");
+            const std::size_t horizontal = add({x0 + 2.0 * t, yh}, {xr - 1.5 * t, yh}, false, false, "aba horizontal");
+            add({xv + 1.5 * t, yb}, {tipL, yb}, false, true, "enrijecedor da aba vertical");
+            add({xr, yh - 1.5 * t}, {xr, tipR}, false, true, "enrijecedor da aba horizontal");
+            for (std::size_t idx : {vertical, horizontal}) {
+                tw.elements[idx].lipStiffened = true;
+                tw.elements[idx].lipLength = c - t;
+            }
+            path({{tipL, yb}, {xv, yb}, {xv, yh}, {xr, yh}, {xr, tipR}});
+            break;
+        }
         add({xv, d / 2.0 - 2.0 * t}, {xv, -d / 2.0}, false, true, "aba vertical");
         add({x0 + 2.0 * t, yh}, {bf / 2.0, yh}, false, true, "aba horizontal");
         path({{xv, -d / 2.0}, {xv, yh}, {bf / 2.0, yh}});

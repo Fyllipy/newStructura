@@ -70,9 +70,10 @@ public:
         QVector<Structura::App::ProjectData::SavedView3D> views3d;
         Info info;
         QVector<Structura::App::ProjectData::SheetLayoutDef> layouts;   ///< folhas compostas salvas no projeto
+        QVector<Structura::App::ProjectData::SheetGroupEdit> edits;     ///< anotacoes movidas / excluidas pelo usuario
     };
 
-    enum class ViewKind { PlanProjection, PlanLevel, ElevationXZ, ElevationYZ, BarList, ConnectionDetail, View3D };
+    enum class ViewKind { PlanProjection, PlanLevel, ElevationXZ, ElevationYZ, BarList, ConnectionDetail, View3D, Fabrication, ConnectionBom, MemberFabrication, CutList, Assemblies };
     struct ViewDef {
         QString id;
         QString title;
@@ -100,6 +101,9 @@ public:
         double scaleDenominator {0.0};   ///< 0 = automatica
         bool barLabels {true};
         bool dimensions {true};
+        double stockLengthMm {12000.0};   ///< barra padrao de perfil no plano de corte
+        double plateSheetLengthMm {3000.0};   ///< chapa padrao (comprimento x largura) no plano de corte
+        double plateSheetWidthMm {1200.0};
         QSet<QString> views;             ///< ids escolhidos (vazio = todos os padrao)
         QVector<SheetLayout> customSheets;   ///< folhas compostas (geradas depois das automaticas)
     };
@@ -108,6 +112,9 @@ public:
     static QVector<ViewDef> availableViews(const Input &input);
 
     static std::vector<Structura::Drawing::Sheet> build(const Input &input, const Options &options);
+
+    /// Aplica os ajustes manuais (deslocamentos e exclusoes de anotacoes) as pranchas ja geradas.
+    static void applyEdits(std::vector<Structura::Drawing::Sheet> &sheets, const QVector<Structura::App::ProjectData::SheetGroupEdit> &edits);
 
     /// Marca de cada barra (P = pilar, V = viga, D = diagonal, T = tirante) e lista agrupada.
     struct MarkRow {

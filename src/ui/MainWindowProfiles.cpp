@@ -230,6 +230,15 @@ void MainWindow::refreshLoadsPanel()
                      joinNonZero({{"mx", moment.mx}, {"my", moment.my}, {"mz", moment.mz}})
                          + QStringLiteral(" (%1)").arg(moment.system)});
     }
+    for (int i = 0; i < m_extras.memberActions.size(); ++i) {
+        const auto &action = m_extras.memberActions[i];
+        if (!barIds.contains(action.memberId)) {
+            continue;
+        }
+        QString text = describeMemberAction(action);
+        text = text.mid(text.indexOf(QStringLiteral("): ")) + 3);
+        rows.append({LoadsPanel::Kind::Positioned, i, tr("Barra %1").arg(action.memberId), action.loadCase, text});
+    }
     m_loadsPanel->setRows(rows);
     m_loadsPanel->reposition();
 }
@@ -285,6 +294,8 @@ void MainWindow::onLoadsPanelEdit(int kind, int index)
             }
             changed = true;
         }
+    } else if (kind == static_cast<int>(LoadsPanel::Kind::Positioned) && index >= 0 && index < m_extras.memberActions.size()) {
+        changed = editMemberAction(index);
     } else if (kind == static_cast<int>(LoadsPanel::Kind::Moment) && index >= 0 && index < m_extras.memberMoments.size()) {
         auto &moment = m_extras.memberMoments[index];
         MemberMomentDialog dialog(this);
@@ -323,11 +334,14 @@ void MainWindow::onLoadsPanelDelete(const QVector<QPair<int, int>> &items)
     QVector<int> nodal;
     QVector<int> member;
     QVector<int> moment;
+    QVector<int> positioned;
     for (const auto &item : items) {
         if (item.first == static_cast<int>(LoadsPanel::Kind::Nodal)) {
             nodal.append(item.second);
         } else if (item.first == static_cast<int>(LoadsPanel::Kind::Distributed)) {
             member.append(item.second);
+        } else if (item.first == static_cast<int>(LoadsPanel::Kind::Positioned)) {
+            positioned.append(item.second);
         } else {
             moment.append(item.second);
         }
@@ -343,6 +357,7 @@ void MainWindow::onLoadsPanelDelete(const QVector<QPair<int, int>> &items)
     removeIndices(m_nodalLoads, nodal);
     removeIndices(m_memberLoads, member);
     removeIndices(m_extras.memberMoments, moment);
+    removeIndices(m_extras.memberActions, positioned);
     syncLoadVisuals();
     refreshPropertiesPanel();
     showStatusMessage(tr("%1 carga(s) excluida(s).").arg(items.size()), 3000);

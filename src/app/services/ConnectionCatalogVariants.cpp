@@ -1,6 +1,7 @@
 #include "app/services/ConnectionCatalogInternal.h"
 
 #include "design/ShearConnections.h"
+#include "design/SupportWeld.h"
 
 #include <QObject>
 
@@ -14,6 +15,149 @@ using Structura::App::ProjectData::NodeConnection;
 using Cat = ConnectionCatalog;
 
 // ---- nervuras das bases de pilar ---------------------------------------------------------------------------------------------------------------
+
+QVector<Cat::FieldDef> outsideFields()
+{
+    const QString group = QObject::tr("Posição da junta");
+    const QString weld = QObject::tr("Solda da viga ao apoio");
+    const QString mm = QObject::tr(" mm");
+    return {{QStringLiteral("outDist"), QObject::tr("Distância da face do apoio à junta"), 50, 3000, 0, mm, group, {},
+             QObject::tr("Ligação fora do nó: a junta (talas ou chapas de topo) fica a esta distância da face do pilar/viga de apoio, medida ao longo da viga; a viga se liga ao apoio por solda.")},
+            {QStringLiteral("supWeldKind"), QObject::tr("Solda das mesas"), 0, 1, 0, QString(), weld, {QObject::tr("Penetração total"), QObject::tr("Filete")},
+             QObject::tr("Penetração total: a resistência é a do metal-base da mesa (6.2.4). Filete: dimensionado pela perna.")},
+            {QStringLiteral("supWeldLegF"), QObject::tr("Perna do filete das mesas"), 3, 25, 1, mm, weld, {}, QObject::tr("Usada quando a solda das mesas é de filete.")},
+            {QStringLiteral("supWeldLegW"), QObject::tr("Perna dos filetes da alma"), 3, 25, 1, mm, weld, {}, QString()},
+            {QStringLiteral("weldFw"), QObject::tr("fw – resistência do metal da solda"), 350, 700, 0, QObject::tr(" MPa"), weld, {}, QObject::tr("Tabela A.4: E60 = 415 MPa, E70 = 485 MPa.")}};
+}
+
+void supportWeldDefaults(NodeConnection &c)
+{
+    // pernas padrao: 6 mm na alma e 8 mm nas mesas, limitadas ao maximo do filete na borda (t - 1,5 mm para t >= 6,35 mm) e arredondadas para baixo a 0,5 mm
+    const double tw = val(c, "tw", 6.0), tf = val(c, "tfl", 10.0);
+    auto limited = [](double leg, double t) { return std::max(3.0, std::floor(std::min(leg, D::maximumFilletLeg(t)) * 2.0) / 2.0); };
+    c.values["supWeldKind"] = 0.0;
+    c.values["supWeldLegF"] = limited(8.0, tf);
+    c.values["supWeldLegW"] = limited(6.0, tw);
+    if (!c.values.contains(QStringLiteral("weldFw"))) {
+        c.values["weldFw"] = 485.0;
+    }
+}
+
+namespace {
+
+D::SupportWeldInput supportWeldInput(const NodeConnection &c, const Cat::Forces &f)
+{
+    D::SupportWeldInput in;
+    in.depth = val(c, "beamD", 300.0);
+    in.flangeWidth = val(c, "bfl", 150.0);
+    in.flangeThickness = val(c, "tfl", 10.0);
+    in.webThickness = val(c, "tw", 6.0);
+    in.beamFy = val(c, "beamFy", val(c, "webFy", 250.0));
+    in.beamFu = val(c, "beamFu", val(c, "webFu", 400.0));
+    in.flangeFullPenetration = val(c, "supWeldKind", 0.0) < 0.5;
+    in.flangeLeg = val(c, "supWeldLegF", 8.0);
+    in.webLeg = val(c, "supWeldLegW", 6.0);
+    in.fw = val(c, "weldFw", 485.0);
+    in.shear = std::abs(f.shear);
+    in.axial = f.axial;
+    in.moment = std::abs(f.moment);
+    // espessura da parte do apoio onde a viga e soldada (mesa do pilar), quando a barra de apoio foi escolhida; na flangeada o campo supTf e da outra chapa
+    if (c.type != 147) {
+        in.supportThickness = val(c, "supTf", 0.0);
+        in.supportFy = val(c, "supFy", 250.0);
+        in.supportFu = val(c, "supFu", 400.0);
+    }
+    return in;
+}
+
+} // namespace
+
+void appendSupportWeld(const NodeConnection &c, const Cat::Forces &forces, Cat::Evaluation &evaluation)
+{
+    if (val(c, "outside", 0.0) == 0.0) {
+        return;
+    }
+    const auto in = supportWeldInput(c, forces);
+    for (auto &check : D::checkSupportWeld(in)) {
+        evaluation.checks.push_back(std::move(check));
+    }
+    const double beamD = in.depth, bf = in.flangeWidth, tw = in.webThickness, tf = in.flangeThickness;
+    const double hw = std::max(1.0, beamD - 2.0 * tf);
+    const double flangeLength = in.flangeFullPenetration ? 2.0 * bf : 2.0 * std::max(2.0 * bf - tw, bf);
+    D::Part flange;
+    flange.description = in.flangeFullPenetration ? "Solda viga-apoio: penetracao total nas mesas (comprimento total)" : "Solda viga-apoio: filete " + std::to_string(static_cast<int>(in.flangeLeg)) + " mm nas mesas";
+    flange.quantity = 1;
+    flange.length = flangeLength;
+    flange.unit = "mm";
+    evaluation.parts.push_back(flange);
+    D::Part web;
+    web.description = "Solda viga-apoio: filete " + std::to_string(static_cast<int>(in.webLeg)) + " mm na alma (2 filetes)";
+    web.quantity = 1;
+    web.length = 2.0 * hw;
+    web.unit = "mm";
+    evaluation.parts.push_back(web);
+    evaluation.maxRatio = D::worstRatio(evaluation.checks);
+    evaluation.governing.clear();
+    if (const auto *g = D::governing(evaluation.checks)) {
+        evaluation.governing = QString::fromStdString(g->name);
+    }
+}
+
+bool proposeSupportWeld(NodeConnection &c, const Cat::Forces &forces)
+{
+    if (val(c, "outside", 0.0) == 0.0) {
+        return false;
+    }
+    const D::SupportWeldInput base = supportWeldInput(c, forces);
+    bool changed = false;
+    auto passes = [&](const D::SupportWeldInput &in, const char *key) {
+        for (const auto &check : D::checkSupportWeld(in)) {
+            if (check.name.find(key) != std::string::npos && !check.ok()) {
+                return false;
+            }
+        }
+        return true;
+    };
+    // pernas: a menor (de 1 em 1 mm, entre a minima e a maxima da Tabela 11 / 6.2.5.2) que atende o grupo correspondente
+    auto choose = [&](const char *valueKey, const char *checkKey, double minLeg, double maxLeg, bool flange) {
+        double chosen = maxLeg;
+        for (double leg = std::ceil(minLeg); leg <= maxLeg + 1e-9; leg += 1.0) {
+            D::SupportWeldInput in = base;
+            (flange ? in.flangeLeg : in.webLeg) = leg;
+            if (passes(in, checkKey)) {
+                chosen = leg;
+                break;
+            }
+        }
+        if (std::abs(c.values.value(QString::fromLatin1(valueKey)) - chosen) > 1e-9) {
+            c.values[QString::fromLatin1(valueKey)] = chosen;
+            changed = true;
+        }
+    };
+    choose("supWeldLegW", "alma", D::minimumFilletLeg(std::min(base.webThickness, base.supportThickness > 0.0 ? base.supportThickness : base.webThickness)), D::maximumFilletLeg(base.webThickness), false);
+    if (!base.flangeFullPenetration) {
+        choose("supWeldLegF", "mesas", D::minimumFilletLeg(std::min(base.flangeThickness, base.supportThickness > 0.0 ? base.supportThickness : base.flangeThickness)),
+               D::maximumFilletLeg(base.flangeThickness), true);
+    }
+    return changed;
+}
+
+void addSupportWeldSolids(const NodeConnection &c, std::vector<Cat::Primitive> &out)
+{
+    if (val(c, "outside", 0.0) == 0.0) {
+        return;
+    }
+    const double d = val(c, "beamD", 300.0), bf = val(c, "bfl", 150.0), tf = val(c, "tfl", 10.0), tw = val(c, "tw", 6.0);
+    const bool cjp = val(c, "supWeldKind", 0.0) < 0.5;
+    const double legF = cjp ? std::max(6.0, 0.7 * tf) : val(c, "supWeldLegF", 8.0);
+    const double legW = val(c, "supWeldLegW", 6.0);
+    // plano da face do apoio: s = -outDist (a junta fica em s = 0); a solda se estende da face para dentro da viga
+    const double face = -val(c, "outDist", 260.0);
+    for (const double side : {-1.0, 1.0}) {
+        out.push_back(sb::box(Role::Weld, face + legF / 2.0, side * (d / 2.0 - tf / 2.0), 0.0, legF, tf + 2.0 * legF, bf + 2.0 * legF));
+        out.push_back(sb::box(Role::Weld, face + legW / 2.0, 0.0, side * (tw / 2.0 + legW / 2.0), legW, std::max(1.0, d - 2.0 * tf), legW));
+    }
+}
 
 QVector<Cat::FieldDef> baseRibFields()
 {
@@ -83,7 +227,7 @@ void addSupportBeam(const NodeConnection &c, std::vector<Cat::Primitive> &out)
 void addColumnBeyond(const NodeConnection &c, std::vector<Cat::Primitive> &out)
 {
     const double d = beamDepthOf(c);
-    const double colD = 240.0, colBf = 170.0, colTf = 12.0, colTw = 8.0, colH = d + 260.0, cc = -(260.0 + colD / 2.0);
+    const double colD = 240.0, colBf = 170.0, colTf = 12.0, colTw = 8.0, colH = d + 260.0, cc = -(val(c, "outDist", 260.0) + colD / 2.0);
     for (const double side : {-1.0, 1.0}) {
         out.push_back(sb::box(Role::Concrete, cc + side * (colD - colTf) / 2.0, 0.0, 0.0, colTf, colH, colBf));
     }
@@ -107,6 +251,9 @@ void variantDecorate(const NodeConnection &c, bool context, std::vector<Cat::Pri
     }
     if (flag("outside") && context) {
         addColumnBeyond(c, out);
+    }
+    if (flag("outside")) {
+        addSupportWeldSolids(c, out);
     }
 }
 

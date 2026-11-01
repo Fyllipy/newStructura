@@ -23,36 +23,6 @@ Vec3 unit(const Vec3 &a)
 
 } // namespace
 
-void AreaLoadService::meteorologicalParameters(int category, char cls, double &b, double &fr, double &p)
-{
-    static const double bTable[5] = {1.10, 1.00, 0.94, 0.86, 0.74};
-    static const double pTable[5][3] = {{0.06, 0.065, 0.07}, {0.085, 0.09, 0.10}, {0.10, 0.105, 0.115}, {0.12, 0.125, 0.135}, {0.15, 0.16, 0.175}};
-    static const double frTable[3] = {1.00, 0.98, 0.95};
-    const int c = std::clamp(category, 1, 5) - 1;
-    const int k = cls == 'A' ? 0 : (cls == 'C' ? 2 : 1);
-    b = bTable[c];
-    p = pTable[c][k];
-    fr = frTable[k];
-}
-
-double AreaLoadService::s2(const WindParameters &w)
-{
-    double b, fr, p;
-    meteorologicalParameters(w.category, w.cls, b, fr, p);
-    return b * fr * std::pow(std::max(w.height, 1.0) / 10.0, p);
-}
-
-double AreaLoadService::characteristicSpeed(const WindParameters &w)
-{
-    return w.v0 * w.s1 * s2(w) * w.s3;
-}
-
-double AreaLoadService::dynamicPressure(const WindParameters &w)
-{
-    const double vk = characteristicSpeed(w);
-    return 0.613 * vk * vk / 1000.0;
-}
-
 AreaLoadService::Vec3 AreaLoadService::surfaceNormal(const QVector<BarSegment> &bars)
 {
     // maior produto vetorial entre as direcoes das barras

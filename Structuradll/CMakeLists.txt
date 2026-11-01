@@ -13,6 +13,10 @@ set(EIGEN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs)
 
 set(CORE_SOURCES
 	src/core/solver_core.cpp
+	src/core/constraints.cpp
+	src/core/links.cpp
+	src/core/nonlinear_engine.cpp
+	src/core/iterative_solvers.cpp
 	../Femdll/src/shell_q4.cpp
 	src/material.cpp
 	src/section.cpp
@@ -20,11 +24,17 @@ set(CORE_SOURCES
 	src/node.cpp
 	src/member.cpp
 	src/load.cpp
+	src/member_action.cpp
+	src/member_nonlinear.cpp
 )
 
 set(CORE_HEADERS
 	src/core/solver_core.h
 	src/core/solver_types.h
+	src/core/constraints.h
+	src/core/links.h
+	src/core/nonlinear_engine.h
+	src/core/iterative_solvers.h
 	headers/material.h
 	headers/section.h
 	headers/warping.h
@@ -81,6 +91,15 @@ target_include_directories(solver_dll
 )
 target_link_libraries(solver_dll PRIVATE solver_core)
 target_compile_definitions(solver_dll PRIVATE SOLVER_DLL_EXPORTS)
+
+add_executable(solver_tests EXCLUDE_FROM_ALL tests/solver_tests.cpp)
+target_include_directories(solver_tests
+	PRIVATE
+		${PROJECT_INCLUDE_DIR}
+		${EIGEN_INCLUDE_DIR}
+		${CMAKE_CURRENT_SOURCE_DIR}/src/core
+)
+target_link_libraries(solver_tests PRIVATE solver_core)
 
 set_target_properties(solver_cli PROPERTIES OUTPUT_NAME "solver_cli")
 set_target_properties(solver_dll PROPERTIES OUTPUT_NAME "rds")

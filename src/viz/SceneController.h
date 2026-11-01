@@ -98,8 +98,14 @@ public:
         bool moment {false};
         bool local {false};
         bool selfWeight {false};
-        int sourceKind {-1};    ///< 1 = carga distribuida, 2 = momento distribuido, 3 = peso proprio (indice = id da barra)
+        int sourceKind {-1};    ///< 1 = carga distribuida, 2 = momento distribuido, 3 = peso proprio (indice = id da barra), 4 = carga com posicao
         int sourceIndex {-1};
+        /// Cargas com posicao (sourceKind 4): 1 = trapezoidal/parcial, 2 = forca pontual, 3 = momento pontual, 4 = temperatura, 5 = retracao; 0 = uniforme
+        int variant {0};
+        double t0 {0.0};          ///< inicio da carga (fracao do comprimento da barra)
+        double t1 {1.0};          ///< fim da carga (fracao); nas cargas pontuais t0 = t1
+        QVector3D values2;        ///< valores em t1 (trapezoidal); nos demais casos igual a `values`
+        QString note;             ///< texto do rotulo das cargas termicas
     };
 
     /// Carga identificada na viewport: tipo e indice no vetor de dados do projeto (kind < 0 = nenhuma).
@@ -180,6 +186,8 @@ public:
     /// Forma modal / deformada desenhada sobre o modelo (lista vazia remove).
     /// Marcadores de rotulas, trelicas e tirantes (lista vazia remove).
     void setBarTypeMarkers(const std::vector<Structura::Visualization::BarTypeRenderer::Marker> &markers);
+    /// Exibe/oculta os glifos de tipo de barra (rotulas, semirrigidas, rotulas plasticas, trelicas e tirantes).
+    void setBarTypeMarkersVisible(bool visible);
     /// Camera atual (posicao, alvo, cima em m; abertura vertical em graus; paralela?). false sem janela de visualizacao.
     bool cameraState(double position[3], double target[3], double up[3], double &viewAngleDeg, bool &parallel) const;
     void setModeShape(const std::vector<std::vector<std::array<double, 3>>> &lines);
@@ -313,6 +321,7 @@ private:
     std::unique_ptr<Structura::Visualization::AreaPanelRenderer> m_areaPanelRenderer;
     std::unique_ptr<Structura::Visualization::ModeShapeRenderer> m_modeShapeRenderer;
     std::unique_ptr<Structura::Visualization::BarTypeRenderer> m_barTypeRenderer;
+    bool m_barTypeMarkersVisible {true};
     std::vector<Structura::Visualization::AreaPanelRenderer::Panel> m_areaPanels;
     bool m_areaPanelsVisible {true};
     std::unique_ptr<Structura::Visualization::SolidMemberRenderer> m_solidRenderer;

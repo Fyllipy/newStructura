@@ -290,8 +290,11 @@ void Member::addFixedEndLocal(const Eigen::VectorXd& flexLocal, const Eigen::Vec
 }
 
 Eigen::VectorXd Member::localAxisForcesToGlobalNodal(const Eigen::VectorXd& localForces) const {
-    const Eigen::VectorXd condensed = condenseFixedEndForces(localForces);
+    Eigen::VectorXd condensed = condenseFixedEndForces(localForces);
     if (condensed.size() == 14) {
+        if (hasShearCenterOffset()) {
+            condensed = shearCenterMap().transpose() * condensed;   // de volta ao eixo do centroide
+        }
         Eigen::VectorXd global(14);
         global.head(12) = calculateNodeToAxisMatrix().transpose() * condensed.head(12);
         global.tail(2) = condensed.tail(2);   // warping parameters are not transformed
@@ -386,9 +389,35 @@ bool Member::hasWarping() const {
     return warpingEnabled && section->getCw() > 0.0 && material->getG() * section->getJ() > 0.0 && material->getE() > 0.0;
 }
 
+bool Member::hasShearCenterOffset() const {
+    return hasWarping() && (section->getShearCenterY() != 0.0 || section->getShearCenterZ() != 0.0);
+}
+
+Eigen::MatrixXd Member::shearCenterMap() const {
+    Eigen::MatrixXd A = Eigen::MatrixXd::Identity(14, 14);
+    if (!hasShearCenterOffset()) {
+        return A;
+    }
+    // point of the shear center (ys, zs) relative to the centroid: v_s = v_c - zs theta, w_s = w_c + ys theta; the slopes follow the lateral displacement
+    // of that line (rz = dv/dx, ry = -dw/dx): rz_s = rz_c - zs phi, ry_s = ry_c - ys phi, with phi = theta'
+    const double ys = section->getShearCenterY(), zs = section->getShearCenterZ();
+    const int ends[2][4] = {{1, 2, 3, 12}, {7, 8, 9, 13}};   // v, w, theta, phi
+    const int rotations[2][2] = {{4, 5}, {10, 11}};           // ry, rz
+    for (int e = 0; e < 2; ++e) {
+        A(ends[e][0], ends[e][2]) = -zs;
+        A(ends[e][1], ends[e][2]) = ys;
+        A(rotations[e][0], ends[e][3]) = -ys;
+        A(rotations[e][1], ends[e][3]) = -zs;
+    }
+    return A;
+}
+
 Eigen::MatrixXd Member::calculateExtendedNodeToAxisMatrix() const {
     Eigen::MatrixXd T = Eigen::MatrixXd::Identity(14, 14);
     T.topLeftCorner(12, 12) = calculateNodeToAxisMatrix();
+    if (hasShearCenterOffset()) {
+        T = shearCenterMap() * T;
+    }
     return T;
 }
 
@@ -482,6 +511,31 @@ Eigen::MatrixXd Member::getFullLocalStiffnessMatrix() const {
                 K14(idx[i], idx[j]) += kt(i, j);
             }
         }
+        if (geometricAxialForce != 0.0) {
+            // Geometric stiffness of the twist and its coupling with the lateral displacements of the shear-center line (P acting on the centroid):
+            // U = P/2 int [v_s'^2 + w_s'^2 + (Ip/A + ys^2 + zs^2) theta'^2 + 2 zs v_s' theta' - 2 ys w_s' theta'] dx, with the cubic (Hermite) shapes of the bending terms
+            const double P = geometricAxialForce;
+            const double ys = section->getShearCenterY(), zs = section->getShearCenterZ();
+            const double r0Squared = (Iy + Iz) / A + ys * ys + zs * zs;
+            const double c0 = P / (30.0 * L);
+            const double g[4][4] = {{36.0 * c0, 3.0 * L * c0, -36.0 * c0, 3.0 * L * c0},
+                                    {3.0 * L * c0, 4.0 * L2 * c0, -3.0 * L * c0, -L2 * c0},
+                                    {-36.0 * c0, -3.0 * L * c0, 36.0 * c0, -3.0 * L * c0},
+                                    {3.0 * L * c0, -L2 * c0, -3.0 * L * c0, 4.0 * L2 * c0}};
+            const int tw[4] = {3, 12, 9, 13};    // theta_i, phi_i, theta_j, phi_j
+            const int vy[4] = {1, 5, 7, 11};     // v, rz at both ends
+            const int wz[4] = {2, 4, 8, 10};     // w, ry at both ends (ry = -w')
+            const double ry[4] = {1.0, -1.0, 1.0, -1.0};
+            for (int i = 0; i < 4; ++i) {
+                for (int j = 0; j < 4; ++j) {
+                    K14(tw[i], tw[j]) += r0Squared * g[i][j];
+                    K14(vy[i], tw[j]) += zs * g[i][j];
+                    K14(tw[j], vy[i]) += zs * g[i][j];
+                    K14(wz[i], tw[j]) += -ys * ry[i] * g[i][j];
+                    K14(tw[j], wz[i]) += -ys * ry[i] * g[i][j];
+                }
+            }
+        }
         K_local = K14;
     }
 
@@ -507,8 +561,22 @@ void Member::setGeometricAxialForce(double axialForce) {
 }
 
 bool Member::hasReleases() const {
-    for (const bool released : releases) {
-        if (released) {
+    for (int i = 0; i < 12; ++i) {
+        if (isCondensedDof(i)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Member::setEndSprings(const std::array<double, 12>& k) {
+    springK = k;
+    condensationCached = false;
+}
+
+bool Member::hasEndSprings() const {
+    for (const double k : springK) {
+        if (k >= 0.0) {
             return true;
         }
     }
@@ -516,10 +584,11 @@ bool Member::hasReleases() const {
 }
 
 namespace {
-// Partition indices of retained (A) and released (R) DOFs
-void partitionDofs(const std::array<bool, 12>& releases, std::vector<int>& retained, std::vector<int>& released, int count = 12) {
+// Partition indices of retained (A) and condensed (R: released or spring-connected) DOFs
+template <typename Predicate>
+void partitionDofs(Predicate condensed, std::vector<int>& retained, std::vector<int>& released, int count = 12) {
     for (int i = 0; i < 12; ++i) {
-        (releases[static_cast<size_t>(i)] ? released : retained).push_back(i);
+        (condensed(i) ? released : retained).push_back(i);
     }
     for (int i = 12; i < count; ++i) {
         retained.push_back(i);   // warping parameters are never released
@@ -537,7 +606,7 @@ Eigen::MatrixXd Member::getLocalStiffnessMatrix() const {
 
     const Eigen::MatrixXd K = getFullLocalStiffnessMatrix();
     std::vector<int> a, r;
-    partitionDofs(releases, a, r, static_cast<int>(K.rows()));
+    partitionDofs([this](int i) { return isCondensedDof(i); }, a, r, static_cast<int>(K.rows()));
 
     Eigen::MatrixXd Kaa(a.size(), a.size()), Kar(a.size(), r.size()), Krr(r.size(), r.size());
     for (size_t i = 0; i < a.size(); ++i) {
@@ -547,18 +616,36 @@ Eigen::MatrixXd Member::getLocalStiffnessMatrix() const {
     for (size_t i = 0; i < r.size(); ++i) {
         for (size_t j = 0; j < r.size(); ++j) Krr(i, j) = K(r[i], r[j]);
     }
+    // molas em serie: S = Krr + Ks. Com Ks = 0 (liberacao) a expressao reduz a condensacao simples de Kaa - Kar Krr^-1 Kra
+    Eigen::VectorXd ks(r.size());
+    for (size_t i = 0; i < r.size(); ++i) ks(static_cast<Eigen::Index>(i)) = springStiffness(r[i]);
+    const Eigen::MatrixXd S = Krr + Eigen::MatrixXd(ks.asDiagonal());
 
-    Eigen::FullPivLU<Eigen::MatrixXd> lu(Krr);
+    Eigen::FullPivLU<Eigen::MatrixXd> lu(S);
     if (!lu.isInvertible()) {
         throw std::runtime_error("Invalid end releases on member " + std::to_string(id) +
                                  " (the released DOFs form a mechanism)");
     }
-    const Eigen::MatrixXd Kc = Kaa - Kar * lu.solve(Kar.transpose());
+    const Eigen::MatrixXd SinvKra = lu.solve(Kar.transpose());
+    const Eigen::MatrixXd Kc = Kaa - Kar * SinvKra;
+    // acoplamento a-r: Kar S^-1 Ks ; bloco r-r: Ks - Ks S^-1 Ks (simetricos)
+    const Eigen::MatrixXd SinvKs = lu.solve(Eigen::MatrixXd(ks.asDiagonal()));
+    const Eigen::MatrixXd Kcar = Kar * SinvKs;
+    const Eigen::MatrixXd Kcrr = Eigen::MatrixXd(ks.asDiagonal()) - ks.asDiagonal() * SinvKs;
 
     Eigen::MatrixXd result = Eigen::MatrixXd::Zero(K.rows(), K.rows());
     for (size_t i = 0; i < a.size(); ++i) {
         for (size_t j = 0; j < a.size(); ++j) {
             result(a[i], a[j]) = Kc(i, j);
+        }
+        for (size_t j = 0; j < r.size(); ++j) {
+            result(a[i], r[j]) = Kcar(i, j);
+            result(r[j], a[i]) = Kcar(i, j);
+        }
+    }
+    for (size_t i = 0; i < r.size(); ++i) {
+        for (size_t j = 0; j < r.size(); ++j) {
+            result(r[i], r[j]) = 0.5 * (Kcrr(i, j) + Kcrr(j, i));
         }
     }
     cachedCondensedK = result;
@@ -572,12 +659,16 @@ Eigen::VectorXd Member::condenseFixedEndForces(const Eigen::VectorXd& forces) co
         localForces.conservativeResize(14);   // loads without a warping part (forces, bending moments): zero on the warping parameters
         localForces.tail(2).setZero();
     }
+    if (localForces.size() == 14 && hasShearCenterOffset()) {
+        // f_centroid = A^T f_shear-center (trabalho virtual): as cargas aplicadas na linha do centroide ganham o torque da excentricidade
+        localForces = shearCenterMap().transpose().fullPivLu().solve(localForces);
+    }
     if (!hasReleases()) {
         return localForces;
     }
     const Eigen::MatrixXd K = getFullLocalStiffnessMatrix();
     std::vector<int> a, r;
-    partitionDofs(releases, a, r, static_cast<int>(K.rows()));
+    partitionDofs([this](int i) { return isCondensedDof(i); }, a, r, static_cast<int>(K.rows()));
 
     Eigen::MatrixXd Kar(a.size(), r.size()), Krr(r.size(), r.size());
     for (size_t i = 0; i < a.size(); ++i) {
@@ -586,20 +677,27 @@ Eigen::VectorXd Member::condenseFixedEndForces(const Eigen::VectorXd& forces) co
     for (size_t i = 0; i < r.size(); ++i) {
         for (size_t j = 0; j < r.size(); ++j) Krr(i, j) = K(r[i], r[j]);
     }
+    Eigen::VectorXd ks(r.size());
+    for (size_t i = 0; i < r.size(); ++i) ks(static_cast<Eigen::Index>(i)) = springStiffness(r[i]);
     Eigen::VectorXd fa(a.size()), fr(r.size());
     for (size_t i = 0; i < a.size(); ++i) fa(i) = localForces(a[i]);
     for (size_t i = 0; i < r.size(); ++i) fr(i) = localForces(r[i]);
 
-    Eigen::FullPivLU<Eigen::MatrixXd> lu(Krr);
+    Eigen::FullPivLU<Eigen::MatrixXd> lu(Krr + Eigen::MatrixXd(ks.asDiagonal()));
     if (!lu.isInvertible()) {
         throw std::runtime_error("Invalid end releases on member " + std::to_string(id) +
                                  " (the released DOFs form a mechanism)");
     }
-    const Eigen::VectorXd fc = fa - Kar * lu.solve(fr);
+    const Eigen::VectorXd sInvFr = lu.solve(fr);
+    const Eigen::VectorXd fc = fa - Kar * sInvFr;
+    const Eigen::VectorXd fcr = ks.cwiseProduct(sInvFr);   // parte que passa pela mola ao no
 
     Eigen::VectorXd result = Eigen::VectorXd::Zero(K.rows());
     for (size_t i = 0; i < a.size(); ++i) {
         result(a[i]) = fc(i);
+    }
+    for (size_t i = 0; i < r.size(); ++i) {
+        result(r[i]) = fcr(i);
     }
     return result;
 }
@@ -673,6 +771,12 @@ void Member::addDistributedLoad(const std::vector<double>& globalEquivalentForce
 }
 
 void Member::calculateInternalForces() {
+    if (hasOverride && overridden.size() >= 12) {
+        for (int i = 0; i < 12; ++i) {
+            internalForces[static_cast<size_t>(i)] = overridden[static_cast<size_t>(i)];
+        }
+        return;
+    }
     if (stiffnessFactor < 1e-6) {
         // tirante inativo (fora de servico): nao transmite esforcos; sua carga ja foi levada aos nos
         std::fill(internalForces.begin(), internalForces.end(), 0.0);
@@ -728,4 +832,9 @@ const std::vector<double>& Member::getInternalForces() const {
 void Member::clearDistributedLoads() {
     std::fill(fixedEndForces.begin(), fixedEndForces.end(), 0.0);
     rigidFixedForces.clear();
+    rawEquivalent = Eigen::VectorXd::Zero(12);
+}
+
+void Member::addRawLoad(const Eigen::VectorXd& flexEquivalent) {
+    rawEquivalent.head(12) += flexEquivalent.head(12);
 }

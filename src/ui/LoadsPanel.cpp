@@ -100,6 +100,7 @@ void LoadsPanel::setRows(const QVector<Row> &rows)
         case Kind::Nodal: type = tr("Forca nodal"); break;
         case Kind::Distributed: type = tr("Distribuida"); break;
         case Kind::Moment: type = tr("Momento"); break;
+        case Kind::Positioned: type = tr("Com posicao"); break;
         }
         auto *item = new QTreeWidgetItem(m_tree, {row.element, type, row.loadCase, row.values});
         item->setData(0, kKindRole, static_cast<int>(row.kind));

@@ -72,6 +72,7 @@ void MainWindow::beginLoadPick(LoadPick kind)
     case LoadPick::Nodal: what = tr("Força concentrada: selecione um ou mais nós"); break;
     case LoadPick::Distributed: what = tr("Carga distribuída: selecione uma ou mais barras"); break;
     case LoadPick::Moment: what = tr("Momento distribuído: selecione uma ou mais barras"); break;
+    case LoadPick::Positioned: what = tr("Carga geral em barra: selecione uma ou mais barras"); break;
     case LoadPick::None: return;
     }
     showStatusMessage(tr("%1 (clique, Ctrl/Shift para somar ou janela) e pressione Enter ou o botão direito do mouse para concluir; Esc cancela.").arg(what), 0);
@@ -106,6 +107,7 @@ void MainWindow::finishLoadPick()
     case LoadPick::Nodal: onApplyNodalLoad(); break;
     case LoadPick::Distributed: onApplyDistributedLoad(); break;
     case LoadPick::Moment: onApplyMemberMoment(); break;
+    case LoadPick::Positioned: onApplyMemberAction(); break;
     case LoadPick::None: break;
     }
 }
@@ -163,11 +165,16 @@ bool MainWindow::trySelectLoadAt(const QPoint &widgetPos)
             text = tr("Momento distribuído na barra %1 (caso %2): m = [%3; %4; %5] kN·m/m").arg(l.memberId).arg(l.loadCase).arg(l.mx).arg(l.my).arg(l.mz);
         }
         break;
+    case 4:
+        if (ref.index >= 0 && ref.index < m_extras.memberActions.size()) {
+            text = describeMemberAction(m_extras.memberActions[ref.index]);
+        }
+        break;
     default:
         text = tr("Peso próprio (definido no caso de carga: não pode ser excluído individualmente).");
         break;
     }
-    showStatusMessage(text + (ref.kind <= 2 ? tr("  —  Delete exclui esta carga.") : QString()), 0);
+    showStatusMessage(text + (ref.kind <= 2 || ref.kind == 4 ? tr("  —  Delete exclui esta carga.") : QString()), 0);
     return true;
 }
 
@@ -203,6 +210,9 @@ bool MainWindow::deleteSelectedLoad()
             removed = true;
         } else if (ref.kind == 2 && ref.index >= 0 && ref.index < m_extras.memberMoments.size()) {
             m_extras.memberMoments.removeAt(ref.index);
+            removed = true;
+        } else if (ref.kind == 4 && ref.index >= 0 && ref.index < m_extras.memberActions.size()) {
+            m_extras.memberActions.removeAt(ref.index);
             removed = true;
         }
         m_sceneController->setHighlightedLoad({});

@@ -61,6 +61,7 @@ bool MainWindow::computeModal(const QString &source, int modes, Structura::App::
             model.nodalLoads.clear();
             model.memberLoads.clear();
             model.memberMoments.clear();
+            model.memberActions.clear();
         } else {
             model = CombinationService::mergeModels(terms);
         }

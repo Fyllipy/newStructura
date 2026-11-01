@@ -36,6 +36,11 @@ SOLVER_DLL_API void structura_set_rigid_zones(int count, const int* memberIds, c
 // Not combined with buckling or modal analysis (St. Venant torsion is used there, with a warning).
 SOLVER_DLL_API void structura_set_warping_sections(int count, const int* sectionIds, const double* warpingConstants);
 SOLVER_DLL_API void structura_set_warping_members(int count, const int* memberIds, const int* modeStart, const int* modeEnd);
+// Shear center per section id, relative to the centroid along the local y and z axes (model length unit). Only used by members with warping: the element
+// stiffness (bending and torsion about the shear center line) is brought to the centroid axis with a rigid arm, which couples flexure and torsion in
+// sections that are not doubly symmetric. First-order coupling: the geometric stiffness and the buckling/modal analyses keep the centroid axis.
+// The torque reported in the member end forces is the one about the shear center. Replaces the previous list; count = 0 clears it.
+SOLVER_DLL_API void structura_set_shear_centers(int count, const int* sectionIds, const double* scY, const double* scZ);
 // Results of the last successful solve per requested member id: out4 = (theta' at I, theta' at J, generalized force at I, at J);
 // the forces on theta' are the bimoments applied to the bar (B at I; -B at J, B = -E Cw theta''). Returns the number of members with warping.
 SOLVER_DLL_API int structura_get_warping(int count, const int* memberIds, double* out4);
@@ -94,12 +99,71 @@ SOLVER_DLL_API int structura_set_shells(
     const double* springK6,
     const int* springCompressionOnly,
     const double* springNormals3);
+// Orthotropic shell materials, same order as structura_set_shells (call right after it; shellCount must match): flag (0/1), E2, nu12, G12, bending-stiffness
+// multipliers in directions 1 and 2, and the global material axis 1 (3 values per shell). E1 is the shell's E.
+SOLVER_DLL_API int structura_set_shell_orthotropy(int shellCount, const int* flags, const double* E2, const double* nu12, const double* G12, const double* bend1,
+                                                  const double* bend2, const double* axis3);
 // Copies the shell results of the last successful solve in the order of structura_set_shells:
 // 40 values per shell (5 points x nxx nyy nxy mxx myy mxy qx qy, local axes) and the axes e1,e2,e3 (9 values). Returns the count.
 SOLVER_DLL_API int structura_get_shell_results(int shellCount, double* values40, double* axes9);
 
 // Marks members (by id) as tension-only (ties/cables) for the following structura_solve* calls; count = 0 clears.
 SOLVER_DLL_API void structura_set_tension_only(int count, const int* memberIds);
+
+// General member loads with position for the following structura_solve* calls (count = 0 clears). Per load: member id, kind
+// (0 = trapezoidal/partial, 1 = point force, 2 = point moment, 3 = imposed strain: temperature/shrinkage), coordinate system (0 = local, 1 = global;
+// kind 3 is always local), positions a and b (distance along the member axis from node I; b only for kind 0), and two vectors of 3 values:
+//   kind 0: v1 = (qx,qy,qz) at a, v2 = (qx,qy,qz) at b (force per length);   kind 1: v1 = (Fx,Fy,Fz);   kind 2: v1 = (Mx,My,Mz);
+//   kind 3: v1 = (free axial strain, d(eps)/dy, d(eps)/dz) over the whole member (alpha*dT for temperature; gradients in 1/length).
+SOLVER_DLL_API void structura_set_member_actions(int count, const int* memberIds, const int* kinds, const int* coordSystems, const double* a, const double* b,
+                                                 const double* v1_3, const double* v2_3);
+
+// End springs (semi-rigid connections) for the following structura_solve* calls (count = 0 clears): 12 stiffnesses per member
+// (ux uy uz rx ry rz at node I, then at node J; force/length or moment/rotation); a value < 0 means "no spring" (rigid, unless released) and 0 a hinge.
+SOLVER_DLL_API void structura_set_end_springs(int count, const int* memberIds, const double* k12);
+
+// Bilinear plastic hinges on member end rotations (count = 0 clears): member id, dof (3..5 at node I, 9..11 at node J), elastic rotational stiffness,
+// yield moment, hardening ratio (post-yield / elastic stiffness), axial yield force (0 = no N-M interaction; otherwise My,eff = My (1 - |N/Ny|^exponent))
+// and the interaction exponent. Their presence runs the incremental nonlinear engine.
+SOLVER_DLL_API void structura_set_plastic_hinges(int count, const int* memberIds, const int* dofs, const double* kElastic, const double* yieldMoment,
+                                                 const double* hardeningRatio, const double* axialYield, const double* exponent);
+
+// Constraints between nodes (penalty-imposed), replacing the previous list (all counts = 0 clears):
+//  - rigid diaphragms: master node, normal axis (0 = X, 1 = Y, 2 = Z), slave count and slave node ids (concatenated)
+//  - rigid links: master, slave, kind (0 = rigid body 6 dof, 1 = three translations equal, 2 = three rotations equal, 3 = a single dof equal) and dof (kind 3)
+//  - inclined supports: node, 3 direction vectors e1,e2,e3 (9 values, global) and restraint mask (bits 0..2 = translations along e1..e3, bits 3..5 = rotations about them)
+//  - general linear constraints: term count per constraint, then node id, dof (0..5) and coefficient of each term (concatenated), sum(coef*u) = 0;
+//    reportReaction (0/1) adds the constraint force to the reactions
+SOLVER_DLL_API void structura_set_constraints(int diaphragmCount, const int* diaMasters, const int* diaNormals, const int* diaSlaveCounts, const int* diaSlaves,
+                                              int linkCount, const int* linkMasters, const int* linkSlaves, const int* linkKinds, const int* linkDofs,
+                                              int inclinedCount, const int* incNodes, const double* incAxes9, const int* incMasks,
+                                              int genericCount, const int* genTermCounts, const int* genNodes, const int* genDofs, const double* genCoefs,
+                                              const int* genReport);
+
+// Two-node links with a force-deformation law per relative dof (count = 0 clears). Per link: id, node I, node J, local axes (9 values; zeros = direction I->J),
+// and per dof (6 per link): law kind (0 linear, 1 tension only, 2 compression only, 3 tension gap, 4 compression gap, 5 bilinear elastoplastic,
+// 6 multilinear, 7 rigid), stiffness k, parameters p1 (gap or yield force) and p2 (hardening ratio), table point count; the multilinear points
+// (deformation, force) of all dofs follow concatenated in tableDef/tableForce.
+SOLVER_DLL_API void structura_set_links(int count, const int* ids, const int* nodeI, const int* nodeJ, const double* axes9,
+                                        const int* lawKinds6, const double* lawK6, const double* lawP1_6, const double* lawP2_6, const int* tableCounts6,
+                                        const double* tableDef, const double* tableForce);
+
+// Incremental nonlinear analysis control. criteria: bit 0 = force residual, bit 1 = displacement increment, bit 2 = energy. controlMode: 0 = load control up
+// to loadFactorMax, 1 = displacement control of (controlNode, controlDof) up to controlTarget. force = 1 runs the engine even without nonlinear elements.
+SOLVER_DLL_API void structura_set_nonlinear_options(int force, int steps, int maxIterations, double tolerance, int criteria, int maxCutbacks, int controlMode,
+                                                    int controlNode, int controlDof, double controlTarget, double loadFactorMax);
+
+// Numerical infrastructure. linearSolver: 0 = direct sparse LDL^T (AMD ordering), 1 = preconditioned conjugate gradient (incomplete Cholesky; falls back to direct if it
+// does not converge, and skips the mechanism check). eigenSolver: 0 = automatic (dense up to eigenDenseLimit free DOFs, sparse subspace iteration above), 1 = dense, 2 = sparse.
+SOLVER_DLL_API void structura_set_solver_options(int linearSolver, int eigenSolver, int eigenDenseLimit, double iterativeTolerance, int iterativeMaxIterations);
+
+// Results of the last solve: summary (used, converged, load factor, steps, iterations, curve points, hinges, links), capacity curve, hinge states
+// (member id, dof, plastic rotation, moment, yielded), link results (id, 6 deformations, 6 forces) and the force of each constraint row.
+SOLVER_DLL_API void structura_get_nonlinear_summary(double* out8);
+SOLVER_DLL_API int structura_get_nonlinear_curve(int maxCount, double* out2);
+SOLVER_DLL_API int structura_get_hinge_results(int maxCount, int* memberDof2, double* out3);
+SOLVER_DLL_API int structura_get_link_results(int maxCount, int* ids, double* deformation6, double* force6);
+SOLVER_DLL_API int structura_get_constraint_forces(int maxCount, double* forces);
 
 // Returns 0 on success and non-zero on failure.
 SOLVER_DLL_API int structura_solve(

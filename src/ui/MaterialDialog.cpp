@@ -90,12 +90,15 @@ MaterialDialog::MaterialDialog(bool pascalUnits, QWidget *parent)
     m_fuSpin = makeSpin(0.0, 3000.0, 450.0, 1, tr(" MPa"));
     m_weightSpin = makeSpin(0.0, 1e5, 78.5, 2, tr(" kN/m³"));
     m_weightSpin->setToolTip(tr("Usado no peso próprio: γ × área da seção"));
+    m_alphaSpin = makeSpin(0.0, 100.0, 12.0, 2, tr(" ×10⁻⁶/°C"));
+    m_alphaSpin->setToolTip(tr("Coeficiente de dilatação térmica α: usado nas cargas de temperatura das barras (aço 12, concreto 10)"));
     form->addRow(tr("Nome"), m_nameEdit);
     form->addRow(tr("Módulo de elasticidade E"), m_eSpin);
     form->addRow(tr("Módulo de cisalhamento G"), m_gSpin);
     form->addRow(tr("Resistência ao escoamento fy / fck"), m_fySpin);
     form->addRow(tr("Resistência à ruptura fu"), m_fuSpin);
     form->addRow(tr("Peso específico γ"), m_weightSpin);
+    form->addRow(tr("Dilatação térmica α"), m_alphaSpin);
     right->addLayout(form);
     m_note = new QLabel;
     m_note->setWordWrap(true);
@@ -141,6 +144,7 @@ void MaterialDialog::selectEntry(const QString &libraryName)
         m_fySpin->setValue(entry->fy);
         m_fuSpin->setValue(entry->fu);
         m_weightSpin->setValue(entry->unitWeight);
+        m_alphaSpin->setValue(entry->thermalExpansion * 1e6);
         m_note->setText(entry->note);
     } else {
         m_note->setText(tr("Material personalizado: informe as propriedades. fy/fu = 0 indica que o material não é um aço de dimensionamento."));
@@ -197,6 +201,11 @@ double MaterialDialog::shearModulus() const
 double MaterialDialog::unitWeight() const
 {
     return m_weightSpin->value();
+}
+
+double MaterialDialog::thermalExpansion() const
+{
+    return m_alphaSpin->value() * 1e-6;
 }
 
 double MaterialDialog::fy() const

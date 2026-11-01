@@ -260,6 +260,7 @@ DynamicsService::SpectrumResult DynamicsService::responseSpectrum(const Basis &b
             copy.nodalLoads.clear();
             copy.memberLoads.clear();
             copy.memberMoments.clear();
+            copy.memberActions.clear();
             copy.extraMasses.clear();
             copy.modalModes = 0;
             copy.bucklingModes = 0;

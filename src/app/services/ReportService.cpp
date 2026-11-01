@@ -240,11 +240,11 @@ std::string descriptionFor(const std::string &id, bool cold)
         return "Seções tubulares com momento de torção: TSd ≤ TRd (NBR 8800, 5.5.2.1). Quando TSd/TRd > 0,20 a torção entra nas interações com força axial, momento fletor e cortante (5.5.2.2).";
     }
     if (id == "warping_normal") {
-        return "Seção I/H com torção com empenamento: as tensões normais pela Teoria da Elasticidade (N/A, M/W e B ω/Cw) devem ser menores que a resistência ao escoamento e, no lado comprimido, à instabilidade "
+        return "Seção aberta de paredes finas sob torção (Saint-Venant e, quando há, empenamento): as tensões normais pela Teoria da Elasticidade (N/A, M/W e B ω/Cw) devem ser menores que a resistência ao escoamento e, no lado comprimido, à instabilidade "
                "(NBR 8800, 5.5.2.3-a e 5.5.2.3-c).";
     }
     if (id == "warping_shear") {
-        return "Seção I/H com torção com empenamento: as tensões de cisalhamento (Saint-Venant, empenamento e força cortante) devem ser menores que 0,60 fy/γa1, com redução na alma por flambagem "
+        return "Seção aberta de paredes finas sob torção: as tensões de cisalhamento (Saint-Venant, empenamento e força cortante) devem ser menores que 0,60 fy/γa1, com redução na alma por flambagem "
                "(NBR 8800, 5.5.2.3-b e 5.5.2.3-d).";
     }
     if (id == "geometry") {
@@ -560,6 +560,27 @@ ReportDocument ReportService::buildGlobal(const Input &input, const Options &o)
     int chapter = 0;
     auto chapterTitle = [&](const QString &title) { doc.heading(1, S(QStringLiteral("%1. %2").arg(++chapter).arg(title))); };
 
+    {
+        Table revisions;
+        revisions.header = {"Rev.", "Data", "Descrição", "Responsável"};
+        revisions.widths = {1, 2, 6, 3};
+        revisions.firstColumnBold = true;
+        for (const QString &line : o.revisions) {
+            const QStringList parts = line.split(QLatin1Char(';'));
+            if (parts.join(QString()).trimmed().isEmpty()) {
+                continue;
+            }
+            std::vector<std::string> row;
+            for (int k = 0; k < 4; ++k) {
+                row.push_back(S(k < parts.size() ? parts[k].trimmed() : QString()));
+            }
+            revisions.rows.push_back(std::move(row));
+        }
+        if (!revisions.rows.empty()) {
+            chapterTitle(QStringLiteral("Controle de revisões"));
+            doc.table(std::move(revisions));
+        }
+    }
     if (o.criteria) {
         chapterTitle(QStringLiteral("Critérios e normas"));
         doc.paragraph("Este memorial apresenta os dados de entrada, as ações, os resultados da análise estrutural e a verificação dos perfis de aço. "
@@ -681,6 +702,31 @@ ReportDocument ReportService::buildGlobal(const Input &input, const Options &o)
                 ml.rows.push_back({std::to_string(l.memberId), S(l.loadCase), S(l.system), S(num(l.qx)), S(num(l.qy)), S(num(l.qz))});
             }
             doc.table(ml);
+        }
+        if (!input.extras.memberActions.isEmpty()) {
+            namespace Kind = Structura::App::ProjectData::MemberActionKind;
+            Table al;
+            al.caption = S(QStringLiteral("Cargas de barra com posição e deformações impostas (%1, m)").arg(input.forceUnit));
+            al.header = {"Barra", "Caso", "Tipo", "Sistema", "a", "b", "Valor em a", "Valor em b"};
+            al.widths = {1, 2, 2.5, 1.2, 1, 1, 3, 3};
+            al.align = {'c', 'l', 'l', 'c', 'r', 'r', 'l', 'l'};
+            auto triple = [&](const std::array<double, 3> &v) { return S(num(v[0]) + QStringLiteral("; ") + num(v[1]) + QStringLiteral("; ") + num(v[2])); };
+            for (const auto &a : input.extras.memberActions) {
+                QString type;
+                switch (a.kind) {
+                case Kind::kTrapezoid: type = QStringLiteral("Trapezoidal/parcial (q)"); break;
+                case Kind::kPointForce: type = QStringLiteral("Força concentrada"); break;
+                case Kind::kPointMoment: type = QStringLiteral("Momento concentrado"); break;
+                case Kind::kTemperature: type = QStringLiteral("Temperatura (ΔT; grad. y; grad. z)"); break;
+                default: type = QStringLiteral("Retração (ε)"); break;
+                }
+                const bool hasPosition = a.kind <= Kind::kPointMoment;
+                al.rows.push_back({std::to_string(a.memberId), S(a.loadCase), S(type), S(a.system.isEmpty() ? QStringLiteral("LOCAL") : a.system),
+                                   hasPosition ? S(num(a.a)) : std::string("-"),
+                                   a.kind == Kind::kTrapezoid ? S(num(a.b)) : std::string("-"), triple(a.v1),
+                                   a.kind == Kind::kTrapezoid ? triple(a.v2) : std::string("-")});
+            }
+            doc.table(al);
         }
     }
 

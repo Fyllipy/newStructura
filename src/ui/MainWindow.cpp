@@ -338,6 +338,12 @@ QVector<PropertiesPanel::BarEntry> MainWindow::buildBarEntries(const QSet<QUuid>
                 lines << tr("<b>%1</b>: momento (%2) = [%3; %4; %5] kN·m/m").arg(caseName(m.loadCase).toHtmlEscaped(), m.system.isEmpty() ? tr("global") : m.system.toLower(), fmt(m.mx), fmt(m.my), fmt(m.mz));
             }
         }
+        for (const auto &a : m_extras.memberActions) {
+            if (a.memberId == id) {
+                QString text = describeMemberAction(a);
+                lines << tr("<b>%1</b>: %2").arg(caseName(a.loadCase).toHtmlEscaped(), text.mid(text.indexOf(QStringLiteral("): ")) + 3).toHtmlEscaped());
+            }
+        }
         for (const auto &p : m_extras.areaLoads) {
             if (p.members.contains(id)) {
                 lines << tr("<b>%1</b>: %2 de %3 kN/m² (%4)").arg(caseName(p.loadCase).toHtmlEscaped(), p.kind == QLatin1String("WIND") ? tr("vento") : tr("carga de área"), fmt(p.pressure), p.description.toHtmlEscaped());

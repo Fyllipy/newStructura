@@ -11,8 +11,11 @@ namespace {
 
 SectionKind classifyFamily(const std::string &family)
 {
-    if (family == "W Laminado" || family == "I Laminado" || family == "I Alma Variavel") {
+    if (family == "W Laminado" || family == "I Laminado" || family == "I Alma Variavel" || family == "I Soldado") {
         return SectionKind::I;
+    }
+    if (family == "Caixao Soldado") {
+        return SectionKind::RectTube;
     }
     if (family == "U Laminado" || family == "U Inclinado Laminado") {
         return SectionKind::Channel;
@@ -26,7 +29,7 @@ SectionKind classifyFamily(const std::string &family)
     if (family == "Tubular Retangular" || family == "Tubular Quadrado") {
         return SectionKind::RectTube;
     }
-    if (family == "Tubular Circular") {
+    if (family == "Tubular Circular" || family == "Tubo Soldado") {
         return SectionKind::RoundTube;
     }
     if (family == "Barra Circular") {
@@ -43,6 +46,9 @@ SectionKind classifyFamily(const std::string &family)
     }
     if (family == "Duplo U Face a Face") {
         return SectionKind::DoubleChannelBox;
+    }
+    if (family == "Quatro Cantoneiras") {
+        return SectionKind::LatticedAngles;
     }
     if (family == "U Formado") {
         return SectionKind::ColdChannel;
@@ -97,6 +103,7 @@ std::string kindName(SectionKind kind)
     case SectionKind::DoubleAngleT: return "Barra composta: duas cantoneiras em T";
     case SectionKind::DoubleChannelBack: return "Barra composta: dois U em I (costas com costas)";
     case SectionKind::DoubleChannelBox: return "Barra composta: dois U face a face (caixa)";
+    case SectionKind::LatticedAngles: return "Pilar de quatro cantoneiras (trelicado ou com presilhas)";
     case SectionKind::ColdChannel: return "Perfil U simples (formado a frio)";
     case SectionKind::ColdLippedChannel: return "Perfil U enrijecido (formado a frio)";
     case SectionKind::ColdZ: return "Perfil Z (formado a frio)";
@@ -122,14 +129,15 @@ CenterLine centerLineOf(const DesignSection &s)
         if (s.d <= 0 || s.bf <= 0 || s.tw <= 0 || s.tf <= 0) {
             break;
         }
-        const double h = s.d - s.tf;
-        const int p0 = add(0, -h / 2), p1 = add(0, 0), p2 = add(0, h / 2), p3 = add(-s.bf / 2, h / 2), p4 = add(s.bf / 2, h / 2), p5 = add(-s.bf / 2, -h / 2), p6 = add(s.bf / 2, -h / 2);
+        const double bfTop = s.bfTop > 0 ? s.bfTop : s.bf, tfTop = s.tfTop > 0 ? s.tfTop : s.tf;
+        const double bfBot = s.bfBot > 0 ? s.bfBot : s.bf, tfBot = s.tfBot > 0 ? s.tfBot : s.tf;
+        const double hm = s.d - 0.5 * (tfTop + tfBot);   // entre os eixos das mesas
+        const int p0 = add(0, 0), p1 = add(0, hm), p3 = add(-bfTop / 2, hm), p4 = add(bfTop / 2, hm), p5 = add(-bfBot / 2, 0), p6 = add(bfBot / 2, 0);
         seg(p0, p1, s.tw);
-        seg(p1, p2, s.tw);
-        seg(p2, p3, s.tf);
-        seg(p2, p4, s.tf);
-        seg(p0, p5, s.tf);
-        seg(p0, p6, s.tf);
+        seg(p1, p3, tfTop);
+        seg(p1, p4, tfTop);
+        seg(p0, p5, tfBot);
+        seg(p0, p6, tfBot);
         break;
     }
     case SectionKind::Channel: {
@@ -197,6 +205,12 @@ CenterLine centerLineOf(const DesignSection &s)
         seg(p0, p1, s.t);
         seg(p1, p2, s.t);
         seg(p0, p3, s.t);
+        if (s.lip > 0) {
+            const double lip = s.lip + 0.5 * s.t;   // do eixo da mesa ate a ponta do enrijecedor (c medido da face interna da mesa)
+            const int p4 = add(fl, hm / 2 - lip), p5 = add(-fl, -hm / 2 + lip);
+            seg(p2, p4, s.t);
+            seg(p3, p5, s.t);
+        }
         break;
     }
     case SectionKind::ColdAngle: {
@@ -206,6 +220,12 @@ CenterLine centerLineOf(const DesignSection &s)
         const int p0 = add(0, 0), p1 = add(s.bf - 0.5 * s.t, 0), p2 = add(0, -(s.d - 0.5 * s.t));
         seg(p0, p1, s.t);
         seg(p0, p2, s.t);
+        if (s.lip > 0) {
+            const double lip = s.lip + 0.5 * s.t;   // do eixo da aba ate a ponta do enrijecedor (c medido da face interna da aba)
+            const int p3 = add(s.bf - 0.5 * s.t, -lip), p4 = add(lip, -(s.d - 0.5 * s.t));
+            seg(p1, p3, s.t);
+            seg(p2, p4, s.t);
+        }
         break;
     }
     case SectionKind::ColdHat: {
@@ -236,6 +256,9 @@ DesignSection makeDesignSection(const ProfileSpec &spec, const std::vector<Loop>
     s.family = spec.family;
     s.kind = classifyFamily(spec.family);
     s.standard = standardForKind(s.kind, rectangularTubeStandard);
+    if (spec.family == "Caixao Soldado") {
+        s.standard = Standard::NBR8800;   // perfil armado de chapas: nunca formado a frio
+    }
     if (s.kind == SectionKind::Unsupported) {
         return s;
     }
@@ -266,6 +289,30 @@ DesignSection makeDesignSection(const ProfileSpec &spec, const std::vector<Loop>
         s.bf = spec.param("bf");
         s.tw = spec.param("tw");
         s.tf = spec.param("tf");
+        s.bfTop = s.bfBot = s.bf;
+        s.tfTop = s.tfBot = s.tf;
+        if (spec.family == "I Soldado") {
+            // perfil armado: sem raios de concordancia; mesa superior bf x tf, mesa inferior bfi x tfi (iguais a superior se zero)
+            s.welded = true;
+            s.r = 0.0;
+            s.bfBot = spec.param("bfi") > 0.0 ? spec.param("bfi") : s.bfTop;
+            s.tfBot = spec.param("tfi") > 0.0 ? spec.param("tfi") : s.tfTop;
+            s.h = std::max(0.0, s.d - s.tfTop - s.tfBot);
+            if (s.monoSymmetricI()) {
+                const double dm = s.d - 0.5 * (s.tfTop + s.tfBot);
+                const double ifb = s.tfBot * std::pow(s.bfBot, 3), ift = s.tfTop * std::pow(s.bfTop, 3);
+                s.Cw = dm * dm / 12.0 * (ifb * ift) / (ifb + ift);   // NBR 8800:2024, D.2.8-b
+                // centro de cisalhamento: sobre o eixo de simetria, a uma distancia da mesa inferior = dm Iy,sup / (Iy,sup + Iy,inf) (eixos das mesas)
+                const double fromBottomFlange = dm * ift / (ifb + ift);
+                s.y0 = (s.g.bMin + 0.5 * s.tfBot) + fromBottomFlange;
+                s.x0 = 0.0;
+            } else {
+                s.Cw = s.g.Iy * std::pow(s.d - s.tf, 2) / 4.0;   // D.2.8-a
+            }
+            // Tabela 4: mesas de perfis soldados = grupo 5 (kc); almas = grupo 2
+            s.elements = {{"mesa superior", s.bfTop / 2.0, s.tfTop, 5, false, 2}, {"mesa inferior", s.bfBot / 2.0, s.tfBot, 5, false, 2}, {"alma", s.h, s.tw, 2, true, 1}};
+            break;
+        }
         s.r = std::max(spec.param("r"), spec.param("r1"));
         s.h = std::max(0.0, s.d - 2.0 * s.tf - 2.0 * s.r);
         s.Cw = s.g.Iy * std::pow(s.d - s.tf, 2) / 4.0;   // NBR 8800:2024, D.2.8-a
@@ -330,6 +377,23 @@ DesignSection makeDesignSection(const ProfileSpec &spec, const std::vector<Loop>
         s.elements = {{"aba", s.leg, s.t, 3, false, 4}};
         break;
     }
+    case SectionKind::LatticedAngles: {
+        // quatro cantoneiras iguais nos cantos de uma caixa d x bf (abas voltadas para dentro); a ligacao entre elas e tratada em `designLatticedColumn`
+        s.leg = spec.param("b");
+        s.t = spec.param("t");
+        s.d = spec.param("d");
+        s.bf = spec.param("bf");
+        s.x0 = 0.0;
+        s.y0 = 0.0;
+        s.Cw = 0.0;
+        const GrossSection one = computeGrossSection({loops.front()});
+        if (one.valid) {
+            s.rMin = std::sqrt(std::min(one.Ix, one.Iy) / one.area);
+            s.componentArea = one.area;
+        }
+        s.elements = {{"aba", s.leg, s.t, 3, false, 8}};
+        break;
+    }
     case SectionKind::DoubleChannelBack:
     case SectionKind::DoubleChannelBox: {
         s.d = spec.param("d");
@@ -369,9 +433,26 @@ DesignSection makeDesignSection(const ProfileSpec &spec, const std::vector<Loop>
         break;
     }
     case SectionKind::RectTube: {
+        if (spec.family == "Caixao Soldado") {
+            // quatro chapas soldadas: mesas (horizontais) tf e almas (verticais) tw; larguras livres entre as chapas (Tabela 4: grupo 2)
+            s.box = true;
+            s.welded = true;
+            s.bf = spec.param("bf");
+            s.d = spec.param("d");
+            s.tFlange = spec.param("tf");
+            s.tWeb = spec.param("tw");
+            s.tf = s.tFlange;
+            s.tw = s.tWeb;
+            s.t = std::min(s.tFlange, s.tWeb);
+            s.flatWidthB = std::max(0.0, s.bf - 2.0 * s.tWeb);
+            s.flatWidthH = std::max(0.0, s.d - 2.0 * s.tFlange);
+            s.elements = {{"mesa", s.flatWidthB, s.tFlange, 2, true, 2}, {"alma", s.flatWidthH, s.tWeb, 2, true, 2}};
+            break;
+        }
         const double w = spec.param("b");
         const double hh = spec.family == "Tubular Quadrado" ? w : spec.param("h");
         s.t = spec.param("t");
+        s.tFlange = s.tWeb = s.t;
         s.bf = w;
         s.d = hh;
         s.flatWidthB = std::max(0.0, w - 4.0 * s.t);

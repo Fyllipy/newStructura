@@ -21,6 +21,15 @@ struct Material {
     double alpha {1.2e-5};        ///< 1/K
     double fy {250.0e6};          ///< Pa (aco) ou fck (concreto)
     double fu {400.0e6};          ///< Pa
+    /// Ortotropia (lajes nervuradas, chapas corrugadas, compositos): E1 = E; E2, nu12 e G12 proprios; `bend1`/`bend2` multiplicam a rigidez de flexao
+    /// nas direcoes 1 e 2; `axis` e a direcao 1 do material (global, projetada no plano de cada elemento).
+    bool orthotropic {false};
+    double E2 {2.0e11};           ///< Pa
+    double nu12 {0.3};
+    double G12 {7.7e10};          ///< Pa
+    double bend1 {1.0};
+    double bend2 {1.0};
+    Vec3 axis {{1.0, 0.0, 0.0}};
 };
 
 enum class Kind {
@@ -148,6 +157,10 @@ inline std::string fingerprint(const Model &model)
         out += m.name + ';';
         num(m.E); num(m.nu); num(m.unitWeight); num(m.alpha); num(m.fy); num(m.fu);
         out += m.concrete ? '1' : '0';
+        if (m.orthotropic) {
+            out += 'O';
+            num(m.E2); num(m.nu12); num(m.G12); num(m.bend1); num(m.bend2); num(m.axis[0]); num(m.axis[1]); num(m.axis[2]);
+        }
     }
     out += '|';
     for (const Object &o : model.objects) {

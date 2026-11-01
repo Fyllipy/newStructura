@@ -25,6 +25,10 @@ Tabela 14 (furos-padrão), Tabelas 9, 10, 11 (soldas); 6.3.3.1 a 6.3.3.4 (parafu
 | Espaçamento entre furos (6.3.9, 6.3.10) | só `p ≥ 3 db` | acrescentados `p − dh ≥ db` e `p ≤ mín(24 t ; 300)` |
 | Furos na mesa tracionada (5.4.2.6) | não verificado | `M_Rd ≤ fu (Afn/Afg) Wt/γa1` quando `fu Afn < Yt fy Afg` (usa a razão `An/Ag` informada) |
 | Flechas de perfis formados a frio | inércia bruta | inércia efetiva `Ief` para a tensão de serviço (14762, 9.8.5-a) |
+| `Cm` (Anexo C.2.2) | `máx(0,40; 0,60 − 0,40 M1/M2)` | `0,60 − 0,40 M1/M2` (a norma não impõe 0,40; conferido na página da NBR 8800:2024) |
+| Alma esbelta (Anexo E), FLT | `ryc` aproximado por `ry` da seção inteira | `ryc` = mesa comprimida + 1/3 da altura da alma comprimida (E.2.2) |
+| Tubular/caixão de alma esbelta | `M_Rd = 0` (Anexo E não implementado) | E.1.2: escoamento da mesa tracionada, FLM com `kc = 4` (E.2.4) e FLT pela Tabela D.1 |
+| I soldado, FLM (D.2.8-f) | limites de perfil laminado | limites de perfil soldado com `kc` |
 
 ## 3a. Barras compostas e torção em seção aberta (implementado)
 
@@ -32,7 +36,7 @@ Tabela 14 (furos-padrão), Tabelas 9, 10, 11 (soldas); 6.3.3.1 a 6.3.3.4 (parafu
   (5.3.6.1); `Ne,m` (5.3.6.3-a e -b, `Ki` = 0,50 / 0,75 / 0,86); flexão D.2.4 para a cantoneira dupla; cortante 5.4.3.4/5.4.3.5; limite de esbeltez em tração (5.2.8.2, aviso).
   Dois U em flexão: a norma não traz resistência — marcado como não coberto.
 * **5.5.2.3 (torção em seção aberta):** solver com sétimo grau de liberdade (empenamento, Vlasov); verificação de tensões normais (a, c) e de cisalhamento (b, d) das seções I/H duplamente simétricas.
-  Estendida a U, T, L, formados a frio (U, C, Z, L, cartola) e maciços pela linha média (ver o livro, Seção 12.3). Pendente: acoplamento flexo-torcional das seções não duplamente simétricas e a análise de flambagem da seção para `χ` (hoje envoltória dos `χ` de 5.3/5.4).
+  Estendida a U, T, L, formados a frio (U, C, Z, L, cartola) e maciços pela linha média (ver o livro, Seção 12.3). Acoplamento flexo-torcional das seções não duplamente simétricas (centro de cisalhamento ≠ centroide) na rigidez, na 2ª ordem e na flambagem elástica; a modal usa Saint-Venant. Pendente: a flambagem da seção para `χ` (hoje envoltória dos `χ` de 5.3/5.4).
 * Detalhes em `BARRAS_COMPOSTAS_E_TORCAO_COM_EMPENAMENTO.md`.
 
 ## 3. Implementado nesta rodada (antes ausente)
@@ -73,8 +77,11 @@ instantâneo de rotação e o grupo combinado existem como funções de projeto,
 ## 4. Ainda não implementado (diferenças conhecidas em relação às normas)
 
 **NBR 8800:2024**
-* Projeto/verificação do enrijecedor propriamente dito (5.7.9); 5.4.3.1.3 só emite os requisitos no memorial.
-* 5.7.8 (apoios sem restrição à rotação: só aviso); 5.7.7.3 (enrijecedores diagonais).
+* Enrijecedores (5.7.9 e 5.4.3.1.3): verificados e propostos (`StiffenerDesign`) para reações de extremidade e uma força interna; não cobre enrijecedores diagonais (5.7.7.3), pares com chapa de reforço da alma nem a ligação do enrijecedor à mesa tracionada.
+* 5.3.6.4: pilar de quatro cantoneiras (treliça simples/dupla, presilhas) por Timoshenko/EN 1993-1-1 6.4; sem ligação diagonal–banzo, treliças K/em losango nem seções de 3 ou mais planos de treliça diferentes.
+* 5.7.8 (apoios sem restrição à rotação: só aviso); 5.7.7.3 (enrijecedores diagonais: a norma só dá requisitos construtivos).
+* **Fora do escopo por falta do texto da norma no repositório:** NBR 15421 (sismo: o espectro é informado), NBR 14323 (incêndio) e as Tabelas 24/25 da NBR 6123:2023 (coberturas isoladas, valores em figura).
+* 4.11.6/4.11.7 (vigas mistas contínuas) e a análise rígido-plástica global (4.11.3/4.11.4).
 * Contenção de torção (4.12.3.6 em diante) e análise plástica global (4.10.2.2-b). 4.11.6 e 4.11.7 (vigas mistas contínuas, flambagem distorcional L.2.5 com as Tabelas L.1 a L.3):
   o módulo de viga mista só modela vigas biapoiadas; 4.11.5 (comprimento destravado entre rótulas plásticas) está implementado.
 * Anexo H: só categorias de tensões normais e de cisalhamento na garganta (F), sem os casos H.4-c (soldas de penetração parcial C', C'').
@@ -88,7 +95,7 @@ instantâneo de rotação e o grupo combinado existem como funções de projeto,
 * Chapa de extremidade: distribuição igual da tração entre as fileiras, sem método das linhas de plastificação nem fileiras entre as mesas; ligação por atrito sob momento.
 
 **NBR 14762:2010**
-* Anexo G (vigas mistas), 9.5 (enrijecedores), 9.8.6 (barras compostas fletidas), Seção 11 (ensaios) e ligações rígidas viga–pilar;
+* Anexo G (vigas mistas), 9.8.6 (barras compostas fletidas), Seção 11 (ensaios) e ligações rígidas viga–pilar (9.5, enrijecedores transversais, está implementada);
   interação entre esmagamento da alma e momento (não localizada no texto do Anexo D).
 * Esmagamento da alma sem o comprimento de apoio real (aviso, não verificação) e sem a interação com o momento fletor.
 * Ligações: não há verificação do perfil de apoio (flexão local) nem da tração na seção líquida do perfil na ligação (use a razão `An/Ag` nos

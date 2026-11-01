@@ -32,6 +32,7 @@
 #include <vtkDataObject.h>
 #include <vtkBillboardTextActor3D.h>
 #include <vtkCallbackCommand.h>
+#include <vtkCommand.h>
 #include <vtkMatrix4x4.h>
 #include <vtkTextProperty.h>
 #include <QVector3D>
@@ -183,6 +184,17 @@ void SceneController::initialize(QVTKOpenGLNativeWidget *vtkWidget)
     m_renderer->SetBackground2(0.78, 0.85, 0.93); // bottom
     m_structureRenderer->addToRenderer(m_renderer);
     m_renderer->AddActor(m_lcsActor);
+    // Planos de corte sempre ajustados a todos os atores visiveis no inicio de cada quadro. Os enquadramentos (zoomExtents etc.) usam so os limites dos nos e
+    // as fundacoes/solidos que passam deles, bem como a geometria criada depois do ultimo ajuste, ficavam fora do intervalo near-far e saiam cortados.
+    {
+        auto clipping = vtkSmartPointer<vtkCallbackCommand>::New();
+        clipping->SetCallback([](vtkObject *caller, unsigned long, void *, void *) {
+            if (auto *renderer = vtkRenderer::SafeDownCast(caller)) {
+                renderer->ResetCameraClippingRange();
+            }
+        });
+        m_renderer->AddObserver(vtkCommand::StartEvent, clipping);
+    }
     m_construction->attach(m_renderer, [this]() { requestRender(); });
 
     {
@@ -473,8 +485,17 @@ void SceneController::setBarTypeMarkers(const std::vector<Structura::Visualizati
         m_barTypeRenderer = std::make_unique<Structura::Visualization::BarTypeRenderer>();
         m_barTypeRenderer->attach(m_renderer);
     }
-    m_barTypeRenderer->render(markers, true);
+    m_barTypeRenderer->render(markers, m_barTypeMarkersVisible);
     requestRender();
+}
+
+void SceneController::setBarTypeMarkersVisible(bool visible)
+{
+    m_barTypeMarkersVisible = visible;
+    if (m_barTypeRenderer) {
+        m_barTypeRenderer->setVisible(visible);
+        requestRender();
+    }
 }
 
 void SceneController::setModeShape(const std::vector<std::vector<std::array<double, 3>>> &lines)
@@ -530,6 +551,11 @@ void SceneController::updateLoadVisuals()
         action.local = visual.local;
         action.selfWeight = visual.selfWeight;
         action.key = {visual.sourceKind, visual.sourceIndex};
+        action.variant = visual.variant;
+        action.t0 = visual.t0;
+        action.t1 = visual.t1;
+        action.values2 = visual.variant == 0 ? action.values : toVec(visual.values2);
+        action.note = visual.note;
         members.push_back(action);
     }
 

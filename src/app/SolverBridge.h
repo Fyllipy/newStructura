@@ -46,6 +46,9 @@ public:
         double shearAreaZ {0.0};
         /// Constante de empenamento Cw (unidade de comprimento a sexta); > 0 permite a torcao com empenamento nas barras que a pedirem.
         double warpingConstant {0.0};
+        /// Centro de cisalhamento em relacao ao centroide (unidade de comprimento), nos eixos locais y e z; so atua nas barras com empenamento.
+        double shearCenterY {0.0};
+        double shearCenterZ {0.0};
     };
 
     struct NodeData {
@@ -123,6 +126,92 @@ public:
         double mz {0.0};
     };
 
+    /// Carga geral de barra com posicao (distancias sobre o eixo a partir do no I, em unidades do modelo). kind: 0 = trapezoidal/parcial
+    /// (v1, v2 = forca por comprimento em a e em b), 1 = forca pontual (v1), 2 = momento pontual (v1), 3 = deformacao imposta em toda a barra
+    /// (v1 = deformacao axial livre, d(eps)/dy, d(eps)/dz; temperatura = alfa x dT).
+    struct MemberActionData {
+        int memberId {0};
+        int kind {0};
+        MemberLoadCoordSystem coordSystem {MemberLoadCoordSystem::Local};
+        double a {0.0};
+        double b {0.0};
+        std::array<double, 3> v1 {{0.0, 0.0, 0.0}};
+        std::array<double, 3> v2 {{0.0, 0.0, 0.0}};
+    };
+
+    /// Molas de extremidade das barras (semirrigidez): 12 rigidezes (ux uy uz rx ry rz em I e depois em J); < 0 = sem mola, 0 = articulacao.
+    struct EndSpringData {
+        int memberId {0};
+        std::array<double, 12> k {{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}};
+    };
+    /// Rotula plastica bilinear em uma rotacao de extremidade (dof 3..5 em I; 9..11 em J).
+    struct PlasticHingeData {
+        int memberId {0};
+        int dof {4};
+        double kElastic {0.0};
+        double yieldMoment {0.0};
+        double hardeningRatio {0.0};
+        double axialYield {0.0};   ///< 0 = sem interacao N-M
+        double exponent {2.0};
+    };
+    /// Diafragma rigido: os nos escravos acompanham o mestre como corpo rigido no plano normal ao eixo global `normalAxis` (0 = X, 1 = Y, 2 = Z).
+    struct DiaphragmData {
+        int masterNodeId {0};
+        std::vector<int> slaveNodeIds;
+        int normalAxis {2};
+    };
+    /// Ligacao rigida: kind 0 = corpo rigido de 6 graus de liberdade, 1 = tres translacoes iguais, 2 = tres rotacoes iguais, 3 = um grau (`dof`).
+    struct RigidLinkData {
+        int masterNodeId {0};
+        int slaveNodeId {0};
+        int kind {0};
+        int dof {0};
+    };
+    /// Apoio inclinado: direcoes e1,e2,e3 (linhas, eixos globais) e mascara (bits 0..2 deslocamentos, 3..5 rotacoes segundo e1..e3).
+    struct InclinedSupportData {
+        int nodeId {0};
+        std::array<double, 9> axes {{1, 0, 0, 0, 1, 0, 0, 0, 1}};
+        int mask {0};
+    };
+    /// Vinculo linear geral: sum coef * u(no, dof) = 0.
+    struct LinearConstraintData {
+        std::vector<int> nodeIds;
+        std::vector<int> dofs;
+        std::vector<double> coefs;
+        bool reportReaction {false};
+    };
+    /// Lei de um grau de liberdade de uma ligacao: 0 linear, 1 so tracao, 2 so compressao, 3 folga de tracao (p1), 4 folga de compressao (p1),
+    /// 5 elastoplastica (p1 = escoamento, p2 = enrijecimento), 6 multilinear (`table`), 7 rigida.
+    struct LinkLawData {
+        int kind {0};
+        double k {0.0};
+        double p1 {0.0};
+        double p2 {0.0};
+        std::vector<std::pair<double, double>> table;
+    };
+    /// Ligacao entre dois nos (6 leis: ux uy uz rx ry rz relativos, nos eixos locais; eixos nulos = direcao I->J).
+    struct LinkData {
+        int id {0};
+        int nodeI {0};
+        int nodeJ {0};
+        std::array<double, 9> axes {{0, 0, 0, 0, 0, 0, 0, 0, 0}};
+        std::array<LinkLawData, 6> laws;
+    };
+    /// Controle da analise nao linear incremental.
+    struct NonlinearOptions {
+        bool force {false};
+        int steps {10};
+        int maxIterations {40};
+        double tolerance {1e-6};
+        int criteria {5};          ///< bit 0 forcas, bit 1 deslocamentos, bit 2 energia
+        int maxCutbacks {8};
+        int controlMode {0};       ///< 0 = carga (ate loadFactorMax), 1 = deslocamento do grau (controlNodeId, controlDof) ate controlTarget
+        int controlNodeId {0};
+        int controlDof {0};
+        double controlTarget {0.0};
+        double loadFactorMax {1.0};
+    };
+
     /// Cascas e chapas acopladas as barras (geometria compartilhada pelos casos; unidades do modelo de barras).
     struct ShellNodeData {
         int id {0};
@@ -134,6 +223,10 @@ public:
         std::array<int, 4> nodes {{0, 0, 0, 0}};   ///< ids dos nos, anti-horario visto do lado da normal positiva
         double e {0.0}, nu {0.3}, density {0.0}, thickness {0.0};
         double alpha {1.2e-5};   ///< dilatacao termica (1/K)
+        /// Ortotropia (ver Structura::Shell::Material); E2 e G12 na unidade de forca do modelo por area.
+        bool orthotropic {false};
+        double e2 {0.0}, nu12 {0.3}, g12 {0.0}, bend1 {1.0}, bend2 {1.0};
+        std::array<double, 3> axis {{1.0, 0.0, 0.0}};
     };
     struct ShellTieData {
         int slave {0};
@@ -170,6 +263,31 @@ public:
         std::vector<NodalLoadData> nodalLoads;
         std::vector<MemberLoadData> memberLoads;
         std::vector<MemberMomentData> memberMoments;
+        std::vector<MemberActionData> memberActions;
+        std::vector<EndSpringData> endSprings;
+        std::vector<PlasticHingeData> plasticHinges;
+        std::vector<DiaphragmData> diaphragms;
+        std::vector<RigidLinkData> rigidLinks;
+        std::vector<InclinedSupportData> inclinedSupports;
+        std::vector<LinearConstraintData> constraints;
+        std::vector<LinkData> links;
+        NonlinearOptions nonlinear;
+        /// Verdadeiro se o modelo tem elementos que tornam a resposta nao linear (rotulas plasticas, ligacoes com leis nao lineares, pedido explicito):
+        /// a superposicao de casos deixa de valer e cada combinacao deve ser resolvida com suas cargas ponderadas.
+        [[nodiscard]] bool hasNonlinearElements() const
+        {
+            if (nonlinear.force || !plasticHinges.empty()) {
+                return true;
+            }
+            for (const auto &link : links) {
+                for (const auto &law : link.laws) {
+                    if (law.kind != 0 && law.kind != 7) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
         /// Cascas acopladas (nulo = so barras). A geometria e compartilhada entre os casos; as cargas sao por caso.
         std::shared_ptr<const ShellPart> shell;
         std::vector<ShellLoadData> shellLoads;
@@ -186,6 +304,10 @@ public:
         /// Modos de vibracao livre a extrair (0 = nao calcular). Massas adicionais concentradas por no (id, massa).
         int modalModes {0};
         std::vector<std::pair<int, double>> extraMasses;
+        /// Infraestrutura numerica: sistema linear 0 = direto (LDL^T esparso, AMD), 1 = gradiente conjugado precondicionado; autovalores 0 = automatico
+        /// (esparso acima de 400 graus de liberdade livres), 1 = denso, 2 = esparso.
+        int linearSolver {0};
+        int eigenSolver {0};
     };
 
     struct NodeResult {
@@ -211,7 +333,33 @@ public:
         std::array<double, 9> axes {};      ///< e1, e2, e3
     };
 
+    struct HingeResult {
+        int memberId {0};
+        int dof {0};
+        double plasticRotation {0.0};
+        double moment {0.0};
+        bool yielded {false};
+    };
+    struct LinkResult {
+        int id {0};
+        std::array<double, 6> deformation {{0, 0, 0, 0, 0, 0}};
+        std::array<double, 6> force {{0, 0, 0, 0, 0, 0}};
+    };
+    /// Resultado da analise incremental nao linear (curva de capacidade, rotulas, ligacoes).
+    struct NonlinearResult {
+        bool used {false};
+        bool converged {true};
+        double loadFactor {1.0};
+        int steps {0};
+        int iterations {0};
+        std::vector<std::array<double, 2>> curve;   ///< (fator de carga, deslocamento de controle)
+        std::vector<HingeResult> hinges;
+        std::vector<LinkResult> links;
+    };
+
     struct Result {
+        NonlinearResult nonlinear;
+        std::vector<double> constraintForces;   ///< forca de cada linha de vinculo (diafragmas, ligacoes rigidas, apoios inclinados)
         std::vector<NodeResult> nodeResults;
         std::vector<MemberResult> memberResults;
         /// Resultados das cascas acopladas: nos proprios (fora de `nodeResults`) e elementos.

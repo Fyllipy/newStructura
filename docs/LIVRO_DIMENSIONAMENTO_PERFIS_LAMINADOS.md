@@ -171,7 +171,7 @@ marcado (balanços etc.), Cb = 1,0.
 
 ```text
 Cm = 1,0                          se há carga transversal no plano de flexão
-Cm = máx(0,40 ; 0,60 − 0,40·M1/M2)  caso contrário (M1/M2 > 0 em curvatura reversa)
+Cm = 0,60 − 0,40·M1/M2             caso contrário (M1/M2 > 0 em curvatura reversa; C.2.2 não impõe limite inferior)
 B1 = máx(1,0 ; Cm / (1 − N_c,Sd / N_e))     N_e = π² E I / L²  (K = 1, no plano de flexão)
 ```
 

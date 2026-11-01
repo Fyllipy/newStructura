@@ -165,6 +165,38 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     e.coverWeldLeg = spin(0.0, 50.0, 0.0, 1, 0.5, tr(" mm"));
     e.coverEndWeld = new QCheckBox(tr("Solda de filete contínua também na extremidade da lamela (5.4.4.2)"));
     e.coverEndWeld->setChecked(true);
+    e.stiffSides = new QComboBox;
+    e.stiffSides->addItem(tr("Não verificar"), 0);
+    e.stiffSides->addItem(tr("Par de chapas (um de cada lado da alma)"), 2);
+    e.stiffSides->addItem(tr("Chapa de um lado só"), 1);
+    e.stiffSides->setToolTip(tr("NBR 8800:2024, 5.7.9: enrijecedores transversais para forças localizadas, aplicados às reações de extremidade (maior cortante nas extremidades da barra) e, opcionalmente, a uma força concentrada interna. "
+                                "Verifica largura e espessura mínimas (5.7.9.5), flambagem como barra comprimida com 0,75 h e faixa de alma de 12 tw (extremidade) ou 25 tw (interna), esmagamento da extremidade ajustada (6.6.2) e solda à alma; "
+                                "quando não atende, indica a menor chapa comercial que atende. Com o espaçamento a dos enrijecedores informado, verifica também a inércia mínima de 5.4.3.1.3."));
+    e.stiffWidth = spin(0.0, 500.0, 0.0, 1, 5.0, tr(" mm"));
+    e.stiffThickness = spin(0.0, 60.0, 0.0, 1, 0.5, tr(" mm"));
+    e.stiffCut = spin(0.0, 100.0, 25.0, 1, 5.0, tr(" mm"));
+    e.stiffCut->setToolTip(tr("Recorte de canto junto à solda mesa-alma (4 tw a 6 tw da solda mesa-alma na mesa tracionada, 5.4.3.1.3-a)"));
+    e.stiffFitted = new QCheckBox(tr("Extremidade ajustada (usinada) em contato com a mesa carregada (esmagamento 6.6.2)"));
+    e.stiffFitted->setChecked(true);
+    e.stiffWeldLeg = spin(0.0, 50.0, 0.0, 1, 0.5, tr(" mm"));
+    e.stiffWeldLeg->setSpecialValueText(tr("não verificar"));
+    e.stiffBearing = spin(1.0, 2000.0, 100.0, 0, 10.0, tr(" mm"));
+    e.stiffBearing->setToolTip(tr("n: comprimento de atuação da força na mesa (largura do apoio), para o escoamento local e o enrugamento da alma (5.7.3 e 5.7.4)"));
+    e.stiffForce = spin(0.0, 1e8, 0.0, 0, 1000.0, tr(" N"));
+    e.stiffForce->setSpecialValueText(tr("só as reações"));
+    e.stiffForce->setToolTip(tr("Força concentrada de cálculo em uma seção interna da barra (por exemplo, a reação de uma viga secundária), verificada com o enrijecedor interno (faixa de alma de 25 tw)."));
+    e.latType = new QComboBox;
+    e.latType->addItem(tr("Treliça simples (zigue-zague)"), 0);
+    e.latType->addItem(tr("Treliça dupla em X"), 1);
+    e.latType->addItem(tr("Presilhas"), 2);
+    e.latType->setToolTip(tr("Só para a família Quatro Cantoneiras (NBR 8800:2024, 5.3.6.4): sistema que liga os banzos. A carga de flambagem elástica usa a rigidez ao cisalhamento da ligação (Timoshenko), com imperfeição L/500."));
+    e.latPanel = spin(0.0, 5000.0, 0.0, 0, 50.0, tr(" mm"));
+    e.latPanel->setSpecialValueText(tr("automático"));
+    e.latPanel->setToolTip(tr("a: distância entre pontos de ligação (nós da treliça ou eixos das presilhas) ao longo da barra"));
+    e.latDiagB = spin(10.0, 300.0, 50.0, 1, 5.0, tr(" mm"));
+    e.latDiagT = spin(1.0, 30.0, 5.0, 1, 0.5, tr(" mm"));
+    e.latBattenDepth = spin(10.0, 1000.0, 150.0, 0, 10.0, tr(" mm"));
+    e.latBattenThickness = spin(1.0, 50.0, 8.0, 1, 0.5, tr(" mm"));
     e.plasticAnalysis = new QCheckBox(tr("Viga contínua com análise rígido-plástica (4.11)"));
     e.plasticAnalysis->setToolTip(tr("Verifica o comprimento destravado da mesa comprimida entre rótulas plásticas (4.11.5): Lpd = [0,12 + 0,076 M1/M2] E/fy ry em seções I, ≥ nos casos de simetria exigida. "
                                      "Exige seção compacta e contenção lateral adequada (4.11.3)."));
@@ -195,6 +227,21 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     e.mixCover->setToolTip(tr("Distância do centro das barras à face do concreto (revestidos) ou à face interna do tubo (preenchidos)."));
     e.mixAlphaE = spin(0.5, 1.5, 1.0, 2, 0.1, QString());
     e.mixAlphaE->setToolTip(tr("αE do agregado (NBR 6118): 1,2 basalto/diabásio; 1,0 granito/gnaisse; 0,9 calcário; 0,7 arenito."));
+    e.fireProtection = new QComboBox;
+    e.fireProtection->addItem(tr("Sem revestimento contra fogo"), 0);
+    e.fireProtection->addItem(tr("Revestimento tipo contorno"), 1);
+    e.fireProtection->addItem(tr("Revestimento tipo caixa"), 2);
+    e.fireProtection->setToolTip(tr("NBR 14323, 8.5.1: elevação da temperatura do aço sem revestimento (u/Ag) ou com revestimento de espessura uniforme (um/Ag). "
+                                    "Vale só com a verificação de incêndio ligada. Não se aplica a tinta intumescente (8.5.1.2.6): use os dados de ensaio."));
+    e.fireThickness = spin(0.0, 200.0, 20.0, 1, 1.0, tr(" mm"));
+    e.fireConductivity = spin(0.01, 2.0, 0.2, 3, 0.01, tr(" W/m·°C"));
+    e.fireDensity = spin(10.0, 3000.0, 300.0, 0, 10.0, tr(" kg/m³"));
+    e.fireSpecificHeat = spin(100.0, 5000.0, 1200.0, 0, 50.0, tr(" J/kg·°C"));
+    e.fireExposure = new QComboBox;
+    e.fireExposure->addItem(tr("Todos os lados expostos"), 0);
+    e.fireExposure->addItem(tr("Três lados expostos (laje no quarto lado)"), 1);
+    e.fireExposure->setToolTip(tr("Viga com laje de concreto ou com fôrma de aço na face superior: perímetro exposto sem a mesa superior e fator de correção κ = 1,40 (sem revestimento) "
+                                  "ou 1,15 (com revestimento) no momento resistente (NBR 14323, 8.4.3.2.4)."));
     e.bearing = spin(0.0, 1000.0, 0.0, 0, 5.0, tr(" mm"));
     e.bearing->setSpecialValueText(tr("só aviso (50 mm)"));
     e.bearing->setToolTip(tr("NBR 14762, Anexo D (perfis U, Z e cartola): com o comprimento de apoio c informado (mínimo 20 mm), a reação de extremidade "
@@ -233,7 +280,36 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     form->addRow(QString(), e.forceAway);
     form->addRow(tr("Amplificação global B2"), e.b2);
     form->addRow(tr("An / Ag na ligação (tração)"), e.netArea);
-    form->addRow(tr("Limite de flecha (ELS)"), e.defl);
+    {
+        // Tabela B.1 da NBR 8800:2024: limites usuais; o valor escolhido preenche o limite L/n (editavel)
+        auto *preset = new QComboBox;
+        preset->addItem(tr("Tabela B.1 — escolher…"), 0);
+        preset->addItem(tr("Travessa de fechamento: L/250"), 250);
+        preset->addItem(tr("Terça de cobertura: L/250"), 250);
+        preset->addItem(tr("Viga de cobertura: L/250"), 250);
+        preset->addItem(tr("Viga de piso: L/350"), 350);
+        preset->addItem(tr("Viga que suporta pilares: L/500"), 500);
+        preset->addItem(tr("Pilar de fechamento entre os apoios: L/250"), 250);
+        preset->addItem(tr("Viga de rolamento, vertical — regime leve/moderado: L/750"), 750);
+        preset->addItem(tr("Viga de rolamento, vertical — regime pesado: L/1000"), 1000);
+        preset->addItem(tr("Viga de rolamento, vertical — regime severo: L/1250"), 1250);
+        preset->addItem(tr("Viga de rolamento, horizontal (exceto severo): L/500"), 500);
+        preset->addItem(tr("Viga de rolamento, horizontal — regime severo: L/750"), 750);
+        preset->setToolTip(tr("NBR 8800:2024, Tabela B.1. Notas: com alvenaria sobre ou sob a viga o deslocamento vertical não pode exceder 15 mm (nota e); em ponte rolante de regime severo o deslocamento "
+                              "horizontal não pode exceder 40 mm (nota g); para vigas de rolamento o carregamento não é majorado pelo impacto vertical (nota f). Esses limites absolutos não são verificados automaticamente."));
+        auto *row = new QWidget;
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->addWidget(e.defl);
+        rowLayout->addWidget(preset, 1);
+        QObject::connect(preset, qOverload<int>(&QComboBox::activated), e.defl, [defl = e.defl, preset](int index) {
+            const int denominator = preset->itemData(index).toInt();
+            if (denominator > 0) {
+                defl->setValue(denominator);
+            }
+        });
+        form->addRow(tr("Limite de flecha (ELS)"), row);
+    }
     form->addRow(tr("Espaçamento dos enrijecedores de alma (a)"), e.stiffener);
     form->addRow(tr("Mesa tracionada ligada a painel (NBR 14762, Anexo F)"), e.panel);
     form->addRow(QString(), e.coldWork);
@@ -268,6 +344,20 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     form->addRow(tr("Lamela: mesas reforçadas"), e.coverFlanges);
     form->addRow(tr("Lamela: perna do filete"), e.coverWeldLeg);
     form->addRow(QString(), e.coverEndWeld);
+    form->addRow(tr("Enrijecedores transversais de alma (5.7.9)"), e.stiffSides);
+    form->addRow(tr("Enrijecedor: largura de cada chapa"), e.stiffWidth);
+    form->addRow(tr("Enrijecedor: espessura"), e.stiffThickness);
+    form->addRow(tr("Enrijecedor: recorte de canto"), e.stiffCut);
+    form->addRow(QString(), e.stiffFitted);
+    form->addRow(tr("Enrijecedor: perna do filete à alma"), e.stiffWeldLeg);
+    form->addRow(tr("Enrijecedor: comprimento de atuação n"), e.stiffBearing);
+    form->addRow(tr("Enrijecedor: força concentrada interna"), e.stiffForce);
+    form->addRow(tr("Quatro cantoneiras: sistema de ligação"), e.latType);
+    form->addRow(tr("Quatro cantoneiras: espaçamento a"), e.latPanel);
+    form->addRow(tr("Diagonais: aba da cantoneira"), e.latDiagB);
+    form->addRow(tr("Diagonais: espessura"), e.latDiagT);
+    form->addRow(tr("Presilhas: altura"), e.latBattenDepth);
+    form->addRow(tr("Presilhas: espessura"), e.latBattenThickness);
     form->addRow(QString(), e.plasticAnalysis);
     form->addRow(tr("Pilar misto (Anexo M)"), e.mixType);
     form->addRow(tr("Pilar misto: modelo de cálculo"), e.mixModel);
@@ -280,6 +370,12 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     form->addRow(tr("Pilar misto: barras intermediárias por face lateral"), e.mixBarsV);
     form->addRow(tr("Pilar misto: centro das barras à face"), e.mixCover);
     form->addRow(tr("Pilar misto: αE do agregado"), e.mixAlphaE);
+    form->addRow(tr("Incêndio: proteção térmica"), e.fireProtection);
+    form->addRow(tr("Incêndio: espessura do revestimento"), e.fireThickness);
+    form->addRow(tr("Incêndio: condutividade do revestimento"), e.fireConductivity);
+    form->addRow(tr("Incêndio: massa específica do revestimento"), e.fireDensity);
+    form->addRow(tr("Incêndio: calor específico do revestimento"), e.fireSpecificHeat);
+    form->addRow(tr("Incêndio: exposição da seção"), e.fireExposure);
     return widget;
 }
 
@@ -336,6 +432,20 @@ void DesignSettingsDialog::load(ParamEditors &e, const DesignMemberParams &p)
     e.coverFlanges->setCurrentIndex(p.coverFlanges == 1 ? 1 : 0);
     e.coverWeldLeg->setValue(p.coverWeldLeg);
     e.coverEndWeld->setChecked(p.coverEndWeld);
+    e.stiffSides->setCurrentIndex(std::max(0, e.stiffSides->findData(p.stiffSides)));
+    e.stiffWidth->setValue(p.stiffWidth);
+    e.stiffThickness->setValue(p.stiffThickness);
+    e.stiffCut->setValue(p.stiffCut);
+    e.stiffFitted->setChecked(p.stiffFitted);
+    e.stiffWeldLeg->setValue(p.stiffWeldLeg);
+    e.stiffBearing->setValue(p.stiffBearing);
+    e.stiffForce->setValue(p.stiffForce);
+    e.latType->setCurrentIndex(std::max(0, e.latType->findData(p.latType)));
+    e.latPanel->setValue(p.latPanel);
+    e.latDiagB->setValue(p.latDiagB);
+    e.latDiagT->setValue(p.latDiagT);
+    e.latBattenDepth->setValue(p.latBattenDepth);
+    e.latBattenThickness->setValue(p.latBattenThickness);
     e.plasticAnalysis->setChecked(p.plasticAnalysis);
     e.mixType->setCurrentIndex(std::max(0, e.mixType->findData(p.mixType)));
     e.mixModel->setCurrentIndex(std::max(0, e.mixModel->findData(p.mixModel)));
@@ -348,6 +458,12 @@ void DesignSettingsDialog::load(ParamEditors &e, const DesignMemberParams &p)
     e.mixBarsV->setValue(p.mixBarsV);
     e.mixCover->setValue(p.mixCover);
     e.mixAlphaE->setValue(p.mixAlphaE);
+    e.fireProtection->setCurrentIndex(std::max(0, e.fireProtection->findData(p.fireProtection)));
+    e.fireThickness->setValue(p.fireThickness);
+    e.fireConductivity->setValue(p.fireConductivity);
+    e.fireDensity->setValue(p.fireDensity);
+    e.fireSpecificHeat->setValue(p.fireSpecificHeat);
+    e.fireExposure->setCurrentIndex(std::max(0, e.fireExposure->findData(p.fireExposure)));
 }
 
 DesignMemberParams DesignSettingsDialog::read(const ParamEditors &e)
@@ -403,6 +519,20 @@ DesignMemberParams DesignSettingsDialog::read(const ParamEditors &e)
     p.coverFlanges = e.coverFlanges->currentData().toInt();
     p.coverWeldLeg = e.coverWeldLeg->value();
     p.coverEndWeld = e.coverEndWeld->isChecked();
+    p.stiffSides = e.stiffSides->currentData().toInt();
+    p.stiffWidth = e.stiffWidth->value();
+    p.stiffThickness = e.stiffThickness->value();
+    p.stiffCut = e.stiffCut->value();
+    p.stiffFitted = e.stiffFitted->isChecked();
+    p.stiffWeldLeg = e.stiffWeldLeg->value();
+    p.stiffBearing = e.stiffBearing->value();
+    p.stiffForce = e.stiffForce->value();
+    p.latType = e.latType->currentData().toInt();
+    p.latPanel = e.latPanel->value();
+    p.latDiagB = e.latDiagB->value();
+    p.latDiagT = e.latDiagT->value();
+    p.latBattenDepth = e.latBattenDepth->value();
+    p.latBattenThickness = e.latBattenThickness->value();
     p.plasticAnalysis = e.plasticAnalysis->isChecked();
     p.mixType = e.mixType->currentData().toInt();
     p.mixModel = e.mixModel->currentData().toInt();
@@ -415,6 +545,12 @@ DesignMemberParams DesignSettingsDialog::read(const ParamEditors &e)
     p.mixBarsV = e.mixBarsV->value();
     p.mixCover = e.mixCover->value();
     p.mixAlphaE = e.mixAlphaE->value();
+    p.fireProtection = e.fireProtection->currentData().toInt();
+    p.fireThickness = e.fireThickness->value();
+    p.fireConductivity = e.fireConductivity->value();
+    p.fireDensity = e.fireDensity->value();
+    p.fireSpecificHeat = e.fireSpecificHeat->value();
+    p.fireExposure = e.fireExposure->currentData().toInt();
     return p;
 }
 
@@ -479,6 +615,10 @@ DesignSettingsDialog::DesignSettingsDialog(const DesignSettings &settings, const
                              "de Saint-Venant e flexo-torção, aparecem o bimomento e as tensões normais de empenamento, e a verificação da NBR 8800 (5.5.2.3) passa a ser feita. "
                              "Empenamento impedido nos nós totalmente engastados, contínuo entre barras colineares e livre nos demais (condições de apoio de garfo). "
                              "Não é combinado com flambagem/modal. Requer refazer a análise."));
+    m_vonMises = new QCheckBox(tr("Verificar também as tensões combinadas (von Mises, regime elástico)"));
+    m_vonMises->setChecked(settings.vonMises);
+    m_vonMises->setToolTip(tr("Verificação complementar nos pontos críticos da seção (paredes finas abertas: todos os pontos da linha média; tubulares e caixões: cantos e linha neutra). "
+                              "É mais restritiva que a NBR 8800 em seções compactas, que admite a plastificação: use como critério adicional (por exemplo, com torção e cortante combinados)."));
     m_loadSteps = new QSpinBox;
     m_loadSteps->setRange(0, 200);
     m_loadSteps->setValue(settings.loadSteps);
@@ -506,6 +646,7 @@ DesignSettingsDialog::DesignSettingsDialog(const DesignSettings &settings, const
     analysisForm->addRow(m_autoB2);
     analysisForm->addRow(tr("Rs (Anexo C)"), m_rs);
     analysisForm->addRow(m_singleStorey);
+    analysisForm->addRow(m_vonMises);
     m_notional = new QCheckBox(tr("Forças nocionais (NBR 8800, 4.9.7.2): 0,3% das cargas gravitacionais, em X e Y"));
     m_notional->setChecked(settings.notionalLoads);
     m_notional->setToolTip(tr("Cada combinação última gera quatro variantes (±X, ±Y) com forças horizontais nodais proporcionais às cargas verticais "
@@ -524,6 +665,21 @@ DesignSettingsDialog::DesignSettingsDialog(const DesignSettings &settings, const
     analysisForm->addRow(m_notional);
     analysisForm->addRow(tr("Fator das forças nocionais"), m_notionalFactor);
     root->addWidget(analysis);
+
+    auto *fireGroup = new QGroupBox(tr("Situação de incêndio (ABNT NBR 14323:2013)"));
+    auto *fireForm = new QFormLayout(fireGroup);
+    m_fire = new QCheckBox(tr("Verificar a estrutura em situação de incêndio (método simplificado, seção 8) e considerá-la na escolha dos perfis"));
+    m_fire->setChecked(settings.fireCheck);
+    m_fire->setToolTip(tr("Cada barra é verificada com a temperatura do aço no TRRF (incêndio-padrão, elevação de temperatura de 8.5), os fatores ky, kE e kσ (Tabelas 1 e 2) e as resistências de 8.4 "
+                          "(tração, compressão, flexão, cortante e interação), com coeficiente de ponderação unitário. Esforços: combinações FOGO* (gere-as em Carregamentos > Gerar combinações) "
+                          "ou, se não existirem, 70 % dos esforços a frio (8.2.3). A proteção térmica de cada barra é definida nos parâmetros da barra. O aproveitamento de incêndio entra no η "
+                          "e, portanto, no dimensionamento automático. Ligações e torção não são cobertas."));
+    m_fireTrrf = spin(0.0, 240.0, settings.fireTrrf, 0, 15.0);
+    m_fireTrrf->setSuffix(tr(" min"));
+    m_fireTrrf->setToolTip(tr("Tempo requerido de resistência ao fogo (ABNT NBR 14432): 30, 60, 90 ou 120 min conforme a ocupação e a altura da edificação."));
+    fireForm->addRow(m_fire);
+    fireForm->addRow(tr("TRRF"), m_fireTrrf);
+    root->addWidget(fireGroup);
 
     auto *automatic = new QGroupBox(tr("Dimensionamento automático"));
     auto *autoForm = new QFormLayout(automatic);
@@ -585,6 +741,9 @@ DesignSettings DesignSettingsDialog::settings() const
     s.stabilityFunctions = m_stability->isChecked();
     s.shearDeformation = m_shear->isChecked();
     s.warpingTorsion = m_warping->isChecked();
+    s.vonMises = m_vonMises->isChecked();
+    s.fireCheck = m_fire->isChecked();
+    s.fireTrrf = m_fireTrrf->value();
     s.rigidZoneFactor = m_rigidZone->value();
     s.loadSteps = m_loadSteps->value();
     s.stiffnessReduction = m_reduction->value();

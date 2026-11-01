@@ -319,8 +319,12 @@ void addContext(const NodeConnection &c, std::vector<Primitive> &out)
     }
     case NodeConnection::kSplice: {
         const double d = val(c, "beamD", 300.0), gap = val(c, "gap", 10.0);
+        // ligacao fora do no: a viga do lado do apoio termina na face do apoio (s = -outDist), nao entra no pilar
+        const double faceS = val(c, "outside", 0.0) != 0.0 ? -val(c, "outDist", 260.0) : -1e9;
         for (const double end : {-1.0, 1.0}) {
-            addIBeam(out, end > 0 ? gap / 2.0 : -gap / 2.0 - 450.0, end > 0 ? gap / 2.0 + 450.0 : -gap / 2.0, d, val(c, "bfl", 150.0), val(c, "tfl", 10.0), val(c, "tw", 6.0));
+            const double s0 = end > 0 ? gap / 2.0 : std::max(-gap / 2.0 - 450.0, faceS);
+            const double s1 = end > 0 ? gap / 2.0 + 450.0 : -gap / 2.0;
+            addIBeam(out, s0, s1, d, val(c, "bfl", 150.0), val(c, "tfl", 10.0), val(c, "tw", 6.0));
         }
         break;
     }

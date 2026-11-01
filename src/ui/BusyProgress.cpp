@@ -15,6 +15,14 @@
 #include <cmath>
 #include <thread>
 
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#undef small   // rpcndr.h define "small" como char
+#endif
+
 namespace Structura::UI {
 
 namespace {
@@ -24,6 +32,16 @@ class ProgressPopup;
 ProgressPopup *g_scopePopup = nullptr;   // janela de um BusyScope ativo (calculos internos a reaproveitam)
 
 constexpr int kShowDelayMs = 250;
+
+/// Esc pressionado com a aplicacao ativa (a janela de progresso nao recebe entrada: os eventos de usuario sao excluidos durante o calculo).
+bool escapePressed()
+{
+#ifdef Q_OS_WIN
+    return QApplication::activeWindow() != nullptr && (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+#else
+    return false;
+#endif
+}
 
 /// Janela flutuante com o nome do calculo, o detalhe da etapa e uma barra de progresso animada.
 class ProgressPopup final : public QWidget
@@ -45,6 +63,11 @@ public:
             update();
         });
         m_timer.start(16);
+    }
+
+    void setCancellable(bool on)
+    {
+        m_cancellable = on;
     }
 
     void setState(int value, int total, const QString &detail)
@@ -170,6 +193,9 @@ protected:
         p.setPen(QColor(QStringLiteral("#7b8797")));
         const qint64 seconds = m_elapsed.elapsed() / 1000;
         QString left = m_total > 0 ? QStringLiteral("%1 de %2").arg(std::min(m_value, m_total)).arg(m_total) : QStringLiteral("Aguarde, o programa está trabalhando");
+        if (m_cancellable) {
+            left += QStringLiteral("  —  Esc cancela");
+        }
         p.drawText(QRectF(track.left(), track.bottom() + 8, track.width() * 0.7, 18), Qt::AlignLeft | Qt::AlignVCenter, left);
         p.drawText(QRectF(track.left(), track.bottom() + 8, track.width(), 18), Qt::AlignRight | Qt::AlignVCenter,
                    QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0')));
@@ -180,6 +206,7 @@ private:
     QString m_detail;
     int m_value {0};
     int m_total {0};
+    bool m_cancellable {false};
     double m_phase {0.0};
     QTimer m_timer;
     QElapsedTimer m_elapsed;
@@ -287,6 +314,10 @@ void runBusyImpl(QWidget *parent, const QString &calculation, const QString &det
         });
         while (!finished.load()) {
             (void)progress.takeDetailChanged();
+            g_scopePopup->setCancellable(progress.cancellable());
+            if (progress.cancellable() && escapePressed()) {
+                progress.requestCancel();
+            }
             g_scopePopup->setState(progress.value(), progress.total(), progress.detail().isEmpty() ? detail : progress.detail());
             QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 20);
             QThread::msleep(8);
@@ -318,8 +349,12 @@ void runBusyImpl(QWidget *parent, const QString &calculation, const QString &det
             popup->setState(progress.value(), progress.total(), progress.detail());
             popup->present();
         }
+        if (progress.cancellable() && escapePressed()) {
+            progress.requestCancel();
+        }
         if (popup) {
             (void)progress.takeDetailChanged();
+            popup->setCancellable(progress.cancellable());
             popup->setState(progress.value(), progress.total(), progress.detail());
         }
         QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 20);

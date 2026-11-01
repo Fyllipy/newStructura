@@ -32,6 +32,7 @@ public:
     static const QString kNodeLabels;
     static const QString kBarLabels;
     static const QString kLocalAxes;
+    static const QString kBarGlyphs;   ///< glifos de tipo de barra: rotulas, semirrigidas, rotulas plasticas, trelicas e tirantes
     static const QString kNodes;
     static const QString kSupports;
     static const QString kConstraints;

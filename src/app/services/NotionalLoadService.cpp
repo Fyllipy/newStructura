@@ -24,6 +24,7 @@ SolverBridge::ModelData NotionalLoadService::notionalModel(const SolverBridge::M
     model.nodalLoads.clear();
     model.memberLoads.clear();
     model.memberMoments.clear();
+    model.memberActions.clear();
     model.shellLoads.clear();
     for (const auto &[nodeId, mass] : masses) {
         SolverBridge::NodalLoadData load;
@@ -38,7 +39,7 @@ QVector<ProjectData::LoadCombination> NotionalLoadService::withVariants(const QV
 {
     QVector<ProjectData::LoadCombination> out = combinations;
     for (const auto &combination : combinations) {
-        if (combination.name.startsWith(QLatin1String("ELS"), Qt::CaseInsensitive)) {
+        if (combination.name.startsWith(QLatin1String("ELS"), Qt::CaseInsensitive) || combination.name.startsWith(QLatin1String("FOGO"), Qt::CaseInsensitive)) {
             continue;
         }
         for (int axis = 0; axis < 2; ++axis) {
@@ -61,7 +62,7 @@ QVector<ProjectData::LoadCombination> NotionalLoadService::withGeometricVariants
 {
     QVector<ProjectData::LoadCombination> out = combinations;
     for (const auto &combination : combinations) {
-        if (combination.name.startsWith(QLatin1String("ELS"), Qt::CaseInsensitive)) {
+        if (combination.name.startsWith(QLatin1String("ELS"), Qt::CaseInsensitive) || combination.name.startsWith(QLatin1String("FOGO"), Qt::CaseInsensitive)) {
             continue;
         }
         for (int axis = 0; axis < 2; ++axis) {

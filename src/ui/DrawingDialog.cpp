@@ -25,6 +25,11 @@
 #include <QWheelEvent>
 #include <QTabWidget>
 #include <QToolButton>
+#include "drawing/SheetGroups.h"
+
+#include <QContextMenuEvent>
+#include <QKeyEvent>
+#include <QMenu>
 #include <QSignalBlocker>
 #include <QPageSize>
 #include <QPaintEvent>
@@ -43,12 +48,15 @@ SheetPreviewWidget::SheetPreviewWidget(QWidget *parent)
     setMinimumSize(520, 380);
     setCursor(Qt::OpenHandCursor);
     setMouseTracking(true);
-    setToolTip(tr("Roda do mouse: zoom · arrastar o fundo: mover a folha · folha composta: arraste uma vista para posicioná-la e as alças para redimensionar · duplo clique: ajustar à janela"));
+    setFocusPolicy(Qt::StrongFocus);
+    setToolTip(tr("Clique numa cota, chamada ou marca de corte para selecioná-la: arraste para mover, Delete exclui, botão direito restaura · roda do mouse: zoom · arrastar o fundo: mover a folha · folha composta: arraste uma vista para posicioná-la e as alças para redimensionar · duplo clique: ajustar à janela"));
 }
 
 void SheetPreviewWidget::setSheet(const Structura::Drawing::Sheet *sheet)
 {
     m_sheet = sheet;
+    m_selectedGroup = 0;
+    m_groupDragging = false;
     bool known = false;
     if (m_sheet) {
         for (const auto &c : m_sheet->cells) {
@@ -166,9 +174,67 @@ void SheetPreviewWidget::setSelectedCell(int index)
     update();
 }
 
+void SheetPreviewWidget::keyPressEvent(QKeyEvent *event)
+{
+    if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) && m_selectedGroup > 0) {
+        const int group = m_selectedGroup;
+        m_selectedGroup = 0;
+        emit groupDeleteRequested(group);
+        update();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape && m_selectedGroup > 0) {
+        m_selectedGroup = 0;
+        update();
+        return;
+    }
+    QWidget::keyPressEvent(event);
+}
+
+void SheetPreviewWidget::contextMenuEvent(QContextMenuEvent *event)
+{
+    if (!m_sheet) {
+        return;
+    }
+    const double k = fitScale() * m_zoom;
+    const QPointF q = toSheet(event->pos(), k);
+    const int hit = Structura::Drawing::hitGroup(*m_sheet, {q.x(), q.y()}, std::max(1.2, 5.0 / k));
+    QMenu menu(this);
+    if (hit > 0) {
+        m_selectedGroup = hit;
+        update();
+        menu.addAction(tr("Excluir esta anotação"), this, [this, hit]() {
+            m_selectedGroup = 0;
+            emit groupDeleteRequested(hit);
+            update();
+        });
+    }
+    menu.addAction(tr("Restaurar as anotações desta prancha"), this, [this]() { emit groupsResetRequested(); });
+    menu.exec(event->globalPos());
+}
+
 void SheetPreviewWidget::mousePressEvent(QMouseEvent *event)
 {
     m_mode = DragMode::Pan;
+    if (m_sheet && event->button() == Qt::LeftButton) {
+        const double k = fitScale() * m_zoom;
+        const QPointF q = toSheet(event->position(), k);
+        const int group = Structura::Drawing::hitGroup(*m_sheet, {q.x(), q.y()}, std::max(1.2, 5.0 / k));
+        setFocus();
+        if (group > 0) {
+            m_selectedGroup = group;
+            m_groupDragging = true;
+            m_groupMoved = false;
+            m_groupLast = q;
+            setCursor(Qt::ClosedHandCursor);
+            update();
+            return;
+        }
+        if (m_selectedGroup > 0) {
+            m_selectedGroup = 0;
+            update();
+        }
+    }
     if (m_sheet && !m_sheet->cells.empty() && event->button() == Qt::LeftButton) {
         const double k = fitScale() * m_zoom;
         // cantos / bordas da vista ja selecionada tem prioridade
@@ -216,6 +282,29 @@ void SheetPreviewWidget::mousePressEvent(QMouseEvent *event)
 
 void SheetPreviewWidget::mouseMoveEvent(QMouseEvent *event)
 {
+    if (m_groupDragging && m_sheet) {
+        const double k = fitScale() * m_zoom;
+        const QPointF now = toSheet(event->position(), k);
+        const double dx = now.x() - m_groupLast.x(), dy = now.y() - m_groupLast.y();
+        if (std::abs(dx) > 1e-9 || std::abs(dy) > 1e-9) {
+            m_groupLast = now;
+            m_groupMoved = true;
+            emit groupMoved(m_selectedGroup, dx, dy);
+        }
+        update();
+        return;
+    }
+    if (!m_dragging && m_sheet) {
+        const double k = fitScale() * m_zoom;
+        const QPointF q = toSheet(event->position(), k);
+        if (Structura::Drawing::hitGroup(*m_sheet, {q.x(), q.y()}, std::max(1.2, 5.0 / k)) > 0) {
+            setCursor(Qt::PointingHandCursor);
+            return;
+        }
+        if (m_sheet->cells.empty()) {
+            setCursor(Qt::OpenHandCursor);
+        }
+    }
     if (m_dragging && m_mode != DragMode::Pan && m_sheet) {
         const double k = fitScale() * m_zoom;
         const QPointF now = toSheet(event->position(), k);
@@ -280,6 +369,16 @@ void SheetPreviewWidget::mouseMoveEvent(QMouseEvent *event)
 
 void SheetPreviewWidget::mouseReleaseEvent(QMouseEvent *)
 {
+    if (m_groupDragging) {
+        m_groupDragging = false;
+        setCursor(Qt::PointingHandCursor);
+        if (m_groupMoved) {
+            emit groupMoveFinished(m_selectedGroup);
+        }
+        m_groupMoved = false;
+        update();
+        return;
+    }
     const bool edited = m_dragging && m_mode != DragMode::Pan && m_changed;
     m_dragging = false;
     m_mode = DragMode::Pan;
@@ -309,6 +408,15 @@ void SheetPreviewWidget::paintEvent(QPaintEvent *)
     const QPointF origin = sheetOrigin(k);
     painter.fillRect(QRectF(origin + QPointF(4, 4), QSizeF(m_sheet->width * k, m_sheet->height * k)), QColor(0, 0, 0, 60));
     Structura::Drawing::paintSheet(painter, *m_sheet, k, origin, 1.0);
+    if (m_selectedGroup > 0) {
+        bool valid = false;
+        const auto b = Structura::Drawing::groupBounds(*m_sheet, m_selectedGroup, &valid);
+        if (valid) {
+            painter.setPen(QPen(QColor(235, 120, 20), 1.5, Qt::DashLine));
+            painter.setBrush(QColor(235, 120, 20, 28));
+            painter.drawRect(QRectF(toWidget(b.x0 - 1.0, b.y1 + 1.0, k), toWidget(b.x1 + 1.0, b.y0 - 1.0, k)));
+        }
+    }
     if (m_sheet->cells.empty()) {
         return;
     }
@@ -571,6 +679,38 @@ DrawingDialog::DrawingDialog(const SheetBuilder::Input &input, QWidget *parent)
         QSignalBlocker block(m_placedScale);
         m_placedScale->setCurrentIndex(std::max(0, m_placedScale->findData(scale)));
         syncPlacementEditors();
+    });
+    connect(m_preview, &SheetPreviewWidget::groupMoved, this, [this](int group, double dx, double dy) {
+        if (auto *sheet = currentSheet()) {
+            Structura::Drawing::translateGroup(*sheet, group, dx, dy);
+            recordGroupEdit(group, dx, dy, false);
+            m_preview->update();
+        }
+    });
+    connect(m_preview, &SheetPreviewWidget::groupMoveFinished, this, [this](int) { emit sheetEditsChanged(m_input.edits); });
+    connect(m_preview, &SheetPreviewWidget::groupDeleteRequested, this, [this](int group) {
+        if (auto *sheet = currentSheet()) {
+            recordGroupEdit(group, 0.0, 0.0, true);
+            Structura::Drawing::eraseGroup(*sheet, group);
+            emit sheetEditsChanged(m_input.edits);
+            m_preview->update();
+        }
+    });
+    connect(m_preview, &SheetPreviewWidget::groupsResetRequested, this, [this]() {
+        const auto *sheet = currentSheet();
+        if (!sheet) {
+            return;
+        }
+        const QString stem = QString::fromStdString(sheet->fileStem);
+        QVector<Structura::App::ProjectData::SheetGroupEdit> kept;
+        for (const auto &edit : m_input.edits) {
+            if (edit.sheet != stem) {
+                kept.append(edit);
+            }
+        }
+        m_input.edits = kept;
+        emit sheetEditsChanged(m_input.edits);
+        rebuild();
     });
     connect(m_preview, &SheetPreviewWidget::cellSelected, this, [this](int index) {
         if (index >= 0 && index < m_placedList->count()) {
@@ -965,6 +1105,44 @@ void DrawingDialog::showCustomSheet(int layoutIndex)
     if (page >= 0 && page < m_page->count()) {
         m_page->setCurrentIndex(page);
     }
+}
+
+Structura::Drawing::Sheet *DrawingDialog::currentSheet()
+{
+    return m_shownPage >= 0 && m_shownPage < static_cast<int>(m_sheets.size()) ? &m_sheets[static_cast<std::size_t>(m_shownPage)] : nullptr;
+}
+
+void DrawingDialog::recordGroupEdit(int group, double dx, double dy, bool deleted)
+{
+    const auto *sheet = currentSheet();
+    if (!sheet) {
+        return;
+    }
+    QString key;
+    for (const auto &g : sheet->groups) {
+        if (g.id == group) {
+            key = QString::fromStdString(g.key);
+        }
+    }
+    if (key.isEmpty()) {
+        return;
+    }
+    const QString stem = QString::fromStdString(sheet->fileStem);
+    for (auto &edit : m_input.edits) {
+        if (edit.sheet == stem && edit.key == key) {
+            edit.dx += dx;
+            edit.dy += dy;
+            edit.deleted = edit.deleted || deleted;
+            return;
+        }
+    }
+    Structura::App::ProjectData::SheetGroupEdit edit;
+    edit.sheet = stem;
+    edit.key = key;
+    edit.dx = dx;
+    edit.dy = dy;
+    edit.deleted = deleted;
+    m_input.edits.append(edit);
 }
 
 void DrawingDialog::showPage(int index)

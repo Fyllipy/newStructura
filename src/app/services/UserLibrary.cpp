@@ -152,6 +152,7 @@ QVector<MaterialLibrary::Entry> UserLibrary::loadMaterials()
         e.eGPa = o.value(QStringLiteral("eGPa")).toDouble(200.0);
         e.gGPa = o.value(QStringLiteral("gGPa")).toDouble(77.0);
         e.unitWeight = o.value(QStringLiteral("unitWeight")).toDouble(78.5);
+        e.thermalExpansion = o.value(QStringLiteral("thermalExpansion")).toDouble(1.2e-5);
         e.note = o.value(QStringLiteral("note")).toString();
         e.user = true;
         result.append(e);
@@ -169,6 +170,7 @@ bool UserLibrary::saveMaterial(const MaterialLibrary::Entry &entry)
     o.insert(QStringLiteral("eGPa"), entry.eGPa);
     o.insert(QStringLiteral("gGPa"), entry.gGPa);
     o.insert(QStringLiteral("unitWeight"), entry.unitWeight);
+    o.insert(QStringLiteral("thermalExpansion"), entry.thermalExpansion);
     o.insert(QStringLiteral("note"), entry.note);
     QJsonArray items;
     bool replaced = false;

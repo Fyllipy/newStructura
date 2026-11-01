@@ -170,6 +170,24 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
             setWarpingSections(static_cast<int>(sectionIds.size()), sectionIds.data(), constants.data());
             setWarpingMembers(static_cast<int>(memberIds.size()), memberIds.data(), modeStart.data(), modeEnd.data());
         }
+        using SetShearCentersFn = void (*)(int, const int *, const double *, const double *);
+        auto setShearCenters = reinterpret_cast<SetShearCentersFn>(solverLibrary.resolve("structura_set_shear_centers"));
+        std::vector<int> centerIds;
+        std::vector<double> centerY, centerZ;
+        for (const auto &section : model.sections) {
+            if (section.warpingConstant > 0.0 && (section.shearCenterY != 0.0 || section.shearCenterZ != 0.0)) {
+                centerIds.push_back(section.id);
+                centerY.push_back(section.shearCenterY);
+                centerZ.push_back(section.shearCenterZ);
+            }
+        }
+        if (!centerIds.empty() && !memberIds.empty() && !setShearCenters) {
+            throw SolverBridgeError("A DLL do solver nao suporta o centro de cisalhamento fora do centroide (structura_set_shear_centers ausente). "
+                                    "Recompile Structuradll e copie rds.dll para a raiz.");
+        }
+        if (setShearCenters) {
+            setShearCenters(static_cast<int>(centerIds.size()), centerIds.data(), centerY.data(), centerZ.data());
+        }
     }
     {
         using SetTaperFn = void (*)(int, const int *, const double *, const double *, const double *, const double *, const double *, const int *);
@@ -213,6 +231,133 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         }
         if (setRigidZones) {
             setRigidZones(static_cast<int>(rigidIds.size()), rigidIds.data(), rigidStart.data(), rigidEnd.data());
+        }
+    }
+    {
+        using SetMemberActionsFn = void (*)(int, const int *, const int *, const int *, const double *, const double *, const double *, const double *);
+        auto setMemberActions = reinterpret_cast<SetMemberActionsFn>(solverLibrary.resolve("structura_set_member_actions"));
+        if (!model.memberActions.empty() && !setMemberActions) {
+            throw SolverBridgeError("A DLL do solver nao suporta cargas de barra com posicao (trapezoidais, pontuais, temperatura; structura_set_member_actions ausente). "
+                                    "Recompile Structuradll e copie rds.dll para a raiz.");
+        }
+        if (setMemberActions) {
+            std::vector<int> ids, kinds, systems;
+            std::vector<double> a, b, v1, v2;
+            for (const auto &action : model.memberActions) {
+                ids.push_back(action.memberId);
+                kinds.push_back(action.kind);
+                systems.push_back(action.coordSystem == MemberLoadCoordSystem::Global ? 1 : 0);
+                a.push_back(action.a);
+                b.push_back(action.b);
+                v1.insert(v1.end(), action.v1.begin(), action.v1.end());
+                v2.insert(v2.end(), action.v2.begin(), action.v2.end());
+            }
+            setMemberActions(static_cast<int>(ids.size()), ids.data(), kinds.data(), systems.data(), a.data(), b.data(), v1.data(), v2.data());
+        }
+    }
+    {
+        // semirrigidez, rotulas plasticas, vinculos, ligacoes entre nos e controle da analise nao linear (estado global da DLL: sempre redefinido)
+        auto resolve = [&](const char *name) { return solverLibrary.resolve(name); };
+        auto *setEndSprings = reinterpret_cast<void (*)(int, const int *, const double *)>(resolve("structura_set_end_springs"));
+        auto *setHinges = reinterpret_cast<void (*)(int, const int *, const int *, const double *, const double *, const double *, const double *, const double *)>(
+            resolve("structura_set_plastic_hinges"));
+        auto *setConstraints = reinterpret_cast<void (*)(int, const int *, const int *, const int *, const int *, int, const int *, const int *, const int *, const int *,
+                                                         int, const int *, const double *, const int *, int, const int *, const int *, const int *, const double *, const int *)>(
+            resolve("structura_set_constraints"));
+        auto *setLinks = reinterpret_cast<void (*)(int, const int *, const int *, const int *, const double *, const int *, const double *, const double *, const double *,
+                                                   const int *, const double *, const double *)>(resolve("structura_set_links"));
+        auto *setNonlinear = reinterpret_cast<void (*)(int, int, int, double, int, int, int, int, int, double, double)>(resolve("structura_set_nonlinear_options"));
+        const bool needsNew = !model.endSprings.empty() || !model.plasticHinges.empty() || !model.diaphragms.empty() || !model.rigidLinks.empty()
+                              || !model.inclinedSupports.empty() || !model.constraints.empty() || !model.links.empty() || model.nonlinear.force;
+        if (needsNew && (!setEndSprings || !setHinges || !setConstraints || !setLinks || !setNonlinear)) {
+            throw SolverBridgeError("A DLL do solver nao suporta molas de extremidade, rotulas plasticas, vinculos, ligacoes entre nos ou analise nao linear "
+                                    "(funcoes structura_set_* ausentes). Recompile Structuradll e copie rds.dll para a raiz.");
+        }
+        if (setEndSprings) {
+            std::vector<int> ids;
+            std::vector<double> k;
+            for (const auto &spring : model.endSprings) {
+                ids.push_back(spring.memberId);
+                k.insert(k.end(), spring.k.begin(), spring.k.end());
+            }
+            setEndSprings(static_cast<int>(ids.size()), ids.data(), k.data());
+        }
+        if (setHinges) {
+            std::vector<int> ids, dofs;
+            std::vector<double> kEl, my, ratio, ny, exponent;
+            for (const auto &h : model.plasticHinges) {
+                ids.push_back(h.memberId);
+                dofs.push_back(h.dof);
+                kEl.push_back(h.kElastic);
+                my.push_back(h.yieldMoment);
+                ratio.push_back(h.hardeningRatio);
+                ny.push_back(h.axialYield);
+                exponent.push_back(h.exponent);
+            }
+            setHinges(static_cast<int>(ids.size()), ids.data(), dofs.data(), kEl.data(), my.data(), ratio.data(), ny.data(), exponent.data());
+        }
+        if (setConstraints) {
+            std::vector<int> diaMasters, diaNormals, diaCounts, diaSlaves, linkMasters, linkSlaves, linkKinds, linkDofs, incNodes, incMasks, genCounts, genNodes, genDofs, genReport;
+            std::vector<double> incAxes, genCoefs;
+            for (const auto &d : model.diaphragms) {
+                diaMasters.push_back(d.masterNodeId);
+                diaNormals.push_back(d.normalAxis);
+                diaCounts.push_back(static_cast<int>(d.slaveNodeIds.size()));
+                diaSlaves.insert(diaSlaves.end(), d.slaveNodeIds.begin(), d.slaveNodeIds.end());
+            }
+            for (const auto &l : model.rigidLinks) {
+                linkMasters.push_back(l.masterNodeId);
+                linkSlaves.push_back(l.slaveNodeId);
+                linkKinds.push_back(l.kind);
+                linkDofs.push_back(l.dof);
+            }
+            for (const auto &s : model.inclinedSupports) {
+                incNodes.push_back(s.nodeId);
+                incAxes.insert(incAxes.end(), s.axes.begin(), s.axes.end());
+                incMasks.push_back(s.mask);
+            }
+            for (const auto &c : model.constraints) {
+                genCounts.push_back(static_cast<int>(c.nodeIds.size()));
+                genNodes.insert(genNodes.end(), c.nodeIds.begin(), c.nodeIds.end());
+                genDofs.insert(genDofs.end(), c.dofs.begin(), c.dofs.end());
+                genCoefs.insert(genCoefs.end(), c.coefs.begin(), c.coefs.end());
+                genReport.push_back(c.reportReaction ? 1 : 0);
+            }
+            setConstraints(static_cast<int>(diaMasters.size()), diaMasters.data(), diaNormals.data(), diaCounts.data(), diaSlaves.data(),
+                           static_cast<int>(linkMasters.size()), linkMasters.data(), linkSlaves.data(), linkKinds.data(), linkDofs.data(),
+                           static_cast<int>(incNodes.size()), incNodes.data(), incAxes.data(), incMasks.data(),
+                           static_cast<int>(genCounts.size()), genCounts.data(), genNodes.data(), genDofs.data(), genCoefs.data(), genReport.data());
+        }
+        if (setLinks) {
+            std::vector<int> ids, nodeI, nodeJ, kinds, tableCounts;
+            std::vector<double> axes, k, p1, p2, tableDef, tableForce;
+            for (const auto &link : model.links) {
+                ids.push_back(link.id);
+                nodeI.push_back(link.nodeI);
+                nodeJ.push_back(link.nodeJ);
+                axes.insert(axes.end(), link.axes.begin(), link.axes.end());
+                for (const auto &law : link.laws) {
+                    kinds.push_back(law.kind);
+                    k.push_back(law.k);
+                    p1.push_back(law.p1);
+                    p2.push_back(law.p2);
+                    tableCounts.push_back(static_cast<int>(law.table.size()));
+                    for (const auto &point : law.table) {
+                        tableDef.push_back(point.first);
+                        tableForce.push_back(point.second);
+                    }
+                }
+            }
+            setLinks(static_cast<int>(ids.size()), ids.data(), nodeI.data(), nodeJ.data(), axes.data(), kinds.data(), k.data(), p1.data(), p2.data(), tableCounts.data(),
+                     tableDef.data(), tableForce.data());
+        }
+        if (auto *setSolverOptions = reinterpret_cast<void (*)(int, int, int, double, int)>(resolve("structura_set_solver_options"))) {
+            setSolverOptions(model.linearSolver, model.eigenSolver, 400, 1e-10, 5000);
+        }
+        if (setNonlinear) {
+            const auto &o = model.nonlinear;
+            setNonlinear(o.force ? 1 : 0, o.steps, o.maxIterations, o.tolerance, o.criteria, o.maxCutbacks, o.controlMode, o.controlNodeId, o.controlDof, o.controlTarget,
+                         o.loadFactorMax);
         }
     }
     using SetBucklingFn = void (*)(int);
@@ -384,6 +529,29 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         std::vector<double> shellAlpha;
         for (const auto &e : model.shell->elements) {
             shellAlpha.push_back(e.alpha);
+        }
+        const bool anyOrtho = std::any_of(model.shell->elements.begin(), model.shell->elements.end(), [](const auto &e) { return e.orthotropic; });
+        if (anyOrtho) {
+            using SetShellOrthoFn = int (*)(int, const int *, const double *, const double *, const double *, const double *, const double *, const double *);
+            auto setOrtho = reinterpret_cast<SetShellOrthoFn>(solverLibrary.resolve("structura_set_shell_orthotropy"));
+            if (!setOrtho) {
+                throw SolverBridgeError("A DLL do solver nao suporta material ortotropico em cascas (structura_set_shell_orthotropy ausente). "
+                                        "Recompile Structuradll e copie rds.dll para a raiz.");
+            }
+            std::vector<int> flags;
+            std::vector<double> e2, nu12, g12, b1, b2, axes;
+            for (const auto &e : model.shell->elements) {
+                flags.push_back(e.orthotropic ? 1 : 0);
+                e2.push_back(e.e2);
+                nu12.push_back(e.nu12);
+                g12.push_back(e.g12);
+                b1.push_back(e.bend1);
+                b2.push_back(e.bend2);
+                axes.insert(axes.end(), e.axis.begin(), e.axis.end());
+            }
+            if (setOrtho(static_cast<int>(flags.size()), flags.data(), e2.data(), nu12.data(), g12.data(), b1.data(), b2.data(), axes.data()) != 0) {
+                throw SolverBridgeError("Dados de ortotropia das cascas invalidos para o solver.");
+            }
         }
         if (setShellAlpha) {
             setShellAlpha(static_cast<int>(shellAlpha.size()), shellAlpha.data());
@@ -634,6 +802,66 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
                 const auto begin = shapes.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(m) * totalNodeCount * 6U);
                 result.modalShapes.emplace_back(begin, begin + static_cast<std::ptrdiff_t>(model.nodes.size() * 6U));
             }
+        }
+    }
+
+    {
+        // analise incremental nao linear e vinculos: resultados globais da DLL
+        using GetSummaryFn = void (*)(double *);
+        using GetCurveFn = int (*)(int, double *);
+        using GetHingesFn = int (*)(int, int *, double *);
+        using GetLinksFn = int (*)(int, int *, double *, double *);
+        using GetConstraintForcesFn = int (*)(int, double *);
+        auto getSummary = reinterpret_cast<GetSummaryFn>(solverLibrary.resolve("structura_get_nonlinear_summary"));
+        auto getCurve = reinterpret_cast<GetCurveFn>(solverLibrary.resolve("structura_get_nonlinear_curve"));
+        auto getHinges = reinterpret_cast<GetHingesFn>(solverLibrary.resolve("structura_get_hinge_results"));
+        auto getLinks = reinterpret_cast<GetLinksFn>(solverLibrary.resolve("structura_get_link_results"));
+        auto getConstraintForces = reinterpret_cast<GetConstraintForcesFn>(solverLibrary.resolve("structura_get_constraint_forces"));
+        if (getSummary && getCurve && getHinges && getLinks) {
+            double summary[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+            getSummary(summary);
+            result.nonlinear.used = summary[0] != 0.0;
+            if (result.nonlinear.used) {
+                result.nonlinear.converged = summary[1] != 0.0;
+                result.nonlinear.loadFactor = summary[2];
+                result.nonlinear.steps = static_cast<int>(summary[3]);
+                result.nonlinear.iterations = static_cast<int>(summary[4]);
+                const int curveCount = static_cast<int>(summary[5]), hingeCount = static_cast<int>(summary[6]), linkCount = static_cast<int>(summary[7]);
+                std::vector<double> curve(static_cast<std::size_t>(std::max(curveCount, 1)) * 2U);
+                const int gotCurve = getCurve(curveCount, curve.data());
+                for (int i = 0; i < gotCurve; ++i) {
+                    result.nonlinear.curve.push_back({curve[static_cast<std::size_t>(i) * 2U], curve[static_cast<std::size_t>(i) * 2U + 1U]});
+                }
+                std::vector<int> hingeIds(static_cast<std::size_t>(std::max(hingeCount, 1)) * 2U);
+                std::vector<double> hingeValues(static_cast<std::size_t>(std::max(hingeCount, 1)) * 3U);
+                const int gotHinges = getHinges(hingeCount, hingeIds.data(), hingeValues.data());
+                for (int i = 0; i < gotHinges; ++i) {
+                    HingeResult h;
+                    h.memberId = hingeIds[static_cast<std::size_t>(i) * 2U];
+                    h.dof = hingeIds[static_cast<std::size_t>(i) * 2U + 1U];
+                    h.plasticRotation = hingeValues[static_cast<std::size_t>(i) * 3U];
+                    h.moment = hingeValues[static_cast<std::size_t>(i) * 3U + 1U];
+                    h.yielded = hingeValues[static_cast<std::size_t>(i) * 3U + 2U] != 0.0;
+                    result.nonlinear.hinges.push_back(h);
+                }
+                std::vector<int> linkIds(static_cast<std::size_t>(std::max(linkCount, 1)));
+                std::vector<double> deformation(static_cast<std::size_t>(std::max(linkCount, 1)) * 6U), force(static_cast<std::size_t>(std::max(linkCount, 1)) * 6U);
+                const int gotLinks = getLinks(linkCount, linkIds.data(), deformation.data(), force.data());
+                for (int i = 0; i < gotLinks; ++i) {
+                    LinkResult l;
+                    l.id = linkIds[static_cast<std::size_t>(i)];
+                    for (std::size_t k = 0; k < 6; ++k) {
+                        l.deformation[k] = deformation[static_cast<std::size_t>(i) * 6U + k];
+                        l.force[k] = force[static_cast<std::size_t>(i) * 6U + k];
+                    }
+                    result.nonlinear.links.push_back(l);
+                }
+            }
+        }
+        if (getConstraintForces) {
+            std::vector<double> forces(4096, 0.0);
+            const int count = getConstraintForces(static_cast<int>(forces.size()), forces.data());
+            result.constraintForces.assign(forces.begin(), forces.begin() + count);
         }
     }
 

@@ -16,6 +16,8 @@ using AddNodeFn = int (*)(void *, int, double, double, double, const int *);
 using AddShellFn = int (*)(void *, int, int, int, int, int, int, double);
 using AddSpringFn = int (*)(void *, int, const double *, int, double, double, double);
 using AddTieFn = int (*)(void *, int, int, const int *, const double *);
+using AddTieMaskedFn = int (*)(void *, int, int, const int *, const double *, int);
+using SetOrthotropyFn = int (*)(void *, int, double, double, double, double, double, double, double, double);
 using AddCaseFn = int (*)(void *);
 using LoadNodeFn = int (*)(void *, int, int, const double *);
 using LoadPressureFn = int (*)(void *, int, int, const double *);
@@ -35,6 +37,8 @@ struct Api {
     AddShellFn addShell {nullptr};
     AddSpringFn addSpring {nullptr};
     AddTieFn addTie {nullptr};
+    AddTieMaskedFn addTieMasked {nullptr};   // opcional (DLL antiga: so ligacoes de 6 graus)
+    SetOrthotropyFn setOrthotropy {nullptr}; // opcional
     AddCaseFn addCase {nullptr};
     LoadNodeFn loadNode {nullptr};
     LoadPressureFn loadPressure {nullptr};
@@ -73,6 +77,8 @@ Api resolve(QLibrary &library)
     api.addShell = reinterpret_cast<AddShellFn>(library.resolve("fem_add_shell"));
     api.addSpring = reinterpret_cast<AddSpringFn>(library.resolve("fem_add_spring"));
     api.addTie = reinterpret_cast<AddTieFn>(library.resolve("fem_add_tie"));
+    api.addTieMasked = reinterpret_cast<AddTieMaskedFn>(library.resolve("fem_add_tie_masked"));
+    api.setOrthotropy = reinterpret_cast<SetOrthotropyFn>(library.resolve("fem_set_material_orthotropy"));
     api.addCase = reinterpret_cast<AddCaseFn>(library.resolve("fem_add_case"));
     api.loadNode = reinterpret_cast<LoadNodeFn>(library.resolve("fem_load_node"));
     api.loadPressure = reinterpret_cast<LoadPressureFn>(library.resolve("fem_load_shell_pressure"));
@@ -147,6 +153,12 @@ Structura::Shell::Results ShellSolverBridge::solve(const Structura::Shell::Model
             results.error = QObject::tr("Material invalido: %1").arg(QString::fromStdString(m.name)).toStdString();
             return results;
         }
+        if (m.orthotropic) {
+            if (!api.setOrthotropy || api.setOrthotropy(handle, static_cast<int>(i), m.E2, m.nu12, m.G12, m.bend1, m.bend2, m.axis[0], m.axis[1], m.axis[2]) != 0) {
+                results.error = QObject::tr("Ortotropia invalida ou nao suportada pela DLL: %1 (confira E2, G12 e a estabilidade 1 - nu12 nu21 > 0).").arg(QString::fromStdString(m.name)).toStdString();
+                return results;
+            }
+        }
     }
     for (std::size_t n = 0; n < job.nodes.size(); ++n) {
         const Job::Node &node = job.nodes[n];
@@ -164,7 +176,11 @@ Structura::Shell::Results ShellSolverBridge::solve(const Structura::Shell::Model
     }
     for (const Tie &t : job.ties) {
         std::vector<int> masters(t.masters.begin(), t.masters.end());
-        api.addTie(handle, t.slave, static_cast<int>(masters.size()), masters.data(), t.weights.data());
+        if (t.dofMask != 63 && api.addTieMasked) {
+            api.addTieMasked(handle, t.slave, static_cast<int>(masters.size()), masters.data(), t.weights.data(), t.dofMask);
+        } else {
+            api.addTie(handle, t.slave, static_cast<int>(masters.size()), masters.data(), t.weights.data());
+        }
     }
     for (const Job::Case &c : job.cases) {
         const int index = api.addCase(handle);

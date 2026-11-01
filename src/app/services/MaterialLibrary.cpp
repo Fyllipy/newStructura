@@ -59,6 +59,7 @@ QVector<MaterialLibrary::Entry> buildLibrary()
         e.eGPa = 0.85 * eci;                                            // modulo secante Ecs
         e.gGPa = e.eGPa / 2.4;
         e.unitWeight = 25.0;
+        e.thermalExpansion = 1.0e-5;
         e.note = QStringLiteral("NBR 6118: Ecs = 0,85 · 5600 √fck; G = Ecs / 2,4");
         list.append(e);
     }

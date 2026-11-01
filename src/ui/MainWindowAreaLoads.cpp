@@ -23,15 +23,15 @@ void eraseIf(Container &container, Predicate predicate)
 }
 } // namespace
 
-void MainWindow::applyAreaLoad(bool wind)
+void MainWindow::onApplyAreaLoad()
 {
-    StateGuard guard(this, tr("Carga de área / vento"));
+    StateGuard guard(this, tr("Carga de área"));
     if (!m_selectionModel || !m_sceneController) {
         return;
     }
     const QSet<QUuid> selectedBars = m_selectionModel->selectedBars();
     if (selectedBars.isEmpty()) {
-        QMessageBox::information(this, wind ? tr("Vento (NBR 6123)") : tr("Carga de área"),
+        QMessageBox::information(this, tr("Carga de área"),
                                  tr("Selecione as barras que recebem a carga (terças, travessas ou vigas da superfície)."));
         return;
     }
@@ -39,14 +39,12 @@ void MainWindow::applyAreaLoad(bool wind)
     // Geometria
     QHash<QUuid, AreaLoadService::Vec3> position;
     AreaLoadService::Vec3 centroid {0, 0, 0};
-    double maxZ = 0.0;
     int count = 0;
     for (const auto &node : m_sceneController->nodeInfos()) {
         position.insert(node.id, {node.x, node.y, node.z});
         centroid[0] += node.x;
         centroid[1] += node.y;
         centroid[2] += node.z;
-        maxZ = std::max(maxZ, node.z);
         ++count;
     }
     if (count > 0) {
@@ -70,8 +68,7 @@ void MainWindow::applyAreaLoad(bool wind)
         return;
     }
 
-    Structura::UI::AreaLoadDialog dialog(wind ? Structura::UI::AreaLoadDialog::Mode::Wind : Structura::UI::AreaLoadDialog::Mode::Area,
-                                         loadCaseNames(), dialogLoadCase(), maxZ, selectedBars.size(), this);
+    Structura::UI::AreaLoadDialog dialog(loadCaseNames(), dialogLoadCase(), selectedBars.size(), this);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -184,7 +181,7 @@ void MainWindow::applyAreaLoad(bool wind)
             Structura::App::ProjectData::AreaLoadPanel record;
             record.id = nextId++;
             record.loadCase = request.caseName;
-            record.kind = wind ? QStringLiteral("WIND") : QStringLiteral("AREA");
+            record.kind = QStringLiteral("AREA");
             record.pressure = request.pressure;
             record.direction = {direction[0] / std::max(dn, 1e-12), direction[1] / std::max(dn, 1e-12), direction[2] / std::max(dn, 1e-12)};
             for (const auto &pt : panel.polygon) {
@@ -197,15 +194,5 @@ void MainWindow::applyAreaLoad(bool wind)
     }
     syncLoadVisuals();
     refreshPropertiesPanel();
-    showStatusMessage(tr("%1 aplicada em %2 barra(s) no caso \"%3\" (%4).").arg(wind ? tr("Carga de vento") : tr("Carga de área")).arg(applied).arg(request.caseName).arg(request.description), 8000);
-}
-
-void MainWindow::onApplyAreaLoad()
-{
-    applyAreaLoad(false);
-}
-
-void MainWindow::onApplyWindLoad()
-{
-    applyAreaLoad(true);
+    showStatusMessage(tr("%1 aplicada em %2 barra(s) no caso \"%3\" (%4).").arg(tr("Carga de área")).arg(applied).arg(request.caseName).arg(request.description), 8000);
 }

@@ -462,6 +462,7 @@ void MainWindow::showViewportContextMenu(const QPoint &widgetPos, const QPoint &
     add(tr("Forca nodal..."), hasNodes, &MainWindow::onApplyNodalLoad);
     add(tr("Carga distribuida..."), hasBars, &MainWindow::onApplyDistributedLoad);
     add(tr("Momento distribuido..."), hasBars, &MainWindow::onApplyMemberMoment);
+    add(tr("Carga geral em barra (trapezoidal, pontual, temperatura)..."), hasBars, &MainWindow::onApplyMemberAction);
     add(tr("Restricoes nodais..."), hasNodes, &MainWindow::onApplyRestraints);
     add(tr("Cargas da selecao..."), hasSelection, &MainWindow::onShowLoadsPanel);
     add(tr("Gerenciador de perfis..."), true, &MainWindow::onOpenProfileManager);
@@ -469,6 +470,7 @@ void MainWindow::showViewportContextMenu(const QPoint &widgetPos, const QPoint &
     add(tr("Copiar"), hasSelection, &MainWindow::onCopyElements);
     add(tr("Mover"), hasSelection, &MainWindow::onMoveElements);
     add(tr("Copia em serie..."), hasSelection, &MainWindow::onSerialCopy);
+    add(tr("Copia em matriz..."), hasSelection, &MainWindow::onArrayCopy);
     add(tr("Rotacionar"), hasSelection, &MainWindow::onRotateElements);
     add(tr("Espelhar"), hasSelection, &MainWindow::onMirrorElements);
     add(tr("Excluir"), hasSelection, &MainWindow::onDeleteSelected);

@@ -24,8 +24,9 @@ DeleteLoadsDialog::DeleteLoadsDialog(const QStringList &caseNames, int selectedN
     m_nodal = new QCheckBox(tr("Forças e momentos nodais"));
     m_distributed = new QCheckBox(tr("Cargas distribuídas nas barras"));
     m_moments = new QCheckBox(tr("Momentos distribuídos nas barras"));
+    m_positioned = new QCheckBox(tr("Cargas de barra com posição (trapezoidais, pontuais, momentos pontuais), temperatura e retração"));
     m_panels = new QCheckBox(tr("Cargas de área e vento (panos e as cargas distribuídas geradas por eles)"));
-    for (auto *box : {m_nodal, m_distributed, m_moments, m_panels}) {
+    for (auto *box : {m_nodal, m_distributed, m_moments, m_positioned, m_panels}) {
         box->setChecked(true);
         typesLayout->addWidget(box);
     }
@@ -64,6 +65,7 @@ DeleteLoadsDialog::DeleteLoadsDialog(const QStringList &caseNames, int selectedN
 bool DeleteLoadsDialog::nodalForces() const { return m_nodal->isChecked(); }
 bool DeleteLoadsDialog::distributedForces() const { return m_distributed->isChecked(); }
 bool DeleteLoadsDialog::distributedMoments() const { return m_moments->isChecked(); }
+bool DeleteLoadsDialog::positionedLoads() const { return m_positioned->isChecked(); }
 bool DeleteLoadsDialog::areaPanels() const { return m_panels->isChecked(); }
 QString DeleteLoadsDialog::loadCase() const { return m_case->currentData().toString(); }
 bool DeleteLoadsDialog::wholeModel() const { return m_all->isChecked(); }

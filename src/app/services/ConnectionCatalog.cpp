@@ -144,7 +144,11 @@ QVector<ConnectionCatalog::Entry> buildEntries()
     {
         const QString rigid = QObject::tr("Ligações rígidas viga–pilar");
         list.append(alias(148, rigid, QObject::tr("Viga–pilar com talas fora do nó"), QObject::tr("Emenda por talas de mesa e de alma parafusadas a curta distância do pilar (a viga se liga ao pilar por solda): transmite momento, cortante e axial (NBR 8800:2024, 6.3)."), NC::kSplice,
-                          {{QStringLiteral("outside"), 1.0}}, true, false));
+                          {{QStringLiteral("outside"), 1.0}, {QStringLiteral("outDist"), 260.0}, {QStringLiteral("supWeldKind"), 0.0}, {QStringLiteral("supWeldLegF"), 8.0},
+                           {QStringLiteral("supWeldLegW"), 6.0}, {QStringLiteral("weldFw"), 485.0}}, true, true));
+        // a distancia do apoio a junta e editavel; o apoio (pilar) e escolhido como nas demais ligacoes viga-apoio
+        const_cast<ConnectionCatalog::Entry &>(list.last()).extraFields = cat::outsideFields;
+        const_cast<ConnectionCatalog::Entry &>(list.last()).extraDefaults = [](Structura::App::ProjectData::NodeConnection &c, const ConnectionCatalog::BeamInfo &) { cat::supportWeldDefaults(c); };
         list.append(alias(152, QObject::tr("Cantoneiras"), QObject::tr("Viga–viga flexível com cantoneiras"), QObject::tr("Viga apoiada na alma de viga principal por duas cantoneiras parafusadas, com recorte das mesas da viga apoiada (NBR 8800:2024, 6.3 e 6.5)."), NC::kDoubleAngle,
                           {{QStringLiteral("supBeam"), 1.0}}, true, true));
         // bases de pilar
@@ -221,7 +225,7 @@ QVector<ConnectionCatalog::Entry> buildEntries()
             e.summary = summary;
             e.preset = {{QStringLiteral("outside"), outside}};
             e.usesBolts = true;
-            e.usesSupport = false;
+            e.usesSupport = outside != 0.0;   // flangeada fora do no: a viga se liga ao pilar de apoio, a junta fica a `outDist` da face
             return e;
         };
         const QString base = QObject::tr("Duas chapas de extremidade soldadas às vigas e unidas por parafusos tracionados (efeito de alavanca, NBR 8800:2024, 6.3.5) e de cortante; soldas das mesas e da alma, largura e gabarito da chapa.");
@@ -482,7 +486,9 @@ ConnectionCatalog::Evaluation ConnectionCatalog::evaluate(const NodeConnection &
 {
     const Entry *e = find(connection.type);
     if (e && e->legacyType >= 0) {
-        return ConnectionService::evaluate(asLegacy(connection), forces);
+        Evaluation evaluation = ConnectionService::evaluate(asLegacy(connection), forces);
+        cat::appendSupportWeld(connection, forces, evaluation);   // so nas ligacoes fora do no
+        return evaluation;
     }
     return e ? ops(e->family).evaluate(connection, forces) : Evaluation();
 }
@@ -513,23 +519,30 @@ bool ConnectionCatalog::propose(NodeConnection &connection, const Forces &forces
     const Entry *e = find(connection.type);
     if (e && e->legacyType >= 0) {
         NodeConnection legacy = asLegacy(connection);
-        if (!ConnectionService::propose(legacy, forces)) {
+        const bool base = ConnectionService::propose(legacy, forces);
+        legacy.type = connection.type;
+        const bool weld = cat::proposeSupportWeld(legacy, forces);
+        if (!base && !weld) {
             return false;
         }
-        legacy.type = connection.type;
         connection = legacy;
         return true;
     }
-    return e && ops(e->family).propose ? ops(e->family).propose(connection, forces) : false;
+    if (e) {
+        const bool base = ops(e->family).propose ? ops(e->family).propose(connection, forces) : false;
+        const bool weld = cat::proposeSupportWeld(connection, forces);
+        return base || weld;
+    }
+    return false;
 }
 
 bool ConnectionCatalog::hasProposal(int type)
 {
     const Entry *e = find(type);
     if (e && e->legacyType >= 0) {
-        return ConnectionService::hasProposal(e->legacyType);
+        return ConnectionService::hasProposal(e->legacyType) || e->preset.value(QStringLiteral("outside"), 0.0) != 0.0;
     }
-    return e && static_cast<bool>(ops(e->family).propose);
+    return e && (static_cast<bool>(ops(e->family).propose) || e->preset.value(QStringLiteral("outside"), 0.0) != 0.0);
 }
 
 QPair<QString, QString> ConnectionCatalog::steelKeys(int type)

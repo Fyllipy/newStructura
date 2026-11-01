@@ -53,6 +53,15 @@ private:
     double m_mz_local{0.0};
     bool   m_hasLoad{false};
 
+    /// Cargas com posição já no sistema local; as pontuais fora do interior da barra (nos nós) são descartadas.
+    struct LocalPositioned {
+        PositionedLoad::Kind kind{PositionedLoad::Kind::Trapezoid};
+        double a{0}, b{0};
+        std::array<double, 3> v1{}, v2{};
+    };
+    std::vector<LocalPositioned> m_positioned;
+    bool m_hasTorque{false};   ///< torque pontual presente: Mt segue o equilíbrio em vez da interpolação linear
+
     std::array<double, 3> m_xLocal{};
     std::array<double, 3> m_yLocal{};
     std::array<double, 3> m_zLocal{};

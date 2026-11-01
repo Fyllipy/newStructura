@@ -108,6 +108,7 @@ public:
         QVector<int> selectedMembers;
         QSet<QString> itemIds;            ///< itens de calculo incluidos (vazio = todos)
         int maxDetailBars {0};            ///< limita as barras detalhadas (previa); 0 = todas
+        QStringList revisions;            ///< controle de revisoes: cada linha "Rev; data; descricao; responsavel" (a tabela entra antes dos criterios)
     };
 
     struct ItemInfo {

@@ -8,34 +8,14 @@
 namespace Structura::App::Services {
 
 /**
- * @brief Cargas de area (pressoes sobre superficies) distribuidas nas barras que as recebem e
- *        pressao dinamica do vento conforme a ABNT NBR 6123.
+ * @brief Cargas de area (pressoes sobre superficies) distribuidas nas barras que as recebem.
  *
- * O vento segue o roteiro da norma: Vk = V0 S1 S2 S3 e q = 0,613 Vk^2 (N/m2). Os parametros
- * meteorologicos (b, p, Fr) usados no S2 sao os tabelados na NBR 6123:1988; a edicao 2023 pode
- * alterar valores, por isso o chamador deve permitir conferi-los/edita-los.
+ * O vento de edificios e gerado por WindStaticService.
  */
 class AreaLoadService
 {
 public:
     using Vec3 = std::array<double, 3>;
-
-    // ── Vento ─────────────────────────────────────────────────────────────
-    struct WindParameters {
-        double v0 {35.0};     ///< velocidade basica (m/s)
-        double s1 {1.0};      ///< fator topografico
-        double s3 {1.0};      ///< fator estatistico
-        int category {2};     ///< categoria de rugosidade, 1 a 5
-        char cls {'B'};       ///< classe da edificacao: 'A', 'B' ou 'C'
-        double height {10.0}; ///< altura z acima do terreno (m)
-    };
-
-    /// Parametros meteorologicos da categoria/classe: b, Fr (sempre da categoria II) e p.
-    static void meteorologicalParameters(int category, char cls, double &b, double &fr, double &p);
-    static double s2(const WindParameters &w);
-    static double characteristicSpeed(const WindParameters &w);   ///< Vk (m/s)
-    /// Pressao dinamica q em kN/m2.
-    static double dynamicPressure(const WindParameters &w);
 
     // ── Cargas de area ────────────────────────────────────────────────────
     struct BarSegment {

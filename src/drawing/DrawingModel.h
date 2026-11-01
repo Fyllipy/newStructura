@@ -25,6 +25,7 @@ struct Layer {
 struct Line {
     Point a, b;
     int layer {0};
+    int group {0};   ///< grupo de anotacao editavel (0 = nenhum), ver Sheet::beginGroup
 };
 
 struct Polyline {
@@ -32,6 +33,7 @@ struct Polyline {
     bool closed {false};
     bool filled {false};
     int layer {0};
+    int group {0};
 };
 
 struct Circle {
@@ -39,6 +41,7 @@ struct Circle {
     double radius {1.0};
     bool filled {false};
     int layer {0};
+    int group {0};
 };
 
 enum class TextAlign { Left, Center, Right };
@@ -51,6 +54,16 @@ struct Text {
     TextAlign align {TextAlign::Left};
     bool bold {false};
     int layer {0};
+    int group {0};
+};
+
+/// Retangulo em mm do papel (y para cima).
+struct Rect {
+    double x0 {0.0}, y0 {0.0}, x1 {0.0}, y1 {0.0};
+    [[nodiscard]] bool intersects(const Rect &o, double margin = 0.0) const
+    {
+        return x0 < o.x1 + margin && o.x0 < x1 + margin && y0 < o.y1 + margin && o.y0 < y1 + margin;
+    }
 };
 
 using Entity = std::variant<Line, Polyline, Circle, Text>;
@@ -71,6 +84,32 @@ struct Sheet {
     std::vector<EditCell> cells;
     double areaX0 {0.0}, areaY0 {0.0}, areaX1 {0.0}, areaY1 {0.0};   ///< area util onde as vistas podem ser posicionadas
 
+    /// Grupos de anotacao (cadeias de cotas, chamadas, marcas de corte...) que o usuario pode mover ou excluir. `key` e estavel entre reconstrucoes.
+    struct Group {
+        int id {0};
+        std::string key;
+    };
+    std::vector<Group> groups;
+    int currentGroup {0};
+    std::vector<Rect> occupied;   ///< areas ocupadas por anotacoes ja posicionadas (evita sobreposicao automatica)
+    std::string groupPrefix;      ///< prefixo das chaves de grupo (identifica a vista quando varias dividem a prancha)
+
+    /// Abre o grupo `key` (reabre se ja existe): as entidades criadas a seguir pertencem a ele ate endGroup().
+    int beginGroup(const std::string &localKey)
+    {
+        const std::string key = groupPrefix + localKey;
+        for (const auto &g : groups) {
+            if (g.key == key) {
+                currentGroup = g.id;
+                return g.id;
+            }
+        }
+        groups.push_back({static_cast<int>(groups.size()) + 1, key});
+        currentGroup = groups.back().id;
+        return currentGroup;
+    }
+    void endGroup() { currentGroup = 0; }
+
     int addLayer(const std::string &name, std::array<int, 3> rgb, double weight, LineStyle style = LineStyle::Continuous)
     {
         for (std::size_t i = 0; i < layers.size(); ++i) {
@@ -82,16 +121,16 @@ struct Sheet {
         return static_cast<int>(layers.size()) - 1;
     }
 
-    void line(Point a, Point b, int layer) { entities.push_back(Line {a, b, layer}); }
-    void polyline(std::vector<Point> points, bool closed, int layer, bool filled = false) { entities.push_back(Polyline {std::move(points), closed, filled, layer}); }
+    void line(Point a, Point b, int layer) { entities.push_back(Line {a, b, layer, currentGroup}); }
+    void polyline(std::vector<Point> points, bool closed, int layer, bool filled = false) { entities.push_back(Polyline {std::move(points), closed, filled, layer, currentGroup}); }
     void rect(Point a, Point b, int layer, bool filled = false)
     {
         polyline({{a.x, a.y}, {b.x, a.y}, {b.x, b.y}, {a.x, b.y}}, true, layer, filled);
     }
-    void circle(Point c, double r, int layer, bool filled = false) { entities.push_back(Circle {c, r, filled, layer}); }
+    void circle(Point c, double r, int layer, bool filled = false) { entities.push_back(Circle {c, r, filled, layer, currentGroup}); }
     void text(Point p, const std::string &s, double height, int layer, TextAlign align = TextAlign::Left, double rotation = 0.0, bool bold = false)
     {
-        entities.push_back(Text {p, s, height, rotation, align, bold, layer});
+        entities.push_back(Text {p, s, height, rotation, align, bold, layer, currentGroup});
     }
 };
 

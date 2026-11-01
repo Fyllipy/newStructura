@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileDialog>
@@ -677,16 +678,19 @@ QWidget *ShellDialog::buildMaterialsTab()
 {
     auto *page = new QWidget;
     auto *layout = new QVBoxLayout(page);
-    m_materials = new QTableWidget(0, 8);
-    m_materials->setHorizontalHeaderLabels({tr("Nome"), tr("Tipo"), tr("E (GPa)"), tr("ν"), tr("γ (kN/m³)"), tr("α (10⁻⁶/°C)"), tr("fy / fck (MPa)"), tr("fu (MPa)")});
+    m_materials = new QTableWidget(0, 9);
+    m_materials->setHorizontalHeaderLabels({tr("Nome"), tr("Tipo"), tr("E (GPa)"), tr("ν"), tr("γ (kN/m³)"), tr("α (10⁻⁶/°C)"), tr("fy / fck (MPa)"), tr("fu (MPa)"), tr("Ortotropia")});
     m_materials->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     layout->addWidget(m_materials, 1);
     auto *buttons = new QHBoxLayout;
     auto *addSteel = new QPushButton(tr("+ Aço"));
     auto *addConcrete = new QPushButton(tr("+ Concreto"));
     auto *remove = new QPushButton(tr("Remover"));
+    auto *ortho = new QPushButton(tr("Ortotropia…"));
+    ortho->setToolTip(tr("Lajes nervuradas, chapas corrugadas, compósitos: E2, ν12, G12, rigidez de flexão por direção e eixo 1 do material"));
     buttons->addWidget(addSteel);
     buttons->addWidget(addConcrete);
+    buttons->addWidget(ortho);
     buttons->addWidget(remove);
     buttons->addStretch(1);
     layout->addLayout(buttons);
@@ -715,6 +719,72 @@ QWidget *ShellDialog::buildMaterialsTab()
         m_model.materials.push_back(m);
         refreshMaterialTable();
         rebuildGeometryForm();
+        notifyChanged();
+    });
+    connect(ortho, &QPushButton::clicked, this, [this]() {
+        const int row = m_materials->currentRow();
+        if (row < 0 || row >= static_cast<int>(m_model.materials.size())) {
+            QMessageBox::information(this, tr("Ortotropia"), tr("Selecione um material na tabela."));
+            return;
+        }
+        Material &m = m_model.materials[static_cast<std::size_t>(row)];
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Ortotropia — %1").arg(QString::fromStdString(m.name)));
+        auto *form = new QFormLayout(&dialog);
+        auto *enable = new QCheckBox(tr("Material ortotrópico (E1 = E da tabela)"), &dialog);
+        enable->setChecked(m.orthotropic);
+        auto spin = [&](double min, double max, double value, int decimals, const QString &suffix = QString()) {
+            auto *s = new QDoubleSpinBox(&dialog);
+            s->setRange(min, max);
+            s->setDecimals(decimals);
+            s->setValue(value);
+            s->setSuffix(suffix);
+            return s;
+        };
+        const double e2Default = m.orthotropic ? m.E2 : m.E;
+        const double g12Default = m.orthotropic ? m.G12 : m.E / (2.0 * (1.0 + m.nu));
+        auto *e2 = spin(0.001, 10000.0, e2Default / 1e9, 4, tr(" GPa"));
+        auto *nu12 = spin(-0.99, 0.99, m.nu12, 3);
+        auto *g12 = spin(0.001, 10000.0, g12Default / 1e9, 4, tr(" GPa"));
+        auto *b1 = spin(0.001, 1000.0, m.bend1, 4);
+        auto *b2 = spin(0.001, 1000.0, m.bend2, 4);
+        b1->setToolTip(tr("Multiplica a rigidez de flexão na direção 1 (por exemplo, laje nervurada: I da seção T / I da laje maciça equivalente)"));
+        b2->setToolTip(b1->toolTip().replace(QStringLiteral("direção 1"), QStringLiteral("direção 2")));
+        auto *ax = spin(-1e6, 1e6, m.axis[0], 4), *ay = spin(-1e6, 1e6, m.axis[1], 4), *az = spin(-1e6, 1e6, m.axis[2], 4);
+        form->addRow(enable);
+        form->addRow(tr("E2 (direção 2)"), e2);
+        form->addRow(tr("ν12"), nu12);
+        form->addRow(tr("G12"), g12);
+        form->addRow(tr("Multiplicador de flexão 1"), b1);
+        form->addRow(tr("Multiplicador de flexão 2"), b2);
+        form->addRow(tr("Eixo 1 do material (global) — X"), ax);
+        form->addRow(tr("Eixo 1 — Y"), ay);
+        form->addRow(tr("Eixo 1 — Z"), az);
+        auto *note = new QLabel(tr("O eixo 1 é projetado no plano de cada elemento (em cascas curvas varia de elemento a elemento). Verificações de tensão equivalente e de concreto usam as resultantes n, m, "
+                                   "como no caso isótropo. Estabilidade do estado plano: 1 − ν12·ν21 > 0 com ν21 = ν12·E2/E1."), &dialog);
+        note->setWordWrap(true);
+        note->setStyleSheet(QStringLiteral("color:#5a6472;"));
+        form->addRow(note);
+        auto *box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        connect(box, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(box, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        form->addRow(box);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        const double axisLength = std::sqrt(ax->value() * ax->value() + ay->value() * ay->value() + az->value() * az->value());
+        if (enable->isChecked() && (axisLength < 1e-9 || 1.0 - nu12->value() * nu12->value() * e2->value() * 1e9 / m.E <= 0.0)) {
+            QMessageBox::warning(this, tr("Ortotropia"), tr("Eixo 1 nulo ou estado plano instável (1 − ν12·ν21 ≤ 0)."));
+            return;
+        }
+        m.orthotropic = enable->isChecked();
+        m.E2 = e2->value() * 1e9;
+        m.nu12 = nu12->value();
+        m.G12 = g12->value() * 1e9;
+        m.bend1 = b1->value();
+        m.bend2 = b2->value();
+        m.axis = {ax->value() / std::max(axisLength, 1e-12), ay->value() / std::max(axisLength, 1e-12), az->value() / std::max(axisLength, 1e-12)};
+        refreshMaterialTable();
         notifyChanged();
     });
     connect(remove, &QPushButton::clicked, this, [this]() {
@@ -780,6 +850,9 @@ void ShellDialog::refreshMaterialTable()
         for (int c = 0; c < 6; ++c) {
             m_materials->setItem(r, 2 + c, new QTableWidgetItem(QString::number(values[c], 'g', 6)));
         }
+        auto *orthotropy = new QTableWidgetItem(m.orthotropic ? tr("E2 = %1 GPa").arg(m.E2 / 1e9, 0, 'g', 5) : tr("isótropo"));
+        orthotropy->setFlags(orthotropy->flags() & ~Qt::ItemIsEditable);
+        m_materials->setItem(r, 8, orthotropy);
     }
     m_building = false;
 }

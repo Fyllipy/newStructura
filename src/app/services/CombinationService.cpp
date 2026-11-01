@@ -93,6 +93,7 @@ Structura::App::SolverBridge::ModelData CombinationService::mergeModels(
             merged.nodalLoads.clear();
             merged.memberLoads.clear();
             merged.memberMoments.clear();
+            merged.memberActions.clear();
             merged.shellLoads.clear();
             first = false;
         }
@@ -113,6 +114,13 @@ Structura::App::SolverBridge::ModelData CombinationService::mergeModels(
             moment.my *= term.second;
             moment.mz *= term.second;
             merged.memberMoments.push_back(moment);
+        }
+        for (auto action : term.first->memberActions) {
+            for (std::size_t i = 0; i < 3; ++i) {
+                action.v1[i] *= term.second;
+                action.v2[i] *= term.second;
+            }
+            merged.memberActions.push_back(action);
         }
         for (auto load : term.first->shellLoads) {
             for (double &v : load.v) {

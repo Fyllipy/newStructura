@@ -170,7 +170,7 @@ QString MainWindow::designCacheKey() const
     key += QByteArray::number(static_cast<int>(d.amplifyB1)) + QByteArray::number(static_cast<int>(d.slendernessGoverns)) + QByteArray::number(static_cast<int>(d.secondOrder))
         + QByteArray::number(static_cast<int>(d.autoB2)) + QByteArray::number(static_cast<int>(d.singleStorey)) + QByteArray::number(static_cast<int>(d.groupByFamily))
         + QByteArray::number(static_cast<int>(d.notionalLoads)) + QByteArray::number(d.notionalFactor, 'g', 8)
-        + QByteArray::number(static_cast<int>(d.stabilityFunctions)) + QByteArray::number(static_cast<int>(d.shearDeformation)) + QByteArray::number(static_cast<int>(d.warpingTorsion)) + QByteArray::number(d.loadSteps)
+        + QByteArray::number(static_cast<int>(d.stabilityFunctions)) + QByteArray::number(static_cast<int>(d.shearDeformation)) + QByteArray::number(static_cast<int>(d.warpingTorsion)) + QByteArray::number(static_cast<int>(d.vonMises)) + QByteArray::number(static_cast<int>(d.fireCheck)) + QByteArray::number(d.fireTrrf, 'g', 8) + QByteArray::number(d.loadSteps)
         + QByteArray::number(d.rigidZoneFactor, 'g', 8) + QByteArray::number(static_cast<int>(d.geometricImperfection)) + QByteArray::number(d.imperfectionRatio, 'g', 8);
     key += '|' + QByteArray::number(d.stiffnessReduction, 'g', 8) + '|' + QByteArray::number(d.rs, 'g', 8) + '|' + QByteArray::number(d.targetEta, 'g', 8) + '|';
     key += d.combinations.join(QLatin1Char(',')).toUtf8() + '|';
@@ -180,7 +180,7 @@ QString MainWindow::designCacheKey() const
             + ',' + QByteArray::number(p.b2, 'g', 8) + ',' + QByteArray::number(p.netAreaRatio, 'g', 8) + ',' + QByteArray::number(p.deflDenominator) + ',' + QByteArray::number(p.stiffenerSpacing, 'g', 8) + ',' + QByteArray::number(p.panelTensionFlange) + ',' + QByteArray::number(static_cast<int>(p.coldWork)) + ',' + QByteArray::number(p.bearingLength, 'g', 8) + ',' + QByteArray::number(p.fatigueCategory) + ',' + QByteArray::number(p.fatigueCycles, 'g', 10) + ','
             + QByteArray::number(p.openingDiameter, 'g', 8) + ',' + QByteArray::number(p.openingPosition, 'g', 8) + ',' + QByteArray::number(p.openingOffset, 'g', 8) + ','
             + QByteArray::number(p.openingNeighbourD, 'g', 8) + ',' + QByteArray::number(p.openingSpacing, 'g', 8) + ','
-            + QByteArray::number(p.lx, 'g', 8) + ',' + QByteArray::number(p.ly, 'g', 8) + ',' + QByteArray::number(p.lz, 'g', 8) + ',' + QByteArray::number(p.compositeSpacing, 'g', 8) + QByteArray::number(static_cast<int>(p.compositeWelded)) + ',' + QByteArray::number(p.mixType) + QByteArray::number(p.mixModel) + ',' + QByteArray::number(p.mixHc, 'g', 8) + ',' + QByteArray::number(p.mixBc, 'g', 8) + ',' + QByteArray::number(p.mixFck, 'g', 8) + ',' + QByteArray::number(p.mixBarArea, 'g', 8) + ';';
+            + QByteArray::number(p.lx, 'g', 8) + ',' + QByteArray::number(p.ly, 'g', 8) + ',' + QByteArray::number(p.lz, 'g', 8) + ',' + QByteArray::number(p.compositeSpacing, 'g', 8) + QByteArray::number(static_cast<int>(p.compositeWelded)) + ',' + QByteArray::number(p.stiffSides) + QByteArray::number(p.stiffWidth, 'g', 8) + QByteArray::number(p.stiffThickness, 'g', 8) + QByteArray::number(p.stiffCut, 'g', 8) + QByteArray::number(static_cast<int>(p.stiffFitted)) + QByteArray::number(p.stiffWeldLeg, 'g', 8) + QByteArray::number(p.stiffBearing, 'g', 8) + QByteArray::number(p.stiffForce, 'g', 8) + ',' + QByteArray::number(p.latType) + QByteArray::number(p.latPanel, 'g', 8) + QByteArray::number(p.latDiagB, 'g', 8) + QByteArray::number(p.latDiagT, 'g', 8) + QByteArray::number(p.latBattenDepth, 'g', 8) + QByteArray::number(p.latBattenThickness, 'g', 8) + ',' + QByteArray::number(p.mixType) + QByteArray::number(p.mixModel) + ',' + QByteArray::number(p.mixHc, 'g', 8) + ',' + QByteArray::number(p.mixBc, 'g', 8) + ',' + QByteArray::number(p.mixFck, 'g', 8) + ',' + QByteArray::number(p.mixBarArea, 'g', 8) + ',' + QByteArray::number(p.fireProtection) + QByteArray::number(p.fireThickness, 'g', 8) + ',' + QByteArray::number(p.fireConductivity, 'g', 8) + ',' + QByteArray::number(p.fireDensity, 'g', 8) + ',' + QByteArray::number(p.fireSpecificHeat, 'g', 8) + ',' + QByteArray::number(p.fireExposure) + ';';
     };
     params(d.defaults);
     for (const auto &m : d.members) {
@@ -303,6 +303,15 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
                 progress.setDetail(tr("Flechas e deslocamentos de serviço…"));
                 out.deflections = StructuralChecks::deflections(geometry, service, designSettings, factors.second, inertiaRatio);
                 out.elsStories = StructuralChecks::stories(geometry, service, designSettings, factors.first, factors.second, false);
+                out.warnings += out.elsStories.warnings;
+            }
+            // as resistencias usam E = 200 GPa (NBR 8800 e NBR 14762): rigidez do modelo diferente da de projeto desloca os esforcos
+            for (const auto &material : m_materials) {
+                const double eMpa = material.youngModulus * factors.first / (factors.second * factors.second);
+                if (eMpa > 0.0 && std::abs(eMpa - 200000.0) > 0.01 * 200000.0) {
+                    out.warnings.append(tr("O material \"%1\" tem E = %2 GPa no modelo; as verificações usam E = 200 GPa (aço estrutural). Os esforços da análise foram obtidos com a rigidez do modelo: ajuste o módulo de elasticidade do material para 200 GPa.")
+                                            .arg(material.name).arg(eMpa / 1000.0, 0, 'f', 1));
+                }
             }
             return out;
         });

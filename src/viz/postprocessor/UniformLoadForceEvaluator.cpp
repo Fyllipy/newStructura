@@ -1,5 +1,6 @@
 #include "UniformLoadForceEvaluator.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 
@@ -12,6 +13,33 @@ double UniformLoadForceEvaluator::dot3(const std::array<double, 3>& a,
 {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 }
+
+namespace {
+
+/// Integrais de uma carga trapezoidal q(s) (q1 em a, q2 em b) ate a abscissa x:
+/// F = ∫0^x q ds (resultante) e G = ∫0^x (x - s) q ds (momento da carga em relacao a x).
+void trapezoidIntegrals(double q1, double q2, double a, double b, double x, double& F, double& G)
+{
+    F = 0.0;
+    G = 0.0;
+    if (x <= a) {
+        return;
+    }
+    const double span = b - a;
+    const double k = span > 0.0 ? (q2 - q1) / span : 0.0;
+    if (x < b) {
+        const double u = x - a;
+        F = q1 * u + 0.5 * k * u * u;
+        G = 0.5 * q1 * u * u + k * u * u * u / 6.0;
+    } else {
+        const double w = span;
+        F = q1 * w + 0.5 * k * w * w;
+        const double firstMoment = a * F + 0.5 * q1 * w * w + k * w * w * w / 3.0;
+        G = x * F - firstMoment;
+    }
+}
+
+} // namespace
 
 // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -41,6 +69,31 @@ UniformLoadForceEvaluator::UniformLoadForceEvaluator(const BeamElementResults& e
             m_qy_local += dot3(qg, el.yLocal);
             m_qz_local += dot3(qg, el.zLocal);
         }
+    }
+
+    // Cargas com posição: converte para o sistema local; forças e momentos pontuais nos nós já foram para o nó (não entram na barra)
+    const double tol = 1e-9 * std::max(m_length, 1.0);
+    for (const auto& pl : el.positionedLoads) {
+        LocalPositioned lp;
+        lp.kind = pl.kind;
+        lp.a = pl.a;
+        lp.b = pl.b;
+        auto toLocal = [&](const std::array<double, 3>& v) -> std::array<double, 3> {
+            if (pl.isLocalSystem) {
+                return v;
+            }
+            return {dot3(v, el.xLocal), dot3(v, el.yLocal), dot3(v, el.zLocal)};
+        };
+        lp.v1 = toLocal(pl.v1);
+        lp.v2 = toLocal(pl.v2);
+        if (pl.kind != PositionedLoad::Kind::Trapezoid && (pl.a <= tol || pl.a >= m_length - tol)) {
+            continue;
+        }
+        if (pl.kind == PositionedLoad::Kind::PointMoment && lp.v1[0] != 0.0) {
+            m_hasTorque = true;
+        }
+        m_positioned.push_back(lp);
+        m_hasLoad = true;
     }
 
     // Acumula momentos distribuídos uniformes no sistema local
@@ -92,6 +145,48 @@ InternalForces UniformLoadForceEvaluator::evaluate(double x) const
         // Momento distribuído my/mz contribui com derivada constante (-m·x).
         f.My = m_ef.My1 + m_ef.Vz1 * x - 0.5 * qz * x * x - m_my_local * x;
         f.Mz = m_ef.Mz1 - m_ef.Vy1 * x + 0.5 * qy * x * x - m_mz_local * x;
+
+        // Cargas com posição: o mesmo equilíbrio de corpo livre do trecho [0, x]
+        for (const auto& lp : m_positioned) {
+            switch (lp.kind) {
+            case PositionedLoad::Kind::Trapezoid: {
+                double fx, gx, fy, gy, fz, gz;
+                trapezoidIntegrals(lp.v1[0], lp.v2[0], lp.a, lp.b, x, fx, gx);
+                trapezoidIntegrals(lp.v1[1], lp.v2[1], lp.a, lp.b, x, fy, gy);
+                trapezoidIntegrals(lp.v1[2], lp.v2[2], lp.a, lp.b, x, fz, gz);
+                f.N -= fx;
+                f.Vy -= fy;
+                f.Vz -= fz;
+                f.My -= gz;
+                f.Mz += gy;
+                break;
+            }
+            case PositionedLoad::Kind::PointForce:
+                if (x > lp.a) {
+                    f.N -= lp.v1[0];
+                    f.Vy -= lp.v1[1];
+                    f.Vz -= lp.v1[2];
+                    f.My -= lp.v1[2] * (x - lp.a);
+                    f.Mz += lp.v1[1] * (x - lp.a);
+                }
+                break;
+            case PositionedLoad::Kind::PointMoment:
+                if (x > lp.a) {
+                    f.My -= lp.v1[1];
+                    f.Mz -= lp.v1[2];
+                }
+                break;
+            }
+        }
+        if (m_hasTorque) {
+            // torção: equilíbrio com os torques pontuais (o momento distribuído em x não é considerado aqui, como na interpolação)
+            f.Mt = m_ef.Mt1;
+            for (const auto& lp : m_positioned) {
+                if (lp.kind == PositionedLoad::Kind::PointMoment && x > lp.a) {
+                    f.Mt -= lp.v1[0];
+                }
+            }
+        }
     }
 
     // ── Verificações de consistência (apenas em builds Debug) ──────────────

@@ -27,9 +27,12 @@ bool columnCheck(const std::string &name)
 
 } // namespace
 
-QVector<Cat::FieldDef> endPlateSpliceFields(const Cat::Entry &)
+QVector<Cat::FieldDef> endPlateSpliceFields(const Cat::Entry &entry)
 {
     QVector<Cat::FieldDef> list;
+    if (entry.preset.value(QStringLiteral("outside"), 0.0) != 0.0) {
+        list += catalog::outsideFields();
+    }
     for (const auto &def : ConnectionService::fields(NodeConnection::kEndPlate)) {
         if (!columnKey(def.key)) {
             list.append(def);
@@ -48,6 +51,10 @@ NodeConnection endPlateSpliceDefault(const Cat::Entry &entry, const Cat::BeamInf
     c.values["cont"] = 0.0;
     c.values["doubler"] = 0.0;
     c.values["outside"] = entry.preset.value(QStringLiteral("outside"), 0.0);
+    if (c.values["outside"] != 0.0) {
+        c.values["outDist"] = 220.0;   // face do apoio ate o plano da junta
+        catalog::supportWeldDefaults(c);
+    }
     return c;
 }
 
@@ -74,6 +81,7 @@ Cat::Evaluation endPlateSpliceEvaluate(const NodeConnection &c, const Cat::Force
         e.governing = QString::fromStdString(g->name);
     }
     e.description = endPlateSpliceDescribe(c);
+    catalog::appendSupportWeld(c, f, e);
     return e;
 }
 
@@ -95,7 +103,8 @@ void endPlateSpliceSolids(const NodeConnection &c, bool context, std::vector<Con
     const double height = d + extTop + extBot, mid = (extTop - extBot) / 2.0;
     const bool outside = val(c, "outside", 0.0) != 0.0;
     const double reach = context ? 420.0 : 120.0;
-    const double leftReach = outside ? 180.0 : reach;   // flangeada fora do no: o trecho entre a junta e o pilar e curto
+    // flangeada fora do no: o trecho entre a chapa e a face do pilar mede `outDist` (face do apoio ate o plano da junta) menos a espessura da chapa
+    const double leftReach = outside ? std::max(20.0, val(c, "outDist", 220.0) - tp) : reach;
     for (const double side : {-1.0, 1.0}) {
         const double r = side < 0.0 ? leftReach : reach;
         // chapa e trecho de viga de cada lado da junta (junta em s = 0)
@@ -105,6 +114,9 @@ void endPlateSpliceSolids(const NodeConnection &c, bool context, std::vector<Con
             out.push_back(sb::box(Role::Weld, side * (tp + wf / 2.0), flange * (d / 2.0 - tfl / 2.0), 0.0, wf, tfl + 2.0 * wf, bfl + 2.0 * wf));
         }
         out.push_back(sb::box(Role::Member, side * (tp + r / 2.0), 0.0, 0.0, r, d - 2.0 * tfl, tw));
+    }
+    if (outside) {
+        catalog::addSupportWeldSolids(c, out);
     }
     if (outside && context) {
         // pilar I a esquerda: a viga chega na mesa do pilar

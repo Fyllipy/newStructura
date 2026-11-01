@@ -27,7 +27,7 @@ public:
 
     /// Origem de uma carga nos dados do projeto (tipo e indice no vetor de cargas); permite destacar e selecionar a carga na viewport.
     struct Key {
-        int kind {-1};   ///< 0 = nodal, 1 = distribuida, 2 = momento distribuido, 3 = peso proprio
+        int kind {-1};   ///< 0 = nodal, 1 = distribuida, 2 = momento distribuido, 3 = peso proprio, 4 = carga de barra com posicao
         int index {-1};
         [[nodiscard]] bool valid() const { return kind >= 0; }
         bool operator==(const Key &o) const { return kind == o.kind && index == o.index; }
@@ -52,6 +52,12 @@ public:
         Vec3 values {};               ///< kN/m ou kNm/m por componente
         bool local {false};
         bool selfWeight {false};
+        /// 0 = uniforme em toda a barra; 1 = trapezoidal/parcial; 2 = forca pontual; 3 = momento pontual; 4 = temperatura; 5 = retracao
+        int variant {0};
+        double t0 {0.0};      ///< posicao inicial (fracao do comprimento)
+        double t1 {1.0};      ///< posicao final (fracao); nas cargas pontuais igual a t0
+        Vec3 values2 {};      ///< valores em t1
+        QString note;         ///< rotulo das cargas termicas
     };
 
     struct Visibility {

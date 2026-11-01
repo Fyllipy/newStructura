@@ -237,6 +237,15 @@ std::shared_ptr<const ShellCouplingService::Mapping> ShellCouplingService::mappi
             element.density = material.unitWeight / m.forceUnit / 9.80665;
             element.thickness = q.thickness;
             element.alpha = material.alpha;
+            if (material.orthotropic) {
+                element.orthotropic = true;
+                element.e2 = material.E2 / m.forceUnit;
+                element.nu12 = material.nu12;
+                element.g12 = material.G12 / m.forceUnit;
+                element.bend1 = material.bend1;
+                element.bend2 = material.bend2;
+                element.axis = material.axis;
+            }
             part->elements.push_back(element);
         }
         // nos pendentes de malhas nao conformes
@@ -247,6 +256,7 @@ std::shared_ptr<const ShellCouplingService::Mapping> ShellCouplingService::mappi
                 tie.masters.push_back(m.nodeIdOfMeshNode[static_cast<std::size_t>(t.masters[i])]);
                 tie.weights.push_back(t.weights[i]);
             }
+            tie.dofMask = t.dofMask;
             part->ties.push_back(std::move(tie));
         }
         // nos de barras sobre o plano de elementos de casca

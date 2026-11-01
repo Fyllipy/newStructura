@@ -8,6 +8,7 @@
 #include "viz/LocalCoordinateSystem.h"
 
 #include <QHash>
+#include <QSet>
 
 #include <algorithm>
 #include <array>
@@ -116,7 +117,8 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
         if (extras.design.warpingTorsion) {
             // empenamento (Vlasov): secoes abertas de paredes finas com linha media conhecida, com o Cw da propria linha media (coerente com a
             // coordenada setorial usada nas tensoes); cantoneiras e T (pernas concorrentes) tem Cw desprezivel e ficam em Saint-Venant.
-            // O acoplamento flexo-torcional das secoes nao duplamente simetricas (centro de cisalhamento fora do centroide) nao e modelado
+            // O centro de cisalhamento fora do centroide (U, Z, cartola, I monossimetrico) acopla flexao e torcao na rigidez da barra (eixo a -> z, b -> y);
+            // a 2a ordem e as analises de flambagem e modal mantem o eixo do centroide
             const double lengthFactor = DesignService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
             if (lengthFactor > 0.0) {
                 using Structura::Design::SectionKind;
@@ -124,6 +126,8 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
                 const bool concurrentLegs = design.kind == SectionKind::Angle || design.kind == SectionKind::ColdAngle || design.kind == SectionKind::Tee;
                 if (design.sectorial.valid && !concurrentLegs && design.sectorial.Cw > 0.0) {
                     data.warpingConstant = design.sectorial.Cw / std::pow(lengthFactor, 6.0);
+                    data.shearCenterY = design.y0 / lengthFactor;
+                    data.shearCenterZ = design.x0 / lengthFactor;
                 }
             }
         }
@@ -386,6 +390,176 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
         data.my = moment.my;
         data.mz = moment.mz;
         model.memberMoments.push_back(data);
+    }
+
+    // Cargas gerais de barra com posicao. Temperatura e retracao viram deformacao imposta (eps = alfa dT; curvatura livre pelo gradiente).
+    {
+        QHash<int, double> alphaByMember;
+        for (const auto &bar : bars) {
+            const auto materialIt = materialsById.constFind(bar.materialId);
+            if (materialIt != materialsById.constEnd()) {
+                alphaByMember.insert(bar.externalId, materialIt->thermalExpansion);
+            }
+        }
+        namespace Kind = Structura::App::ProjectData::MemberActionKind;
+        for (const auto &action : extras.memberActions) {
+            if (!belongsToCase(action.loadCase) || action.isZero()) {
+                continue;
+            }
+            Structura::App::SolverBridge::MemberActionData data;
+            data.memberId = action.memberId;
+            data.a = action.a;
+            data.b = action.b;
+            const bool global = Structura::App::normalizeMemberLoadSystem(action.system) == QLatin1String("GLOBAL");
+            data.coordSystem = global ? Structura::App::SolverBridge::MemberLoadCoordSystem::Global
+                                      : Structura::App::SolverBridge::MemberLoadCoordSystem::Local;
+            switch (action.kind) {
+            case Kind::kTrapezoid:
+                data.kind = 0;
+                data.v1 = action.v1;
+                data.v2 = action.v2;
+                break;
+            case Kind::kPointForce:
+                data.kind = 1;
+                data.v1 = action.v1;
+                break;
+            case Kind::kPointMoment:
+                data.kind = 2;
+                data.v1 = action.v1;
+                break;
+            case Kind::kTemperature: {
+                const double alpha = alphaByMember.value(action.memberId, 1.2e-5);
+                data.kind = 3;
+                data.coordSystem = Structura::App::SolverBridge::MemberLoadCoordSystem::Local;
+                data.v1 = {{alpha * action.v1[0], alpha * action.v1[1], alpha * action.v1[2]}};
+                break;
+            }
+            case Kind::kShrinkage:
+                data.kind = 3;
+                data.coordSystem = Structura::App::SolverBridge::MemberLoadCoordSystem::Local;
+                data.v1 = {{action.v1[0], 0.0, 0.0}};
+                break;
+            default:
+                continue;
+            }
+            model.memberActions.push_back(data);
+        }
+    }
+
+    // Vinculos, ligacoes semirrigidas, rotulas plasticas, ligacoes entre nos e controle da analise nao linear
+    {
+        const double toModelForce = 1000.0 / DesignService::unitFactors(materials).first;   // kN -> unidade de forca do modelo
+        QSet<int> nodeIds, memberIds;
+        for (const auto &node : model.nodes) {
+            nodeIds.insert(node.id);
+        }
+        for (const auto &member : model.members) {
+            memberIds.insert(member.id);
+        }
+        auto requireNode = [&](int id, const QString &what) {
+            if (!nodeIds.contains(id)) {
+                result.errors.append(QStringLiteral("%1 referencia o no inexistente %2.").arg(what).arg(id));
+                return false;
+            }
+            return true;
+        };
+        for (const auto &d : extras.diaphragms) {
+            Structura::App::SolverBridge::DiaphragmData data;
+            data.masterNodeId = d.masterNode;
+            data.normalAxis = d.normalAxis;
+            bool ok = requireNode(d.masterNode, QStringLiteral("Diafragma %1").arg(d.name));
+            for (const int slave : d.slaveNodes) {
+                ok = requireNode(slave, QStringLiteral("Diafragma %1").arg(d.name)) && ok;
+                data.slaveNodeIds.push_back(slave);
+            }
+            if (ok) {
+                model.diaphragms.push_back(std::move(data));
+            }
+        }
+        for (const auto &l : extras.rigidLinks) {
+            if (requireNode(l.masterNode, QStringLiteral("Ligacao rigida")) && requireNode(l.slaveNode, QStringLiteral("Ligacao rigida"))) {
+                model.rigidLinks.push_back({l.masterNode, l.slaveNode, l.kind, l.dof});
+            }
+        }
+        for (const auto &s : extras.inclinedSupports) {
+            if (requireNode(s.nodeId, QStringLiteral("Apoio inclinado"))) {
+                model.inclinedSupports.push_back({s.nodeId, s.axes, s.mask});
+            }
+        }
+        for (const auto &c : extras.constraints) {
+            Structura::App::SolverBridge::LinearConstraintData data;
+            bool ok = true;
+            for (int i = 0; i < c.nodes.size() && i < c.dofs.size() && i < c.coefs.size(); ++i) {
+                ok = requireNode(c.nodes[i], QStringLiteral("Vinculo linear")) && ok;
+                data.nodeIds.push_back(c.nodes[i]);
+                data.dofs.push_back(c.dofs[i]);
+                data.coefs.push_back(c.coefs[i]);
+            }
+            data.reportReaction = c.reportReaction;
+            if (ok && !data.nodeIds.empty()) {
+                model.constraints.push_back(std::move(data));
+            }
+        }
+        for (const auto &spec : extras.memberConnections) {
+            if (!memberIds.contains(spec.memberId)) {
+                continue;
+            }
+            bool anySpring = false;
+            Structura::App::SolverBridge::EndSpringData spring;
+            spring.memberId = spec.memberId;
+            for (std::size_t i = 0; i < 12; ++i) {
+                spring.k[i] = spec.springK[i] >= 0.0 ? spec.springK[i] * toModelForce : -1.0;
+                anySpring = anySpring || spec.springK[i] >= 0.0;
+            }
+            if (anySpring) {
+                model.endSprings.push_back(spring);
+            }
+            for (const auto &h : spec.hinges) {
+                Structura::App::SolverBridge::PlasticHingeData data;
+                data.memberId = spec.memberId;
+                data.dof = h.dof;
+                data.kElastic = h.kElastic * toModelForce;
+                data.yieldMoment = h.yieldMoment * toModelForce;
+                data.hardeningRatio = h.hardeningRatio;
+                data.axialYield = h.axialYield * toModelForce;
+                data.exponent = h.exponent;
+                model.plasticHinges.push_back(data);
+            }
+        }
+        for (const auto &link : extras.links) {
+            if (!requireNode(link.nodeI, QStringLiteral("Ligacao %1").arg(link.name)) || !requireNode(link.nodeJ, QStringLiteral("Ligacao %1").arg(link.name))) {
+                continue;
+            }
+            Structura::App::SolverBridge::LinkData data;
+            data.id = link.id;
+            data.nodeI = link.nodeI;
+            data.nodeJ = link.nodeJ;
+            data.axes = link.axes;
+            for (std::size_t i = 0; i < 6; ++i) {
+                const auto &law = link.laws[i];
+                auto &out = data.laws[i];
+                out.kind = law.kind;
+                out.k = law.k * toModelForce;
+                out.p1 = law.kind == 5 ? law.p1 * toModelForce : law.p1;   // forca de escoamento (kN) ou folga (m/rad)
+                out.p2 = law.p2;
+                for (const auto &point : law.table) {
+                    out.table.emplace_back(point.first, point.second * toModelForce);
+                }
+            }
+            model.links.push_back(std::move(data));
+        }
+        const auto &nl = extras.nonlinear;
+        model.nonlinear.force = nl.force;
+        model.nonlinear.steps = nl.steps;
+        model.nonlinear.maxIterations = nl.maxIterations;
+        model.nonlinear.tolerance = nl.tolerance;
+        model.nonlinear.criteria = nl.criteria;
+        model.nonlinear.maxCutbacks = nl.maxCutbacks;
+        model.nonlinear.controlMode = nl.controlMode;
+        model.nonlinear.controlNodeId = nl.controlNode;
+        model.nonlinear.controlDof = nl.controlDof;
+        model.nonlinear.controlTarget = nl.controlTarget;
+        model.nonlinear.loadFactorMax = nl.loadFactorMax;
     }
 
     // Peso proprio: carga distribuida global -Z = gama (kN/m3) x area da secao (m2).

@@ -43,7 +43,7 @@ PlateLimits plateLimits(const DesignSection &s, const PlateElement &e, const Ste
     if (e.group >= 3) {
         l.c1 = 0.22;
         l.c2 = 1.49;
-    } else if (s.kind == SectionKind::RectTube) {
+    } else if (s.kind == SectionKind::RectTube && !s.box) {
         l.c1 = 0.20;
         l.c2 = 1.38;
     }
@@ -233,7 +233,7 @@ CompressionData compression(const DesignSection &s, const SteelGrade &steel, con
                           std::isinf(nex) ? "inf" : kn(nex).c_str(), std::isinf(ney) ? "inf" : kn(ney).c_str(),
                           std::isinf(nez) ? "inf" : kn(nez).c_str()));
 
-    const bool monoSym = (s.kind == SectionKind::Channel || s.kind == SectionKind::Tee || s.kind == SectionKind::DoubleAngleT);
+    const bool monoSym = (s.kind == SectionKind::Channel || s.kind == SectionKind::Tee || s.kind == SectionKind::DoubleAngleT || s.monoSymmetricI());
     if (monoSym) {
         // Eixo de simetria: X para o U (alma vertical), Y para o T. Flexo-torcao acopla a flexao em torno do eixo de simetria.
         const bool symX = (s.kind == SectionKind::Channel);
@@ -366,45 +366,125 @@ double lambdaRFlt(const DesignSection &s, const SteelGrade &steel, double cb, do
            std::sqrt(1.0 + std::sqrt(1.0 + 27.0 * s.Cw * sq(beta1) / (sq(cb) * s.g.Iy)));
 }
 
-/// Viga I/H de alma esbelta (Anexo E).
-FlexureData slenderWebI(const DesignSection &s, const SteelGrade &steel, double lb, double cb, const Options &o)
+/// Geometria de um perfil I (duplamente simetrico ou com um eixo de simetria) para a mesa comprimida escolhida (a superior, b > 0, quando `topCompressed`).
+struct IFlexureGeometry {
+    double bfc {0.0}, tfc {0.0};   ///< mesa comprimida: largura total e espessura (mm)
+    double bft {0.0}, tft {0.0};   ///< mesa tracionada
+    double hc {0.0};               ///< duas vezes a distancia do CG a face interna da mesa comprimida (alma laminada: altura h sem os raios)
+    double hp {0.0};               ///< duas vezes a distancia da linha neutra plastica a face interna da mesa comprimida
+    double wc {0.0}, wt {0.0};     ///< modulos elasticos do lado comprimido e do tracionado
+};
+
+IFlexureGeometry iFlexureGeometry(const DesignSection &s, bool topCompressed)
+{
+    IFlexureGeometry g;
+    g.bfc = topCompressed ? s.bfTop : s.bfBot;
+    g.tfc = topCompressed ? s.tfTop : s.tfBot;
+    g.bft = topCompressed ? s.bfBot : s.bfTop;
+    g.tft = topCompressed ? s.tfBot : s.tfTop;
+    if (g.bfc <= 0.0) {   // secoes preenchidas so por bf/tf (nao armadas)
+        g.bfc = g.bft = s.bf;
+        g.tfc = g.tft = s.tf;
+    }
+    const double yc = topCompressed ? s.g.bMax : -s.g.bMin;
+    const double yt = topCompressed ? -s.g.bMin : s.g.bMax;
+    g.wc = s.g.Ix / yc;
+    g.wt = s.g.Ix / yt;
+    g.hc = s.welded ? 2.0 * (yc - g.tfc) : s.h;
+    const double area = s.g.area;
+    const double afc = g.bfc * g.tfc;
+    const double ypc = (area / 2.0 <= afc) ? area / (2.0 * g.bfc) : g.tfc + (area / 2.0 - afc) / s.tw;
+    g.hp = std::max(0.0, 2.0 * (ypc - g.tfc));
+    return g;
+}
+
+/// Constante kc da Tabela 4 (nota a): kc = 4 / sqrt(h/tw), entre 0,35 e 0,76.
+double kcWeb(double h, double tw)
+{
+    return std::clamp(4.0 / std::sqrt(std::max(h, 1.0) / std::max(tw, 1e-9)), 0.35, 0.76);
+}
+
+/// Viga I/H de alma esbelta (Anexo E), duplamente simetrica ou com um eixo de simetria (mesa comprimida em `ig`).
+FlexureData slenderWebI(const DesignSection &s, const IFlexureGeometry &ig, const SteelGrade &steel, double lb, double cb, const Options &o)
 {
     std::vector<std::string> lines;
     const double E = steel.E;
     const double fy = steel.fy;
     const double sigmaR = kSigmaRFactor * fy;
-    const double wxc = s.g.Wx();
-    const double hc = s.h;                      // duplamente simetrica: hc = h
-    const double afc = s.bf * s.tf;
-    const double ar = std::min(10.0, hc * s.tw / afc);
-    const double kpg = std::min(1.0, 1.0 - ar / (1200.0 + 300.0 * ar) * (hc / s.tw - 5.70 * std::sqrt(E / fy)));
+    const double wxc = ig.wc;
+    const double afc = ig.bfc * ig.tfc;
+    const double ar = std::min(10.0, ig.hc * s.tw / afc);
+    const double kpg = std::min(1.0, 1.0 - ar / (1200.0 + 300.0 * ar) * (ig.hc / s.tw - 5.70 * std::sqrt(E / fy)));
     std::vector<LimitState> states;
 
-    const double mYield = wxc * fy / o.gammaA1;
+    const double mYield = ig.wt * fy / o.gammaA1;
     states.push_back({"escoamento da mesa tracionada", mYield, fmt("E.2.1: M_Rd = Wxt fy / gama_a1 = %s", knm(mYield).c_str())});
 
     const double my = kpg * fy * wxc;
     const double mr = kpg * (fy - sigmaR) * wxc;
     if (lb > 0.0) {
-        const double ryc = s.g.ry * 1.0;   // aproximacao: ry da secao (mesa comprimida + 1/3 da alma)
+        // r_yc: mesa comprimida mais um terco da altura da alma comprimida (hc / 2), em relacao ao eixo do plano medio da alma
+        const double webDepth = ig.hc / 2.0 / 3.0;
+        const double area = afc + webDepth * s.tw;
+        const double inertia = ig.tfc * std::pow(ig.bfc, 3) / 12.0 + webDepth * std::pow(s.tw, 3) / 12.0;
+        const double ryc = std::sqrt(inertia / area);
         const double lambda = lb / ryc;
         const double ly = 1.10 * std::sqrt(E / fy);
         const double lr = kPi * std::sqrt(E * cb / (fy - sigmaR));
         const double mcr = cb * kpg * sq(kPi) * E * wxc / sq(lambda);
         const double m = interpolate(lambda, ly, lr, my, mr, mcr, o.gammaA1);
-        states.push_back({"FLT", m, fmt("E.2.2 (FLT): lambda = %.1f, lambda_y = %.1f, lambda_r = %.1f, kpg = %.3f -> M_Rd = %s", lambda, ly, lr, kpg, knm(m).c_str())});
+        states.push_back({"FLT", m, fmt("E.2.2 (FLT): ryc = %.1f mm, lambda = Lb/ryc = %.1f, lambda_y = %.1f, lambda_r = %.1f, kpg = %.3f -> M_Rd = %s", ryc, lambda, ly, lr, kpg, knm(m).c_str())});
     }
     {
-        const double lambda = s.bf / (2.0 * s.tf);
+        const double lambda = ig.bfc / (2.0 * ig.tfc);
         const double ly = 0.38 * std::sqrt(E / fy);
-        const double kc = std::clamp(4.0 / std::sqrt(s.h / s.tw), 0.35, 0.76);
+        const double kc = kcWeb(s.h, s.tw);
         const double lr = 0.95 * std::sqrt(kc * E / (fy - sigmaR));
         const double mcr = 0.90 * kpg * E * kc * wxc / sq(lambda);
         const double m = interpolate(lambda, ly, lr, my, mr, mcr, o.gammaA1);
         states.push_back({"FLM", m, fmt("E.2.3 (FLM): lambda = %.1f, lambda_y = %.1f, lambda_r = %.1f -> M_Rd = %s", lambda, ly, lr, knm(m).c_str())});
     }
-    lines.push_back(fmt("Alma esbelta (h/tw = %.1f > 5,70 sqrt(E/fy) = %.1f): Anexo E.", s.h / s.tw, 5.70 * std::sqrt(E / fy)));
-    return finish(states, s.g.Zx * fy, wxc, steel, o, lines);
+    lines.push_back(fmt("Alma esbelta (hc/tw = %.1f > 5,70 sqrt(E/fy) = %.1f): Anexo E; hc = %.1f mm, Wxc = %.0f mm3, Wxt = %.0f mm3, ar = %.2f.", ig.hc / s.tw, 5.70 * std::sqrt(E / fy), ig.hc, ig.wc, ig.wt, ar));
+    return finish(states, s.g.Zx * fy, std::min(ig.wc, ig.wt), steel, o, lines);
+}
+
+/// Seccao-caixao ou tubular retangular de alma esbelta (E.1.2): escoamento da mesa tracionada (E.2.1), FLM com kc = 4 (E.2.4) e FLT pela Tabela D.1 com My no lugar de Mpl.
+/// `major`: flexao em torno do eixo de maior inercia (mesas = paredes horizontais); caso contrario as paredes verticais fazem o papel de mesas.
+FlexureData slenderWebBox(const DesignSection &s, const SteelGrade &steel, bool major, double lb, double cb, const Options &o)
+{
+    std::vector<std::string> lines;
+    const double E = steel.E, fy = steel.fy, sigmaR = kSigmaRFactor * fy;
+    const double w = major ? s.g.Wx() : s.g.Wy();
+    const double bFlange = major ? s.flatWidthB : s.flatWidthH;   // largura plana da mesa comprimida
+    const double tFl = major ? s.tFlange : s.tWeb;
+    const double hWeb = major ? s.flatWidthH : s.flatWidthB;
+    const double tWb = major ? s.tWeb : s.tFlange;
+    const double widthTotal = major ? s.bf : s.d;
+    const double afc = widthTotal * tFl;
+    const double ar = std::min(10.0, 2.0 * hWeb * tWb / afc);   // E.2.4: ar = 2 hc tw / Afc
+    const double kpg = std::min(1.0, 1.0 - ar / (1200.0 + 300.0 * ar) * (hWeb / tWb - 5.70 * std::sqrt(E / fy)));
+    std::vector<LimitState> states;
+    const double my = kpg * fy * w;
+    const double yield = w * fy / o.gammaA1;
+    states.push_back({"escoamento da mesa tracionada", yield, fmt("E.2.1: M_Rd = Wt fy / gama_a1 = %s", knm(yield).c_str())});
+    {
+        const double lambda = bFlange / tFl;
+        const double mcr = 0.90 * kpg * E * 4.0 * w / sq(lambda);
+        const double m = std::min(mcr, my) / o.gammaA1;
+        states.push_back({"FLM", m, fmt("E.2.4 (FLM, kc = 4,0): b/t = %.1f, kpg = %.3f, Mcr = %s -> M_Rd = min(Mcr; My)/gama_a1 = %s", lambda, kpg, knm(mcr).c_str(), knm(m).c_str())});
+    }
+    if (major && lb > 0.0 && s.g.Ix > s.g.Iy) {
+        const double lambda = lb / s.g.ry;
+        const double ja = std::sqrt(s.J * s.g.area);
+        const double lp = 0.13 * E * ja / my;
+        const double mr = kpg * (fy - sigmaR) * w;
+        const double lr = 2.0 * E * cb * ja / mr;
+        const double mcr = 2.0 * E * cb * ja / lambda;
+        const double m = interpolate(lambda, lp, lr, my, mr, mcr, o.gammaA1);
+        states.push_back({"FLT", m, fmt("FLT (Tab. D.1 com My = kpg fy W no lugar de Mpl): lambda = %.1f, lambda_p = %.1f, lambda_r = %.1f -> M_Rd = %s", lambda, lp, lr, knm(m).c_str())});
+    }
+    lines.push_back(fmt("Alma esbelta (h/tw = %.1f > 5,70 sqrt(E/fy) = %.1f): Anexo E (E.1.2); ar = %.2f, kpg = %.3f.", hWeb / tWb, 5.70 * std::sqrt(E / fy), ar, kpg));
+    return finish(states, my, w, steel, o, lines);
 }
 
 } // namespace
@@ -432,11 +512,51 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
     case SectionKind::Channel: {
         const bool isU = (s.kind == SectionKind::Channel);
         if (major) {
-            const double web = sl.h / sl.tw;
-            if (!isU && web > 5.70 * std::sqrt(E / fy)) {
-                return slenderWebI(s, steel, lb, cb, o);
+            const bool welded = s.kind == SectionKind::I && s.welded;
+            const bool mono = s.monoSymmetricI();
+            IFlexureGeometry ig;
+            if (s.kind == SectionKind::I) {
+                ig = iFlexureGeometry(s, positiveSideCompressed);
             }
-            if (lb > 0.0) {
+            // lado comprimido: o modulo da secao simetrica e o proprio W; nos monossimetricos, Wc (D.2.8-b e D.2.8-f)
+            const double wc = (s.kind == SectionKind::I && welded) ? ig.wc : w;
+            const double web = (s.kind == SectionKind::I && welded) ? ig.hc / s.tw : sl.h / sl.tw;
+            if (!isU && web > 5.70 * std::sqrt(E / fy)) {
+                if (s.kind == SectionKind::I && ig.bfc <= 0.0) {
+                    ig = iFlexureGeometry(s, positiveSideCompressed);
+                }
+                return slenderWebI(s, ig, steel, lb, cb, o);
+            }
+            if (mono) {
+                // D.2.8-i: 0,1 <= alfa_y <= 0,9 e area da menor mesa + alma > area da maior mesa
+                const double webC = ig.hc / 2.0;
+                const double aTc = ig.bfc * ig.tfc + webC * s.tw;
+                const double iTc = ig.tfc * std::pow(ig.bfc, 3) / 12.0 + webC * std::pow(s.tw, 3) / 12.0;
+                const double alphaY = iTc / s.g.Iy;
+                const double smaller = std::min(s.bfTop * s.tfTop, s.bfBot * s.tfBot), larger = std::max(s.bfTop * s.tfTop, s.bfBot * s.tfBot);
+                if (alphaY < 0.1 - 1e-9 || alphaY > 0.9 + 1e-9 || smaller + s.h * s.tw <= larger) {
+                    none.lines.push_back(fmt("Perfil I monossimetrico fora das limitacoes de D.2.8-i (alfa_y = %.2f; 0,1 <= alfa_y <= 0,9 e area da menor mesa + alma > area da maior mesa): resistencia a flexao nao coberta.", alphaY));
+                    return none;
+                }
+                if (lb > 0.0) {
+                    const double dm = s.d - 0.5 * (s.tfTop + s.tfBot);
+                    const double iy = s.g.Iy;
+                    const double ryTc = std::sqrt(iTc / aTc);
+                    const double mrFlt = std::min((fy - sigmaR) * ig.wc, fy * ig.wt);
+                    const double beta1 = mrFlt / (E * s.J);
+                    const double beta3 = 0.45 * dm * (2.0 * alphaY - 1.0);
+                    const double beta2 = 5.2 * beta1 * beta3 / cb + 1.0;
+                    const double lambda = lb / ryTc;
+                    const double lp = 1.76 * std::sqrt(E / fy);
+                    const double lr = 1.38 * cb * std::sqrt(iy * s.J) / (ryTc * s.J * beta1) * std::sqrt(beta2 + std::sqrt(sq(beta2) + 27.0 * s.Cw * sq(beta1) / (sq(cb) * iy)));
+                    const double mcr = cb * sq(kPi) * E * iy / sq(lb) * (beta3 + std::sqrt(sq(beta3) + s.Cw / iy * (1.0 + 0.039 * s.J * sq(lb) / s.Cw)));
+                    const double m = interpolate(lambda, lp, lr, mpl, mrFlt, mcr, gamma);
+                    states.push_back({"FLT", m, fmt("FLT (D.2.8-b, mesa %s comprimida): Lb = %.0f mm, ryTc = %.1f mm, alfa_y = %.3f, lambda = %.1f, lambda_p = %.1f, lambda_r = %.1f, Cb = %.2f, Mcr = %s -> M_Rd = %s",
+                                                    positiveSideCompressed ? "superior" : "inferior", lb, ryTc, alphaY, lambda, lp, lr, cb, knm(mcr).c_str(), knm(m).c_str())});
+                } else {
+                    lines.push_back("FLT: barra com mesa comprimida contida lateralmente (Lb = 0): estado-limite nao aplicavel.");
+                }
+            } else if (lb > 0.0) {
                 const double lambda = lb / sl.g.ry;
                 const double lp = 1.76 * std::sqrt(E / fy);
                 const double lr = lambdaRFlt(sl, steel, cb, wSl);
@@ -449,29 +569,54 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
                 lines.push_back("FLT: barra com mesa comprimida contida lateralmente (Lb = 0): estado-limite nao aplicavel.");
             }
             {
-                const double lambda = (isU ? s.bf : s.bf / 2.0) / s.tf;
+                // FLM da mesa comprimida; perfis laminados: D.2.8-f (0,69 / 0,83); soldados: 0,90 kc E W / lambda2 e 0,95 sqrt(kc E / (fy - sigmaR))
+                const double lambda = isU ? s.bf / s.tf : (welded ? ig.bfc / (2.0 * ig.tfc) : s.bf / (2.0 * s.tf));
                 const double lp = 0.38 * std::sqrt(E / fy);
-                const double lr = 0.83 * std::sqrt(E / (fy - sigmaR));
-                const double mr = (fy - sigmaR) * w;
-                const double mcr = 0.69 * E * w / sq(lambda);
+                double lr, mcr;
+                std::string kind;   // vazio nos laminados (texto do memorial inalterado)
+                if (welded) {
+                    const double kc = kcWeb(s.h, s.tw);
+                    lr = 0.95 * std::sqrt(kc * E / (fy - sigmaR));
+                    mcr = 0.90 * E * kc * wc / sq(lambda);
+                    kind = fmt(", soldado, kc = %.3f", kc);
+                } else {
+                    lr = 0.83 * std::sqrt(E / (fy - sigmaR));
+                    mcr = 0.69 * E * w / sq(lambda);
+                }
+                const double mr = mono ? std::min((fy - sigmaR) * ig.wc, fy * ig.wt) : (fy - sigmaR) * wc;
                 const double m = interpolate(lambda, lp, lr, mpl, mr, mcr, gamma);
-                states.push_back({"FLM", m, fmt("FLM (D.2.2): b/t = %.1f, lambda_p = %.1f, lambda_r = %.1f -> M_Rd = %s", lambda, lp, lr, knm(m).c_str())});
+                states.push_back({"FLM", m, fmt("FLM (D.2.2%s): b/t = %.1f, lambda_p = %.1f, lambda_r = %.1f -> M_Rd = %s", kind.c_str(), lambda, lp, lr, knm(m).c_str())});
             }
             {
                 const double lambda = web;
-                const double lp = 3.76 * std::sqrt(E / fy);
                 const double lr = 5.70 * std::sqrt(E / fy);
-                const double mr = fy * w;
+                double lp = 3.76 * std::sqrt(E / fy);
+                double mr = fy * w;
+                if (mono) {
+                    mr = fy * std::min(ig.wc, ig.wt);
+                    const double hpEff = std::max(ig.hp, 1e-9);
+                    const double denom = sq(0.54 * mpl / mr - 0.09);
+                    lp = std::min((ig.hc / hpEff) * std::sqrt(E / fy) / std::max(denom, 1e-9), lr);
+                }
                 const double m = interpolate(lambda, lp, lr, mpl, mr, mr, gamma, false);
-                states.push_back({"FLA", m, fmt("FLA (D.2.2): h/tw = %.1f, lambda_p = %.1f, lambda_r = %.1f -> M_Rd = %s", lambda, lp, lr, knm(m).c_str())});
+                states.push_back({"FLA", m, fmt("FLA (D.2.2): %s/tw = %.1f, lambda_p = %.1f, lambda_r = %.1f -> M_Rd = %s", mono ? "hc" : "h", lambda, lp, lr, knm(m).c_str())});
             }
         } else {
             // Eixo de menor inercia: FLM (mesas) e, no U, FLA da alma quando comprimida
-            const double lambda = (isU ? s.bf : s.bf / 2.0) / s.tf;
+            const bool weldedI = s.kind == SectionKind::I && s.welded;
+            double lambda = (isU ? s.bf : s.bf / 2.0) / s.tf;
+            if (weldedI) {
+                lambda = std::max(s.bfTop / (2.0 * s.tfTop), s.bfBot / (2.0 * s.tfBot));   // a mesa de maior esbeltez governa
+            }
             const double lp = 0.38 * std::sqrt(E / fy);
-            const double lr = 0.83 * std::sqrt(E / (fy - sigmaR));
+            double lr = 0.83 * std::sqrt(E / (fy - sigmaR));
             const double mr = (fy - sigmaR) * w;
-            const double mcr = 0.69 * E * w / sq(lambda);
+            double mcr = 0.69 * E * w / sq(lambda);
+            if (weldedI) {
+                const double kc = kcWeb(s.h, s.tw);   // D.2.8-f, perfis soldados
+                lr = 0.95 * std::sqrt(kc * E / (fy - sigmaR));
+                mcr = 0.90 * E * kc * w / sq(lambda);
+            }
             const double m = interpolate(lambda, lp, lr, mpl, mr, mcr, gamma);
             // No U, a ponta livre das mesas so e comprimida quando a abertura esta do lado comprimido.
             bool flangeTipsCompressed = true;
@@ -655,10 +800,15 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
     case SectionKind::RectTube: {
         const double wall = major ? s.flatWidthB : s.flatWidthH;   // parede comprimida paralela ao eixo
         const double other = major ? s.flatWidthH : s.flatWidthB;  // parede perpendicular (alma)
+        const double tWall = major ? s.tFlange : s.tWeb;
+        const double tOther = major ? s.tWeb : s.tFlange;
+        if (other / tOther > 5.70 * std::sqrt(E / fy)) {
+            return slenderWebBox(s, steel, major, lb, cb, o);   // E.1.2: alma esbelta de caixao ou tubular retangular
+        }
         {
-            const double lambda = wall / s.t;
+            const double lambda = wall / tWall;
             const double lp = 1.12 * std::sqrt(E / fy);
-            const double lr = 1.40 * std::sqrt(E / fy);
+            const double lr = (s.box ? 1.49 : 1.40) * std::sqrt(E / fy);
             double m;
             if (lambda <= lp) {
                 m = mpl / gamma;
@@ -666,11 +816,11 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
                 m = (mpl - (mpl - fy * w) * (3.57 * lambda * std::sqrt(fy / E) - 4.0)) / gamma;
             } else {
                 // Wef com b_ef (5.3.4.2) para lambda_r e chi = 1
-                const double blim = 1.40 * std::sqrt(E / fy);
-                const double sigmaEl = sq(1.38 * blim / lambda) * fy;
+                const double blim = lr;
+                const double sigmaEl = sq((s.box ? 1.31 : 1.38) * blim / lambda) * fy;
                 const double ratio = std::sqrt(sigmaEl / fy);
-                const double bef = wall * (1.0 - 0.20 * ratio) * ratio;
-                const double loss = (wall - bef) * s.t;
+                const double bef = wall * (1.0 - (s.box ? 0.18 : 0.20) * ratio) * ratio;
+                const double loss = (wall - bef) * tWall;
                 const double yTop = (major ? s.g.bMax : s.g.aMax) - s.t / 2.0;
                 const double wef = w - loss * sq(yTop) / (major ? s.g.bMax : s.g.aMax);
                 m = fy * wef / gamma;
@@ -678,17 +828,14 @@ FlexureData flexure(const DesignSection &s, const SteelGrade &steel, Axis axis, 
             states.push_back({"FLM", m, fmt("FLM (D.2.7): b/t = %.1f, lambda_p = %.1f, lambda_r = %.1f -> M_Rd = %s", lambda, lp, lr, knm(m).c_str())});
         }
         {
-            const double lambda = other / s.t;
+            const double lambda = other / tOther;
             const double lp = 2.42 * std::sqrt(E / fy);
             const double lr = 5.70 * std::sqrt(E / fy);
             const double mr = fy * w;
-            double m = interpolate(lambda, lp, lr, mpl, mr, mr, gamma, false);
-            if (lambda > lr) {
-                m = mr / gamma * 0.0;   // alma esbelta: Anexo E nao implementado para tubulares
-                states.push_back({"FLA", 0.0, fmt("FLA: h/t = %.1f > lambda_r = %.1f: alma esbelta (Anexo E nao implementado para tubulares)", lambda, lr)});
-            } else {
-                states.push_back({"FLA", m, fmt("FLA (D.2.7): h/t = %.1f, lambda_p = %.1f, lambda_r = %.1f -> M_Rd = %s", lambda, lp, lr, knm(m).c_str())});
-            }
+            // D.2.7 (FLA): ate lambda_r; acima dele a alma e esbelta e o Anexo E assume (tratado acima)
+            const double ratio = std::clamp(0.305 * lambda * std::sqrt(fy / E) - 0.738, 0.0, 1.0);
+            double m = lambda <= lp ? mpl / gamma : std::min((mpl - (mpl - mr) * ratio) / gamma, mpl / gamma);
+            states.push_back({"FLA", m, fmt("FLA (D.2.7): h/tw = %.1f, lambda_p = %.1f, lambda_r = %.1f -> M_Rd = %s", lambda, lp, lr, knm(m).c_str())});
         }
         if (major && lb > 0.0 && s.g.Ix > s.g.Iy) {
             const double lambda = lb / s.g.ry;
@@ -841,7 +988,8 @@ ShearData shear(const DesignSection &s, const SteelGrade &steel, Axis direction,
     }
     case SectionKind::RectTube: {
         const double h = alongB ? s.flatWidthH : s.flatWidthB;
-        return plateShear(h, s.t, 2.0 * h * s.t, 5.0, steel, o, "Cortante nas paredes do tubular (5.4.3.2)");
+        const double tPlate = alongB ? s.tWeb : s.tFlange;
+        return plateShear(h, tPlate, 2.0 * h * tPlate, 5.0, steel, o, s.box ? "Cortante nas almas do caixao (5.4.3.2)" : "Cortante nas paredes do tubular (5.4.3.2)");
     }
     case SectionKind::RoundTube: {
         ShearData v;
@@ -901,8 +1049,10 @@ TorsionData torsion(const DesignSection &s, const SteelGrade &steel, double barL
         const double h = s.d;
         const double hmax = std::max(b, h);
         const double bmin = std::min(b, h);
-        const double wt = 2.0 * (bmin - s.t) * (hmax - s.t) * s.t - 4.5 * (4.0 - kPi) * std::pow(s.t, 3);
-        const double ht = std::max(s.flatWidthB, s.flatWidthH) / s.t;
+        // caixao soldado: Bredt, WT = 2 Am t_min (Am = area limitada pela linha media); tubular: formula do item 5.5.2.1.3 com os cantos arredondados
+        const double wt = s.box ? 2.0 * (b - s.tWeb) * (h - s.tFlange) * std::min(s.tWeb, s.tFlange)
+                                : 2.0 * (bmin - s.t) * (hmax - s.t) * s.t - 4.5 * (4.0 - kPi) * std::pow(s.t, 3);
+        const double ht = s.box ? std::max(s.flatWidthB / s.tFlange, s.flatWidthH / s.tWeb) : std::max(s.flatWidthB, s.flatWidthH) / s.t;
         const double lim1 = 2.45 * std::sqrt(E / fy);
         const double lim2 = 3.07 * std::sqrt(E / fy);
         if (ht <= lim1) {
@@ -913,9 +1063,17 @@ TorsionData torsion(const DesignSection &s, const SteelGrade &steel, double barL
             t.TRd = 0.46 * sq(kPi) * wt * E / sq(ht) / o.gammaA1;
         }
         t.covered = true;
-        t.lines.push_back(fmt("Torcao em tubular retangular (5.5.2.1.3): h/t = %.1f, WT = %.0f mm3 -> T_Rd = %s", ht, wt, knm(t.TRd).c_str()));
+        t.lines.push_back(fmt("Torcao em %s (5.5.2.1.3): h/t = %.1f, WT = %.0f mm3 -> T_Rd = %s", s.box ? "caixao soldado (Bredt, WT = 2 Am tmin)" : "tubular retangular", ht, wt, knm(t.TRd).c_str()));
     }
     return t;
+}
+
+double lateralBucklingMoment(const DesignSection &s, const SteelGrade &steel, double lb, double cb)
+{
+    if ((s.kind != SectionKind::I && s.kind != SectionKind::Channel) || lb <= 0.0 || s.Cw <= 0.0 || s.J <= 0.0 || s.g.Iy <= 0.0) {
+        return 0.0;
+    }
+    return mcrFlt(s, steel, lb, cb);
 }
 
 } // namespace Structura::Design::Nbr8800

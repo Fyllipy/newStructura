@@ -366,10 +366,14 @@ void MainWindow::createRibbon()
     m_areaLoadAction->setIcon(icon(QStringLiteral("area-load.svg")));
     m_areaLoadAction->setToolTip(tr("Distribui uma pressão (kN/m²) nas barras selecionadas pela largura de influência"));
     connect(m_areaLoadAction, &QAction::triggered, this, &MainWindow::onApplyAreaLoad);
-    m_windLoadAction = new QAction(tr("Vento\nNBR 6123"), this);
-    m_windLoadAction->setIcon(icon(QStringLiteral("wind.svg")));
-    m_windLoadAction->setToolTip(tr("Gera a carga de vento de uma face (q = 0,613 Vk²) nas barras selecionadas"));
-    connect(m_windLoadAction, &QAction::triggered, this, &MainWindow::onApplyWindLoad);
+    m_windStaticAction = new QAction(tr("Vento em\nedifícios"), this);
+    m_windStaticAction->setIcon(icon(QStringLiteral("wind.svg")));
+    m_windStaticAction->setToolTip(tr("Gera os casos de vento (+X, −X, +Y, −Y, com excentricidade) de um edifício pela NBR 6123:2023: forças por pavimento a partir dos coeficientes da Tabela 6"));
+    connect(m_windStaticAction, &QAction::triggered, this, &MainWindow::onWindStatic);
+    m_windShedAction = new QAction(tr("Vento em\ngalpões"), this);
+    m_windShedAction->setIcon(icon(QStringLiteral("wind.svg")));
+    m_windShedAction->setToolTip(tr("Gera os casos de vento transversal e longitudinal de galpões de uma ou duas águas pela NBR 6123:2023 (Tabelas 6 a 8) com a pressão interna do item 6.3.2, aplicados como cargas distribuídas nas colunas e tesouras"));
+    connect(m_windShedAction, &QAction::triggered, this, &MainWindow::onWindShed);
     m_deleteLoadsAction = new QAction(tr("Excluir\ncargas"), this);
     m_deleteLoadsAction->setIcon(icon(QStringLiteral("delete-loads.svg")));
     m_deleteLoadsAction->setToolTip(tr("Exclui cargas por tipo, caso de carga e abrangência (seleção ou modelo inteiro)"));
@@ -494,14 +498,15 @@ void MainWindow::createRibbon()
                                     tr("Desenha uma barra entre dois pontos. Clique no início e no fim; nós são criados automaticamente onde não existirem."));
         insertBar.variants = {{m_insertBarAction, tr("Inserir barra")}, {nullptr, QString(), true}, {m_templateAction, tr("Modelo pronto…")}};
         home->addGroup(tr("Modelagem"), {insertBar, item(m_insertNodeAction, tr("Inserir nó"), true), item(m_applyRestraintsAction, tr("Restrições nodais"), true),
+                                         item(m_connectivityAction, tr("Vínculos e ligações"), true), item(m_memberEndsAction, tr("Extremidades e rótulas"), true),
                                          item(m_splitBarsAction, tr("Dividir barras"), false), item(m_measureAction, tr("Medir"), false)});
         home->addGroup(tr("Propriedades"), {item(m_profileManagerAction, tr("Gerenciador de perfis"), true), item(m_assignPropertiesAction, tr("Atribuir a barras"), true),
                                             item(m_createMaterialAction, tr("Novo material"), false), item(m_createSectionAction, tr("Nova seção"), false),
                                             item(m_placementAction, tr("Posicionar seção"), false)});
         RibbonItem copy = item(m_copyElementsAction, tr("Copiar"), true, tr("Copia os elementos selecionados para outro ponto: clique no ponto base e no destino."));
-        copy.variants = {{m_copyElementsAction, tr("Copiar")}, {m_serialCopyAction, tr("Cópia em série…")}, {nullptr, QString(), true}, {m_mirrorElementsAction, tr("Copiar espelhado…")}};
+        copy.variants = {{m_copyElementsAction, tr("Copiar")}, {m_serialCopyAction, tr("Cópia em série…")}, {m_arrayCopyAction, tr("Cópia em matriz…")}, {nullptr, QString(), true}, {m_mirrorElementsAction, tr("Copiar espelhado…")}};
         home->addGroup(tr("Edição"), {item(m_moveElementsAction, tr("Mover"), true), copy, item(m_serialCopyAction, tr("Cópia em série"), false),
-                                      item(m_rotateElementsAction, tr("Rotacionar"), false), item(m_mirrorElementsAction, tr("Espelhar"), false),
+                                      item(m_arrayCopyAction, tr("Cópia em matriz"), false), item(m_rotateElementsAction, tr("Rotacionar"), false), item(m_mirrorElementsAction, tr("Espelhar"), false),
                                       dangerItem(m_deleteElementsAction, tr("Excluir"), true, QStringLiteral("trash.svg"))});
         RibbonItem manage = item(m_groupsPanelAction, tr("Gerenciar grupos"), true);
         manage.variants = {{m_groupsPanelAction, tr("Painel de grupos")}, {m_createGroupAction, tr("Criar grupo…")}};
@@ -518,13 +523,13 @@ void MainWindow::createRibbon()
     tools->addGroup(tr("Geração"), {item(m_generateTrussAction, tr("Gerar treliça"), true)});
     tools->addGroup(tr("Eixos"), {item(m_axesAction, tr("Eixos de referência"), true)});
     tools->addGroup(tr("Modelo"), {item(m_templateAction, tr("Modelo pronto"), true), item(m_checkModelAction, tr("Checar modelo"), true), item(m_integrityAction, tr("Integridade estrutural"), true)});
-    tools->addGroup(tr("Documentação"), {item(m_quantitiesAction, tr("Quantitativos"), true), item(m_exportDxfAction, tr("Exportar DXF"), true), item(m_sheetsAction, tr("Pranchas"), true)});
+    tools->addGroup(tr("Documentação"), {item(m_quantitiesAction, tr("Quantitativos"), true), item(m_exportDxfAction, tr("Exportar DXF"), true), item(m_exportDstvAction, tr("Exportar NC (DSTV)"), true), item(m_exportIfcAction, tr("Exportar IFC"), true), item(m_importCadAction, tr("Importar DXF/IFC"), true), item(m_sheetsAction, tr("Pranchas"), true)});
 
     // ---- Carregamentos ----------------------------------------------------------------------------------------------------------
     auto *loads = new RibbonPage(this);
     loads->addGroup(tr("Carregamentos"), {item(m_applyNodalLoadAction, tr("Força concentrada (nós)"), true), item(m_applyDistributedLoadAction, tr("Distribuída (barras)"), true),
-                                          item(m_applyMemberMomentAction, tr("Momento distribuído"), true), item(m_areaLoadAction, tr("Carga de área"), true),
-                                          item(m_windLoadAction, tr("Vento NBR 6123"), true), dangerItem(m_deleteLoadsAction, tr("Excluir cargas"), true, QStringLiteral("delete-loads.svg"))});
+                                          item(m_applyMemberMomentAction, tr("Momento distribuído"), true), item(m_applyMemberActionAction, tr("Carga geral em barra"), true), item(m_areaLoadAction, tr("Carga de área"), true),
+                                          item(m_windStaticAction, tr("Vento em edifícios"), true), item(m_windShedAction, tr("Vento em galpões"), true), dangerItem(m_deleteLoadsAction, tr("Excluir cargas"), true, QStringLiteral("delete-loads.svg"))});
     loads->addGroup(tr("Casos e combinações"), {item(m_loadCasesAction, tr("Casos e combinações"), true), item(m_genCombinationsAction, tr("Gerar combinações"), true),
                                                  item(m_loadCaseVisibilityAction, tr("Casos visíveis"), true)});
 
@@ -538,6 +543,7 @@ void MainWindow::createRibbon()
     process.icon = quickIcon(QStringLiteral("play"), QColor(QStringLiteral("#0d7fb9")), 32);
     calc->addGroup(tr("Análise"), {process,
                                    item(m_bucklingAction, tr("Flambagem elástica"), true), item(m_modalAction, tr("Análise modal"), true), item(m_dynamicsAction, tr("Dinâmica"), true)});
+    calc->addGroup(tr("Não linearidade"), {item(m_nonlinearOptionsAction, tr("Opções não lineares"), true), item(m_capacityCurveAction, tr("Curva de capacidade"), true)});
     calc->addGroup(tr("Dimensionamento"), {item(m_designSettingsAction, tr("Parâmetros"), true), item(m_verifyDesignAction, tr("Verificar perfis"), true),
                                            item(m_optimizeDesignAction, tr("Dimensionar perfis"), true)});
     calc->addGroup(tr("Ligações e mistas"), {item(m_connectionsAction, tr("Ligações"), true), item(m_copyConnectionsAction, tr("Copiar ligações"), true), item(m_compositeAction, tr("Vigas e lajes mistas"), true)});

@@ -84,11 +84,18 @@ struct BarDesignInput {
     double coverWeldLeg {0.0};
     bool coverEndWeld {true};
     bool plasticAnalysis {false};           ///< 4.11.5: analise rigido-plastica de viga continua
+    int stiffSides {0};                     ///< enrijecedores transversais (5.7.9): 0 = nao; 1 = um lado; 2 = par
+    double stiffWidth {0.0}, stiffThickness {0.0}, stiffCut {25.0};
+    bool stiffFitted {true};
+    double stiffWeldLeg {0.0}, stiffBearing {100.0}, stiffForce {0.0};
+    bool vonMises {false};                  ///< verificacao elastica complementar das tensoes combinadas (von Mises) nos pontos criticos da secao
     // Barras de secao variavel (Anexo G): a barra e verificada secao a secao por `designTaperedBar`
     int onlyStation {-1};                   ///< >= 0: so a secao de verificacao de indice dado entra nas verificacoes de esforcos (demais combinacoes inalteradas)
     const DesignSection *axialSection {nullptr};          ///< G.2 e G.3: secao de menor altura para tracao e compressao
     const DesignSection *slendernessSection {nullptr};    ///< G.4.2: secao de maior altura para os parametros de esbeltez da flexao
     double ixEquivalent {0.0};              ///< G.3: inercia equivalente da barra variavel (analise racional, flambagem em relacao ao eixo perpendicular a alma), mm4
+    const DesignSection *latticeChord {nullptr};       ///< pilar de quatro cantoneiras: cantoneira dos banzos
+    const DesignSection *latticeDiagonal {nullptr};    ///< pilar de quatro cantoneiras: cantoneira das diagonais (nula nas presilhas)
     const struct CompositeColumnSection *compositeColumn {nullptr};   ///< Anexo M: secao mista; usada por `designCompositeColumn` (nao por `designBar`)
     std::vector<std::string> tensionNotes; ///< memoria da area liquida e de Ct (5.2.3 a 5.2.5), acrescentada ao resumo
     bool warping {false};                   ///< a barra foi analisada com torcao com empenamento (Vlasov): B e Tw nos esforcos

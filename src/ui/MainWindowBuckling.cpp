@@ -5,6 +5,9 @@
 #include "app/services/AnalysisService.h"
 #include "app/services/BucklingService.h"
 #include "app/services/CombinationService.h"
+#include "app/services/DesignService.h"
+#include "app/services/EffectiveLengthService.h"
+#include "EffectiveLengthDialog.h"
 #include "viz/SceneController.h"
 
 #include <QMessageBox>
@@ -97,6 +100,47 @@ void MainWindow::onBucklingAnalysis()
         }
         m_sceneController->setModeShape(BucklingService::shapeLines(shared->model, shared->result.bucklingModes[static_cast<std::size_t>(mode)],
                                                                     fraction * shared->extent));
+    });
+    connect(dialog, &Structura::UI::BucklingDialog::effectiveLengthsRequested, this, [this, shared, dialog]() {
+        using Structura::App::Services::DesignService;
+        using Structura::App::Services::EffectiveLengthService;
+        if (shared->result.bucklingFactors.empty()) {
+            return;
+        }
+        const auto factors = DesignService::unitFactors(m_materials);
+        Structura::UI::EffectiveLengthDialog lengths(
+            [shared](const EffectiveLengthService::Options &options) { return EffectiveLengthService::compute(shared->model, shared->result, options); },
+            factors.first / 1000.0, factors.second / 1000.0, dialog);
+        if (lengths.exec() != QDialog::Accepted) {
+            return;
+        }
+        const auto coefficients = lengths.coefficientsToApply();
+        if (coefficients.isEmpty()) {
+            return;
+        }
+        StateGuard guard(this, tr("Comprimentos efetivos"));
+        for (const auto &c : coefficients) {
+            auto params = m_extras.design.paramsFor(c.memberId);
+            if (c.hasX) {
+                params.kx = c.lx > 0.0 ? 1.0 : c.kx;
+                params.lx = c.lx;
+            }
+            if (c.hasY) {
+                params.ky = c.ly > 0.0 ? 1.0 : c.ky;
+                params.ly = c.ly;
+            }
+            bool found = false;
+            for (auto &existing : m_extras.design.members) {
+                if (existing.memberId == c.memberId) {
+                    existing = params;
+                    found = true;
+                }
+            }
+            if (!found) {
+                m_extras.design.members.append(params);
+            }
+        }
+        showStatusMessage(tr("Kx e Ky aplicados a %1 barra(s); verifique os perfis em Cálculo > Verificar perfis.").arg(coefficients.size()), 8000);
     });
     connect(dialog, &Structura::UI::BucklingDialog::closedByUser, this, [this]() {
         if (m_sceneController) {

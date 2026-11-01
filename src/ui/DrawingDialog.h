@@ -41,6 +41,13 @@ signals:
     void cellSelected(int index);
     /// O usuario moveu ou redimensionou uma vista: novo retangulo em mm do papel (y para cima).
     void cellEdited(int index, double x0, double y0, double x1, double y1);
+    /// Arraste de uma anotacao (cadeia de cotas, chamada, marca de corte...): deslocamento incremental em mm do papel.
+    void groupMoved(int group, double dx, double dy);
+    void groupMoveFinished(int group);
+    /// Delete / menu: excluir a anotacao selecionada.
+    void groupDeleteRequested(int group);
+    /// Menu: restaurar todas as anotacoes da prancha ao posicionamento automatico.
+    void groupsResetRequested();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -49,6 +56,8 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseDoubleClickEvent(QMouseEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
     QSize sizeHint() const override { return {760, 540}; }
 
 private:
@@ -74,6 +83,10 @@ private:
     QPointF m_pan;                ///< deslocamento (px) em relacao a folha centralizada
     QPoint m_dragFrom;
     bool m_dragging {false};
+    int m_selectedGroup {0};          ///< anotacao selecionada (Sheet::Group::id) ou 0
+    bool m_groupDragging {false};
+    bool m_groupMoved {false};
+    QPointF m_groupLast;              ///< ultimo ponto do arraste (mm da folha)
 };
 
 /// Pranchas do projeto: plantas, elevacoes, lista de barras e detalhes de ligacoes, com exportacao em PDF e DXF.
@@ -94,6 +107,8 @@ signals:
     void views3dChanged(const QVector<Structura::App::ProjectData::SavedView3D> &views);
     /// Folhas compostas criadas / editadas / excluidas (para gravar no projeto).
     void layoutsChanged(const QVector<Structura::App::ProjectData::SheetLayoutDef> &layouts);
+    /// Anotacoes movidas / excluidas nas pranchas (para gravar no projeto).
+    void sheetEditsChanged(const QVector<Structura::App::ProjectData::SheetGroupEdit> &edits);
 
 private:
     void populateViews();
@@ -116,6 +131,8 @@ private:
     [[nodiscard]] int selectedLayout() const;
     void showCustomSheet(int layoutIndex);
     void showPage(int index);
+    [[nodiscard]] Structura::Drawing::Sheet *currentSheet();
+    void recordGroupEdit(int group, double dx, double dy, bool deleted);
     void exportPdf();
     void exportDxf();
     [[nodiscard]] Structura::App::Services::SheetBuilder::Options options() const;
