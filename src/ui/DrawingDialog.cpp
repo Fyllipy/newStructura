@@ -1,4 +1,5 @@
 #include "DrawingDialog.h"
+#include "app/Product.h"
 
 #include "BusyProgress.h"
 #include "TitleBlockDialog.h"
@@ -1173,7 +1174,7 @@ void DrawingDialog::exportPdf()
     QPdfWriter writer(path);
     writer.setResolution(300);
     writer.setTitle(m_input.info.project);
-    writer.setCreator(QStringLiteral("Structura"));
+    writer.setCreator(Structura::App::Product::creatorTag());
     writer.setPageSize(QPageSize(QSizeF(m_sheets.front().width, m_sheets.front().height), QPageSize::Millimeter));
     writer.setPageMargins(QMarginsF(0, 0, 0, 0));
     QPainter painter(&writer);

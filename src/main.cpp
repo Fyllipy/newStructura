@@ -1,5 +1,8 @@
 #include "ui/MainWindow.h"
 
+#include "app/Product.h"
+#include "app/services/UserDataMigration.h"
+
 #include <algorithm>
 
 #include <QAction>
@@ -67,6 +70,20 @@ protected:
         painter->setFont(font);
         painter->setPen(QColor(QStringLiteral("#5a6574")));
         painter->drawText(QRectF(82 * k, 962 * k, 680 * k, 44 * k), Qt::AlignLeft | Qt::AlignVCenter, m_message);
+
+        // faixa de identificacao no canto inferior direito: cobre o "v1.0.0" da arte e informa a versao (e a edicao demonstrativa)
+        const QString version = Structura::App::Product::versionDisplay();
+        const QString label = Structura::Product::kIsDemo ? QObject::tr("DEMONSTRAÇÃO  ·  v%1").arg(version) : QObject::tr("v%1").arg(version);
+        QFont badgeFont = painter->font();
+        badgeFont.setPixelSize(std::max(11, static_cast<int>(24 * k)));
+        badgeFont.setBold(Structura::Product::kIsDemo);
+        painter->setFont(badgeFont);
+        const QRectF badge(width() - (Structura::Product::kIsDemo ? 360 : 190) * k, 962 * k, (Structura::Product::kIsDemo ? 330 : 160) * k, 44 * k);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(11, 27, 54, 200));
+        painter->drawRoundedRect(badge, badge.height() / 2, badge.height() / 2);
+        painter->setPen(QColor(QStringLiteral("#ffffff")));
+        painter->drawText(badge, Qt::AlignCenter, label);
     }
 
 private:
@@ -126,7 +143,10 @@ int main(int argc, char *argv[])
     Q_INIT_RESOURCE(resources);
 
     QApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("Structura"));
+    // identidade centralizada em cmake/ProductInfo.cmake; kAppId define a pasta de dados e as configuracoes do usuario (uma por edicao)
+    app.setApplicationName(QString::fromUtf8(Structura::Product::kAppId));
+    app.setApplicationVersion(QString::fromUtf8(Structura::Product::kVersion));
+    Structura::App::Services::UserDataMigration::runIfNeeded();   // Comercial: copia (sem apagar) os dados da identidade antiga "Structura"
     app.setWindowIcon(applicationIcon());
 
     // a arte da abertura tem 1536 x 1024 px: reduz para 720 px de largura (tamanho de exibicao da abertura)

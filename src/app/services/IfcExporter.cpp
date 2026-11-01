@@ -1,4 +1,5 @@
 #include "app/services/IfcExporter.h"
+#include "app/Product.h"
 
 #include "app/services/FabricationModel.h"
 #include "app/services/MemberFabrication.h"
@@ -309,7 +310,7 @@ QString IfcExporter::build(const SheetBuilder::Input &input, const Options &opti
 
     QString out;
     out += QStringLiteral("ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [ReferenceView_V1.2]'),'2;1');\n");
-    out += QStringLiteral("FILE_NAME('modelo.ifc','%1',(%2),(''),'Structura','Structura','');\n").arg(QDateTime::currentDateTime().toString(Qt::ISODate), step(options.author));
+    out += QStringLiteral("FILE_NAME('modelo.ifc','%1',(%2),(''),'%3','%3','');\n").arg(QDateTime::currentDateTime().toString(Qt::ISODate), step(options.author), Structura::App::Product::displayName());
     out += QStringLiteral("FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n");
     out += w.lines.join(QLatin1Char('\n'));
     out += QStringLiteral("\nENDSEC;\nEND-ISO-10303-21;\n");

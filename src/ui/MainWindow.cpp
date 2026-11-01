@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "app/Product.h"
 
 #include "viz/SceneController.h"
 #include "app/UndoRedoService.h"
@@ -60,7 +61,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::CustomizeWindowHint);
     setMouseTracking(true);
-    setWindowTitle(tr("Structura"));
+    setWindowTitle(Structura::App::Product::displayName());
 
     // Banco de dados do programa: perfis e materiais salvos pelo usuario
     Structura::UI::ProfileLibrary::setUserProfiles(Structura::App::Services::UserLibrary::loadProfiles());

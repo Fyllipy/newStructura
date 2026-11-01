@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.21)
 
 project(Structura LANGUAGES CXX)
 
+# Identidade do produto (nome, versao, edicao, executavel): cmake/ProductInfo.cmake
+include(${CMAKE_SOURCE_DIR}/cmake/ProductInfo.cmake)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -214,6 +217,9 @@ set(APP_SOURCES
     src/app/services/MaterialLibrary.cpp
     src/app/services/UserLibrary.h
     src/app/services/UserLibrary.cpp
+    src/app/services/UserDataMigration.h
+    src/app/services/UserDataMigration.cpp
+    src/app/Product.h
     src/app/services/ModelCheckService.h
     src/app/services/ModelCheckService.cpp
     src/app/services/IntegrityService.h
@@ -538,6 +544,8 @@ add_library(StructuraLib STATIC
     ${RESOURCES}
 )
 
+target_compile_definitions(StructuraLib PUBLIC STRUCTURA_EDITION_${STRUCTURA_EDITION})
+
 target_link_libraries(StructuraLib
     PUBLIC
         Qt${QT_VERSION_MAJOR}::Widgets
@@ -546,7 +554,7 @@ target_link_libraries(StructuraLib
         ${VTK_LIBRARIES}
 )
 
-target_include_directories(StructuraLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
+target_include_directories(StructuraLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${STRUCTURA_GENERATED_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Structuradll/libs)
 
 vtk_module_autoinit(
@@ -572,7 +580,7 @@ target_precompile_headers(StructuraLib PRIVATE
 # WIN32: executavel de interface grafica (nao abre terminal); o ponto de entrada main() e mantido pelo Qt6::EntryPoint
 add_executable(StructuraRibbon3D WIN32
     src/main.cpp
-    $<$<BOOL:${WIN32}>:app.rc>
+    $<$<BOOL:${WIN32}>:${STRUCTURA_GENERATED_DIR}/app.rc>
 )
 
 target_link_libraries(StructuraRibbon3D
@@ -580,8 +588,8 @@ target_link_libraries(StructuraRibbon3D
         StructuraLib
 )
 
-# o executavel se chama Structura.exe (o alvo CMake mantem o nome interno)
-set_target_properties(StructuraRibbon3D PROPERTIES OUTPUT_NAME Structura)
+# nome do executavel vem de cmake/ProductInfo.cmake (o alvo CMake mantem o nome interno)
+set_target_properties(StructuraRibbon3D PROPERTIES OUTPUT_NAME ${STRUCTURA_EXE_NAME})
 
 set(STRUCTURA_SOLVER_HINT_DIR "" CACHE PATH "Optional path containing rds shared library")
 
@@ -689,9 +697,9 @@ if (MSVC)
 endif()
 
 # --- Distribuicao ---
-# A cada compilacao, a pasta dist/Structura recebe o executavel, as DLLs (Qt, VTK e solver), os plugins do Qt,
+# A cada compilacao, a pasta dist/<edicao> recebe o executavel, as DLLs (Qt, VTK e solver), os plugins do Qt,
 # os exemplos e a documentacao, pronta para ser copiada ou compactada.
-set(STRUCTURA_DIST_DIR "${CMAKE_SOURCE_DIR}/dist/Structura" CACHE PATH "Pasta de distribuicao do programa")
+set(STRUCTURA_DIST_DIR "${CMAKE_SOURCE_DIR}/dist/${STRUCTURA_DIST_NAME}" CACHE PATH "Pasta de distribuicao do programa")
 add_custom_command(TARGET StructuraRibbon3D POST_BUILD
     COMMAND ${CMAKE_COMMAND}
             -DSOURCE_DIR=$<TARGET_FILE_DIR:StructuraRibbon3D>

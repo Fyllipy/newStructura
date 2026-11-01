@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "app/Product.h"
 
 #include "BusyProgress.h"
 #include "app/UndoRedoService.h"
@@ -58,7 +59,7 @@ void MainWindow::markModified()
 void MainWindow::updateWindowTitle()
 {
     const QString name = m_projectName.isEmpty() ? tr("Sem título") : m_projectName;
-    setWindowTitle(QStringLiteral("%1%2 — Structura").arg(isModelDirty() ? QStringLiteral("● ") : QString(), name));
+    setWindowTitle(QStringLiteral("%1%2 — %3").arg(isModelDirty() ? QStringLiteral("● ") : QString(), name, Structura::App::Product::displayName()));
 }
 
 quint64 MainWindow::quickFingerprint() const

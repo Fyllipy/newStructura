@@ -1,4 +1,5 @@
 #include "ReportDialogs.h"
+#include "app/Product.h"
 
 #include "DesignColors.h"
 #include "report/DocxWriter.h"
@@ -85,7 +86,7 @@ bool exportPdf(QWidget *parent, const Structura::Report::ReportDocument &documen
         writer.setPageSize(QPageSize(QPageSize::A4));
         writer.setPageMargins(QMarginsF(18, 16, 18, 16), QPageLayout::Millimeter);
         writer.setTitle(QString::fromStdString(document.title));
-        writer.setCreator(QStringLiteral("Structura"));
+        writer.setCreator(Structura::App::Product::creatorTag());
         text.setPageSize(QSizeF(writer.width(), writer.height()));
         text.print(&writer);
         ok = true;

@@ -1,0 +1,17 @@
+// GERADO por cmake/ProductInfo.cmake - nao editar. Fonte unica da identidade do produto (sem dependencias de Qt).
+#pragma once
+
+namespace Structura::Product {
+
+inline constexpr const char *kProductName = "@STRUCTURA_PRODUCT_NAME@";       ///< nome comercial, igual nas duas edicoes
+inline constexpr const char *kDisplayName = "@STRUCTURA_DISPLAY_NAME@";       ///< nome da edicao (a demo leva o sufixo " Demo")
+inline constexpr const char *kEdition = "@STRUCTURA_EDITION@";                ///< "COMMERCIAL" ou "DEMO"
+inline constexpr bool kIsDemo = @STRUCTURA_IS_DEMO@ != 0;
+inline constexpr const char *kCompany = "@STRUCTURA_COMPANY@";
+inline constexpr const char *kVersion = "@STRUCTURA_VERSION@";                ///< major.minor.patch
+inline constexpr const char *kVersionDisplay = "@STRUCTURA_VERSION_DISPLAY@"; ///< texto para o usuario (ex.: "0.8 beta")
+inline constexpr const char *kAppId = "@STRUCTURA_APP_ID@";                   ///< applicationName do Qt: define a pasta de dados e as configuracoes
+inline constexpr const char *kLegacyAppId = "@STRUCTURA_LEGACY_APP_ID@";      ///< identificador antigo (origem da migracao dos dados do usuario)
+inline constexpr const char *kExeName = "@STRUCTURA_EXE_NAME@";
+
+} // namespace Structura::Product

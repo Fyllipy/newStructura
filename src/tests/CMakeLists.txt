@@ -46,6 +46,7 @@ endfunction()
 
 add_structura_test(TestCoreModels TestCoreModels.cpp)
 add_structura_test(TestIdGeneratorService TestIdGeneratorService.cpp)
+add_structura_test(TestProductIdentity TestProductIdentity.cpp)
 add_structura_test(TestArchitectureBoundaries TestArchitectureBoundaries.cpp)
 add_structura_test(TestSectionShapes TestSectionShapes.cpp)
 add_structura_test(TestProjectIoAndSolver TestProjectIoAndSolver.cpp)

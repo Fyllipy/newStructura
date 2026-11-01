@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "app/Product.h"
 #include "RibbonWidgets.h"
 #include "ShellDialog.h"
 #include "SvgIcons.h"
@@ -198,7 +199,7 @@ QWidget *MainWindow::createQuickAccessBar()
     leftLayout->addWidget(m_homeTabButton);
     layout->addWidget(leftWidget, 0, Qt::AlignVCenter);
 
-    m_titleLabel = new QLabel(tr("Structura"), bar);
+    m_titleLabel = new QLabel(Structura::App::Product::displayName(), bar);
     m_titleLabel->setTextFormat(Qt::RichText);
     m_titleLabel->setAlignment(Qt::AlignCenter);   // centralizado na barra (ver eventFilter: posicao calculada no redimensionamento)
     auto showTitle = [this](const QString &title) {

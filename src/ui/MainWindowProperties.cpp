@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "app/Product.h"
 #include "SvgIcons.h"
 
 #include <QToolButton>
@@ -716,11 +717,12 @@ void MainWindow::onNewModel()
 void MainWindow::onAbout()
 {
     QMessageBox::about(this,
-                       tr("Sobre o Structura"),
-                       tr("<b>Structura</b><br>Modelagem, análise e dimensionamento de estruturas metálicas em 3D.<br><br>"
+                       tr("Sobre o %1").arg(Structura::App::Product::displayName()),
+                       tr("<b>%1</b> — versão %2<br>Modelagem, análise e dimensionamento de estruturas metálicas em 3D.<br><br>"
                           "Análise: solver de elementos de barra (1ª e 2ª ordem).<br>"
                           "Dimensionamento: NBR 8800:2024 e NBR 14762:2010.<br>"
-                          "Ligações: NBR 8800:2024, NBR 6118:2023 e CIDECT Design Guide 1."));
+                          "Ligações: NBR 8800:2024, NBR 6118:2023 e CIDECT Design Guide 1.")
+                           .arg(Structura::App::Product::displayName(), Structura::App::Product::versionDisplay()));
 }
 
 QString MainWindow::datDialogInitialDirectory() const

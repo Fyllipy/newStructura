@@ -1,0 +1,30 @@
+// GERADO por cmake/ProductInfo.cmake - nao editar. Recursos do executavel: icone do programa e informacoes de versao.
+IDI_ICON1 ICON "@STRUCTURA_ICON_PATH@"
+
+1 VERSIONINFO
+FILEVERSION @STRUCTURA_VERSION_MAJOR@,@STRUCTURA_VERSION_MINOR@,@STRUCTURA_VERSION_PATCH@,0
+PRODUCTVERSION @STRUCTURA_VERSION_MAJOR@,@STRUCTURA_VERSION_MINOR@,@STRUCTURA_VERSION_PATCH@,0
+FILEFLAGSMASK 0x3fL
+FILEFLAGS @STRUCTURA_VERSION_FILE_FLAGS@
+FILEOS 0x40004L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041604b0"
+        BEGIN
+            VALUE "CompanyName", "@STRUCTURA_COMPANY@"
+            VALUE "FileDescription", "@STRUCTURA_FILE_DESCRIPTION@"
+            VALUE "FileVersion", "@STRUCTURA_VERSION@.0"
+            VALUE "InternalName", "@STRUCTURA_EXE_NAME@"
+            VALUE "OriginalFilename", "@STRUCTURA_EXE_NAME@.exe"
+            VALUE "ProductName", "@STRUCTURA_DISPLAY_NAME@"
+            VALUE "ProductVersion", "@STRUCTURA_VERSION_DISPLAY@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x416, 1200
+    END
+END
