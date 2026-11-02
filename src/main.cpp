@@ -24,7 +24,7 @@
 
 namespace {
 
-/// Tela de abertura (images/splash.png, trocavel) com mensagem e barra de progresso na faixa inferior.
+/// Tela de abertura (images/splash.png, trocavel) com mensagem e barra de progresso na base.
 class StartupSplash final : public QSplashScreen
 {
 public:
@@ -44,46 +44,40 @@ public:
 protected:
     void drawContents(QPainter *painter) override
     {
-        // A arte (1536 x 1024) traz uma barra de progresso e uma mensagem fixas: cobre essa area com o fundo da propria imagem e desenha o
-        // progresso real no mesmo lugar. As coordenadas abaixo sao da arte original, escaladas para o tamanho exibido.
-        const double k = width() / 1536.0;
-        const QImage art = pixmap().toImage();
-        painter->setPen(Qt::NoPen);
-        auto cover = [&](const QRectF &area) {   // area em coordenadas da arte; usa a cor do fundo a esquerda dela
-            const QColor background = art.pixelColor(static_cast<int>(60 * k), static_cast<int>(area.center().y() * k));
-            painter->setBrush(background);
-            painter->drawRect(QRectF(area.left() * k, area.top() * k, area.width() * k, area.height() * k));
-        };
-        cover(QRectF(76, 908, 696, 36));      // barra de progresso da arte
-        cover(QRectF(76, 952, 460, 64));      // mensagem da arte
+        // A arte (950 x 713) ja traz logotipo, descricao e versao; so se desenha por cima o progresso real (faixa fina na base, mensagem
+        // acima dela, a direita) e, na edicao Demonstrativa, a identificacao. Coordenadas da arte, escaladas para o tamanho exibido.
+        const double k = width() / 950.0;
         painter->setRenderHint(QPainter::Antialiasing, true);
-        const QRectF track(82 * k, 918 * k, 680 * k, 20 * k);
-        painter->setBrush(QColor(QStringLiteral("#dfe6f0")));
-        painter->drawRoundedRect(track, track.height() / 2, track.height() / 2);
-        QLinearGradient fill(track.topLeft(), track.topRight());
-        fill.setColorAt(0.0, QColor(QStringLiteral("#0b2f8f")));
-        fill.setColorAt(1.0, QColor(QStringLiteral("#2f7fd6")));
-        painter->setBrush(fill);
-        painter->drawRoundedRect(QRectF(track.left(), track.top(), std::max(track.height(), track.width() * m_percent / 100.0), track.height()), track.height() / 2, track.height() / 2);
-        QFont font = painter->font();
-        font.setPixelSize(std::max(11, static_cast<int>(26 * k)));
-        painter->setFont(font);
-        painter->setPen(QColor(QStringLiteral("#5a6574")));
-        painter->drawText(QRectF(82 * k, 962 * k, 680 * k, 44 * k), Qt::AlignLeft | Qt::AlignVCenter, m_message);
-
-        // faixa de identificacao no canto inferior direito: cobre o "v1.0.0" da arte e informa a versao (e a edicao demonstrativa)
-        const QString version = Structura::App::Product::versionDisplay();
-        const QString label = Structura::Product::kIsDemo ? QObject::tr("DEMONSTRAÇÃO  ·  v%1").arg(version) : QObject::tr("v%1").arg(version);
-        QFont badgeFont = painter->font();
-        badgeFont.setPixelSize(std::max(11, static_cast<int>(24 * k)));
-        badgeFont.setBold(Structura::Product::kIsDemo);
-        painter->setFont(badgeFont);
-        const QRectF badge(width() - (Structura::Product::kIsDemo ? 360 : 190) * k, 962 * k, (Structura::Product::kIsDemo ? 330 : 160) * k, 44 * k);
         painter->setPen(Qt::NoPen);
-        painter->setBrush(QColor(11, 27, 54, 200));
-        painter->drawRoundedRect(badge, badge.height() / 2, badge.height() / 2);
-        painter->setPen(QColor(QStringLiteral("#ffffff")));
-        painter->drawText(badge, Qt::AlignCenter, label);
+
+        const QRectF track(0, height() - 7 * k, width(), 7 * k);
+        painter->setBrush(QColor(255, 255, 255, 70));
+        painter->drawRect(track);
+        QLinearGradient fill(track.topLeft(), track.topRight());
+        fill.setColorAt(0.0, QColor(QStringLiteral("#0b4fc0")));
+        fill.setColorAt(1.0, QColor(QStringLiteral("#3d8fe6")));
+        painter->setBrush(fill);
+        painter->drawRect(QRectF(track.left(), track.top(), track.width() * m_percent / 100.0, track.height()));
+
+        QFont font = painter->font();
+        font.setPixelSize(std::max(10, static_cast<int>(15 * k)));
+        painter->setFont(font);
+        painter->setPen(QColor(255, 255, 255, 230));
+        painter->drawText(QRectF(width() * 0.40, height() - 38 * k, width() * 0.58, 26 * k), Qt::AlignRight | Qt::AlignVCenter, m_message);
+
+        if (Structura::Product::kIsDemo) {
+            // faixa abaixo do logotipo; a arte e a mesma nas duas edicoes
+            QFont badgeFont = painter->font();
+            badgeFont.setPixelSize(std::max(10, static_cast<int>(17 * k)));
+            badgeFont.setBold(true);
+            painter->setFont(badgeFont);
+            const QRectF badge(110 * k, 462 * k, 194 * k, 30 * k);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(255, 255, 255, 235));
+            painter->drawRoundedRect(badge, badge.height() / 2, badge.height() / 2);
+            painter->setPen(QColor(QStringLiteral("#0b2f8f")));
+            painter->drawText(badge, Qt::AlignCenter, QObject::tr("DEMONSTRAÇÃO"));
+        }
     }
 
 private:
@@ -149,7 +143,7 @@ int main(int argc, char *argv[])
     Structura::App::Services::UserDataMigration::runIfNeeded();   // Comercial: copia (sem apagar) os dados da identidade antiga "Structura"
     app.setWindowIcon(applicationIcon());
 
-    // a arte da abertura tem 1536 x 1024 px: reduz para 720 px de largura (tamanho de exibicao da abertura)
+    // a arte da abertura tem 950 x 713 px: exibida com 720 px de largura
     StartupSplash splash(QPixmap(QStringLiteral(":/images/splash.png")).scaledToWidth(720, Qt::SmoothTransformation));
     splash.show();
     splash.setProgress(8, QObject::tr("Iniciando…"));
