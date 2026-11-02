@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "app/Edition.h"
 
 #include <QVBoxLayout>
 
@@ -292,10 +293,18 @@ void MainWindow::onRunStructuralAnalysis()
     question->setFont(bold);
     layout->addWidget(question);
     const QStringList options = {tr("Apenas fazer a análise"), tr("Fazer a análise e verificar os perfis"), tr("Fazer a análise e dimensionar os perfis")};
+    if (!Structura::App::Edition::kHasDesign) {
+        m_processChoice = 0;
+    }
     QVector<QRadioButton *> radios;
     for (int i = 0; i < options.size(); ++i) {
         auto *radio = new QRadioButton(options.at(i), &dialog);
-        radio->setChecked(i == m_processChoice);
+        const bool available = i == 0 || Structura::App::Edition::kHasDesign;   // verificar/dimensionar perfis: so na edicao comercial
+        radio->setEnabled(available);
+        if (!available) {
+            radio->setToolTip(tr("Disponível na versão paga (edição comercial)."));
+        }
+        radio->setChecked(available ? i == m_processChoice : false);
         layout->addWidget(radio);
         radios.append(radio);
     }
