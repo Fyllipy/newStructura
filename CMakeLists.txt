@@ -146,6 +146,14 @@ set(APP_SOURCES
     src/report/DocxWriter.cpp
     src/report/ReportHtml.h
     src/report/ReportHtml.cpp
+    src/report/MathParser.h
+    src/report/MathParser.cpp
+    src/report/FormulaText.h
+    src/report/FormulaText.cpp
+    src/report/MathRenderer.h
+    src/report/MathRenderer.cpp
+    src/app/services/LoadMassService.h
+    src/app/services/LoadMassService.cpp
     src/app/services/ReportService.h
     src/app/services/ReportService.cpp
     src/app/services/SectionPropertiesService.h
@@ -372,6 +380,12 @@ set(SHELL_SOURCES
 
 # Exclusivos da edicao Comercial: dimensionamento, ligacoes, detalhamento, flambagem, modal e dinamica. A Demonstrativa nao os compila.
 set(STRUCTURA_DESIGN_SOURCES
+    src/ui/MainWindowConnectionsView.cpp
+    src/ui/MainWindowFabrication.cpp
+    src/ui/MainWindowAutomation.cpp
+    src/ui/ShellDialogDesign.cpp
+    src/ui/MainWindowReportDesign.cpp
+    src/app/services/ReportServiceDesign.cpp
     src/design/BeamExtras.h
     src/design/BeamExtras.cpp
     src/design/StiffenerDesign.h
@@ -427,14 +441,8 @@ set(STRUCTURA_DESIGN_SOURCES
     src/design/FiniteStrip.cpp
     src/design/BarDesign.h
     src/design/BarDesign.cpp
-    src/report/MathParser.h
-    src/report/MathParser.cpp
-    src/report/FormulaText.h
-    src/report/FormulaText.cpp
     src/report/CalcCardBuilder.h
     src/report/CalcCardBuilder.cpp
-    src/report/MathRenderer.h
-    src/report/MathRenderer.cpp
     src/app/services/DesignService.h
     src/app/services/DesignService.cpp
     src/app/services/IntegrityService.h
@@ -588,6 +596,13 @@ if (STRUCTURA_EDITION STREQUAL "COMMERCIAL")
         MODULES ${VTK_LIBRARIES}
     )
     target_precompile_headers(StructuraDesign PRIVATE ${STRUCTURA_PCH})
+endif()
+
+# StructuraDemo: so da edicao Demonstrativa. Definicoes vazias dos pontos de entrada dos recursos comerciais (nenhum codigo de calculo).
+if (STRUCTURA_EDITION STREQUAL "DEMO")
+    add_library(StructuraDemo STATIC src/demo/DemoStubs.cpp)
+    target_link_libraries(StructuraDemo PUBLIC StructuraCore)
+    target_link_libraries(StructuraCore PUBLIC StructuraDemo)
 endif()
 
 # StructuraLib: ponto unico de ligacao do executavel e dos testes (a edicao escolhe o que entra).

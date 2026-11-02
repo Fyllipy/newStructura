@@ -20,6 +20,7 @@
 #include "app/GeometrySnapshot.h"
 #include "app/services/ReportService.h"
 #include "app/services/ModelCheckService.h"
+#include "app/services/QuantityService.h"
 #include "app/services/ConnectionService.h"
 #include "app/services/SheetBuilder.h"
 #include "shell/ShellMesh.h"
@@ -202,6 +203,8 @@ private slots:
     void onGenerateReport();
     void onBarReport();
     bool buildReportInput(Structura::App::Services::ReportService::Input &input, bool withDesign);
+    void fillDesignReportInput(Structura::App::Services::ReportService::Input &input);   ///< dimensionamento e ligacoes do relatorio (so Comercial)
+    void addConnectionQuantities(Structura::App::Services::QuantityService::Summary &summary) const;   ///< itens das ligacoes nos quantitativos (so Comercial)
     void onApplyAreaLoad();
     void refreshGroupsPanel();
     void setGroupHidden(int groupId, bool hidden);

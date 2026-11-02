@@ -7,6 +7,7 @@
 #include "report/ReportModel.h"
 
 #include <QHash>
+#include <functional>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -119,6 +120,11 @@ public:
     static QVector<ItemInfo> calculationItems();
 
     static Structura::Report::ReportDocument buildGlobal(const Input &input, const Options &options);
+
+    /// Capitulos de dimensionamento dos perfis e de ligacoes do relatorio global. Existe so na edicao Comercial (ReportServiceDesign.cpp);
+    /// na Demonstrativa nao acrescenta nada.
+    static void appendDesignChapters(Structura::Report::ReportDocument &doc, const Input &input, const Options &options,
+                                     const std::function<void(const QString &)> &chapterTitle);
 
     /// Memorial de uma barra. `itemIds` vazio = completo.
     static Structura::Report::ReportDocument buildBar(const Input &input, int memberId, const QSet<QString> &itemIds, bool showFormulas = true,

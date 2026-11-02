@@ -1,6 +1,6 @@
 #include "NotionalLoadService.h"
 
-#include "ModalService.h"
+#include "LoadMassService.h"
 
 #include <algorithm>
 #include <memory>
@@ -20,7 +20,7 @@ bool NotionalLoadService::isNotionalKey(const QString &key)
 SolverBridge::ModelData NotionalLoadService::notionalModel(const SolverBridge::ModelData &caseModel, int axis, double factor)
 {
     SolverBridge::ModelData model = caseModel;
-    const auto masses = ModalService::massesFromLoads(caseModel);   // massa = carga descendente / g
+    const auto masses = LoadMassService::massesFromLoads(caseModel);   // massa = carga descendente / g
     model.nodalLoads.clear();
     model.memberLoads.clear();
     model.memberMoments.clear();
@@ -29,7 +29,7 @@ SolverBridge::ModelData NotionalLoadService::notionalModel(const SolverBridge::M
     for (const auto &[nodeId, mass] : masses) {
         SolverBridge::NodalLoadData load;
         load.nodeId = nodeId;
-        load.values[static_cast<std::size_t>(axis == 0 ? 0 : 1)] = factor * mass * ModalService::kGravity;
+        load.values[static_cast<std::size_t>(axis == 0 ? 0 : 1)] = factor * mass * LoadMassService::kGravity;
         model.nodalLoads.push_back(load);
     }
     return model;
