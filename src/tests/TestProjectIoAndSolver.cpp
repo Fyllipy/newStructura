@@ -39,6 +39,7 @@
 #include "shell/ShellModel.h"
 
 #include <QFile>
+#include <QLibrary>
 #include <QRegularExpression>
 #include <QTemporaryDir>
 
@@ -3674,6 +3675,43 @@ private slots:
         QVERIFY(result.nonlinear.used);
         QCOMPARE(result.nonlinear.hinges.size(), size_t(2));
 
+    }
+
+    void solverDllsEnforceExportHidingAndCryptographicAuthentication()
+    {
+        const QString rdsPath = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        const QString mefsPath = QStringLiteral(STRUCTURA_SOURCE_DIR "/mefs.dll");
+        if (!QFile::exists(rdsPath) || !QFile::exists(mefsPath)) {
+            QSKIP("rds.dll ou mefs.dll nao encontradas na raiz do repositorio.");
+        }
+
+        // 1. Legacy plaintext API symbols must NOT be exported in PE export tables
+        QLibrary rds(rdsPath);
+        QVERIFY(rds.load());
+        QVERIFY(rds.resolve("structura_solve") == nullptr);
+        QVERIFY(rds.resolve("structura_solve_v2") == nullptr);
+        QVERIFY(rds.resolve("structura_solve_v3") == nullptr);
+        QVERIFY(rds.resolve("structura_solve_v4") == nullptr);
+        QVERIFY(rds.resolve("structura_set_options") == nullptr);
+        QVERIFY(rds.resolve("structura_set_shells") == nullptr);
+
+        QLibrary mefs(mefsPath);
+        QVERIFY(mefs.load());
+        QVERIFY(mefs.resolve("fem_create") == nullptr);
+        QVERIFY(mefs.resolve("fem_solve") == nullptr);
+        QVERIFY(mefs.resolve("fem_add_shell") == nullptr);
+        QVERIFY(mefs.resolve("fem_get_shell_results") == nullptr);
+
+        // 2. Cryptographic gatekeepers must exist and reject forged authentication tags
+        using GateFn = int (*)(std::uint64_t, std::uint64_t, std::uint64_t *, std::uint32_t);
+        auto rdsGate = reinterpret_cast<GateFn>(rds.resolve("_z8r4q"));
+        auto mefsGate = reinterpret_cast<GateFn>(mefs.resolve("_z8m2p"));
+        QVERIFY(rdsGate != nullptr);
+        QVERIFY(mefsGate != nullptr);
+
+        std::uint64_t dummyTable[64] = {};
+        QVERIFY(rdsGate(0x123456789ABCDEF0ULL, 0xDEADBEEFCAFEBABEULL, dummyTable, 36) < 0);
+        QVERIFY(mefsGate(0x123456789ABCDEF0ULL, 0xDEADBEEFCAFEBABEULL, dummyTable, 24) < 0);
     }
 };
 
