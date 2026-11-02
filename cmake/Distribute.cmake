@@ -1,4 +1,4 @@
-# Monta a pasta de distribuicao do programa (executavel, DLLs, plugins do Qt, solver, exemplos e documentacao).
+# Monta a pasta de distribuicao do programa (executavel, DLLs, plugins do Qt, solver).
 # Executado como etapa final de cada compilacao do alvo principal:
 #   cmake -DSOURCE_DIR=<saida do executavel> -DDIST_DIR=<destino> -DREPO_DIR=<raiz do repositorio> -P Distribute.cmake
 
@@ -23,14 +23,6 @@ foreach (_file IN LISTS _files)
     math(EXPR _copied "${_copied} + 1")
 endforeach()
 
-# exemplos e documentacao
-foreach (_folder Examples docs)
-    if (EXISTS "${REPO_DIR}/${_folder}")
-        file(COPY "${REPO_DIR}/${_folder}" DESTINATION "${DIST_DIR}")
-    endif()
-endforeach()
-if (EXISTS "${REPO_DIR}/README.md")
-    file(COPY "${REPO_DIR}/README.md" DESTINATION "${DIST_DIR}")
-endif()
+# Exemplos, documentacao e README sao internos: nao vao para o cliente.
 
 message(STATUS "Distribuicao atualizada em ${DIST_DIR} (${_copied} arquivos)")
