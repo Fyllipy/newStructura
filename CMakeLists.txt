@@ -141,6 +141,237 @@ set(APP_SOURCES
     src/app/services/SectionPlacementService.h
     src/app/services/SectionPlacementService.cpp
 
+    src/report/ReportModel.h
+    src/report/DocxWriter.h
+    src/report/DocxWriter.cpp
+    src/report/ReportHtml.h
+    src/report/ReportHtml.cpp
+    src/app/services/ReportService.h
+    src/app/services/ReportService.cpp
+    src/app/services/SectionPropertiesService.h
+    src/app/services/SectionPropertiesService.cpp
+    src/app/services/MaterialLibrary.h
+    src/app/services/MaterialLibrary.cpp
+    src/app/services/UserLibrary.h
+    src/app/services/UserLibrary.cpp
+    src/app/services/UserDataMigration.h
+    src/app/services/UserDataMigration.cpp
+    src/app/Product.h
+    src/app/Edition.h
+    src/app/services/ModelCheckService.h
+    src/app/services/ModelCheckService.cpp
+    src/app/services/ModelTemplateService.h
+    src/app/services/ModelTemplateService.cpp
+)
+
+set(UI_SOURCES
+    src/ui/MainWindow.h
+    src/ui/MainWindow.cpp
+    src/ui/MainWindowActions.cpp
+    src/ui/MainWindowRibbon.cpp
+    src/ui/RibbonWidgets.h
+    src/ui/RibbonWidgets.cpp
+    src/ui/MainWindowEventFilter.cpp
+    src/ui/MainWindowViewportInteraction.cpp
+    src/ui/MainWindowGridStatus.cpp
+    src/ui/MainWindowCommands.cpp
+    src/ui/MainWindowWindowState.cpp
+    src/ui/MainWindowProperties.cpp
+    src/ui/MainWindowLoads.cpp
+    src/ui/MainWindowLoadPicking.cpp
+    src/ui/LoadCaseVisibilityDialog.h
+    src/ui/LoadCaseVisibilityDialog.cpp
+    src/ui/MainWindowAnalysisIo.cpp
+    src/ui/MainWindowPlacement.cpp
+    src/ui/MainWindowViewOptions.cpp
+    src/ui/MainWindowEditing.cpp
+    src/ui/MainWindowTopology.cpp
+    src/ui/MainWindowProfiles.cpp
+    src/ui/MainWindowGroups.cpp
+    src/ui/MainWindowBarTypes.cpp
+    src/ui/MainWindowReport.cpp
+    src/ui/ReportDialogs.h
+    src/ui/ReportDialogs.cpp
+    src/ui/MainWindowAreaLoads.cpp
+    src/ui/MainWindowUndoState.cpp
+    src/ui/MainWindowModelCheck.cpp
+    src/ui/LineChartWidget.h
+    src/ui/LineChartWidget.cpp
+    src/ui/MainWindowSession.cpp
+    src/ui/MainWindowErrors.cpp
+    src/ui/MainWindowShell.cpp
+    src/ui/ShellDialog.h
+    src/ui/ShellDialog.cpp
+    src/ui/BusyProgress.h
+    src/ui/BusyProgress.cpp
+    src/ui/MainWindowCompare.cpp
+    src/ui/CompareResultsDialog.h
+    src/ui/CompareResultsDialog.cpp
+    src/ui/MainWindowViews.cpp
+    src/ui/ViewCubeWidget.h
+    src/ui/ViewCubeWidget.cpp
+    src/ui/SplitBarDialog.h
+    src/ui/SplitBarDialog.cpp
+    src/ui/MainWindowDiagramProbe.cpp
+    src/app/services/TrussGenerator.h
+    src/app/services/TrussGenerator.cpp
+    src/ui/NewProjectWizard.h
+    src/ui/NewProjectWizard.cpp
+    src/ui/TrussDialog.h
+    src/ui/TrussDialog.cpp
+    src/app/services/CadImport.h
+    src/app/services/CadImport.cpp
+    src/viz/structure/ShellRenderer.h
+    src/viz/structure/ShellRenderer.cpp
+    src/app/services/NotionalLoadService.h
+    src/app/services/NotionalLoadService.cpp
+    src/ui/MainWindowDocs.cpp
+    src/ui/TitleBlockDialog.h
+    src/ui/TitleBlockDialog.cpp
+    src/ui/View3DDialog.h
+    src/ui/View3DDialog.cpp
+    src/ui/QuantityDialog.h
+    src/ui/QuantityDialog.cpp
+    src/app/services/QuantityService.h
+    src/app/services/QuantityService.cpp
+    src/app/services/ResultsPersistence.h
+    src/app/services/ResultsPersistence.cpp
+    src/app/services/DxfExporter.h
+    src/app/services/DxfExporter.cpp
+    src/viz/BarTypeRenderer.h
+    src/viz/BarTypeRenderer.cpp
+    src/ui/ModelCheckDialog.h
+    src/ui/ModelCheckDialog.cpp
+    src/ui/TemplateDialog.h
+    src/ui/TemplateDialog.cpp
+    src/ui/MainWindowDeleteLoads.cpp
+    src/ui/DeleteLoadsDialog.h
+    src/ui/DeleteLoadsDialog.cpp
+    src/ui/AreaLoadDialog.h
+    src/ui/AreaLoadDialog.cpp
+    src/app/services/AreaLoadService.h
+    src/app/services/AreaLoadService.cpp
+    src/ui/GroupsPanel.h
+    src/ui/GroupsPanel.cpp
+    src/ui/ProfileLibrary.h
+    src/ui/ProfileLibrary.cpp
+    src/ui/ProfilePropertiesDialog.h
+    src/ui/ProfilePropertiesDialog.cpp
+    src/ui/ProfileManagerDialog.h
+    src/ui/ProfileManagerDialog.cpp
+    src/ui/SectionPreviewWidget.h
+    src/ui/SectionPreviewWidget.cpp
+    src/ui/ProfileBrowser.h
+    src/ui/ProfileBrowser.cpp
+    src/ui/ProfileEditorWidget.h
+    src/ui/ProfileEditorWidget.cpp
+    src/ui/ProfilePickerDialog.h
+    src/ui/ProfilePickerDialog.cpp
+    src/ui/LoadsPanel.h
+    src/ui/LoadsPanel.cpp
+    src/ui/MainWindowSelection.cpp
+    src/ui/MainWindowAppearance.cpp
+    src/ui/SelectionFilterDialog.h
+    src/ui/SelectionFilterDialog.cpp
+    src/ui/TransformDialogs.h
+    src/ui/TransformDialogs.cpp
+    src/ui/ViewOptionsBar.h
+    src/ui/ViewOptionsBar.cpp
+    src/ui/AxesPanel.h
+    src/ui/AxesPanel.cpp
+    src/ui/SectionPlacementWidget.h
+    src/ui/SectionPlacementWidget.cpp
+    src/ui/SectionPlacementPanel.h
+    src/ui/SectionPlacementPanel.cpp
+    src/ui/SvgIcons.h
+    src/ui/SvgIcons.cpp
+    src/ui/PlacementController.h
+    src/ui/PlacementController.cpp
+    src/ui/PlacementOverlay.h
+    src/ui/PlacementOverlay.cpp
+    src/ui/MainWindowPresenter.h
+    src/ui/MainWindowPresenter.cpp
+    src/ui/TemporaryAnalysisResultsDialog.h
+    src/ui/TemporaryAnalysisResultsDialog.cpp
+    src/ui/MaterialDialog.h
+    src/ui/MaterialDialog.cpp
+    src/ui/BarPropertiesDialog.h
+    src/ui/BarPropertiesDialog.cpp
+    src/ui/AssignBarPropertiesDialog.h
+    src/ui/AssignBarPropertiesDialog.cpp
+    src/ui/NodalLoadDialog.h
+    src/ui/NodalLoadDialog.cpp
+    src/ui/DistributedLoadDialog.h
+    src/ui/DistributedLoadDialog.cpp
+    src/ui/MemberMomentDialog.h
+    src/ui/MemberMomentDialog.cpp
+    src/ui/MemberActionDialog.h
+    src/ui/MemberActionDialog.cpp
+    src/ui/MainWindowMemberActions.cpp
+    src/ui/MainWindowConstraints.cpp
+    src/app/services/LoadHypothesisService.h
+    src/app/services/LoadHypothesisService.cpp
+    src/app/services/ResultsEnvelopeService.h
+    src/app/services/ResultsEnvelopeService.cpp
+    src/app/services/ConstructionStageService.h
+    src/app/services/ConstructionStageService.cpp
+    src/app/services/ResultsBinaryStore.h
+    src/app/services/ResultsBinaryStore.cpp
+    src/ui/MainWindowWind.cpp
+    src/ui/WindStaticDialog.h
+    src/ui/WindStaticDialog.cpp
+    src/ui/WindShedDialog.h
+    src/ui/WindShedDialog.cpp
+    src/ui/TopographicFactorDialog.h
+    src/ui/TopographicFactorDialog.cpp
+    src/app/services/WindStaticService.h
+    src/app/services/WindStaticService.cpp
+    src/app/services/WindShedService.h
+    src/app/services/WindShedService.cpp
+    src/ui/ConnectivityDialog.h
+    src/ui/ConnectivityDialog.cpp
+    src/ui/MemberEndsDialog.h
+    src/ui/MemberEndsDialog.cpp
+    src/ui/NonlinearOptionsDialog.h
+    src/ui/NonlinearOptionsDialog.cpp
+    src/ui/CapacityCurveDialog.h
+    src/ui/CapacityCurveDialog.cpp
+    src/ui/LoadCasesDialog.h
+    src/ui/LoadCasesDialog.cpp
+    src/ui/CombinationGeneratorDialog.h
+    src/ui/CombinationGeneratorDialog.cpp
+    src/app/services/CombinationGenerator.h
+    src/app/services/CombinationGenerator.cpp
+    src/ui/RestraintDialog.h
+    src/ui/RestraintDialog.cpp
+    src/ui/SelectionModel.h
+    src/ui/SelectionModel.cpp
+    src/ui/PropertiesPanel.h
+    src/ui/PropertiesPanel.cpp
+    src/ui/PropertiesPanelEntryBuilder.h
+    src/ui/PropertiesPanelEntryBuilder.cpp
+)
+
+set(SHELL_SOURCES
+    src/shell/ShellModel.h
+    src/shell/ShellMesh.h
+    src/shell/ShellMesh.cpp
+    src/shell/ShellTributary.h
+    src/shell/ShellTributary.cpp
+    src/shell/ShellFactory.h
+    src/shell/ShellFactory.cpp
+    src/shell/ShellJob.h
+    src/shell/ShellJob.cpp
+    src/shell/ShellResults.h
+    src/shell/ShellResults.cpp
+    src/shell/ShellVisual.h
+    src/shell/ShellVisual.cpp
+    src/app/ShellSolverBridge.h
+    src/app/ShellSolverBridge.cpp
+)
+
+# Exclusivos da edicao Comercial: dimensionamento, ligacoes, detalhamento, flambagem, modal e dinamica. A Demonstrativa nao os compila.
+set(STRUCTURA_DESIGN_SOURCES
     src/design/BeamExtras.h
     src/design/BeamExtras.cpp
     src/design/StiffenerDesign.h
@@ -204,67 +435,13 @@ set(APP_SOURCES
     src/report/CalcCardBuilder.cpp
     src/report/MathRenderer.h
     src/report/MathRenderer.cpp
-    src/report/ReportModel.h
-    src/report/DocxWriter.h
-    src/report/DocxWriter.cpp
-    src/report/ReportHtml.h
-    src/report/ReportHtml.cpp
-    src/app/services/ReportService.h
-    src/app/services/ReportService.cpp
-    src/app/services/SectionPropertiesService.h
-    src/app/services/SectionPropertiesService.cpp
     src/app/services/DesignService.h
     src/app/services/DesignService.cpp
-    src/app/services/MaterialLibrary.h
-    src/app/services/MaterialLibrary.cpp
-    src/app/services/UserLibrary.h
-    src/app/services/UserLibrary.cpp
-    src/app/services/UserDataMigration.h
-    src/app/services/UserDataMigration.cpp
-    src/app/Product.h
-    src/app/Edition.h
-    src/app/services/ModelCheckService.h
-    src/app/services/ModelCheckService.cpp
     src/app/services/IntegrityService.h
     src/app/services/IntegrityService.cpp
-    src/app/services/ModelTemplateService.h
-    src/app/services/ModelTemplateService.cpp
     src/app/services/StructuralChecks.h
     src/app/services/StructuralChecks.cpp
-)
-
-set(UI_SOURCES
-    src/ui/MainWindow.h
-    src/ui/MainWindow.cpp
-    src/ui/MainWindowActions.cpp
-    src/ui/MainWindowRibbon.cpp
-    src/ui/RibbonWidgets.h
-    src/ui/RibbonWidgets.cpp
-    src/ui/MainWindowEventFilter.cpp
-    src/ui/MainWindowViewportInteraction.cpp
-    src/ui/MainWindowGridStatus.cpp
-    src/ui/MainWindowCommands.cpp
-    src/ui/MainWindowWindowState.cpp
-    src/ui/MainWindowProperties.cpp
-    src/ui/MainWindowLoads.cpp
-    src/ui/MainWindowLoadPicking.cpp
-    src/ui/LoadCaseVisibilityDialog.h
-    src/ui/LoadCaseVisibilityDialog.cpp
-    src/ui/MainWindowAnalysisIo.cpp
-    src/ui/MainWindowPlacement.cpp
-    src/ui/MainWindowViewOptions.cpp
-    src/ui/MainWindowEditing.cpp
-    src/ui/MainWindowTopology.cpp
-    src/ui/MainWindowProfiles.cpp
     src/ui/MainWindowDesign.cpp
-    src/ui/MainWindowGroups.cpp
-    src/ui/MainWindowBarTypes.cpp
-    src/ui/MainWindowReport.cpp
-    src/ui/ReportDialogs.h
-    src/ui/ReportDialogs.cpp
-    src/ui/MainWindowAreaLoads.cpp
-    src/ui/MainWindowUndoState.cpp
-    src/ui/MainWindowModelCheck.cpp
     src/ui/MainWindowIntegrity.cpp
     src/ui/MainWindowConnections.cpp
     src/ui/ConnectionDialog.h
@@ -277,30 +454,12 @@ set(UI_SOURCES
     src/ui/ModalDialog.h
     src/ui/DynamicsDialog.h
     src/ui/DynamicsDialog.cpp
-    src/ui/LineChartWidget.h
-    src/ui/LineChartWidget.cpp
     src/ui/MainWindowDynamics.cpp
-    src/ui/MainWindowSession.cpp
-    src/ui/MainWindowErrors.cpp
     src/ui/ConnectionPreview.h
     src/ui/ConnectionPreview.cpp
     src/ui/CompositeDialog.h
     src/ui/CompositeDialog.cpp
     src/ui/MainWindowComposite.cpp
-    src/ui/MainWindowShell.cpp
-    src/ui/ShellDialog.h
-    src/ui/ShellDialog.cpp
-    src/ui/BusyProgress.h
-    src/ui/BusyProgress.cpp
-    src/ui/MainWindowCompare.cpp
-    src/ui/CompareResultsDialog.h
-    src/ui/CompareResultsDialog.cpp
-    src/ui/MainWindowViews.cpp
-    src/ui/ViewCubeWidget.h
-    src/ui/ViewCubeWidget.cpp
-    src/ui/SplitBarDialog.h
-    src/ui/SplitBarDialog.cpp
-    src/ui/MainWindowDiagramProbe.cpp
     src/ui/ModalDialog.cpp
     src/app/services/ModalService.h
     src/app/services/ModalService.cpp
@@ -308,20 +467,12 @@ set(UI_SOURCES
     src/app/services/DynamicsService.cpp
     src/app/services/WindDynamicsService.h
     src/app/services/WindDynamicsService.cpp
-    src/app/services/TrussGenerator.h
-    src/app/services/TrussGenerator.cpp
-    src/ui/NewProjectWizard.h
-    src/ui/NewProjectWizard.cpp
-    src/ui/TrussDialog.h
-    src/ui/TrussDialog.cpp
     src/app/services/ConnectionSolids.h
     src/app/services/ConnectionSolids.cpp
     src/app/services/FabricationModel.h
     src/app/services/FabricationModel.cpp
     src/app/services/IfcExporter.h
     src/app/services/IfcExporter.cpp
-    src/app/services/CadImport.h
-    src/app/services/CadImport.cpp
     src/app/services/CutListService.h
     src/app/services/CutListService.cpp
     src/app/services/MemberFabrication.h
@@ -349,24 +500,9 @@ set(UI_SOURCES
     src/app/services/ConnectionCatalogVariants.cpp
     src/viz/structure/ConnectionRenderer.h
     src/viz/structure/ConnectionRenderer.cpp
-    src/viz/structure/ShellRenderer.h
-    src/viz/structure/ShellRenderer.cpp
-    src/app/services/NotionalLoadService.h
-    src/app/services/NotionalLoadService.cpp
-    src/ui/MainWindowDocs.cpp
     src/ui/MainWindowDrawings.cpp
     src/ui/DrawingDialog.h
     src/ui/DrawingDialog.cpp
-    src/ui/TitleBlockDialog.h
-    src/ui/TitleBlockDialog.cpp
-    src/ui/View3DDialog.h
-    src/ui/View3DDialog.cpp
-    src/ui/QuantityDialog.h
-    src/ui/QuantityDialog.cpp
-    src/app/services/QuantityService.h
-    src/app/services/QuantityService.cpp
-    src/app/services/ResultsPersistence.h
-    src/app/services/ResultsPersistence.cpp
     src/app/services/ConnectionService.h
     src/app/services/ConnectionService.cpp
     src/app/services/SheetBuilder.h
@@ -378,158 +514,26 @@ set(UI_SOURCES
     src/drawing/SheetPainter.cpp
     src/drawing/HiddenLine.h
     src/drawing/HiddenLine.cpp
-    src/app/services/DxfExporter.h
-    src/app/services/DxfExporter.cpp
     src/ui/MainWindowBuckling.cpp
     src/ui/BucklingDialog.h
     src/ui/BucklingDialog.cpp
     src/viz/ModeShapeRenderer.h
     src/viz/ModeShapeRenderer.cpp
-    src/viz/BarTypeRenderer.h
-    src/viz/BarTypeRenderer.cpp
     src/app/services/BucklingService.h
     src/app/services/BucklingService.cpp
-    src/ui/ModelCheckDialog.h
-    src/ui/ModelCheckDialog.cpp
     src/ui/IntegrityDialog.h
     src/ui/IntegrityDialog.cpp
-    src/ui/TemplateDialog.h
-    src/ui/TemplateDialog.cpp
-    src/ui/MainWindowDeleteLoads.cpp
-    src/ui/DeleteLoadsDialog.h
-    src/ui/DeleteLoadsDialog.cpp
-    src/ui/AreaLoadDialog.h
-    src/ui/AreaLoadDialog.cpp
-    src/app/services/AreaLoadService.h
-    src/app/services/AreaLoadService.cpp
-    src/ui/GroupsPanel.h
-    src/ui/GroupsPanel.cpp
     src/ui/DesignDialogs.h
     src/ui/DesignDialogs.cpp
     src/ui/DesignPanel.h
     src/ui/DesignPanel.cpp
     src/ui/DesignColors.h
-    src/ui/ProfileLibrary.h
-    src/ui/ProfileLibrary.cpp
-    src/ui/ProfilePropertiesDialog.h
-    src/ui/ProfilePropertiesDialog.cpp
-    src/ui/ProfileManagerDialog.h
-    src/ui/ProfileManagerDialog.cpp
-    src/ui/SectionPreviewWidget.h
-    src/ui/SectionPreviewWidget.cpp
-    src/ui/ProfileBrowser.h
-    src/ui/ProfileBrowser.cpp
-    src/ui/ProfileEditorWidget.h
-    src/ui/ProfileEditorWidget.cpp
-    src/ui/ProfilePickerDialog.h
-    src/ui/ProfilePickerDialog.cpp
-    src/ui/LoadsPanel.h
-    src/ui/LoadsPanel.cpp
-    src/ui/MainWindowSelection.cpp
-    src/ui/MainWindowAppearance.cpp
-    src/ui/SelectionFilterDialog.h
-    src/ui/SelectionFilterDialog.cpp
-    src/ui/TransformDialogs.h
-    src/ui/TransformDialogs.cpp
-    src/ui/ViewOptionsBar.h
-    src/ui/ViewOptionsBar.cpp
-    src/ui/AxesPanel.h
-    src/ui/AxesPanel.cpp
-    src/ui/SectionPlacementWidget.h
-    src/ui/SectionPlacementWidget.cpp
-    src/ui/SectionPlacementPanel.h
-    src/ui/SectionPlacementPanel.cpp
-    src/ui/SvgIcons.h
-    src/ui/SvgIcons.cpp
-    src/ui/PlacementController.h
-    src/ui/PlacementController.cpp
-    src/ui/PlacementOverlay.h
-    src/ui/PlacementOverlay.cpp
-    src/ui/MainWindowPresenter.h
-    src/ui/MainWindowPresenter.cpp
-    src/ui/TemporaryAnalysisResultsDialog.h
-    src/ui/TemporaryAnalysisResultsDialog.cpp
-    src/ui/MaterialDialog.h
-    src/ui/MaterialDialog.cpp
-    src/ui/BarPropertiesDialog.h
-    src/ui/BarPropertiesDialog.cpp
-    src/ui/AssignBarPropertiesDialog.h
-    src/ui/AssignBarPropertiesDialog.cpp
-    src/ui/NodalLoadDialog.h
-    src/ui/NodalLoadDialog.cpp
-    src/ui/DistributedLoadDialog.h
-    src/ui/DistributedLoadDialog.cpp
-    src/ui/MemberMomentDialog.h
-    src/ui/MemberMomentDialog.cpp
-    src/ui/MemberActionDialog.h
-    src/ui/MemberActionDialog.cpp
-    src/ui/MainWindowMemberActions.cpp
-    src/ui/MainWindowConstraints.cpp
     src/ui/EffectiveLengthDialog.h
     src/ui/EffectiveLengthDialog.cpp
     src/app/services/EffectiveLengthService.h
     src/app/services/EffectiveLengthService.cpp
-    src/app/services/LoadHypothesisService.h
-    src/app/services/LoadHypothesisService.cpp
-    src/app/services/ResultsEnvelopeService.h
-    src/app/services/ResultsEnvelopeService.cpp
-    src/app/services/ConstructionStageService.h
-    src/app/services/ConstructionStageService.cpp
-    src/app/services/ResultsBinaryStore.h
-    src/app/services/ResultsBinaryStore.cpp
-    src/ui/MainWindowWind.cpp
-    src/ui/WindStaticDialog.h
-    src/ui/WindStaticDialog.cpp
-    src/ui/WindShedDialog.h
-    src/ui/WindShedDialog.cpp
-    src/ui/TopographicFactorDialog.h
-    src/ui/TopographicFactorDialog.cpp
-    src/app/services/WindStaticService.h
-    src/app/services/WindStaticService.cpp
-    src/app/services/WindShedService.h
-    src/app/services/WindShedService.cpp
-    src/ui/ConnectivityDialog.h
-    src/ui/ConnectivityDialog.cpp
-    src/ui/MemberEndsDialog.h
-    src/ui/MemberEndsDialog.cpp
-    src/ui/NonlinearOptionsDialog.h
-    src/ui/NonlinearOptionsDialog.cpp
-    src/ui/CapacityCurveDialog.h
-    src/ui/CapacityCurveDialog.cpp
-    src/ui/LoadCasesDialog.h
-    src/ui/LoadCasesDialog.cpp
-    src/ui/CombinationGeneratorDialog.h
-    src/ui/CombinationGeneratorDialog.cpp
-    src/app/services/CombinationGenerator.h
-    src/app/services/CombinationGenerator.cpp
-    src/ui/RestraintDialog.h
-    src/ui/RestraintDialog.cpp
-    src/ui/SelectionModel.h
-    src/ui/SelectionModel.cpp
-    src/ui/PropertiesPanel.h
-    src/ui/PropertiesPanel.cpp
-    src/ui/PropertiesPanelEntryBuilder.h
-    src/ui/PropertiesPanelEntryBuilder.cpp
-)
-
-set(SHELL_SOURCES
-    src/shell/ShellModel.h
-    src/shell/ShellMesh.h
-    src/shell/ShellMesh.cpp
-    src/shell/ShellTributary.h
-    src/shell/ShellTributary.cpp
-    src/shell/ShellFactory.h
-    src/shell/ShellFactory.cpp
-    src/shell/ShellJob.h
-    src/shell/ShellJob.cpp
-    src/shell/ShellResults.h
-    src/shell/ShellResults.cpp
-    src/shell/ShellVisual.h
-    src/shell/ShellVisual.cpp
     src/shell/ShellDesign.h
     src/shell/ShellDesign.cpp
-    src/app/ShellSolverBridge.h
-    src/app/ShellSolverBridge.cpp
 )
 
 set(RESOURCES
@@ -538,7 +542,8 @@ set(RESOURCES
 
 # --- Library ---
 
-add_library(StructuraLib STATIC
+# StructuraCore: tudo o que as duas edicoes compartilham (modelo, analise, visualizacao, interface, importacao/exportacao).
+add_library(StructuraCore STATIC
     ${CORE_SOURCES}
     ${VIZ_SOURCES}
     ${APP_SOURCES}
@@ -547,9 +552,9 @@ add_library(StructuraLib STATIC
     ${RESOURCES}
 )
 
-target_compile_definitions(StructuraLib PUBLIC STRUCTURA_EDITION_${STRUCTURA_EDITION})
+target_compile_definitions(StructuraCore PUBLIC STRUCTURA_EDITION_${STRUCTURA_EDITION})
 
-target_link_libraries(StructuraLib
+target_link_libraries(StructuraCore
     PUBLIC
         Qt${QT_VERSION_MAJOR}::Widgets
         Qt${QT_VERSION_MAJOR}::Svg
@@ -557,26 +562,37 @@ target_link_libraries(StructuraLib
         ${VTK_LIBRARIES}
 )
 
-target_include_directories(StructuraLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${STRUCTURA_GENERATED_DIR}
+target_include_directories(StructuraCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${STRUCTURA_GENERATED_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Structuradll/libs)
 
 vtk_module_autoinit(
-    TARGETS StructuraLib
+    TARGETS StructuraCore
     MODULES ${VTK_LIBRARIES}
 )
 
 # Cabecalho pre-compilado so com a biblioteca padrao: os modulos de calculo, relatorio e cascas nao dependem do Qt (e os cabecalhos do Qt definem
 # macros como `emit` que conflitam com nomes desses modulos); nao altera o comportamento, so o tempo de compilacao.
-target_precompile_headers(StructuraLib PRIVATE
-    <algorithm>
-    <array>
-    <cmath>
-    <functional>
-    <map>
-    <memory>
-    <string>
-    <vector>
-)
+set(STRUCTURA_PCH <algorithm> <array> <cmath> <functional> <map> <memory> <string> <vector>)
+target_precompile_headers(StructuraCore PRIVATE ${STRUCTURA_PCH})
+
+# StructuraDesign: exclusivo da edicao Comercial (dimensionamento, ligacoes, detalhamento, flambagem, modal e dinamica).
+# A Demonstrativa nao compila nenhum destes arquivos. As duas bibliotecas se referenciam (a interface compartilhada chama os recursos
+# comerciais): o ciclo e permitido entre bibliotecas estaticas.
+if (STRUCTURA_EDITION STREQUAL "COMMERCIAL")
+    add_library(StructuraDesign STATIC ${STRUCTURA_DESIGN_SOURCES})
+    target_link_libraries(StructuraDesign PUBLIC StructuraCore)
+    target_link_libraries(StructuraCore PUBLIC StructuraDesign)
+    target_include_directories(StructuraDesign PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Structuradll/libs)
+    vtk_module_autoinit(
+        TARGETS StructuraDesign
+        MODULES ${VTK_LIBRARIES}
+    )
+    target_precompile_headers(StructuraDesign PRIVATE ${STRUCTURA_PCH})
+endif()
+
+# StructuraLib: ponto unico de ligacao do executavel e dos testes (a edicao escolhe o que entra).
+add_library(StructuraLib INTERFACE)
+target_link_libraries(StructuraLib INTERFACE StructuraCore)
 
 # --- Executable ---
 
