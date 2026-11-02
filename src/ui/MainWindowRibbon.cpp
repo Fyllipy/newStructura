@@ -502,9 +502,9 @@ void MainWindow::createRibbon()
 
     // ---- Ferramentas ------------------------------------------------------------------------------------------------------------
     auto *tools = new RibbonPage(this);
-    tools->addGroup(tr("Geração"), {item(m_generateTrussAction, tr("Gerar treliça"), true)});
+    tools->addGroup(tr("Geração"), {item(m_generateTrussAction, tr("Gerar treliça"), true), item(m_templateAction, tr("Gerar porticos"), true)});
     tools->addGroup(tr("Eixos"), {item(m_axesAction, tr("Eixos de referência"), true)});
-    QList<RibbonItem> modelTools = {item(m_templateAction, tr("Modelo pronto"), true), item(m_checkModelAction, tr("Checar modelo"), true)};
+    QList<RibbonItem> modelTools = {item(m_checkModelAction, tr("Checar modelo"), true)};
     {   // na Demonstrativa o botao aparece desabilitado
         modelTools.append(item(m_integrityAction, tr("Integridade estrutural"), true));
     }

@@ -721,16 +721,21 @@ void MainWindow::onAbout()
     const QStringList args = {Structura::App::Product::displayName(), Structura::App::Product::versionDisplay()};
     if (Structura::App::Edition::kHasDesign) {
         QMessageBox::about(this, title,
-                           tr("<b>%1</b> — versão %2<br>Modelagem, análise e dimensionamento de estruturas metálicas em 3D.<br><br>"
+                           tr("<b>%1</b> — versão %2<br>Modelagem, análise e dimensionamento de estruturas metálicas.<br><br>"
                               "Análise: solver de elementos de barra (1ª e 2ª ordem).<br>"
                               "Dimensionamento: NBR 8800:2024 e NBR 14762:2010.<br>"
-                              "Ligações: NBR 8800:2024, NBR 6118:2023 e CIDECT Design Guide 1.")
+                              "Ligações: NBR 8800:2024, NBR 6118:2023 e CIDECT Design Guide 1.<br>"
+                              "<br>"
+                              "Todos os direitos reservados para Structura.<br>"
+                              "Créditos: Eng. João Nunes. Email: jfyllipy@gmail.com")
                                .arg(args[0], args[1]));
     } else {
         QMessageBox::about(this, title,
-                           tr("<b>%1</b> — versão %2<br>Modelagem e análise estrutural de estruturas metálicas em 3D.<br><br>"
+                           tr("<b>%1</b> — versão %2<br>Modelagem e análise estrutural de estruturas metálicas.<br><br>"
                               "Edição demonstrativa: análise de barras (1ª e 2ª ordem, não linear e vento), visualização e relatórios de análise. "
-                              "Dimensionamento, ligações e detalhamento fazem parte da edição comercial.")
+                              "<br>"
+                              "Todos os direitos reservados para Structura.<br>"
+                              "Créditos: Eng. João Nunes. Email: jfyllipy@gmail.com")
                                .arg(args[0], args[1]));
     }
 }
