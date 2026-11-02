@@ -10,6 +10,8 @@
 #include <QTabWidget>
 #include <QToolButton>
 #include <QTimer>
+#include <QThread>
+#include <QEventLoop>
 #include <QElapsedTimer>
 #include <QFont>
 #include <QImage>
@@ -23,6 +25,8 @@
 #include <QVTKOpenGLNativeWidget.h>
 
 namespace {
+
+constexpr qint64 kMinimumSplashMs = 3000;   ///< tempo minimo de exibicao da tela de abertura
 
 /// Tela de abertura (images/splash.png, trocavel) com mensagem e barra de progresso na base.
 class StartupSplash final : public QSplashScreen
@@ -146,6 +150,8 @@ int main(int argc, char *argv[])
     // a arte da abertura tem 950 x 713 px: exibida com 720 px de largura
     StartupSplash splash(QPixmap(QStringLiteral(":/images/splash.png")).scaledToWidth(720, Qt::SmoothTransformation));
     splash.show();
+    QElapsedTimer splashClock;
+    splashClock.start();
     splash.setProgress(8, QObject::tr("Iniciando…"));
 
     splash.setProgress(25, QObject::tr("Carregando o motor gráfico e os catálogos de perfis…"));
@@ -155,6 +161,13 @@ int main(int argc, char *argv[])
     MainWindow mainWindow;
     mainWindow.resize(initialWindowSize());
     splash.setProgress(80, QObject::tr("Montando a interface…"));
+    // a abertura fica visivel por pelo menos 3 s (a verificacao automatizada da interface dispensa a espera)
+    if (qEnvironmentVariableIsEmpty("STRUCTURA_AUTOSHOT") && qEnvironmentVariableIsEmpty("STRUCTURA_SPLASH_SHOT")) {
+        while (splashClock.elapsed() < kMinimumSplashMs) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+            QThread::msleep(10);
+        }
+    }
     mainWindow.show();
 
     const QStringList arguments = app.arguments();
