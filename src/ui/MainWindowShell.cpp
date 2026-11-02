@@ -15,6 +15,7 @@
 #include "viz/SceneController.h"
 #include "viz/construction/ConstructionPlane.h"
 #include "viz/construction/ConstructionScene.h"
+#include "app/services/SectionPropertiesService.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -62,7 +63,7 @@ double dotp(const ShellVec &a, const ShellVec &b) { return a[0] * b[0] + a[1] * 
 
 double MainWindow::shellUnitsPerMeter() const
 {
-    const double lengthFactor = Structura::App::Services::DesignService::unitFactors(m_materials).second;   // mm por unidade do modelo
+    const double lengthFactor = Structura::App::Services::SectionPropertiesService::unitFactors(m_materials).second;   // mm por unidade do modelo
     return lengthFactor > 0.0 ? 1000.0 / lengthFactor : 1.0;
 }
 
@@ -138,7 +139,7 @@ bool MainWindow::coupledShellResults(const QStringList &cases, bool runAnalysis,
         error = tr("Não há resultados do projeto: execute a análise (aba Análise).").toStdString();
         return false;
     }
-    const double forceUnit = Structura::App::Services::DesignService::unitFactors(m_materials).first;
+    const double forceUnit = Structura::App::Services::SectionPropertiesService::unitFactors(m_materials).first;
     std::shared_ptr<const Structura::App::Services::ShellCouplingService::Mapping> mapping;
     for (const QString &name : cases) {
         const auto run = m_caseRuns.constFind(name);

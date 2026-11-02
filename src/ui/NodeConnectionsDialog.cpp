@@ -4,6 +4,7 @@
 #include "ConnectionPreview.h"
 
 #include "app/services/DesignService.h"
+#include "app/services/MaterialLibrary.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -269,7 +270,7 @@ void NodeConnectionsDialog::buildForm()
         if (!keys.first.isEmpty()) {
             m_steelPreset = new QComboBox;
             m_steelPreset->addItem(tr("(escolher para preencher fy/fu da chapa/cantoneira)"), QString());
-            for (const auto &s : Structura::App::Services::DesignService::steelGrades()) {
+            for (const auto &s : Structura::App::Services::MaterialLibrary::steelGrades()) {
                 m_steelPreset->addItem(QStringLiteral("%1  (fy %2 / fu %3 MPa)").arg(s.name).arg(s.fy).arg(s.fu), s.name);
             }
             m_form->addRow(tr("Aço da chapa / cantoneira"), m_steelPreset);
@@ -310,7 +311,7 @@ void NodeConnectionsDialog::buildForm()
         if (m_steelPreset) {
             connect(m_steelPreset, &QComboBox::currentIndexChanged, this, [this]() {
                 const QString name = m_steelPreset->currentData().toString();
-                const auto steel = Structura::App::Services::DesignService::findSteel(name);
+                const auto steel = Structura::App::Services::MaterialLibrary::findSteel(name);
                 if (!steel || m_current < 0) {
                     return;
                 }

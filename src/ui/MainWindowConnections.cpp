@@ -12,6 +12,7 @@
 #include "app/services/DesignService.h"
 #include "viz/LocalCoordinateSystem.h"
 #include "viz/SceneController.h"
+#include "app/services/MaterialLibrary.h"
 
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -230,7 +231,7 @@ void MainWindow::onCheckConnections()
             const bool atEnd = ends.indexOf(choice) == 1;
             const auto section = sectionInfoOf(bar.sectionId);
             const ConnectionService::BeamInfo beam = memberInfo(section, bar.externalId);
-            const auto defaultSteel = Structura::App::Services::DesignService::findSteel(m_extras.design.defaultSteel);
+            const auto defaultSteel = Structura::App::Services::MaterialLibrary::findSteel(m_extras.design.defaultSteel);
             const double plateFy = defaultSteel ? defaultSteel->fy : 250.0, plateFu = defaultSteel ? defaultSteel->fu : 400.0;
             const int nodeId = nodeExternal.value(atEnd ? bar.endNodeId : bar.startNodeId);
             NodeConnection connection;
@@ -352,7 +353,7 @@ beam.bf = section.geometry.value(QStringLiteral("bf"), section.geometry.value(QS
 beam.tw = section.geometry.value(QStringLiteral("tw"), section.geometry.value(QStringLiteral("t"), 6.0));
 beam.tf = section.geometry.value(QStringLiteral("tf"), section.geometry.value(QStringLiteral("t"), 10.0));
 const auto params = m_extras.design.paramsFor(memberId);
-const auto steel = Structura::App::Services::DesignService::findSteel(params.steel.isEmpty() ? m_extras.design.defaultSteel : params.steel);
+const auto steel = Structura::App::Services::MaterialLibrary::findSteel(params.steel.isEmpty() ? m_extras.design.defaultSteel : params.steel);
 if (steel) {
     beam.fy = steel->fy;
     beam.fu = steel->fu;
@@ -455,7 +456,7 @@ Structura::App::ProjectData::NodeConnection MainWindow::makeBracedConnection(int
     const bool trussNode = Structura::App::Services::ConnectionCatalog::usesBraces(catalogType);
     const auto section = connectionSectionInfo(bar.sectionId);
     const ConnectionService::BeamInfo beam = connectionBeamInfo(section, bar.externalId);
-    const auto defaultSteel = Structura::App::Services::DesignService::findSteel(m_extras.design.defaultSteel);
+    const auto defaultSteel = Structura::App::Services::MaterialLibrary::findSteel(m_extras.design.defaultSteel);
     const double plateFy = defaultSteel ? defaultSteel->fy : 250.0, plateFu = defaultSteel ? defaultSteel->fu : 400.0;
     NodeConnection connection;
     Q_UNUSED(type)
@@ -719,7 +720,7 @@ void MainWindow::onCopyConnections()
     std::optional<SceneController::BarInfo> sourceBar;
     bool braced = false;               // nó de treliça ou ligação tubular: banzo + diagonais
     bool supportRequired = false;      // a origem se apoia numa barra definida
-    const auto defaultSteel = Structura::App::Services::DesignService::findSteel(m_extras.design.defaultSteel);
+    const auto defaultSteel = Structura::App::Services::MaterialLibrary::findSteel(m_extras.design.defaultSteel);
     const double plateFy = defaultSteel ? defaultSteel->fy : 250.0, plateFu = defaultSteel ? defaultSteel->fu : 400.0;
 
     // ---- copias ja feitas nesta sessao (para nao duplicar) -------------------------------------------------------------------------

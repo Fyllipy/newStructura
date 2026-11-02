@@ -16,6 +16,7 @@
 #include "app/services/DesignService.h"
 #include "app/services/SectionPlacementService.h"
 #include "viz/LocalCoordinateSystem.h"
+#include "app/services/SectionPropertiesService.h"
 #include <QHash>
 #include <QRegularExpression>
 #include <QVTKOpenGLNativeWidget.h>
@@ -105,7 +106,7 @@ QVector<MainWindow::ConnectionPlacementInfo> MainWindow::connectionPlacements() 
     for (const auto &node : m_sceneController->nodeInfos()) {
         positionById.insert(node.id, {node.x, node.y, node.z});
     }
-    const double lengthFactor = Structura::App::Services::DesignService::unitFactors(m_materials).second;
+    const double lengthFactor = Structura::App::Services::SectionPropertiesService::unitFactors(m_materials).second;
     Structura::Geometry::DefaultLocalAxisProvider axisProvider;
     const auto allBars = m_sceneController->bars();
     QHash<QUuid, const SectionInfo *> sectionsById;
@@ -265,7 +266,7 @@ void MainWindow::syncConnectionVisuals()
     if (!m_sceneController || !m_viewOptionsBar || !m_viewOptionsBar->isChecked(Bar::kConnections)) {
         return;
     }
-    const double lengthFactor = Structura::App::Services::DesignService::unitFactors(m_materials).second;
+    const double lengthFactor = Structura::App::Services::SectionPropertiesService::unitFactors(m_materials).second;
     ConnectionSolids::Mesh mesh;
     for (const auto &info : connectionPlacements()) {
         const auto &connection = m_extras.connections.at(info.index);
@@ -300,7 +301,7 @@ void MainWindow::syncSolidVisuals()
     }
 
     Structura::Geometry::DefaultLocalAxisProvider axisProvider;
-    const double lengthFactorMm = Structura::App::Services::DesignService::unitFactors(m_materials).second;
+    const double lengthFactorMm = Structura::App::Services::SectionPropertiesService::unitFactors(m_materials).second;
     QHash<int, std::array<double, 2>> trimsByMember;   // recuo (mm) das extremidades I e J por barra
     for (const auto &info : connectionPlacements()) {
         const auto &connection = m_extras.connections.at(info.index);

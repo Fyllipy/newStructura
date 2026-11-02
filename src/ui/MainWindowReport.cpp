@@ -8,6 +8,7 @@
 #include "app/services/DesignService.h"
 #include "app/services/ReportService.h"
 #include "viz/SceneController.h"
+#include "app/services/SectionPropertiesService.h"
 
 #include <QDate>
 #include <QMessageBox>
@@ -16,6 +17,7 @@
 #include <cmath>
 
 using Structura::App::Services::DesignService;
+using Structura::App::Services::SectionPropertiesService;
 using Structura::App::Services::ReportService;
 
 namespace {
@@ -39,7 +41,7 @@ bool MainWindow::buildReportInput(ReportService::Input &input, bool withDesign)
     input = ReportService::Input {};
     input.projectName = m_projectName.isEmpty() ? tr("Projeto") : m_projectName;
     input.date = QDate::currentDate().toString(QStringLiteral("dd/MM/yyyy"));
-    const auto factors = DesignService::unitFactors(m_materials);
+    const auto factors = SectionPropertiesService::unitFactors(m_materials);
     input.forceUnit = factors.first == 1.0 ? QStringLiteral("N") : QStringLiteral("kN");
     input.materials = m_materials;
     input.sections = m_sections;

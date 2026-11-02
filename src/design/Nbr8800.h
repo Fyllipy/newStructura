@@ -1,7 +1,7 @@
 #pragma once
 
-#include "design/DesignSection.h"
-#include "design/DesignTypes.h"
+#include "core/section/DesignSection.h"
+#include "core/section/DesignTypes.h"
 
 #include <string>
 #include <vector>

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "design/DesignTypes.h"
-#include "design/GrossSection.h"
-#include "design/Sectorial.h"
+#include "core/section/DesignTypes.h"
+#include "core/section/GrossSection.h"
+#include "core/section/Sectorial.h"
 
 #include <cmath>
 #include <string>

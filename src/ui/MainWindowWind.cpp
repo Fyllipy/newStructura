@@ -4,6 +4,7 @@
 #include "WindStaticDialog.h"
 #include "app/services/DesignService.h"
 #include "viz/SceneController.h"
+#include "app/services/SectionPropertiesService.h"
 
 #include <QHash>
 #include <QMessageBox>
@@ -15,6 +16,7 @@
 using Structura::App::Services::WindShedService;
 using Structura::App::Services::WindStaticService;
 using Structura::App::Services::DesignService;
+using Structura::App::Services::SectionPropertiesService;
 
 namespace {
 
@@ -74,7 +76,7 @@ void MainWindow::onWindStatic()
         return;
     }
     const auto building = dialog.building();
-    const double forceFactor = DesignService::unitFactors(m_materials).first;   // N por unidade de forca do modelo
+    const double forceFactor = SectionPropertiesService::unitFactors(m_materials).first;   // N por unidade de forca do modelo
     const double toModel = 1000.0 / forceFactor;   // kN -> unidade de forca do modelo
 
     StateGuard guard(this, tr("Vento estático"));
@@ -238,7 +240,7 @@ void MainWindow::onWindShed()
         QMessageBox::warning(this, tr("Vento em galpões"), result.warnings.isEmpty() ? tr("Nenhum caso gerado.") : result.warnings.join(QLatin1Char('\n')));
         return;
     }
-    const double forceFactor = DesignService::unitFactors(m_materials).first;   // N por unidade de forca do modelo
+    const double forceFactor = SectionPropertiesService::unitFactors(m_materials).first;   // N por unidade de forca do modelo
     const double toModel = 1000.0 / forceFactor;   // kN -> unidade de forca do modelo
 
     StateGuard guard(this, tr("Vento em galpões"));

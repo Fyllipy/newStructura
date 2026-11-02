@@ -3,7 +3,7 @@
 #include <QString>
 
 #include "design/BarDesign.h"
-#include "design/DesignSection.h"
+#include "core/section/DesignSection.h"
 #include "viz/structure/SectionShapes.h"
 
 #include <cmath>

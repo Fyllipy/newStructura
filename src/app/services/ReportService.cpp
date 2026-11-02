@@ -3,6 +3,8 @@
 #include "report/CalcCardBuilder.h"
 #include "report/FormulaText.h"
 #include "viz/structure/SectionShapes.h"
+#include "app/services/SectionPropertiesService.h"
+#include "app/services/MaterialLibrary.h"
 
 #include <QBuffer>
 #include <QImage>
@@ -388,6 +390,8 @@ void appendBarDetail(ReportDocument &doc, const ReportService::Input &input, con
                      bool showFormulas, bool drawing, int level)
 {
     using Structura::App::Services::DesignService;
+    using Structura::App::Services::SectionPropertiesService;
+    using Structura::App::Services::MaterialLibrary;
     const SectionInfo section = input.sectionOfMember.value(v.memberId);
     doc.heading(level, S(QStringLiteral("Barra %1 — %2").arg(v.memberId).arg(v.sectionName)));
 
@@ -397,7 +401,7 @@ void appendBarDetail(ReportDocument &doc, const ReportService::Input &input, con
     data.header = {S(QStringLiteral("Dado")), S(QStringLiteral("Valor"))};
     data.widths = {2, 3};
     data.firstColumnBold = true;
-    const auto steel = DesignService::findSteel(v.steel);
+    const auto steel = MaterialLibrary::findSteel(v.steel);
     data.rows = {{"Perfil", S(v.sectionName)},
                  {"Aço", S(steel ? QStringLiteral("%1 (fy = %2 MPa, fu = %3 MPa)").arg(v.steel).arg(steel->fy, 0, 'f', 0).arg(steel->fu, 0, 'f', 0) : v.steel)},
                  {"Norma", v.output.standard},
@@ -414,7 +418,7 @@ void appendBarDetail(ReportDocument &doc, const ReportService::Input &input, con
 
     // secao
     if (drawing && !section.family.isEmpty()) {
-        const auto ds = DesignService::makeSection(section, input.designSettings.rectTubeStandard);
+        const auto ds = SectionPropertiesService::makeSection(section, input.designSettings.rectTubeStandard);
         if (ds.supported()) {
             Table props;
             props.header = {S(QStringLiteral("Propriedade")), S(QStringLiteral("Valor")), S(QStringLiteral("Propriedade")), S(QStringLiteral("Valor"))};
@@ -489,7 +493,7 @@ void appendBarDetail(ReportDocument &doc, const ReportService::Input &input, con
         put("Ly", params.ly > 0.0 ? params.ly * 1000.0 : params.ky * v.lengthM * 1000.0, "mm", 0);
         put("Lz", params.lz > 0.0 ? params.lz * 1000.0 : params.kz * v.lengthM * 1000.0, "mm", 0);
         if (!section.family.isEmpty()) {
-            const auto ds = DesignService::makeSection(section, input.designSettings.rectTubeStandard);
+            const auto ds = SectionPropertiesService::makeSection(section, input.designSettings.rectTubeStandard);
             if (ds.supported()) {
                 put("A", ds.g.area, "mm2");
                 put("Ag", ds.g.area, "mm2");

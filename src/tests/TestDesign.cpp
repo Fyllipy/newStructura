@@ -1,4 +1,5 @@
 #include "app/services/NodeEquilibrium.h"
+#include "app/services/SectionPropertiesService.h"
 #include "app/SolverBridge.h"
 #include "design/BeamExtras.h"
 #include "design/CompositeColumn.h"
@@ -23,7 +24,7 @@
 #include "design/ShearConnections.h"
 #include "design/TrussConnections.h"
 #include "design/TubularJoints.h"
-#include "design/DesignSection.h"
+#include "core/section/DesignSection.h"
 #include "design/Nbr14762.h"
 #include "design/Nbr14323.h"
 #include "app/services/CombinationGenerator.h"
@@ -60,7 +61,7 @@ DesignSection make(const QString &family, const QMap<QString, double> &params, d
         const auto g = Structura::Design::computeGrossSection(loops, shape->outerCount);
         const double theta = 0.5 * std::atan2(2.0 * g.Ixy, g.Ix - g.Iy) * 180.0 / 3.14159265358979323846;
         double best = 1e300;
-        for (const double candidate : {theta, -theta}) {   // como DesignService::makeSection: o sinal que anula Ixy
+        for (const double candidate : {theta, -theta}) {   // como SectionPropertiesService::makeSection: o sinal que anula Ixy
             const DesignSection trial = makeDesignSection(spec, loops, j, Standard::NBR14762, candidate, shape->outerCount);
             const double residual = std::abs(trial.g.Ixy) / std::max(1.0, std::max(trial.g.Ix, trial.g.Iy));
             if (residual < best) {
@@ -1414,6 +1415,7 @@ private slots:
     {
         using namespace Structura::App;
         using Services::DesignService;
+        using Structura::App::Services::SectionPropertiesService;
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
             QSKIP("rds.dll nao encontrada na raiz do repositorio.");
@@ -1480,6 +1482,7 @@ private slots:
     {
         using namespace Structura::App;
         using Structura::App::Services::DesignService;
+        using Structura::App::Services::SectionPropertiesService;
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
             QSKIP("rds.dll nao encontrada na raiz do repositorio.");
@@ -1797,6 +1800,7 @@ private slots:
     void rectangularTubeStandardIsRecognisedFromTheSeries()
     {
         using Structura::App::Services::DesignService;
+        using Structura::App::Services::SectionPropertiesService;
         auto tube = [](double t) {
             Structura::App::ProjectData::SectionInfo section;
             section.name = QStringLiteral("RHS");
@@ -1806,10 +1810,10 @@ private slots:
             return section;
         };
         using Structura::Design::Standard;
-        QCOMPARE(DesignService::makeSection(tube(3.0), QStringLiteral("AUTO")).standard, Standard::NBR14762);    // parede fina: formado a frio
-        QCOMPARE(DesignService::makeSection(tube(8.0), QStringLiteral("AUTO")).standard, Standard::NBR8800);     // parede grossa: laminado a quente
-        QCOMPARE(DesignService::makeSection(tube(8.0), QStringLiteral("NBR14762")).standard, Standard::NBR14762);   // escolha manual prevalece
-        QCOMPARE(DesignService::makeSection(tube(3.0), QStringLiteral("NBR8800")).standard, Standard::NBR8800);
+        QCOMPARE(SectionPropertiesService::makeSection(tube(3.0), QStringLiteral("AUTO")).standard, Standard::NBR14762);    // parede fina: formado a frio
+        QCOMPARE(SectionPropertiesService::makeSection(tube(8.0), QStringLiteral("AUTO")).standard, Standard::NBR8800);     // parede grossa: laminado a quente
+        QCOMPARE(SectionPropertiesService::makeSection(tube(8.0), QStringLiteral("NBR14762")).standard, Standard::NBR14762);   // escolha manual prevalece
+        QCOMPARE(SectionPropertiesService::makeSection(tube(3.0), QStringLiteral("NBR8800")).standard, Standard::NBR8800);
     }
 
     void compositeColumnFollowsAnnexM()
@@ -1903,6 +1907,7 @@ private slots:
     {
         using namespace Structura::App;
         using Services::DesignService;
+        using Structura::App::Services::SectionPropertiesService;
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
         if (!QFile::exists(dll)) {
             QSKIP("rds.dll nao encontrada na raiz do repositorio.");

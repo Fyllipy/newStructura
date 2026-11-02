@@ -14,6 +14,7 @@
 #include "ui/SelectionModel.h"
 #include "viz/SceneController.h"
 #include "viz/postprocessor/PostProcessorRenderer.h"
+#include "app/services/SectionPropertiesService.h"
 
 #include <QApplication>
 #include <QDockWidget>
@@ -29,6 +30,8 @@
 using Structura::App::ProjectData::DesignSettings;
 using Structura::App::ProjectData::SectionInfo;
 using Structura::App::Services::DesignService;
+using Structura::App::Services::SectionPropertiesService;
+using Structura::App::Services::MaterialLibrary;
 using Structura::App::Services::StructuralChecks;
 
 namespace {
@@ -61,10 +64,10 @@ DesignSettings effectiveSettings(const DesignSettings &base, const std::vector<S
             continue;
         }
         const QString grade = material->library.isEmpty() ? material->name : material->library;
-        if (!DesignService::findSteel(grade) && material->fu > 0.0) {
+        if (!MaterialLibrary::findSteel(grade) && material->fu > 0.0) {
             Structura::App::Services::MaterialLibrary::registerCustomSteel(grade, material->fy, material->fu, false);
         }
-        if (!DesignService::findSteel(grade)) {
+        if (!MaterialLibrary::findSteel(grade)) {
             continue;
         }
         params.steel = grade;
@@ -202,7 +205,7 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
     refreshConnectionNodeMembers();
     const auto bars = m_sceneController->bars();
     run.settings = effectiveSettings(m_extras.design, bars, m_materials);
-    const auto factors = DesignService::unitFactors(m_materials);
+    const auto factors = SectionPropertiesService::unitFactors(m_materials);
     run.lengthFactor = factors.second;
     run.forceFactor = factors.first;
 
@@ -272,7 +275,7 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
             const QString key = section->uuid.toString();
             auto it = designSections->find(key);
             if (it == designSections->end()) {
-                it = designSections->insert(key, DesignService::makeSection(*section, designSettings.rectTubeStandard));
+                it = designSections->insert(key, SectionPropertiesService::makeSection(*section, designSettings.rectTubeStandard));
             }
             return DesignService::serviceInertiaRatios(it.value(), steelName, mz * momentToNmm, my * momentToNmm);
         };

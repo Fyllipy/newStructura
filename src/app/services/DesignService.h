@@ -2,6 +2,7 @@
 
 #include "app/ProjectDataTypes.h"
 #include "app/SolverBridge.h"
+#include "app/services/MaterialLibrary.h"
 #include "design/BarDesign.h"
 #include "viz/postprocessor/PostProcessorDataTypes.h"
 
@@ -34,15 +35,7 @@ public:
     using DesignSettings = Structura::App::ProjectData::DesignSettings;
     using DesignMemberParams = Structura::App::ProjectData::DesignMemberParams;
 
-    struct SteelOption {
-        QString name;
-        double fy {0.0};   ///< MPa
-        double fu {0.0};   ///< MPa
-        bool coldFormed {false};
-    };
-
-    static QVector<SteelOption> steelGrades();
-    static std::optional<SteelOption> findSteel(const QString &name);
+    using SteelOption = Structura::App::Services::MaterialLibrary::SteelOption;
 
     /// Uma combinacao (ou caso) ja resolvida: resultado do solver e os casos que a compoem (modelo + fator).
     struct ResultSet {
@@ -95,9 +88,6 @@ public:
     /// `stiffnessFactor`: reducao de rigidez (4.10.7.1.2) usada em Ne de B1 (1,0 = nominal).
     static void applyB2(QVector<MemberEffects> &effects, const QMap<QString, QMap<int, double>> &b2, double stiffnessFactor = 1.0);
 
-    /// Fatores de unidade deduzidos do modulo de elasticidade do material (Pa -> N e m; kN/m2 -> kN e m).
-    static std::pair<double, double> unitFactors(const QVector<MaterialInfo> &materials);
-
     /// Area liquida (5.2.4) e coeficiente Ct (5.2.5) a partir dos dados da ligacao tracionada; `netAreaRatio` e `ct` partem dos valores informados.
     /// `notes` recebe a memoria de calculo. `error` (se nao vazio) descreve dados incoerentes.
     static void tensionConnection(const DesignMemberParams &params, double grossArea, double &netAreaRatio, double &ct, std::vector<std::string> &notes);
@@ -119,13 +109,6 @@ public:
         double lengthM {0.0};
         Structura::Design::BarDesignOutput output;
     };
-
-    /// Secao de dimensionamento correspondente ao perfil (propriedades brutas nos eixos principais).
-    static Structura::Design::DesignSection makeSection(const SectionInfo &section, const QString &rectTubeStandard);
-    /// Areas efetivas de cisalhamento (mm2) para a deformacao por cortante: {na direcao da altura (alma), na direcao da largura (mesas)}.
-    /// I/U/T: d.tw e 2.bf.tf (T: bf.tf); tubo retangular: 2.(d-2t).t e 2.(bf-2t).t; tubo circular: A/2; macico redondo: 9/10 A; macico retangular: 5/6 A;
-    /// formados a frio: d.t e 2.bf.t. {0, 0} = sem area definida (cantoneiras, secao nao suportada): a barra fica rigida ao cortante.
-    static std::pair<double, double> shearAreasMm2(const Structura::Design::DesignSection &section);
 
     /// Razoes Ief/I (eixos X e Y de projeto) para as flechas de ELS: secao efetiva em perfis formados a frio (momentos de servico
     /// `mxNmm`, `myNmm` em N.mm), 1,0 nos demais.

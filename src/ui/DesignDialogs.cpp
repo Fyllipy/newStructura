@@ -1,4 +1,5 @@
 #include "DesignDialogs.h"
+#include "app/services/MaterialLibrary.h"
 
 #include <QBrush>
 #include <QCheckBox>
@@ -31,6 +32,7 @@ namespace Structura::UI {
 using Structura::App::ProjectData::DesignMemberParams;
 using Structura::App::ProjectData::DesignSettings;
 using Structura::App::Services::DesignService;
+using Structura::App::Services::MaterialLibrary;
 
 namespace {
 
@@ -62,7 +64,7 @@ QWidget *DesignSettingsDialog::buildParamForm(ParamEditors &e, bool allowInherit
     if (allowInheritSteel) {
         e.steel->addItem(tr("(padrão do projeto)"), QString());
     }
-    for (const auto &steel : DesignService::steelGrades()) {
+    for (const auto &steel : MaterialLibrary::steelGrades()) {
         e.steel->addItem(QStringLiteral("%1  (fy %2 / fu %3 MPa)").arg(steel.name).arg(steel.fy).arg(steel.fu), steel.name);
     }
     e.kx = spin(0.05, 10.0, 1.0, 2, 0.1);
@@ -574,7 +576,7 @@ DesignSettingsDialog::DesignSettingsDialog(const DesignSettings &settings, const
     auto *global = new QGroupBox(tr("Projeto"));
     auto *globalForm = new QFormLayout(global);
     m_defaultSteel = new QComboBox;
-    for (const auto &steel : DesignService::steelGrades()) {
+    for (const auto &steel : MaterialLibrary::steelGrades()) {
         m_defaultSteel->addItem(QStringLiteral("%1  (fy %2 / fu %3 MPa)").arg(steel.name).arg(steel.fy).arg(steel.fu), steel.name);
     }
     m_defaultSteel->setCurrentIndex(std::max(0, m_defaultSteel->findData(settings.defaultSteel)));

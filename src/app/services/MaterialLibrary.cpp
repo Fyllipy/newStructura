@@ -147,4 +147,22 @@ QVector<MaterialLibrary::Entry> MaterialLibrary::steels()
     return list;
 }
 
+QVector<MaterialLibrary::SteelOption> MaterialLibrary::steelGrades()
+{
+    QVector<SteelOption> list;
+    for (const auto &e : steels()) {
+        list.append({e.name, e.fy, e.fu, e.coldFormed()});
+    }
+    return list;
+}
+
+std::optional<MaterialLibrary::SteelOption> MaterialLibrary::findSteel(const QString &name)
+{
+    // busca direta (evita montar a lista inteira de acos a cada verificacao de barra)
+    if (const auto *entry = find(name); entry && entry->isSteel()) {
+        return SteelOption {entry->name, entry->fy, entry->fu, entry->coldFormed()};
+    }
+    return std::nullopt;
+}
+
 } // namespace Structura::App::Services

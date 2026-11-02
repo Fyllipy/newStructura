@@ -43,6 +43,13 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 # --- Source Groups ---
 
 set(CORE_SOURCES
+    src/core/section/DesignTypes.h
+    src/core/section/GrossSection.h
+    src/core/section/GrossSection.cpp
+    src/core/section/DesignSection.h
+    src/core/section/DesignSection.cpp
+    src/core/section/Sectorial.h
+    src/core/section/Sectorial.cpp
     src/core/math/Vec3Ops.h
     src/core/model/Vector3.h
     src/core/model/Node.h
@@ -134,13 +141,6 @@ set(APP_SOURCES
     src/app/services/SectionPlacementService.h
     src/app/services/SectionPlacementService.cpp
 
-    src/design/DesignTypes.h
-    src/design/GrossSection.h
-    src/design/GrossSection.cpp
-    src/design/DesignSection.h
-    src/design/DesignSection.cpp
-    src/design/Sectorial.h
-    src/design/Sectorial.cpp
     src/design/BeamExtras.h
     src/design/BeamExtras.cpp
     src/design/StiffenerDesign.h
@@ -211,6 +211,8 @@ set(APP_SOURCES
     src/report/ReportHtml.cpp
     src/app/services/ReportService.h
     src/app/services/ReportService.cpp
+    src/app/services/SectionPropertiesService.h
+    src/app/services/SectionPropertiesService.cpp
     src/app/services/DesignService.h
     src/app/services/DesignService.cpp
     src/app/services/MaterialLibrary.h

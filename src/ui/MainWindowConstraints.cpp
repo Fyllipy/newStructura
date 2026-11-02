@@ -7,6 +7,7 @@
 #include "SelectionModel.h"
 #include "app/services/DesignService.h"
 #include "viz/SceneController.h"
+#include "app/services/SectionPropertiesService.h"
 
 #include <QHash>
 #include <QInputDialog>
@@ -16,6 +17,7 @@
 #include <cmath>
 
 using Structura::App::Services::DesignService;
+using Structura::App::Services::SectionPropertiesService;
 namespace PD = Structura::App::ProjectData;
 
 namespace {
@@ -97,11 +99,11 @@ void MainWindow::onEditMemberEnds()
             if (!material || !section || length <= 0.0) {
                 break;
             }
-            const double forceFactor = DesignService::unitFactors(m_materials).first;   // N por unidade de forca do modelo
+            const double forceFactor = SectionPropertiesService::unitFactors(m_materials).first;   // N por unidade de forca do modelo
             const double eiToKnm2 = forceFactor / 1000.0;
             defaults.stiffnessZ = 1000.0 * material->youngModulus * section->iz * eiToKnm2 / length;
             defaults.stiffnessY = 1000.0 * material->youngModulus * section->iy * eiToKnm2 / length;
-            const auto design = DesignService::makeSection(*section, m_extras.design.rectTubeStandard);
+            const auto design = SectionPropertiesService::makeSection(*section, m_extras.design.rectTubeStandard);
             if (material->fy > 0.0 && design.g.Zx > 0.0) {
                 const bool strongIsZ = section->iz >= section->iy;
                 const double zStrong = design.g.Zx, zWeak = design.g.Zy > 0.0 ? design.g.Zy : design.g.Zx;
@@ -181,7 +183,7 @@ void MainWindow::onShowCapacityCurve()
     }
     // forcas e momentos do solver estao na unidade do modelo: convertidos a kN e kN.m para a exibicao
     auto result = m_resultViews[chosen].result.nonlinear;
-    const double toKn = DesignService::unitFactors(m_materials).first / 1000.0;
+    const double toKn = SectionPropertiesService::unitFactors(m_materials).first / 1000.0;
     for (auto &hinge : result.hinges) {
         hinge.moment *= toKn;
     }

@@ -5,6 +5,8 @@
 #include "SelectionModel.h"
 #include "app/services/DesignService.h"
 #include "viz/SceneController.h"
+#include "app/services/SectionPropertiesService.h"
+#include "app/services/MaterialLibrary.h"
 
 #include <QMessageBox>
 
@@ -14,6 +16,8 @@
 void MainWindow::onCompositeFloor()
 {
     using Structura::App::Services::DesignService;
+    using Structura::App::Services::SectionPropertiesService;
+    using Structura::App::Services::MaterialLibrary;
     if (!m_sceneController || m_sections.isEmpty()) {
         QMessageBox::information(this, tr("Vigas e lajes mistas"), tr("Não há barras com perfil no modelo."));
         return;
@@ -24,7 +28,7 @@ void MainWindow::onCompositeFloor()
     if (!m_caseRuns.isEmpty() && !m_resultViews.isEmpty()) {
         hasRun = buildDesignRun(run);
     }
-    const double lengthFactor = DesignService::unitFactors(m_materials).second;
+    const double lengthFactor = SectionPropertiesService::unitFactors(m_materials).second;
 
     QHash<QUuid, const SectionInfo *> sectionById;
     for (const auto &section : m_sections) {
@@ -56,7 +60,7 @@ void MainWindow::onCompositeFloor()
         c.bf = section.geometry.value(QStringLiteral("bf"));
         c.tf = section.geometry.value(QStringLiteral("tf"));
         c.tw = section.geometry.value(QStringLiteral("tw"));
-        c.section = DesignService::makeSection(section, m_extras.design.rectTubeStandard);
+        c.section = SectionPropertiesService::makeSection(section, m_extras.design.rectTubeStandard);
         if (!c.section.supported() || c.d <= 0.0) {
             continue;
         }
@@ -65,7 +69,7 @@ void MainWindow::onCompositeFloor()
             c.lengthMm = std::sqrt(std::pow(a->at(0) - b->at(0), 2.0) + std::pow(a->at(1) - b->at(1), 2.0) + std::pow(a->at(2) - b->at(2), 2.0)) * lengthFactor;
         }
         const auto params = m_extras.design.paramsFor(c.memberId);
-        const auto steel = DesignService::findSteel(params.steel.isEmpty() ? m_extras.design.defaultSteel : params.steel);
+        const auto steel = MaterialLibrary::findSteel(params.steel.isEmpty() ? m_extras.design.defaultSteel : params.steel);
         if (steel) {
             c.fy = steel->fy;
             c.fu = steel->fu;

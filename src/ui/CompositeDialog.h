@@ -1,7 +1,7 @@
 #pragma once
 
 #include "design/CompositeFloor.h"
-#include "design/DesignSection.h"
+#include "core/section/DesignSection.h"
 
 #include <QDialog>
 #include <QMap>

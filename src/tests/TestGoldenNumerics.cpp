@@ -5,7 +5,7 @@
 #include "app/services/ConnectionSolids.h"
 #include "design/BarDesign.h"
 #include "design/CompositeFloor.h"
-#include "design/DesignSection.h"
+#include "core/section/DesignSection.h"
 #include "viz/structure/SectionShapes.h"
 
 #include <QFile>

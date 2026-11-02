@@ -9,6 +9,7 @@
 #include "app/services/EffectiveLengthService.h"
 #include "EffectiveLengthDialog.h"
 #include "viz/SceneController.h"
+#include "app/services/SectionPropertiesService.h"
 
 #include <QMessageBox>
 #include <QStatusBar>
@@ -103,11 +104,12 @@ void MainWindow::onBucklingAnalysis()
     });
     connect(dialog, &Structura::UI::BucklingDialog::effectiveLengthsRequested, this, [this, shared, dialog]() {
         using Structura::App::Services::DesignService;
+        using Structura::App::Services::SectionPropertiesService;
         using Structura::App::Services::EffectiveLengthService;
         if (shared->result.bucklingFactors.empty()) {
             return;
         }
-        const auto factors = DesignService::unitFactors(m_materials);
+        const auto factors = SectionPropertiesService::unitFactors(m_materials);
         Structura::UI::EffectiveLengthDialog lengths(
             [shared](const EffectiveLengthService::Options &options) { return EffectiveLengthService::compute(shared->model, shared->result, options); },
             factors.first / 1000.0, factors.second / 1000.0, dialog);

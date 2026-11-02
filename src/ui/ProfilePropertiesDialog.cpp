@@ -1,9 +1,10 @@
 #include "ProfilePropertiesDialog.h"
 
 #include "app/services/DesignService.h"
-#include "design/DesignSection.h"
-#include "design/GrossSection.h"
+#include "core/section/DesignSection.h"
+#include "core/section/GrossSection.h"
 #include "viz/structure/SectionShapes.h"
+#include "app/services/SectionPropertiesService.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -156,7 +157,7 @@ void ProfilePropertiesDialog::fill(const SectionInfo &section)
             g = computeGrossSection(loops, outerCount);
         }
     }
-    const DesignSection ds = Structura::App::Services::DesignService::makeSection(section, QStringLiteral("AUTO"));
+    const DesignSection ds = Structura::App::Services::SectionPropertiesService::makeSection(section, QStringLiteral("AUTO"));
 
     if (g.valid) {
         addGroup(tr("Propriedades geométricas (seção bruta)"));

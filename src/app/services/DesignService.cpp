@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "app/services/MaterialLibrary.h"
+#include "app/services/SectionPropertiesService.h"
 #include "design/Nbr14762.h"
 #include "design/Nbr14323.h"
 #include "app/services/SectionPlacementService.h"
@@ -50,75 +51,6 @@ Vec3 normalized(const Vec3 &v, const Vec3 &fallback)
 // ---------------------------------------------------------------------------------------------------------------------
 // Acos
 // ---------------------------------------------------------------------------------------------------------------------
-
-QVector<DesignService::SteelOption> DesignService::steelGrades()
-{
-    QVector<SteelOption> list;
-    for (const auto &e : MaterialLibrary::steels()) {
-        list.append({e.name, e.fy, e.fu, e.coldFormed()});
-    }
-    return list;
-}
-
-std::optional<DesignService::SteelOption> DesignService::findSteel(const QString &name)
-{
-    // busca direta (evita montar a lista inteira de acos a cada verificacao de barra)
-    if (const auto *entry = MaterialLibrary::find(name); entry && entry->isSteel()) {
-        return SteelOption {entry->name, entry->fy, entry->fu, entry->coldFormed()};
-    }
-    return std::nullopt;
-}
-
-std::pair<double, double> DesignService::shearAreasMm2(const Structura::Design::DesignSection &section)
-{
-    using Structura::Design::SectionKind;
-    const double d = section.d, bf = section.bf, tw = section.tw, tf = section.tf, t = section.t;
-    switch (section.kind) {
-    case SectionKind::I:
-    case SectionKind::Channel:
-        return {d * tw, 2.0 * bf * tf};
-    case SectionKind::Tee:
-        return {d * tw, bf * tf};
-    case SectionKind::RectTube: {
-        if (section.box) {
-            const double hClear = std::max(0.0, d - 2.0 * section.tFlange), wClear = std::max(0.0, bf - 2.0 * section.tWeb);
-            return {2.0 * hClear * section.tWeb, 2.0 * wClear * section.tFlange};
-        }
-        const double h = std::max(0.0, d - 2.0 * t), w = std::max(0.0, bf - 2.0 * t);
-        return {2.0 * h * t, 2.0 * w * t};
-    }
-    case SectionKind::RoundTube:
-    case SectionKind::LatticedAngles:
-        return {section.g.area / 2.0, section.g.area / 2.0};
-    case SectionKind::DoubleAngleT:
-        return {2.0 * section.leg * t, 2.0 * section.leg * t};
-    case SectionKind::DoubleChannelBack:
-    case SectionKind::DoubleChannelBox:
-        return {2.0 * d * tw, 4.0 * 0.5 * (bf - section.gapE) * tf};
-    case SectionKind::SolidRound:
-        return {0.9 * section.g.area, 0.9 * section.g.area};
-    case SectionKind::SolidRect:
-        return {5.0 / 6.0 * section.g.area, 5.0 / 6.0 * section.g.area};
-    case SectionKind::ColdChannel:
-    case SectionKind::ColdLippedChannel:
-    case SectionKind::ColdZ:
-    case SectionKind::ColdHat:
-        return {d * t, 2.0 * bf * t};
-    default:
-        return {0.0, 0.0};
-    }
-}
-
-std::pair<double, double> DesignService::unitFactors(const QVector<MaterialInfo> &materials)
-{
-    double e = 0.0;
-    for (const auto &m : materials) {
-        e = std::max(e, m.youngModulus);
-    }
-    // E do aco: 2e11 Pa (forca em N) ou 2e8 kN/m2 (forca em kN); comprimento em m nos dois casos.
-    const double forceFactor = (e >= 1e10 || e <= 0.0) ? 1.0 : 1000.0;
-    return {forceFactor, 1000.0};
-}
 
 void DesignService::applyB2(QVector<MemberEffects> &effects, const QMap<QString, QMap<int, double>> &b2, double stiffnessFactor)
 {
@@ -482,61 +414,13 @@ QVector<DesignService::MemberEffects> DesignService::collectEffects(const Struct
 // Secao
 // ---------------------------------------------------------------------------------------------------------------------
 
-Structura::Design::DesignSection DesignService::makeSection(const SectionInfo &section, const QString &rectTubeStandard)
-{
-    using namespace Structura::Design;
-    DesignSection none;
-    if (section.family.isEmpty()) {
-        return none;
-    }
-    const auto shape = SectionShapes::build(section.family, section.geometry, section.mirrored);
-    if (!shape) {
-        return none;
-    }
-    ProfileSpec spec;
-    spec.family = section.family.toStdString();
-    spec.mirrored = section.mirrored;
-    for (auto it = section.geometry.constBegin(); it != section.geometry.constEnd(); ++it) {
-        spec.params[it.key().toStdString()] = it.value();
-    }
-    std::vector<Loop> loops;
-    for (const auto &loop : shape->loops) {
-        loops.emplace_back(loop.begin(), loop.end());
-    }
-    // "NBR8800" / "NBR14762" forcam a norma; qualquer outro valor (padrao "AUTO") reconhece pela serie do tubo (laminado a quente x formado a frio)
-    const Standard tube = rectTubeStandard.compare(QLatin1String("NBR8800"), Qt::CaseInsensitive) == 0 ? Standard::NBR8800
-        : (rectTubeStandard.compare(QLatin1String("NBR14762"), Qt::CaseInsensitive) == 0 ? Standard::NBR14762 : automaticRectTubeStandard(spec));
-    const double jMm4 = section.j * 1e12;
-
-    // Eixos principais (giro nos mesmos eixos locais do solver): escolhe o sinal que anula Ixy.
-    double angle = 0.0;
-    const auto principal = SectionPlacementService::principalProperties(section);
-    if (principal.valid && principal.inclined) {
-        double best = 1e300;
-        for (const double candidate : {principal.thetaDeg, -principal.thetaDeg}) {
-            const DesignSection trial = makeDesignSection(spec, loops, jMm4, tube, candidate, shape->outerCount);
-            if (!trial.supported()) {
-                continue;
-            }
-            const double residual = std::abs(trial.g.Ixy) / std::max(1.0, std::max(trial.g.Ix, trial.g.Iy));
-            if (residual < best) {
-                best = residual;
-                angle = candidate;
-            }
-        }
-    }
-    DesignSection s = makeDesignSection(spec, loops, jMm4, tube, angle, shape->outerCount);
-    s.name = section.name.toStdString();
-    return s;
-}
-
 std::array<double, 2> DesignService::serviceInertiaRatios(const Structura::Design::DesignSection &ds, const QString &steelName, double mxNmm, double myNmm)
 {
     using namespace Structura::Design;
     if (!ds.supported() || ds.standard != Standard::NBR14762) {
         return {1.0, 1.0};
     }
-    const std::optional<SteelOption> option = findSteel(steelName);
+    const std::optional<SteelOption> option = MaterialLibrary::findSteel(steelName);
     SteelGrade steel;
     steel.fy = option ? option->fy : 250.0;
     steel.fu = option ? option->fu : 400.0;
@@ -560,12 +444,12 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
     verdict.steel = steelName;
     verdict.lengthM = effects.lengthMm / 1000.0;
 
-    const Structura::Design::DesignSection ds = makeSection(section, settings.rectTubeStandard);
+    const Structura::Design::DesignSection ds = SectionPropertiesService::makeSection(section, settings.rectTubeStandard);
     if (!ds.supported()) {
         verdict.output.warnings.push_back("Perfil sem geometria de aco reconhecida: nao dimensionado.");
         return verdict;
     }
-    const std::optional<SteelOption> steel = findSteel(steelName);
+    const std::optional<SteelOption> steel = MaterialLibrary::findSteel(steelName);
     Structura::Design::BarDesignInput in;
     in.section = &ds;
     in.steel.name = steelName.toStdString();
@@ -658,7 +542,7 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
             SectionInfo slice = section;
             slice.family = QStringLiteral("L Laminado");
             slice.geometry = {{QStringLiteral("b"), leg}, {QStringLiteral("t"), thickness}, {QStringLiteral("r1"), r1}, {QStringLiteral("r2"), r2}};
-            return makeSection(slice, settings.rectTubeStandard);
+            return SectionPropertiesService::makeSection(slice, settings.rectTubeStandard);
         };
         const auto &g = section.geometry;
         const Structura::Design::DesignSection chord = angle(g.value(QStringLiteral("b")), g.value(QStringLiteral("t")), g.value(QStringLiteral("r1")), g.value(QStringLiteral("r2")));
@@ -745,7 +629,7 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
             slice.geometry = {{QStringLiteral("d"), depth}, {QStringLiteral("bf"), geometry.bf}, {QStringLiteral("tw"), geometry.tw}, {QStringLiteral("tf"), geometry.tf}, {QStringLiteral("r"), 0.0}};
             const double web = std::max(depth - 2.0 * geometry.tf, 0.0);
             slice.j = (2.0 * geometry.bf * std::pow(geometry.tf, 3) + web * std::pow(geometry.tw, 3)) / 3.0 * 1e-12;
-            return makeSection(slice, settings.rectTubeStandard);
+            return SectionPropertiesService::makeSection(slice, settings.rectTubeStandard);
         };
         std::vector<Structura::Design::DesignSection> stations;
         for (const auto &st : input.combos.front().stations) {

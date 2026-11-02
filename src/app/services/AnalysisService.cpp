@@ -6,6 +6,7 @@
 #include "app/services/SectionPlacementService.h"
 #include "app/services/ShellCouplingService.h"
 #include "viz/LocalCoordinateSystem.h"
+#include "app/services/SectionPropertiesService.h"
 
 #include <QHash>
 #include <QSet>
@@ -105,9 +106,9 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
         }
         if (extras.design.shearDeformation) {
             // areas de cisalhamento (alma na direcao da altura, mesas na outra); secoes inclinadas (cantoneiras) ficam rigidas ao cortante
-            const double lengthFactor = DesignService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
+            const double lengthFactor = SectionPropertiesService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
             if (!(principal.valid && principal.inclined) && lengthFactor > 0.0) {
-                const auto areas = DesignService::shearAreasMm2(DesignService::makeSection(sec, extras.design.rectTubeStandard));
+                const auto areas = SectionPropertiesService::shearAreasMm2(SectionPropertiesService::makeSection(sec, extras.design.rectTubeStandard));
                 const bool strongIsZ = data.iz >= data.iy;
                 const double unit = 1.0 / (lengthFactor * lengthFactor);
                 data.shearAreaY = (strongIsZ ? areas.first : areas.second) * unit;
@@ -119,10 +120,10 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
             // coordenada setorial usada nas tensoes); cantoneiras e T (pernas concorrentes) tem Cw desprezivel e ficam em Saint-Venant.
             // O centro de cisalhamento fora do centroide (U, Z, cartola, I monossimetrico) acopla flexao e torcao na rigidez da barra (eixo a -> z, b -> y);
             // a 2a ordem e as analises de flambagem e modal mantem o eixo do centroide
-            const double lengthFactor = DesignService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
+            const double lengthFactor = SectionPropertiesService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
             if (lengthFactor > 0.0) {
                 using Structura::Design::SectionKind;
-                const auto design = DesignService::makeSection(sec, extras.design.rectTubeStandard);
+                const auto design = SectionPropertiesService::makeSection(sec, extras.design.rectTubeStandard);
                 const bool concurrentLegs = design.kind == SectionKind::Angle || design.kind == SectionKind::ColdAngle || design.kind == SectionKind::Tee;
                 if (design.sectorial.valid && !concurrentLegs && design.sectorial.Cw > 0.0) {
                     data.warpingConstant = design.sectorial.Cw / std::pow(lengthFactor, 6.0);
@@ -220,7 +221,7 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
         }
         if (sectionIt->family == QLatin1String("I Alma Variavel")) {
             // Anexo G: alturas d1 (no inicial) e d2 (no final) em unidades do modelo; mesas e alma constantes
-            const double lengthFactor = DesignService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
+            const double lengthFactor = SectionPropertiesService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
             if (lengthFactor > 0.0) {
                 const auto &g = sectionIt->geometry;
                 data.taper = true;
@@ -240,7 +241,7 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
         // (fator x distancia do eixo ate a face). A distancia e a saida do raio, a partir do eixo da outra barra, do prisma retangular d x bf
         // do seu perfil (eixos locais com o giro da secao). Barras que continuam a propria barra (colineares), trelicas/tirantes e secoes
         // sem dimensoes (ou inclinadas) nao geram zona rigida.
-        const double lengthFactor = DesignService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
+        const double lengthFactor = SectionPropertiesService::unitFactors(materials).second;   // mm por unidade de comprimento do modelo
         struct Prism {
             std::array<double, 3> x {}, y {}, z {};
             double hy {0.0}, hz {0.0};   // dimensoes (mm) segundo y' e z'
@@ -448,7 +449,7 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
 
     // Vinculos, ligacoes semirrigidas, rotulas plasticas, ligacoes entre nos e controle da analise nao linear
     {
-        const double toModelForce = 1000.0 / DesignService::unitFactors(materials).first;   // kN -> unidade de forca do modelo
+        const double toModelForce = 1000.0 / SectionPropertiesService::unitFactors(materials).first;   // kN -> unidade de forca do modelo
         QSet<int> nodeIds, memberIds;
         for (const auto &node : model.nodes) {
             nodeIds.insert(node.id);
@@ -590,11 +591,11 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
 
     // Cascas e chapas acopladas: entram na mesma analise (nos coincidentes, ligacoes, apoios e cargas do caso)
     if (extras.shell.coupled && !extras.shell.objects.empty() && result.errors.isEmpty()) {
-        const double forceUnit = DesignService::unitFactors(materials).first;
+        const double forceUnit = SectionPropertiesService::unitFactors(materials).first;
         ShellCouplingService::attach(model, extras.shell, (loadCase.isEmpty() ? defaultCase : loadCase).toStdString(), forceUnit);
     } else if (extras.shell.tributary && !extras.shell.objects.empty() && result.errors.isEmpty()) {
         // sem MEF acoplado: quinhoes de carga das chapas apoiadas em barras (cargas distribuidas nas barras)
-        const double forceUnit = DesignService::unitFactors(materials).first;
+        const double forceUnit = SectionPropertiesService::unitFactors(materials).first;
         ShellCouplingService::attachTributary(model, extras.shell, (loadCase.isEmpty() ? defaultCase : loadCase).toStdString(), forceUnit);
     }
 

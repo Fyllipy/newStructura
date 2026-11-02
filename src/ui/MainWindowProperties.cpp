@@ -645,7 +645,7 @@ void MainWindow::onNewModel()
         return;
     }
     QStringList steels;
-    for (const auto &steel : Structura::App::Services::DesignService::steelGrades()) {
+    for (const auto &steel : Structura::App::Services::MaterialLibrary::steelGrades()) {
         steels << steel.name;
     }
     Structura::UI::NewProjectWizard wizard(steels, m_extras.design.defaultSteel, this);
@@ -739,7 +739,7 @@ void MainWindow::showDatStatusMessage(const QString &prefix, const QString &file
 
 bool MainWindow::addSteelMaterial(const QString &name)
 {
-    const auto steel = Structura::App::Services::DesignService::findSteel(name);
+    const auto steel = Structura::App::Services::MaterialLibrary::findSteel(name);
     if (!steel) {
         return false;
     }
@@ -768,7 +768,7 @@ void MainWindow::ensureDefaultMaterial()
         return;
     }
     if (!addSteelMaterial(m_extras.design.defaultSteel)) {
-        const auto grades = Structura::App::Services::DesignService::steelGrades();
+        const auto grades = Structura::App::Services::MaterialLibrary::steelGrades();
         if (!grades.isEmpty()) {
             addSteelMaterial(grades.first().name);
         }

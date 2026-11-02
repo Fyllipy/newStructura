@@ -6,11 +6,13 @@
 #include "app/services/DesignService.h"
 #include "app/services/IntegrityService.h"
 #include "viz/SceneController.h"
+#include "app/services/MaterialLibrary.h"
 
 #include <QMessageBox>
 #include <QSet>
 
 using Structura::App::Services::DesignService;
+using Structura::App::Services::MaterialLibrary;
 using Structura::App::Services::IntegrityService;
 
 void MainWindow::onStructuralIntegrity()
@@ -62,7 +64,7 @@ void MainWindow::onStructuralIntegrity()
         if (b.ntRdKn < 0.0 && section.area > 0.0) {
             // sem esforco de tracao nas combinacoes: escoamento da secao bruta com o aco da barra
             const auto params = m_extras.design.paramsFor(bar.externalId);
-            const auto steel = DesignService::findSteel(params.steel.isEmpty() ? m_extras.design.defaultSteel : params.steel);
+            const auto steel = MaterialLibrary::findSteel(params.steel.isEmpty() ? m_extras.design.defaultSteel : params.steel);
             if (steel) {
                 b.ntRdKn = section.area * 1e6 * steel->fy / 1.10 / 1000.0;
             }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "design/GrossSection.h"
+#include "core/section/GrossSection.h"
 
 #include <array>
 #include <vector>

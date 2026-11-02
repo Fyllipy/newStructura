@@ -1,6 +1,8 @@
 #include <QtTest/QtTest>
 
 #include "app/ISceneModelGateway.h"
+#include "app/services/MaterialLibrary.h"
+#include "app/services/SectionPropertiesService.h"
 #include "app/SolverBridge.h"
 #include "app/services/SheetBuilder.h"
 #include "drawing/HiddenLine.h"
@@ -20,7 +22,6 @@
 #include "app/services/WindShedService.h"
 #include "app/services/ModelTemplateService.h"
 #include "app/services/ModelCheckService.h"
-#include "app/services/MaterialLibrary.h"
 #include "app/services/UserLibrary.h"
 #include "app/services/AnalysisService.h"
 #include "app/services/CombinationService.h"
@@ -1089,6 +1090,7 @@ private slots:
     void netAreaAndCtOfTensionConnection()
     {
         using Structura::App::Services::DesignService;
+        using Structura::App::Services::SectionPropertiesService;
         ProjectData::DesignMemberParams p;
         p.holeBoltDiameter = 20.0;
         p.holesInChain = 2;
@@ -2904,7 +2906,7 @@ private slots:
             return sum;
         };
         // a laje acrescenta p x area as reacoes verticais (o modelo do exemplo esta em kN)
-        const double forceUnit = DesignService::unitFactors(loaded.materials).first;
+        const double forceUnit = SectionPropertiesService::unitFactors(loaded.materials).first;
         const double slabLoad = 5000.0 * 12.0 * 24.0 / forceUnit;
         QVERIFY2(std::abs((sumFz(rCoupled) - sumFz(rBare)) - slabLoad) < 1e-4 * slabLoad, qPrintable(QString::number(sumFz(rCoupled) - sumFz(rBare)) + " vs " + QString::number(slabLoad)));
         QCOMPARE(static_cast<int>(rCoupled.shellResults.size()), 8);
@@ -2983,7 +2985,7 @@ private slots:
         for (const auto &n : result.shellNodeResults) {
             reaction += n.reactions[2];
         }
-        const double forceUnit = DesignService::unitFactors(loaded.materials).first;
+        const double forceUnit = SectionPropertiesService::unitFactors(loaded.materials).first;
         QVERIFY(std::abs(reaction - 1000.0 * 16.0 / forceUnit) < 1e-3 * 16000.0 / forceUnit);
     }
 

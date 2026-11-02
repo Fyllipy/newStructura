@@ -3,6 +3,8 @@
 #include <QString>
 #include <QVector>
 
+#include <optional>
+
 namespace Structura::App::Services {
 
 /// Biblioteca padrao de materiais: acos estruturais (NBR 7007 / ASTM / NBR 14762) e concretos (NBR 6118).
@@ -35,6 +37,16 @@ public:
     /// Acos adicionais criados pelo usuario (ficam disponiveis ao dimensionamento nesta sessao).
     static void registerCustomSteel(const QString &name, double fy, double fu, bool coldFormed);
     static QVector<Entry> steels();   ///< acos da biblioteca + personalizados
+
+    /// Aco reduzido ao que a analise e o dimensionamento precisam.
+    struct SteelOption {
+        QString name;
+        double fy {0.0};   ///< MPa
+        double fu {0.0};   ///< MPa
+        bool coldFormed {false};
+    };
+    static QVector<SteelOption> steelGrades();
+    static std::optional<SteelOption> findSteel(const QString &name);
 };
 
 } // namespace Structura::App::Services

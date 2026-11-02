@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "app/services/MaterialLibrary.h"
 #include "app/Product.h"
 
 #include "viz/SceneController.h"
@@ -42,7 +43,6 @@
 #include "SvgIcons.h"
 #include "ProfileLibrary.h"
 #include "viz/structure/SectionShapes.h"
-#include "app/services/MaterialLibrary.h"
 #include "app/services/UserLibrary.h"
 #include "AxesPanel.h"
 #include "SectionPlacementPanel.h"

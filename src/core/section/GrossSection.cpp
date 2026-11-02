@@ -1,4 +1,4 @@
-#include "design/GrossSection.h"
+#include "core/section/GrossSection.h"
 
 #include <algorithm>
 #include <cmath>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "design/DesignTypes.h"
+#include "core/section/DesignTypes.h"
 
 #include <vector>
 

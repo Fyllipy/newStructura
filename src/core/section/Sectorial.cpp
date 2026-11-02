@@ -1,4 +1,4 @@
-#include "design/Sectorial.h"
+#include "core/section/Sectorial.h"
 
 #include <algorithm>
 #include <cmath>
