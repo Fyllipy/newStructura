@@ -79,6 +79,7 @@ private slots:
         QVERIFY(dialog.validationError().isEmpty());
         QCOMPARE(dialog.newPositions(), 4);
     }
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void connectionExamplesDrawSomethingForEveryType()
     {
         const QString dir = qEnvironmentVariable("STRUCTURA_PREVIEW_DIR");
@@ -98,6 +99,7 @@ private slots:
             }
         }
     }
+#endif
 
     void busyRunsJobInBackgroundAndPropagates()
     {

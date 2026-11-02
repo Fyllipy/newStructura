@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 #include <QFile>
 
+#include "app/Edition.h"
 #include "app/ShellSolverBridge.h"
 #include "shell/ShellDesign.h"
 #include "shell/ShellFactory.h"
@@ -125,8 +126,31 @@ private slots:
         QVERIFY(std::abs(totalArea(mesh) - (wall + bottom)) / (wall + bottom) < 0.01);
     }
 
+    void demoLimitsShellMesh()
+    {
+        if (Structura::App::Edition::kMaxShellNodes <= 0) {
+            QSKIP("Limite de nos existe so na edicao demonstrativa.");
+        }
+        const QString dll = femLibrary();
+        if (!QFile::exists(dll)) {
+            QSKIP("mefs.dll nao encontrada na raiz do repositorio.");
+        }
+        Model model;
+        model.objects.push_back(cylinderTank(5.0, 6.0, 3, 0.01, 0.01, 0.5));
+        const Mesh mesh = generateMesh(model);
+        QVERIFY(static_cast<int>(mesh.nodes.size()) > Structura::App::Edition::kMaxShellNodes);
+        const Job job = buildJob(model, mesh, {});
+        const Structura::App::ShellSolverBridge bridge(dll);
+        const Results results = bridge.solve(model, mesh, job);
+        QVERIFY(!results.ok());
+        QVERIFY2(QString::fromStdString(results.error).contains(QStringLiteral("100")), results.error.c_str());
+    }
+
     void tankUnderHydrostaticPressure()
     {
+        if (Structura::App::Edition::kMaxShellNodes > 0) {
+            QSKIP("A edicao demonstrativa limita a malha a 100 nos; ver demoLimitsShellMesh.");
+        }
         const QString dll = femLibrary();
         if (!QFile::exists(dll)) {
             QSKIP("mefs.dll nao encontrada na raiz do repositorio.");
@@ -200,6 +224,9 @@ private slots:
 
     void pressureVesselMembraneStresses()
     {
+        if (Structura::App::Edition::kMaxShellNodes > 0) {
+            QSKIP("A edicao demonstrativa limita a malha a 100 nos; ver demoLimitsShellMesh.");
+        }
         const QString dll = femLibrary();
         if (!QFile::exists(dll)) {
             QSKIP("mefs.dll nao encontrada na raiz do repositorio.");
@@ -470,6 +497,9 @@ private slots:
 
     void nonConformingMeshesAreTiedAcrossTheJoint()
     {
+        if (Structura::App::Edition::kMaxShellNodes > 0) {
+            QSKIP("A edicao demonstrativa limita a malha a 100 nos; ver demoLimitsShellMesh.");
+        }
         const QString dll = femLibrary();
         if (!QFile::exists(dll)) {
             QSKIP("mefs.dll ausente");
@@ -596,6 +626,9 @@ private slots:
 
     void tankPartsWithDifferentMeshSizesAreTiedAndSolve()
     {
+        if (Structura::App::Edition::kMaxShellNodes > 0) {
+            QSKIP("A edicao demonstrativa limita a malha a 100 nos; ver demoLimitsShellMesh.");
+        }
         const QString dll = femLibrary();
         if (!QFile::exists(dll)) {
             QSKIP("mefs.dll ausente");
@@ -652,6 +685,7 @@ private slots:
         QVERIFY2(std::abs(reaction - weightTotal) / weightTotal < 1e-3, qPrintable(QString::number(reaction) + " vs " + QString::number(weightTotal)));
     }
 
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void concreteDesignFormulasMatchHandCalculation()
     {
         // rho_min (Tabela 17.3): C30 -> 0,150 %, C35 -> 0,164 %, interpolacao em C32,5
@@ -674,7 +708,9 @@ private slots:
         const double rho1 = 0.004;
         QVERIFY(std::abs(slabShearResistance(fck, d, rho1, 1.4) - tauRd * (1.6 - d) * (1.2 + 40.0 * rho1) * d) < 1e-6);
     }
+#endif
 
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void concreteSlabDesignFromTheFemResults()
     {
         const QString dll = femLibrary();
@@ -728,6 +764,7 @@ private slots:
         QVERIFY2(std::abs(maxAs - as * 1.0e4) / (as * 1.0e4) < 0.10, qPrintable(QString::number(maxAs) + " vs " + QString::number(as * 1.0e4)));
         QVERIFY(design.maxRatio < 1.0);
     }
+#endif
 
     void combinationAndQuantities()
     {

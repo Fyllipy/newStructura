@@ -720,6 +720,7 @@ private slots:
         QVERIFY(std::abs(plain.nodeResults[1].displacements[2] - vs) / vs < 1e-9);
     }
 
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void flexuralTorsionalBucklingMatchesClosedForm()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
@@ -777,6 +778,7 @@ private slots:
             }
         }
     }
+#endif
 
     void solverMatchesTextbookFrameSolutions()
     {
@@ -1035,6 +1037,7 @@ private slots:
         QVERIFY(std::abs(axial(tied, 2)) < 1.0);
         QVERIFY(std::abs(axial(tied, 1) - 5000.0 / 3.0) < 5.0);
     }
+#ifndef STRUCTURA_EDITION_DEMO   // grava e le dados de dimensionamento (a Demonstrativa so os preserva: ver TestDatPreservation)
     void designParametersOfNbr8800AuditRoundTrip()
     {
         QTemporaryDir dir;
@@ -1087,6 +1090,8 @@ private slots:
         QCOMPARE(again.extras.design.loadSteps, 8);
         QVERIFY(std::abs(again.extras.design.rigidZoneFactor - 0.5) < 1e-12);
     }
+#endif
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void netAreaAndCtOfTensionConnection()
     {
         using Structura::App::Services::DesignService;
@@ -1118,6 +1123,8 @@ private slots:
         DesignService::tensionConnection(p, 3000.0, ratio, ct, notes);
         QVERIFY(std::abs(ct - 0.6) < 1e-12);
     }
+#endif
+#ifndef STRUCTURA_EDITION_DEMO   // grava e le dados de dimensionamento (a Demonstrativa so os preserva: ver TestDatPreservation)
     void newExtrasRoundTrip()
     {
         QTemporaryDir dir;
@@ -1216,6 +1223,7 @@ private slots:
         QCOMPARE(stiffAgain.stiffBearing, 150.0);
         QCOMPARE(stiffAgain.stiffForce, 250000.0);
     }
+#endif
 
     void userLibraryPersistsProfilesAndMaterials()
     {
@@ -1584,6 +1592,7 @@ private slots:
         }
         QVERIFY(sawSpecial);
     }
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void bucklingMatchesEulerLoad()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
@@ -1624,6 +1633,7 @@ private slots:
             QFAIL(e.what());
         }
     }
+#endif
     void quantitiesAndDxfExport()
     {
         using Structura::App::Services::QuantityService;
@@ -1744,6 +1754,7 @@ private slots:
         }
         QVERIFY(IfcImporter::parse(QStringLiteral("nao e IFC")).segments.isEmpty());
     }
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void dynamicsMatchesSingleDofReference()
     {
         using Structura::App::Services::DynamicsService;
@@ -1819,6 +1830,7 @@ private slots:
             QFAIL(e.what());
         }
     }
+#endif
 
     void notionalLoadsAreProportionalToGravityAndExpandCombinations()
     {
@@ -1850,6 +1862,7 @@ private slots:
         QVERIFY(NotionalLoadService::isNotionalKey(all[2].factors[3].first));
     }
 
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void modalMatchesCantileverFrequency()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
@@ -1896,6 +1909,8 @@ private slots:
             QFAIL(e.what());
         }
     }
+#endif
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void resultsAndEffectiveLengthsRoundTrip()
     {
         QTemporaryDir dir;
@@ -1989,6 +2004,8 @@ private slots:
         model.nodes.front().x = 1.0;
         QVERIFY(fp1 != Structura::App::Services::ResultsPersistence::fingerprint({&model}, false, 0.8));
     }
+#endif
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void supportMemberAccumulatesAllConnectionsAtTheNode()
     {
         using Structura::App::Services::ConnectionService;
@@ -2032,6 +2049,8 @@ private slots:
         QVERIFY(labelled > 0);
         QVERIFY(both.maxRatio >= single.maxRatio);
     }
+#endif
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void nodeConnectionsEvaluateAndPersist()
     {
         using Structura::App::Services::ConnectionService;
@@ -2178,6 +2197,8 @@ private slots:
         QCOMPARE(static_cast<int>(last.extras.shell.materials.size()), 2);
         QVERIFY(last.extras.shell.materials[1].concrete);
     }
+#endif
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void newConnectionTypesEvaluateProposeAndPersist()
     {
         using Structura::App::Services::ConnectionService;
@@ -2313,6 +2334,8 @@ private slots:
         }
         QCOMPARE(again.extras.connections.at(3).values.value(QStringLiteral("kindT")), list.at(3).values.value(QStringLiteral("kindT")));
     }
+#endif
+#ifndef STRUCTURA_EDITION_DEMO   // grava e le dados de dimensionamento (a Demonstrativa so os preserva: ver TestDatPreservation)
     void sheetLayoutsPersistAndManualPlacementApplies()
     {
         using NC = ProjectData::SheetLayoutDef;
@@ -2355,7 +2378,9 @@ private slots:
         QCOMPARE(again.extras.sheetEdits.at(1).key, QStringLiteral("n2b3/secA/chamada 1"));
         QVERIFY(again.extras.sheetEdits.at(1).deleted);
     }
+#endif
 
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void sheetsBuildMarksListAndExports()
     {
         using Structura::App::Services::SheetBuilder;
@@ -2498,6 +2523,8 @@ private slots:
         const QString dxf = Structura::Drawing::sheetToDxf(sheets.front());
         QVERIFY(dxf.contains(QStringLiteral("LINE")) && dxf.endsWith(QStringLiteral("EOF\r\n")));
     }
+#endif
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void titleBlockPersistsAndRendersInSheets()
     {
         QTemporaryDir dir;
@@ -2572,6 +2599,8 @@ private slots:
         const auto preview = SheetBuilder::previewTitleBlock(r);
         QVERIFY(preview.entities.size() > 30);
     }
+#endif
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void sheetOutlineFollowsSectionEccentricity()
     {
         using Structura::App::Services::SheetBuilder;
@@ -2626,6 +2655,8 @@ private slots:
         QVERIFY(std::abs(centred) < 1e-6);
         QVERIFY(std::abs(raised - 1.0) < 1e-6);   // 100 mm na escala 1:100 = 1 mm de papel
     }
+#endif
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void hiddenLinesAndSheetDetails()
     {
         using namespace Structura::Drawing;
@@ -2752,6 +2783,7 @@ private slots:
         QCOMPARE(static_cast<int>(persp.size()), 1);
         QVERIFY(persp.front().entities.size() > 40);
     }
+#endif
     void solverEndReleaseGivesProppedCantilever()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
@@ -3236,6 +3268,7 @@ private slots:
         QCOMPARE(y.cases.first().faceWidth, 20.0);
     }
 
+#ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
     void effectiveLengthsFromBuckling()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
@@ -3298,6 +3331,7 @@ private slots:
             QVERIFY(out.swayClass >= 0);
         }
     }
+#endif
 
     void orthotropicShellMaterial()
     {

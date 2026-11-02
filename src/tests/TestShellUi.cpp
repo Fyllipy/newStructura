@@ -216,6 +216,7 @@ private slots:
         }
     }
 
+#ifndef STRUCTURA_EDITION_DEMO   // usa a aba de verificacao (dimensionamento) das cascas
     void tankAnalysisAndDesignThroughTheDialog()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/mefs.dll");
@@ -324,6 +325,7 @@ private slots:
             }
         }
     }
+#endif
 };
 
 int main(int argc, char **argv)
