@@ -6,7 +6,7 @@
  * Ponto unico de consulta das capacidades de cada edicao (Comercial x Demonstrativa).
  *
  * A edicao e escolhida na configuracao do CMake (STRUCTURA_EDITION, ver cmake/ProductInfo.cmake). Quem precisa saber o que a
- * edicao oferece consulta estas constantes; nao se espalha `#ifdef STRUCTURA_EDITION_*` pelo codigo. Os modulos exclusivos da edicao
+ * edicao oferece consulta estas constantes; nao se espalham diretivas de pre-processador de edicao pelo codigo. Os modulos exclusivos da edicao
  * Comercial (dimensionamento, ligacoes, detalhamento) nem sao compilados na Demonstrativa: estas constantes servem apenas para
  * decidir, no codigo compartilhado, o que mostrar e o que o formato de arquivo deve apenas preservar.
  */
