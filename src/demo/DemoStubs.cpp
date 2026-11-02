@@ -48,6 +48,7 @@ void MainWindow::automatedCapture(const QString &) {}
 
 namespace Structura::UI {
 void ShellDialog::runDesign() {}
+QWidget *ShellDialog::buildDesignTab() { return nullptr; }
 }
 
 // --- servicos -----------------------------------------------------------------------------------------------------

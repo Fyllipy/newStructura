@@ -1,5 +1,7 @@
 #include "app/ShellSolverBridge.h"
 
+#include "app/Edition.h"
+
 #include <QCoreApplication>
 #include <QLibrary>
 
@@ -133,6 +135,11 @@ Structura::Shell::Results ShellSolverBridge::solve(const Structura::Shell::Model
     const Api api = resolve(library);
     if (!api.complete()) {
         results.error = QObject::tr("A biblioteca mefs nao exporta todas as funcoes necessarias (versao incompativel).").toStdString();
+        return results;
+    }
+    if (Structura::App::Edition::kMaxShellNodes > 0 && static_cast<int>(mesh.nodes.size()) > Structura::App::Edition::kMaxShellNodes) {
+        results.error = QObject::tr("A edicao demonstrativa limita a malha de cascas a %1 nos (a malha atual tem %2). Reduza a malha ou use a edicao comercial.")
+                            .arg(Structura::App::Edition::kMaxShellNodes).arg(mesh.nodes.size()).toStdString();
         return results;
     }
     if (mesh.quads.empty()) {

@@ -1,5 +1,7 @@
 #include "ViewOptionsBar.h"
 
+#include "app/Edition.h"
+
 #include "SvgIcons.h"
 
 #include <QAction>
@@ -81,7 +83,9 @@ ViewOptionsBar::ViewOptionsBar(QWidget *parent)
     addToggle(kSolids, QStringLiteral("solids.svg"), tr("Secoes extrudadas (solido)"), false);
     addToggle(kSupports, QStringLiteral("supports.svg"), tr("Apoios (engaste, articulado e movel: restringem o deslocamento Z)"));
     addToggle(kConstraints, QStringLiteral("constraint.svg"), tr("Restricoes nodais (demais restricoes de translacao e rotacao dos nos)"));
-    addToggle(kConnections, QStringLiteral("connections3d.svg"), tr("Ligacoes em 3D (chapas, parafusos e soldas; cor = utilizacao)"), true);
+    if (Structura::App::Edition::kHasDesign) {
+        addToggle(kConnections, QStringLiteral("connections3d.svg"), tr("Ligacoes em 3D (chapas, parafusos e soldas; cor = utilizacao)"), true);
+    }
     addSeparator();
     addToggle(kNodeForces, QStringLiteral("node-force.svg"), tr("Forcas nodais"));
     addToggle(kNodeMoments, QStringLiteral("node-moment.svg"), tr("Momentos nodais"));
@@ -178,7 +182,7 @@ ViewOptionsBar::ViewOptionsBar(QWidget *parent)
     auto *colorMenu = new QMenu(colors);
     auto *colorGroup = new QActionGroup(colorMenu);
     const QString colorTexts[4] = {tr("Sem cores"), tr("Por secao"), tr("Por material"), tr("Por aproveitamento (dimensionamento)")};
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < (Structura::App::Edition::kHasDesign ? 4 : 3); ++i) {   // "por aproveitamento" e do dimensionamento
         QAction *action = colorMenu->addAction(colorTexts[i]);
         m_colorActions.append(action);
         action->setCheckable(true);

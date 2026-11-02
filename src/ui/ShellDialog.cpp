@@ -1,5 +1,6 @@
 #include "ShellDialog.h"
 
+#include "app/Edition.h"
 #include "app/ShellSolverBridge.h"
 #include "shell/ShellJob.h"
 #include "shell/ShellMesh.h"
@@ -257,7 +258,9 @@ void ShellDialog::buildUi()
     m_tabs->addTab(buildLoadsTab(), tr("Cargas"));
     m_tabs->addTab(buildSupportsTab(), tr("Apoios"));
     m_tabs->addTab(buildResultsTab(), tr("Análise e resultados"));
-    m_tabs->addTab(buildDesignTab(), tr("Verificação"));
+    if (Structura::App::Edition::kHasDesign) {
+        m_tabs->addTab(buildDesignTab(), tr("Verificação"));
+    }
     split->addWidget(m_tabs);
     split->setStretchFactor(1, 1);
     split->setSizes({230, 950});
@@ -1567,42 +1570,5 @@ void ShellDialog::exportCsv()
 // ---------------------------------------------------------------------------------------------------------------------
 // Verificacao
 // ---------------------------------------------------------------------------------------------------------------------
-
-QWidget *ShellDialog::buildDesignTab()
-{
-    auto *page = new QWidget;
-    auto *layout = new QVBoxLayout(page);
-    auto *top = new QHBoxLayout;
-    auto *left = new QVBoxLayout;
-    left->addWidget(new QLabel(tr("Combinações últimas (ELU) a verificar")));
-    m_ultimate = new QListWidget;
-    m_ultimate->setMaximumHeight(130);
-    left->addWidget(m_ultimate);
-    top->addLayout(left, 1);
-    auto *right = new QFormLayout;
-    m_service = new QComboBox;
-    m_designView = new QComboBox;
-    m_designView->addItems({tr("Grandeza dos resultados"), tr("Razão de utilização"), tr("Armadura face + dir. a"), tr("Armadura face + dir. b"), tr("Armadura face − dir. a"), tr("Armadura face − dir. b")});
-    right->addRow(tr("Combinação de serviço (flecha)"), m_service);
-    right->addRow(tr("Colorir a malha por"), m_designView);
-    auto *run = new QPushButton(tr("Verificar"));
-    run->setStyleSheet(QStringLiteral("QPushButton { background: #0d7fb9; color: white; font-weight: 600; padding: 5px 16px; border-radius: 4px; }"));
-    right->addRow(run);
-    top->addLayout(right, 1);
-    layout->addLayout(top);
-    m_designTable = new QTableWidget(0, 8);
-    m_designTable->setHorizontalHeaderLabels({tr("Zona"), tr("Verificação"), tr("Solicitação"), tr("Limite"), tr("Razão"), tr("Un."), tr("Referência"), tr("Observação")});
-    m_designTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
-    m_designTable->horizontalHeader()->setStretchLastSection(true);
-    m_designTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    layout->addWidget(m_designTable, 1);
-    m_designNotes = new QPlainTextEdit;
-    m_designNotes->setReadOnly(true);
-    m_designNotes->setMaximumHeight(90);
-    layout->addWidget(m_designNotes);
-    connect(run, &QPushButton::clicked, this, [this]() { runDesign(); });
-    connect(m_designView, &QComboBox::currentIndexChanged, this, [this]() { refreshView(); });
-    return page;
-}
 
 } // namespace Structura::UI
