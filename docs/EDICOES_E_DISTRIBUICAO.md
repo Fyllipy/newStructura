@@ -24,6 +24,9 @@ nenhuma remove os dados do usuário. Nenhuma associa a extensão `.dat`.
 | Dimensionamento, verificação de perfis, pilares/lajes mistas, integridade estrutural | sim | não |
 | Ligações (catálogo, verificação, visualização 3D) | sim | não |
 | Detalhamento: pranchas, lista de corte, DSTV, IFC | sim | não |
+
+Na Demo, os botões dos recursos comerciais aparecem **desabilitados e sem lógica**, com dica "Disponível na versão paga" (`DemoStubs.cpp`).
+
 | Importação CAD (DXF/IFC) e exportação DXF (eixos das barras) | sim | sim |
 | Relatório | memorial de cálculo completo | relatório de análise (sem dimensionamento) |
 | Abrir/salvar `.dat` | tudo | tudo — dados comerciais são **preservados** (ver abaixo) |

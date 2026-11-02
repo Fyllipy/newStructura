@@ -505,17 +505,17 @@ void MainWindow::createRibbon()
     tools->addGroup(tr("Geração"), {item(m_generateTrussAction, tr("Gerar treliça"), true)});
     tools->addGroup(tr("Eixos"), {item(m_axesAction, tr("Eixos de referência"), true)});
     QList<RibbonItem> modelTools = {item(m_templateAction, tr("Modelo pronto"), true), item(m_checkModelAction, tr("Checar modelo"), true)};
-    if (Structura::App::Edition::kHasDesign) {
+    {   // na Demonstrativa o botao aparece desabilitado
         modelTools.append(item(m_integrityAction, tr("Integridade estrutural"), true));
     }
     tools->addGroup(tr("Modelo"), modelTools);
     QList<RibbonItem> docTools = {item(m_quantitiesAction, tr("Quantitativos"), true), item(m_exportDxfAction, tr("Exportar DXF"), true)};
-    if (Structura::App::Edition::kHasFabrication) {
+    {   // na Demonstrativa o botao aparece desabilitado
         docTools.append(item(m_exportDstvAction, tr("Exportar NC (DSTV)"), true));
         docTools.append(item(m_exportIfcAction, tr("Exportar IFC"), true));
     }
     docTools.append(item(m_importCadAction, tr("Importar DXF/IFC"), true));
-    if (Structura::App::Edition::kHasFabrication) {
+    {   // na Demonstrativa o botao aparece desabilitado
         docTools.append(item(m_sheetsAction, tr("Pranchas"), true));
     }
     tools->addGroup(tr("Documentação"), docTools);
@@ -537,14 +537,14 @@ void MainWindow::createRibbon()
     RibbonItem process = item(m_runAnalysisAction, tr("Processar"), true, tr("Roda a análise estrutural linear do modelo com todos os casos e combinações."));
     process.icon = quickIcon(QStringLiteral("play"), QColor(QStringLiteral("#0d7fb9")), 32);
     QList<RibbonItem> analysisItems = {process};
-    if (Structura::App::Edition::kHasStabilityAndDynamics) {
+    {   // na Demonstrativa o botao aparece desabilitado
         analysisItems.append(item(m_bucklingAction, tr("Flambagem elástica"), true));
         analysisItems.append(item(m_modalAction, tr("Análise modal"), true));
         analysisItems.append(item(m_dynamicsAction, tr("Dinâmica"), true));
     }
     calc->addGroup(tr("Análise"), analysisItems);
     calc->addGroup(tr("Não linearidade"), {item(m_nonlinearOptionsAction, tr("Opções não lineares"), true), item(m_capacityCurveAction, tr("Curva de capacidade"), true)});
-    if (Structura::App::Edition::kHasDesign) {
+    {   // na Demonstrativa o botao aparece desabilitado
         calc->addGroup(tr("Dimensionamento"), {item(m_designSettingsAction, tr("Parâmetros"), true), item(m_verifyDesignAction, tr("Verificar perfis"), true),
                                                item(m_optimizeDesignAction, tr("Dimensionar perfis"), true)});
         calc->addGroup(tr("Ligações e mistas"), {item(m_connectionsAction, tr("Ligações"), true), item(m_copyConnectionsAction, tr("Copiar ligações"), true), item(m_compositeAction, tr("Vigas e lajes mistas"), true)});
