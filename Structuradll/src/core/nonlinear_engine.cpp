@@ -1,4 +1,5 @@
 #include "nonlinear_engine.h"
+#include "solver_security.h"
 
 #include <algorithm>
 #include <cmath>
@@ -57,7 +58,7 @@ public:
                 info.dofs[static_cast<size_t>(i + 6)] = nodeJ * 6 + i;
             }
             if (member->hasWarping()) {
-                throw std::runtime_error("Nonlinear analysis does not support members with warping torsion (member " + std::to_string(member->getId()) + ")");
+                throw std::runtime_error(OBF_STR("Nonlinear analysis does not support members with warping torsion (member ") + std::to_string(member->getId()) + OBF_STR(")"));
             }
             info.nonlinear = member->hasPlasticHinges();
             members_.push_back(std::move(info));
@@ -298,14 +299,14 @@ NonlinearOutcome Engine::run()
     if (const auto it = c_.nodeIndexById.find(o.controlNodeId); it != c_.nodeIndexById.end() && o.controlDof >= 0 && o.controlDof <= 5) {
         controlDof_ = it->second * 6 + o.controlDof;
     } else if (displacementControl) {
-        throw std::runtime_error("Nonlinear analysis: invalid displacement-control node/dof");
+        throw std::runtime_error(OBF_STR("Nonlinear analysis: invalid displacement-control node/dof"));
     }
     if (displacementControl) {
         if (fixed_[static_cast<size_t>(controlDof_)]) {
-            throw std::runtime_error("Nonlinear analysis: the control degree of freedom is restrained");
+            throw std::runtime_error(OBF_STR("Nonlinear analysis: the control degree of freedom is restrained"));
         }
         if (o.controlTarget == 0.0) {
-            throw std::runtime_error("Nonlinear analysis: displacement-control target is zero");
+            throw std::runtime_error(OBF_STR("Nonlinear analysis: displacement-control target is zero"));
         }
     }
     for (auto& info : members_) {
@@ -355,21 +356,19 @@ NonlinearOutcome Engine::run()
 
     if (failedEarly) {
         if (out.steps == 0) {
-            throw std::runtime_error("Nonlinear analysis did not converge even with the smallest load step (tangent stiffness singular or divergent iteration): "
-                                     "check supports, hinge capacities and nonlinear links");
+            throw std::runtime_error(OBF_STR("Nonlinear analysis did not converge even with the smallest load step (tangent stiffness singular or divergent iteration): "
+                                             "check supports, hinge capacities and nonlinear links"));
         }
         out.completed = false;
         char text[320];
         if (displacementControl) {
-            std::snprintf(text, sizeof(text),
-                          "Nonlinear analysis stopped at a displacement of %.6g (target %.6g) and load factor %.4f: the tangent stiffness became singular or the iteration "
-                          "did not converge; the results of the last converged step were kept",
-                          u(controlDof_), o.controlTarget, lambda);
+            const std::string fmt = OBF_STR("Nonlinear analysis stopped at a displacement of %.6g (target %.6g) and load factor %.4f: the tangent stiffness became singular or the iteration "
+                                            "did not converge; the results of the last converged step were kept");
+            std::snprintf(text, sizeof(text), fmt.c_str(), u(controlDof_), o.controlTarget, lambda);
         } else {
-            std::snprintf(text, sizeof(text),
-                          "Nonlinear analysis stopped at load factor %.4f of %.4f: the structure reached its capacity (mechanism or loss of convergence); the results of the "
-                          "last converged step were kept",
-                          lambda, lambdaMax);
+            const std::string fmt = OBF_STR("Nonlinear analysis stopped at load factor %.4f of %.4f: the structure reached its capacity (mechanism or loss of convergence); the results of the "
+                                            "last converged step were kept");
+            std::snprintf(text, sizeof(text), fmt.c_str(), lambda, lambdaMax);
         }
         c_.warnings.push_back(text);
     }
@@ -378,7 +377,7 @@ NonlinearOutcome Engine::run()
     Eigen::SparseMatrix<double> k;
     Eigen::VectorXd fint;
     if (!assemble(u, lambda, k, fint)) {
-        throw std::runtime_error("Nonlinear analysis: failed to evaluate the final state");
+        throw std::runtime_error(OBF_STR("Nonlinear analysis: failed to evaluate the final state"));
     }
     for (auto& info : members_) {
         info.member->setLoadFactor(lambda);

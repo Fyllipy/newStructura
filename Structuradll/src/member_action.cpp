@@ -2,6 +2,7 @@
 #include "material.h"
 #include "member.h"
 #include "section.h"
+#include "solver_security.h"
 
 #include <algorithm>
 #include <array>
@@ -103,7 +104,7 @@ struct EquivalentLoads {
 
 void MemberAction::localComponents(const Member* member, Eigen::VectorXd& flexLocal, Eigen::VectorXd& rigidAtNodeEnds) const {
     if (!member) {
-        throw std::invalid_argument("Member pointer cannot be null");
+        throw std::invalid_argument(OBF_STR("Member pointer cannot be null"));
     }
     EquivalentLoads acc;
     acc.length = member->calculateLength();
@@ -111,7 +112,7 @@ void MemberAction::localComponents(const Member* member, Eigen::VectorXd& flexLo
     acc.rigidJ = member->getRigidJ();
     acc.flex = member->calculateFlexibleLength();
     if (acc.flex <= 0.0) {
-        throw std::invalid_argument("Member length must be positive to compute equivalent forces");
+        throw std::invalid_argument(OBF_STR("Member length must be positive to compute equivalent forces"));
     }
 
     Eigen::Matrix3d R = Eigen::Matrix3d::Identity();
@@ -127,7 +128,7 @@ void MemberAction::localComponents(const Member* member, Eigen::VectorXd& flexLo
     case Kind::Trapezoid: {
         const double s0 = std::max(0.0, std::min(a, b)), s1 = std::min(acc.length, std::max(a, b));
         if (s1 - s0 <= tol) {
-            throw std::invalid_argument("Trapezoidal load on member " + std::to_string(memberId) + " has no length inside the member");
+            throw std::invalid_argument(OBF_STR("Trapezoidal load on member ") + std::to_string(memberId) + OBF_STR(" has no length inside the member"));
         }
         const double span = std::max(b - a, tol);
         const Eigen::Vector3d q1 = R * v1, q2 = R * v2;
@@ -152,14 +153,14 @@ void MemberAction::localComponents(const Member* member, Eigen::VectorXd& flexLo
     }
     case Kind::PointForce: {
         if (a < -tol || a > acc.length + tol) {
-            throw std::invalid_argument("Point load on member " + std::to_string(memberId) + " is outside the member");
+            throw std::invalid_argument(OBF_STR("Point load on member ") + std::to_string(memberId) + OBF_STR(" is outside the member"));
         }
         acc.addForce(std::min(std::max(a, 0.0), acc.length), R * v1, 1.0);
         break;
     }
     case Kind::PointMoment: {
         if (a < -tol || a > acc.length + tol) {
-            throw std::invalid_argument("Point moment on member " + std::to_string(memberId) + " is outside the member");
+            throw std::invalid_argument(OBF_STR("Point moment on member ") + std::to_string(memberId) + OBF_STR(" is outside the member"));
         }
         acc.addMoment(std::min(std::max(a, 0.0), acc.length), R * v1);
         break;
@@ -180,7 +181,7 @@ void MemberAction::localComponents(const Member* member, Eigen::VectorXd& flexLo
     }
 
     if (member->hasWarping() && (acc.flexLocal(3) != 0.0 || acc.flexLocal(9) != 0.0 || acc.rigid(3) != 0.0 || acc.rigid(9) != 0.0)) {
-        throw std::invalid_argument("Member " + std::to_string(memberId) + ": point torque on a member with warping torsion is not supported");
+        throw std::invalid_argument(OBF_STR("Member ") + std::to_string(memberId) + OBF_STR(": point torque on a member with warping torsion is not supported"));
     }
     flexLocal = acc.flexLocal;
     rigidAtNodeEnds = acc.rigid;

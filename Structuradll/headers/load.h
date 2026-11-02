@@ -7,10 +7,14 @@
 #include <Eigen/Dense>
 
 class Member;
+class NodalLoad;
+class BarLoad;
 
 class Load {
 public:
     virtual ~Load() = default;
+    virtual const NodalLoad* asNodalLoad() const noexcept { return nullptr; }
+    virtual const BarLoad* asBarLoad() const noexcept { return nullptr; }
 };
 
 class NodalLoad : public Load {
@@ -21,6 +25,7 @@ private:
 public:
     NodalLoad(int nodeId, const std::vector<double>& forces);
 
+    const NodalLoad* asNodalLoad() const noexcept override { return this; }
     int getNodeId() const;
     double getForce(int component) const;
     const std::vector<double>& getForces() const;
@@ -30,6 +35,7 @@ public:
 // forcas nodais equivalentes nos eixos globais. As subclasses so informam as componentes locais.
 class BarLoad : public Load {
 public:
+    const BarLoad* asBarLoad() const noexcept override { return this; }
     virtual int getMemberId() const = 0;
     // Forcas de engastamento perfeito (como cargas equivalentes) da parte flexivel nos eixos locais e cargas equivalentes das zonas rigidas
     virtual void localComponents(const Member* member, Eigen::VectorXd& flexLocal, Eigen::VectorXd& rigidAtNodeEnds) const = 0;

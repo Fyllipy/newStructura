@@ -1,4 +1,5 @@
 #include "fem_model.h"
+#include "../../Structuradll/src/core/solver_security.h"
 
 #include "shell_q4.h"
 
@@ -105,7 +106,7 @@ bool Model::solve(const SolveOptions &options, std::string &error)
     const int nn = static_cast<int>(nodes.size());
     const int nd = 6 * nn;
     if (nn == 0 || (shells.empty() && beams.empty())) {
-        error = "Modelo sem nos ou sem elementos.";
+        error = OBF_STR("Modelo sem nos ou sem elementos.");
         return false;
     }
     auto checkIndex = [&](int i, int n) { return i >= 0 && i < n; };
@@ -123,13 +124,13 @@ bool Model::solve(const SolveOptions &options, std::string &error)
     for (std::size_t e = 0; e < shells.size(); ++e) {
         const Shell &sh = shells[e];
         if (!checkIndex(sh.material, static_cast<int>(materials.size())) || sh.thickness <= 0.0) {
-            error = "Casca " + std::to_string(sh.id) + ": material ou espessura invalidos.";
+            error = OBF_STR("Casca ") + std::to_string(sh.id) + OBF_STR(": material ou espessura invalidos.");
             return false;
         }
         std::array<Vec3, 4> p;
         for (int i = 0; i < 4; ++i) {
             if (!checkIndex(sh.nodes[i], nn)) {
-                error = "Casca " + std::to_string(sh.id) + ": no inexistente.";
+                error = OBF_STR("Casca ") + std::to_string(sh.id) + OBF_STR(": no inexistente.");
                 return false;
             }
             p[i] = nodes[sh.nodes[i]].x;
@@ -137,7 +138,7 @@ bool Model::solve(const SolveOptions &options, std::string &error)
         ShellData &d = shellData[e];
         d.frame = shellFrame(p);
         if (d.frame.area < 1e-14) {
-            error = "Casca " + std::to_string(sh.id) + ": area nula.";
+            error = OBF_STR("Casca ") + std::to_string(sh.id) + OBF_STR(": area nula.");
             return false;
         }
         maxWarp = std::max(maxWarp, d.frame.warp);
@@ -164,14 +165,14 @@ bool Model::solve(const SolveOptions &options, std::string &error)
     for (std::size_t e = 0; e < beams.size(); ++e) {
         const Beam &b = beams[e];
         if (!checkIndex(b.material, static_cast<int>(materials.size())) || !checkIndex(b.nodes[0], nn) || !checkIndex(b.nodes[1], nn)) {
-            error = "Barra " + std::to_string(b.id) + ": dados invalidos.";
+            error = OBF_STR("Barra ") + std::to_string(b.id) + OBF_STR(": dados invalidos.");
             return false;
         }
         BeamData &d = beamData[e];
         const Vec3 xi = nodes[b.nodes[0]].x, xj = nodes[b.nodes[1]].x;
         d.length = (xj - xi).norm();
         if (d.length < 1e-12) {
-            error = "Barra " + std::to_string(b.id) + ": comprimento nulo.";
+            error = OBF_STR("Barra ") + std::to_string(b.id) + OBF_STR(": comprimento nulo.");
             return false;
         }
         d.local = beamLocalStiffness(b, materials[b.material], d.length);
@@ -200,12 +201,12 @@ bool Model::solve(const SolveOptions &options, std::string &error)
         std::vector<Triplet> tieTriplets;
         for (const Tie &t : ties) {
             if (!checkIndex(t.slave, nn) || t.masters.size() != t.weights.size() || t.masters.empty()) {
-                error = "Ligacao no-aresta invalida.";
+                error = OBF_STR("Ligacao no-aresta invalida.");
                 return false;
             }
             for (const int m : t.masters) {
                 if (!checkIndex(m, nn)) {
-                    error = "Ligacao no-aresta: no mestre inexistente.";
+                    error = OBF_STR("Ligacao no-aresta: no mestre inexistente.");
                     return false;
                 }
             }
@@ -243,7 +244,7 @@ bool Model::solve(const SolveOptions &options, std::string &error)
         }
     }
     if (freeCount == 0) {
-        error = "Todos os graus de liberdade estao restritos.";
+        error = OBF_STR("Todos os graus de liberdade estao restritos.");
         return false;
     }
 
@@ -376,7 +377,7 @@ bool Model::solve(const SolveOptions &options, std::string &error)
         Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
         solver.compute(kff);
         if (solver.info() != Eigen::Success) {
-            error = "Falha na fatoracao da matriz de rigidez (estrutura instavel ou apoios insuficientes).";
+            error = OBF_STR("Falha na fatoracao da matriz de rigidez (estrutura instavel ou apoios insuficientes).");
             return false;
         }
         {
@@ -394,8 +395,8 @@ bool Model::solve(const SolveOptions &options, std::string &error)
                 const double diagonal = std::abs(kff.coeff(i, i));
                 const double pivot = pivots(permutation(i));
                 if (diagonal > 0.0 && (pivot <= 0.0 || pivot < 1.0e-12 * diagonal)) {
-                    error = "Estrutura instavel (mecanismo): no " + std::to_string(nodes[nodalDof[i] / 6].id) + ", grau de liberdade "
-                            + std::to_string(nodalDof[i] % 6 + 1) + " sem restricao pela rigidez do modelo; verifique apoios e ligacoes.";
+                    error = OBF_STR("Estrutura instavel (mecanismo): no ") + std::to_string(nodes[nodalDof[i] / 6].id) + OBF_STR(", grau de liberdade ")
+                            + std::to_string(nodalDof[i] % 6 + 1) + OBF_STR(" sem restricao pela rigidez do modelo; verifique apoios e ligacoes.");
                     return false;
                 }
             }
@@ -409,7 +410,7 @@ bool Model::solve(const SolveOptions &options, std::string &error)
             }
             const Eigen::VectorXd uf = solver.solve(fr);
             if (solver.info() != Eigen::Success || !uf.allFinite()) {
-                error = "Falha na solucao do sistema (matriz singular).";
+                error = OBF_STR("Falha na solucao do sistema (matriz singular).");
                 return false;
             }
             Eigen::VectorXd u = Eigen::VectorXd::Zero(nd);

@@ -1,15 +1,16 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
-#if defined(_WIN32)
-#if defined(FEM_DLL_EXPORTS)
-#define FEM_API __declspec(dllexport)
-#else
-#define FEM_API __declspec(dllimport)
-#endif
-#else
+// Legacy symbols are kept internal (not exported in the PE export directory).
+// Only the authenticated cryptographic dispatch gatekeeper (_z8m2p) is exported.
 #define FEM_API
+
+#if defined(_WIN32) && defined(FEM_DLL_EXPORTS)
+#define FEM_GATE_API __declspec(dllexport)
+#else
+#define FEM_GATE_API
 #endif
 
 /// MEF de cascas/chapas (quadrilatero Q4: membrana com modos incompativeis e penalidade de rotacao no plano, flexao de Mindlin com MITC4)
@@ -63,5 +64,8 @@ FEM_API int fem_get_reactions(void* h, int caseIndex, double* out);
 FEM_API int fem_get_shell_results(void* h, int caseIndex, double* out40, double* axes9);
 /// Esforcos nas extremidades da barra (12 valores, eixos locais, forcas sobre o elemento).
 FEM_API int fem_get_beam_forces(void* h, int caseIndex, double* out12);
+
+// Authenticated dispatch table gatekeeper (sole PE export of mefs.dll).
+FEM_GATE_API int _z8m2p(std::uint64_t nonce, std::uint64_t authTag, std::uint64_t* outTable, std::uint32_t slotCount);
 
 }

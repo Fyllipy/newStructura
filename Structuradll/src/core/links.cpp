@@ -1,4 +1,5 @@
 #include "links.h"
+#include "solver_security.h"
 
 #include <algorithm>
 #include <cmath>
@@ -83,7 +84,7 @@ void lawResponse(const LinkLawData& law, double d, double plasticCommitted, doub
         return;
     }
     default:
-        throw std::runtime_error("Link law: unknown kind " + std::to_string(law.kind));
+        throw std::runtime_error(OBF_STR("Link law: unknown kind ") + std::to_string(law.kind));
     }
 }
 
@@ -94,7 +95,7 @@ LinkSet::LinkSet(const SolverInput& input, const std::unordered_map<int, int>& n
     for (const LinkData& data : input.links) {
         const auto ni = nodeIndexById.find(data.nodeI), nj = nodeIndexById.find(data.nodeJ);
         if (ni == nodeIndexById.end() || nj == nodeIndexById.end()) {
-            throw std::runtime_error("Link " + std::to_string(data.id) + " references unknown node");
+            throw std::runtime_error(OBF_STR("Link ") + std::to_string(data.id) + OBF_STR(" references unknown node"));
         }
         Link link;
         link.id = data.id;

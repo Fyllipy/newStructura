@@ -1,4 +1,5 @@
 #include "node.h"
+#include "solver_security.h"
 #include <stdexcept>
 
 Node::Node(int id, double x, double y, double z, const std::vector<bool>& restraints)
@@ -10,7 +11,7 @@ Node::Node(int id, double x, double y, double z, const std::vector<bool>& restra
 
     // Ensure restraints vector has exactly 6 elements
     if (this->restraints.size() != 6) {
-        throw std::invalid_argument("Restraints vector must have exactly 6 elements");
+        throw std::invalid_argument(OBF_STR("Restraints vector must have exactly 6 elements"));
     }
 }
 
@@ -36,21 +37,21 @@ const std::vector<bool>& Node::getRestraints() const {
 
 bool Node::isRestrained(int dof) const {
     if (dof < 0 || dof >= 6) {
-        throw std::out_of_range("DOF index must be between 0 and 5");
+        throw std::out_of_range(OBF_STR("DOF index must be between 0 and 5"));
     }
     return restraints[dof];
 }
 
 void Node::setDisplacement(int dof, double value) {
     if (dof < 0 || dof >= 6) {
-        throw std::out_of_range("DOF index must be between 0 and 5");
+        throw std::out_of_range(OBF_STR("DOF index must be between 0 and 5"));
     }
     displacements[dof] = value;
 }
 
 double Node::getDisplacement(int dof) const {
     if (dof < 0 || dof >= 6) {
-        throw std::out_of_range("DOF index must be between 0 and 5");
+        throw std::out_of_range(OBF_STR("DOF index must be between 0 and 5"));
     }
     return displacements[dof];
 }
@@ -61,14 +62,14 @@ const std::vector<double>& Node::getDisplacements() const {
 
 void Node::setReaction(int dof, double value) {
     if (dof < 0 || dof >= 6) {
-        throw std::out_of_range("DOF index must be between 0 and 5");
+        throw std::out_of_range(OBF_STR("DOF index must be between 0 and 5"));
     }
     reactions[dof] = value;
 }
 
 double Node::getReaction(int dof) const {
     if (dof < 0 || dof >= 6) {
-        throw std::out_of_range("DOF index must be between 0 and 5");
+        throw std::out_of_range(OBF_STR("DOF index must be between 0 and 5"));
     }
     return reactions[dof];
 }

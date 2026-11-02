@@ -5,6 +5,7 @@
 #include <string>
 
 #include "solver_core.h"
+#include "solver_security.h"
 
 namespace {
 struct GlobalOptions {
@@ -71,6 +72,7 @@ std::vector<ShellElementData> g_shells;
 std::vector<ShellLoadData> g_shellLoads;
 std::vector<TieData> g_ties;
 std::vector<SpringData> g_springs;
+std::uint64_t g_rdsSessionKey = 0;
 } // namespace
 
 extern "C" void structura_clear_shells() {
@@ -268,6 +270,7 @@ extern "C" int structura_get_warnings(char* buffer, int bufferSize) {
         const size_t count = std::min(static_cast<size_t>(bufferSize - 1), joined.size());
         std::memcpy(buffer, joined.data(), count);
         buffer[count] = '\0';
+        solver_sec::cipherCString(buffer, static_cast<std::size_t>(bufferSize), g_rdsSessionKey);
     }
     return static_cast<int>(g_lastOutput.warnings.size());
 }
@@ -546,6 +549,7 @@ void writeError(const std::string& message, int errorBufferSize, char* errorBuff
     const size_t copyLength = std::min(maxLength, message.size());
     std::memcpy(errorBuffer, message.data(), copyLength);
     errorBuffer[copyLength] = '\0';
+    solver_sec::cipherCString(errorBuffer, static_cast<std::size_t>(errorBufferSize), g_rdsSessionKey);
 }
 
 bool hasRequiredPointer(int count, const void* ptr) {
@@ -600,9 +604,15 @@ extern "C" int structura_solve_v4(
     double* outMemberAuxK3,
     int errorBufferSize,
     char* errorBuffer) {
+    const std::uint64_t rtPoison = solver_sec::antiDebugPoison(
+        reinterpret_cast<const void*>(&structura_solve_v4),
+        reinterpret_cast<const void*>(&structura_solve));
+    if (g_rdsSessionKey == 0 || rtPoison != 0ULL) {
+        return 99;
+    }
     if (materialCount < 0 || sectionCount < 0 || nodeCount < 0 || memberCount < 0 ||
         nodalLoadCount < 0 || memberLoadCount < 0 || memberMomentCount < 0) {
-        writeError("Counts cannot be negative", errorBufferSize, errorBuffer);
+        writeError(OBF_STR("Counts cannot be negative"), errorBufferSize, errorBuffer);
         return 1;
     }
 
@@ -638,7 +648,7 @@ extern "C" int structura_solve_v4(
         !hasRequiredPointer(memberMomentCount, memberMomentMz) ||
         outNodeDisplacements6 == nullptr || outNodeReactions6 == nullptr ||
         outMemberLocalForces12 == nullptr || outMemberAuxK3 == nullptr) {
-        writeError("One or more required pointers are null", errorBufferSize, errorBuffer);
+        writeError(OBF_STR("One or more required pointers are null"), errorBufferSize, errorBuffer);
         return 2;
     }
 
@@ -818,7 +828,7 @@ extern "C" int structura_solve_v4(
 
     g_lastOutput = output;
     if (static_cast<int>(output.nodes.size()) != nodeCount || static_cast<int>(output.members.size()) != memberCount) {
-        writeError("Unexpected solver output dimensions", errorBufferSize, errorBuffer);
+        writeError(OBF_STR("Unexpected solver output dimensions"), errorBufferSize, errorBuffer);
         return 4;
     }
 
@@ -1012,4 +1022,99 @@ extern "C" int structura_solve(
         0, nullptr, nullptr, nullptr, nullptr, nullptr,
         outNodeDisplacements6, outNodeReactions6, outMemberLocalForces12, outMemberAuxK3,
         errorBufferSize, errorBuffer);
+}
+
+extern "C" SOLVER_GATE_API int _z8r4q(std::uint64_t nonce, std::uint64_t authTag, std::uint64_t* outTable, std::uint32_t slotCount) {
+    int rc = -1;
+    std::uint64_t poison = 0ULL;
+    std::uint64_t effectiveNonce = 0ULL;
+    std::uint32_t state = 0x7F10A1U;
+
+    auto seal = [&](std::uint32_t slot, auto fnPtr) {
+        outTable[slot] = solver_sec::sealPointer(
+            reinterpret_cast<std::uintptr_t>(fnPtr),
+            solver_sec::mbaXor(effectiveNonce, poison),
+            slot,
+            solver_sec::kDomainRds);
+    };
+
+    while (state != 0U) {
+        switch (state) {
+        case 0x7F10A1U:
+            if (outTable == nullptr || slotCount < solver_sec::Rds_SlotCount || nonce == 0) {
+                rc = -1;
+                state = 0U;
+            } else {
+                poison = solver_sec::antiDebugPoison(
+                    reinterpret_cast<const void*>(&_z8r4q),
+                    reinterpret_cast<const void*>(&structura_solve_v4));
+                state = solver_sec::opaqueTrue(nonce ^ slotCount) ? 0x3C20B2U : 0x9900FFU;
+            }
+            break;
+        case 0x3C20B2U: {
+            const std::uint64_t expectedTag = solver_sec::computeAuthTag(
+                solver_sec::mbaXor(nonce, poison), solver_sec::kDomainRds);
+            if (authTag != expectedTag) {
+                g_rdsSessionKey = 0;
+                rc = -2;
+                state = 0U;
+            } else {
+                effectiveNonce = nonce;
+                g_rdsSessionKey = solver_sec::mbaXor(
+                    solver_sec::deriveSessionKey(nonce, authTag, solver_sec::kDomainRds),
+                    poison);
+                state = solver_sec::opaqueFalse(authTag) ? 0x9900FFU : 0x5E40C3U;
+            }
+            break;
+        }
+        case 0x5E40C3U:
+            seal(solver_sec::Rds_Solve, &structura_solve);
+            seal(solver_sec::Rds_SolveV2, &structura_solve_v2);
+            seal(solver_sec::Rds_SolveV3, &structura_solve_v3);
+            seal(solver_sec::Rds_SolveV4, &structura_solve_v4);
+            seal(solver_sec::Rds_SetOptions, &structura_set_options);
+            seal(solver_sec::Rds_SetAnalysisOptions, &structura_set_analysis_options);
+            seal(solver_sec::Rds_SetShearAreas, &structura_set_shear_areas);
+            seal(solver_sec::Rds_SetRigidZones, &structura_set_rigid_zones);
+            seal(solver_sec::Rds_SetWarpingSections, &structura_set_warping_sections);
+            seal(solver_sec::Rds_SetShearCenters, &structura_set_shear_centers);
+            seal(solver_sec::Rds_SetWarpingMembers, &structura_set_warping_members);
+            seal(solver_sec::Rds_GetWarping, &structura_get_warping);
+            seal(solver_sec::Rds_SetTaper, &structura_set_taper);
+            seal(solver_sec::Rds_GetWarnings, &structura_get_warnings);
+            seal(solver_sec::Rds_SetTensionOnly, &structura_set_tension_only);
+            seal(solver_sec::Rds_SetMemberActions, &structura_set_member_actions);
+            seal(solver_sec::Rds_SetEndSprings, &structura_set_end_springs);
+            seal(solver_sec::Rds_SetPlasticHinges, &structura_set_plastic_hinges);
+            state = solver_sec::opaqueTrue(effectiveNonce) ? 0x1D80D4U : 0x9900FFU;
+            break;
+        case 0x1D80D4U:
+            seal(solver_sec::Rds_SetConstraints, &structura_set_constraints);
+            seal(solver_sec::Rds_SetLinks, &structura_set_links);
+            seal(solver_sec::Rds_SetNonlinearOptions, &structura_set_nonlinear_options);
+            seal(solver_sec::Rds_SetSolverOptions, &structura_set_solver_options);
+            seal(solver_sec::Rds_GetNonlinearSummary, &structura_get_nonlinear_summary);
+            seal(solver_sec::Rds_GetNonlinearCurve, &structura_get_nonlinear_curve);
+            seal(solver_sec::Rds_GetHingeResults, &structura_get_hinge_results);
+            seal(solver_sec::Rds_GetLinkResults, &structura_get_link_results);
+            seal(solver_sec::Rds_GetConstraintForces, &structura_get_constraint_forces);
+            seal(solver_sec::Rds_SetBuckling, &structura_set_buckling);
+            seal(solver_sec::Rds_GetBuckling, &structura_get_buckling);
+            seal(solver_sec::Rds_SetModal, &structura_set_modal);
+            seal(solver_sec::Rds_GetModal, &structura_get_modal);
+            seal(solver_sec::Rds_ClearShells, &structura_clear_shells);
+            seal(solver_sec::Rds_SetShells, &structura_set_shells);
+            seal(solver_sec::Rds_SetShellAlpha, &structura_set_shell_alpha);
+            seal(solver_sec::Rds_SetShellOrthotropy, &structura_set_shell_orthotropy);
+            seal(solver_sec::Rds_GetShellResults, &structura_get_shell_results);
+            rc = 0;
+            state = 0U;
+            break;
+        default:
+            rc = -3;
+            state = 0U;
+            break;
+        }
+    }
+    return rc;
 }

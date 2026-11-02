@@ -28,6 +28,26 @@ target_link_libraries(fem_dll PRIVATE fem_core)
 target_compile_definitions(fem_dll PRIVATE FEM_DLL_EXPORTS)
 set_target_properties(fem_dll PROPERTIES OUTPUT_NAME "mefs")
 
+if (MSVC)
+    target_compile_options(fem_core PRIVATE /GR- /Gy /Gw $<$<CONFIG:Release>:/GL /GS- /Ob2>)
+    target_compile_options(fem_dll PRIVATE /O2 /GR- /Gy /Gw $<$<CONFIG:Release>:/GL /GS- /Ob2>)
+    target_link_options(fem_dll PRIVATE
+        /OPT:REF /OPT:ICF /DEBUG:NONE /NOCOFFGRPINFO /BREPRO
+        $<$<CONFIG:Release>:/LTCG>
+    )
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        # Quando compilado com clang-cl + XOLLVM / OLLVM, ativa os passes nativos de ofuscacao LLVM
+        target_compile_options(fem_core PRIVATE -mllvm -fla -mllvm -sub -mllvm -bcf)
+        target_compile_options(fem_dll PRIVATE -mllvm -fla -mllvm -sub -mllvm -bcf)
+    endif()
+endif()
+
+add_custom_command(TARGET fem_dll POST_BUILD
+    COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/../tools/protect_pe.py" "$<TARGET_FILE:fem_dll>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:fem_dll>" "${CMAKE_CURRENT_SOURCE_DIR}/../mefs.dll"
+    COMMENT "Hardening mefs.dll and deploying to repository root"
+)
+
 add_executable(fem_tests tests/fem_tests.cpp)
 target_include_directories(fem_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(fem_tests PRIVATE fem_core)

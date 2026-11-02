@@ -1,10 +1,12 @@
 #include "app/ShellSolverBridge.h"
 
 #include "app/Edition.h"
+#include "../../Structuradll/src/core/solver_security.h"
 
 #include <QCoreApplication>
 #include <QLibrary>
 
+#include <array>
 #include <vector>
 
 namespace Structura::App {
@@ -52,11 +54,12 @@ struct Api {
     GetFn displacements {nullptr};
     GetFn reactions {nullptr};
     GetShellFn shells {nullptr};
+    std::uint64_t sessionKey {0};
 
     bool complete() const
     {
         return create && destroy && addMaterial && addNode && addShell && addSpring && addTie && addCase && loadNode && loadPressure && loadBody && loadThermal
-            && solve && iterations && warp && displacements && reactions && shells;
+            && solve && iterations && warp && displacements && reactions && shells && sessionKey != 0;
     }
 };
 
@@ -72,26 +75,44 @@ void configure(QLibrary &library, const QString &path)
 Api resolve(QLibrary &library)
 {
     Api api;
-    api.create = reinterpret_cast<CreateFn>(library.resolve("fem_create"));
-    api.destroy = reinterpret_cast<DestroyFn>(library.resolve("fem_destroy"));
-    api.addMaterial = reinterpret_cast<AddMaterialFn>(library.resolve("fem_add_material"));
-    api.addNode = reinterpret_cast<AddNodeFn>(library.resolve("fem_add_node"));
-    api.addShell = reinterpret_cast<AddShellFn>(library.resolve("fem_add_shell"));
-    api.addSpring = reinterpret_cast<AddSpringFn>(library.resolve("fem_add_spring"));
-    api.addTie = reinterpret_cast<AddTieFn>(library.resolve("fem_add_tie"));
-    api.addTieMasked = reinterpret_cast<AddTieMaskedFn>(library.resolve("fem_add_tie_masked"));
-    api.setOrthotropy = reinterpret_cast<SetOrthotropyFn>(library.resolve("fem_set_material_orthotropy"));
-    api.addCase = reinterpret_cast<AddCaseFn>(library.resolve("fem_add_case"));
-    api.loadNode = reinterpret_cast<LoadNodeFn>(library.resolve("fem_load_node"));
-    api.loadPressure = reinterpret_cast<LoadPressureFn>(library.resolve("fem_load_shell_pressure"));
-    api.loadBody = reinterpret_cast<LoadBodyFn>(library.resolve("fem_load_shell_body"));
-    api.loadThermal = reinterpret_cast<LoadThermalFn>(library.resolve("fem_load_shell_thermal"));
-    api.solve = reinterpret_cast<SolveFn>(library.resolve("fem_solve"));
-    api.iterations = reinterpret_cast<IterationsFn>(library.resolve("fem_spring_iterations"));
-    api.warp = reinterpret_cast<WarpFn>(library.resolve("fem_max_warp"));
-    api.displacements = reinterpret_cast<GetFn>(library.resolve("fem_get_displacements"));
-    api.reactions = reinterpret_cast<GetFn>(library.resolve("fem_get_reactions"));
-    api.shells = reinterpret_cast<GetShellFn>(library.resolve("fem_get_shell_results"));
+    using GatekeeperFn = int (*)(std::uint64_t, std::uint64_t, std::uint64_t *, std::uint32_t);
+    const std::string gateName = OBF_STR("_z8m2p");
+    auto gatekeeper = reinterpret_cast<GatekeeperFn>(library.resolve(gateName.c_str()));
+    if (!gatekeeper) {
+        return api;
+    }
+    const std::uint64_t nonce = solver_sec::generateNonce(&library);
+    const std::uint64_t authTag = solver_sec::computeAuthTag(nonce, solver_sec::kDomainMefs);
+    std::array<std::uint64_t, solver_sec::Mefs_SlotCount> sealedTable {};
+    if (gatekeeper(nonce, authTag, sealedTable.data(), solver_sec::Mefs_SlotCount) != 0) {
+        return api;
+    }
+    api.sessionKey = solver_sec::deriveSessionKey(nonce, authTag, solver_sec::kDomainMefs);
+
+    auto unseal = [&](solver_sec::MefsSlot slot) -> QFunctionPointer {
+        return solver_sec::unsealPointer<QFunctionPointer>(sealedTable[static_cast<std::size_t>(slot)], nonce, static_cast<std::uint32_t>(slot), solver_sec::kDomainMefs);
+    };
+
+    api.create = reinterpret_cast<CreateFn>(unseal(solver_sec::Mefs_Create));
+    api.destroy = reinterpret_cast<DestroyFn>(unseal(solver_sec::Mefs_Destroy));
+    api.addMaterial = reinterpret_cast<AddMaterialFn>(unseal(solver_sec::Mefs_AddMaterial));
+    api.addNode = reinterpret_cast<AddNodeFn>(unseal(solver_sec::Mefs_AddNode));
+    api.addShell = reinterpret_cast<AddShellFn>(unseal(solver_sec::Mefs_AddShell));
+    api.addSpring = reinterpret_cast<AddSpringFn>(unseal(solver_sec::Mefs_AddSpring));
+    api.addTie = reinterpret_cast<AddTieFn>(unseal(solver_sec::Mefs_AddTie));
+    api.addTieMasked = reinterpret_cast<AddTieMaskedFn>(unseal(solver_sec::Mefs_AddTieMasked));
+    api.setOrthotropy = reinterpret_cast<SetOrthotropyFn>(unseal(solver_sec::Mefs_SetMaterialOrthotropy));
+    api.addCase = reinterpret_cast<AddCaseFn>(unseal(solver_sec::Mefs_AddCase));
+    api.loadNode = reinterpret_cast<LoadNodeFn>(unseal(solver_sec::Mefs_LoadNode));
+    api.loadPressure = reinterpret_cast<LoadPressureFn>(unseal(solver_sec::Mefs_LoadShellPressure));
+    api.loadBody = reinterpret_cast<LoadBodyFn>(unseal(solver_sec::Mefs_LoadShellBody));
+    api.loadThermal = reinterpret_cast<LoadThermalFn>(unseal(solver_sec::Mefs_LoadShellThermal));
+    api.solve = reinterpret_cast<SolveFn>(unseal(solver_sec::Mefs_Solve));
+    api.iterations = reinterpret_cast<IterationsFn>(unseal(solver_sec::Mefs_SpringIterations));
+    api.warp = reinterpret_cast<WarpFn>(unseal(solver_sec::Mefs_MaxWarp));
+    api.displacements = reinterpret_cast<GetFn>(unseal(solver_sec::Mefs_GetDisplacements));
+    api.reactions = reinterpret_cast<GetFn>(unseal(solver_sec::Mefs_GetReactions));
+    api.shells = reinterpret_cast<GetShellFn>(unseal(solver_sec::Mefs_GetShellResults));
     return api;
 }
 
@@ -206,6 +227,7 @@ Structura::Shell::Results ShellSolverBridge::solve(const Structura::Shell::Model
     }
     std::vector<char> error(512, 0);
     if (api.solve(handle, static_cast<int>(error.size()), error.data()) != 0) {
+        solver_sec::cipherCString(error.data(), error.size(), api.sessionKey);
         results.error = std::string(error.data());
         if (results.error.empty()) {
             results.error = QObject::tr("Falha na solucao do modelo de cascas.").toStdString();

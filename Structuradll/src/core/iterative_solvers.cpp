@@ -1,4 +1,5 @@
 #include "iterative_solvers.h"
+#include "solver_security.h"
 
 #include <algorithm>
 #include <cmath>
@@ -9,14 +10,14 @@ GeneralizedEigenResult largestGeneralizedEigenpairs(const Eigen::SparseMatrix<do
     GeneralizedEigenResult result;
     const int n = static_cast<int>(A.rows());
     if (n == 0 || count <= 0) {
-        result.error = "empty eigenproblem";
+        result.error = OBF_STR("empty eigenproblem");
         return result;
     }
     const int block = std::min(n, std::max(2 * count, count + 8));
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Lower, Eigen::AMDOrdering<int>> factor;
     factor.compute(A);
     if (factor.info() != Eigen::Success) {
-        result.error = "stiffness factorization failed";
+        result.error = OBF_STR("stiffness factorization failed");
         return result;
     }
     // vetores iniciais deterministicos (sequencia congruencial) para nao depender de semente global
@@ -34,7 +35,7 @@ GeneralizedEigenResult largestGeneralizedEigenpairs(const Eigen::SparseMatrix<do
     for (int iteration = 1; iteration <= std::max(1, maxIterations); ++iteration) {
         Eigen::MatrixXd y = factor.solve(Eigen::MatrixXd(B * x));
         if (factor.info() != Eigen::Success || !y.allFinite()) {
-            result.error = "subspace iteration diverged";
+            result.error = OBF_STR("subspace iteration diverged");
             return result;
         }
         // base ortonormal do subespaco gerado por y e Rayleigh-Ritz no problema reduzido
@@ -44,7 +45,7 @@ GeneralizedEigenResult largestGeneralizedEigenpairs(const Eigen::SparseMatrix<do
         const Eigen::MatrixXd br = q.transpose() * (B * q);
         Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> small(br, ar);
         if (small.info() != Eigen::Success) {
-            result.error = "reduced eigenproblem failed";
+            result.error = OBF_STR("reduced eigenproblem failed");
             return result;
         }
         // ordem decrescente
@@ -79,7 +80,7 @@ GeneralizedEigenResult largestGeneralizedEigenpairs(const Eigen::SparseMatrix<do
     result.vectors = x;
     if (!result.converged) {
         // aceita o que houver; o chamador decide pelo indicador
-        result.error = "subspace iteration reached the iteration limit";
+        result.error = OBF_STR("subspace iteration reached the iteration limit");
     }
     return result;
 }

@@ -1,4 +1,5 @@
 #include "member.h"
+#include "solver_security.h"
 
 #include <algorithm>
 #include <cmath>
@@ -51,7 +52,7 @@ void springResponse(PlasticHinge& hinge, double delta, double axial, double& s, 
 void Member::setPlasticHinge(int dof, const PlasticHinge& hinge)
 {
     if (dof < 0 || dof >= 12) {
-        throw std::out_of_range("Plastic hinge dof out of range");
+        throw std::out_of_range(OBF_STR("Plastic hinge dof out of range"));
     }
     hinges[static_cast<size_t>(dof)] = hinge;
     hinges[static_cast<size_t>(dof)].enabled = hinge.enabled && hinge.kElastic > 0.0 && hinge.yieldMoment > 0.0;

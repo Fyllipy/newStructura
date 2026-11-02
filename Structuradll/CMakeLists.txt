@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.15)
 project(Structura CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -103,6 +103,26 @@ target_link_libraries(solver_tests PRIVATE solver_core)
 
 set_target_properties(solver_cli PROPERTIES OUTPUT_NAME "solver_cli")
 set_target_properties(solver_dll PROPERTIES OUTPUT_NAME "rds")
+
+if (MSVC)
+	target_compile_options(solver_core PRIVATE /GR- /Gy /Gw /bigobj $<$<CONFIG:Release>:/O2 /Ob2 /GL /GS->)
+	target_compile_options(solver_dll PRIVATE /GR- /Gy /Gw $<$<CONFIG:Release>:/O2 /Ob2 /GL /GS->)
+	target_link_options(solver_dll PRIVATE
+		/OPT:REF /OPT:ICF /DEBUG:NONE /NOCOFFGRPINFO /BREPRO
+		$<$<CONFIG:Release>:/LTCG>
+	)
+	if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+		# Quando compilado com clang-cl + XOLLVM / OLLVM, ativa os passes nativos de ofuscacao LLVM
+		target_compile_options(solver_core PRIVATE -mllvm -fla -mllvm -sub -mllvm -bcf)
+		target_compile_options(solver_dll PRIVATE -mllvm -fla -mllvm -sub -mllvm -bcf)
+	endif()
+endif()
+
+add_custom_command(TARGET solver_dll POST_BUILD
+	COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/../tools/protect_pe.py" "$<TARGET_FILE:solver_dll>"
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:solver_dll>" "${CMAKE_CURRENT_SOURCE_DIR}/../rds.dll"
+	COMMENT "Hardening rds.dll and deploying to repository root"
+)
 
 message(STATUS "Projeto ${PROJECT_NAME} configurado com sucesso!")
 message(STATUS "Core static library: solver_core")

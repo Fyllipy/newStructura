@@ -2,6 +2,7 @@
 #include "node.h"
 #include "material.h"
 #include "section.h"
+#include "core/solver_security.h"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -47,12 +48,12 @@ Member::Member(int id, std::shared_ptr<Node> nodeI, std::shared_ptr<Node> nodeJ,
 
     // Validate inputs
     if (!nodeI || !nodeJ || !material || !section) {
-        throw std::invalid_argument("All member components must be valid pointers");
+        throw std::invalid_argument(OBF_STR("All member components must be valid pointers"));
     }
 
     // Check for zero length member
     if (calculateLength() < 1e-12) {
-        throw std::invalid_argument("Member length is too small");
+        throw std::invalid_argument(OBF_STR("Member length is too small"));
     }
 }
 
@@ -86,7 +87,7 @@ double Member::calculateLength() const {
 std::vector<double> Member::getDirectionCosines() const {
     double L = calculateLength();
     if (L < 1e-12) {
-        throw std::runtime_error("Member length is too small to calculate direction cosines");
+        throw std::runtime_error(OBF_STR("Member length is too small to calculate direction cosines"));
     }
     double dx = nodeJ->getX() - nodeI->getX();
     double dy = nodeJ->getY() - nodeI->getY();
@@ -106,7 +107,7 @@ void Member::ensureLocalAxesComputed() const {
     Eigen::Vector3d vectorX = pointB - pointA;
     double length = vectorX.norm();
     if (length < GEOM_TOL) {
-        throw std::runtime_error("Member length is too small to define local axes");
+        throw std::runtime_error(OBF_STR("Member length is too small to define local axes"));
     }
 
     // Local x-axis aligned with the member
@@ -142,7 +143,7 @@ void Member::ensureLocalAxesComputed() const {
         }
 
         if (!found) {
-            throw std::runtime_error("Unable to determine a valid local z-axis for the member");
+            throw std::runtime_error(OBF_STR("Unable to determine a valid local z-axis for the member"));
         }
     }
     
@@ -152,7 +153,7 @@ void Member::ensureLocalAxesComputed() const {
 
     double y_norm = y_local.norm();
     if (y_norm < GEOM_TOL) {
-        throw std::runtime_error("Unable to determine a valid local y-axis for the member");
+        throw std::runtime_error(OBF_STR("Unable to determine a valid local y-axis for the member"));
     }
 
     y_local = y_local / y_norm;
@@ -238,7 +239,7 @@ void Member::setRigidZones(double lengthI, double lengthJ) {
     rigidI = std::max(0.0, lengthI);
     rigidJ = std::max(0.0, lengthJ);
     if (hasRigidZones() && rigidI + rigidJ >= calculateLength() * 0.999) {
-        throw std::runtime_error("Rigid end zones consume the whole length of member " + std::to_string(id));
+        throw std::runtime_error(OBF_STR("Rigid end zones consume the whole length of member ") + std::to_string(id));
     }
     condensationCached = false;
 }
@@ -623,8 +624,8 @@ Eigen::MatrixXd Member::getLocalStiffnessMatrix() const {
 
     Eigen::FullPivLU<Eigen::MatrixXd> lu(S);
     if (!lu.isInvertible()) {
-        throw std::runtime_error("Invalid end releases on member " + std::to_string(id) +
-                                 " (the released DOFs form a mechanism)");
+        throw std::runtime_error(OBF_STR("Invalid end releases on member ") + std::to_string(id) +
+                                 OBF_STR(" (the released DOFs form a mechanism)"));
     }
     const Eigen::MatrixXd SinvKra = lu.solve(Kar.transpose());
     const Eigen::MatrixXd Kc = Kaa - Kar * SinvKra;
@@ -685,8 +686,8 @@ Eigen::VectorXd Member::condenseFixedEndForces(const Eigen::VectorXd& forces) co
 
     Eigen::FullPivLU<Eigen::MatrixXd> lu(Krr + Eigen::MatrixXd(ks.asDiagonal()));
     if (!lu.isInvertible()) {
-        throw std::runtime_error("Invalid end releases on member " + std::to_string(id) +
-                                 " (the released DOFs form a mechanism)");
+        throw std::runtime_error(OBF_STR("Invalid end releases on member ") + std::to_string(id) +
+                                 OBF_STR(" (the released DOFs form a mechanism)"));
     }
     const Eigen::VectorXd sInvFr = lu.solve(fr);
     const Eigen::VectorXd fc = fa - Kar * sInvFr;
@@ -743,7 +744,7 @@ Eigen::MatrixXd Member::getGlobalMassMatrix() const {
 
 void Member::addDistributedLoad(const std::vector<double>& globalEquivalentForces) {
     if (globalEquivalentForces.size() != 12 && globalEquivalentForces.size() != 14) {
-        throw std::invalid_argument("Distributed load vector must have 12 components (14 with warping)");
+        throw std::invalid_argument(OBF_STR("Distributed load vector must have 12 components (14 with warping)"));
     }
     for (size_t i = 12; i < globalEquivalentForces.size(); ++i) {
         fixedEndForces[i] += -globalEquivalentForces[i];   // warping parameters: no transformation

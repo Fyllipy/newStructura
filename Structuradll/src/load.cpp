@@ -1,5 +1,6 @@
 #include "load.h"
 #include "member.h"
+#include "solver_security.h"
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
@@ -16,7 +17,7 @@ NodalLoad::NodalLoad(int nodeId, const std::vector<double>& forces)
 
     // Ensure forces vector has exactly 6 elements
     if (this->forces.size() != 6) {
-        throw std::invalid_argument("Forces vector must have exactly 6 elements");
+        throw std::invalid_argument(OBF_STR("Forces vector must have exactly 6 elements"));
     }
 }
 
@@ -26,7 +27,7 @@ int NodalLoad::getNodeId() const {
 
 double NodalLoad::getForce(int component) const {
     if (component < 0 || component >= 6) {
-        throw std::out_of_range("Force component index must be between 0 and 5");
+        throw std::out_of_range(OBF_STR("Force component index must be between 0 and 5"));
     }
     return forces[component];
 }
@@ -54,12 +55,12 @@ DistributedLoad::CoordinateSystem DistributedLoad::getCoordinateSystem() const {
 
 void DistributedLoad::localComponents(const Member* member, Eigen::VectorXd& localForces, Eigen::VectorXd& rigidAtNodeEnds) const {
     if (!member) {
-        throw std::invalid_argument("Member pointer cannot be null");
+        throw std::invalid_argument(OBF_STR("Member pointer cannot be null"));
     }
 
     double L = member->calculateFlexibleLength();   // load of the flexible part; the rigid end zones are treated apart
     if (L <= 0.0) {
-        throw std::invalid_argument("Member length must be positive to compute equivalent forces");
+        throw std::invalid_argument(OBF_STR("Member length must be positive to compute equivalent forces"));
     }
 
     Eigen::Vector3d qLocal;
@@ -129,12 +130,12 @@ int DistributedMoment::getMemberId() const {
 
 void DistributedMoment::localComponents(const Member* member, Eigen::VectorXd& localForces, Eigen::VectorXd& rigidAtNodeEnds) const {
     if (!member) {
-        throw std::invalid_argument("Member pointer cannot be null");
+        throw std::invalid_argument(OBF_STR("Member pointer cannot be null"));
     }
 
     const double L = member->calculateFlexibleLength();
     if (L <= 0.0) {
-        throw std::invalid_argument("Member length must be positive to compute equivalent forces");
+        throw std::invalid_argument(OBF_STR("Member length must be positive to compute equivalent forces"));
     }
 
     Eigen::Vector3d mLocal;
@@ -185,16 +186,16 @@ DistributedLoad::CoordinateSystem DistributedLoad::coordinateSystemFromString(co
         return static_cast<char>(std::toupper(c));
     });
 
-    if (normalized == "LOCAL" || normalized == "L") {
+    if (normalized == OBF_STR("LOCAL") || normalized == OBF_STR("L")) {
         return CoordinateSystem::Local;
     }
-    if (normalized == "GLOBAL" || normalized == "G") {
+    if (normalized == OBF_STR("GLOBAL") || normalized == OBF_STR("G")) {
         return CoordinateSystem::Global;
     }
 
-    throw std::invalid_argument("Unknown distributed load coordinate system: " + token);
+    throw std::invalid_argument(OBF_STR("Unknown distributed load coordinate system: ") + token);
 }
 
 std::string DistributedLoad::coordinateSystemToString(CoordinateSystem system) {
-    return system == CoordinateSystem::Local ? "LOCAL" : "GLOBAL";
+    return system == CoordinateSystem::Local ? OBF_STR("LOCAL") : OBF_STR("GLOBAL");
 }

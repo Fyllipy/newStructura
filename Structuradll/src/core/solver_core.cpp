@@ -23,6 +23,7 @@
 #include "nonlinear_engine.h"
 #include "section.h"
 #include "shell_q4.h"
+#include "solver_security.h"
 
 namespace {
 constexpr double kAssemblyTolerance = 1e-12;
@@ -57,7 +58,7 @@ Eigen::SparseMatrix<double> restrictToFree(const Eigen::SparseMatrix<double>& ma
 int toGlobalDof(const std::unordered_map<int, int>& nodeIndexById, int nodeId, int localDof) {
     const auto it = nodeIndexById.find(nodeId);
     if (it == nodeIndexById.end()) {
-        throw std::runtime_error("Node not found while mapping DOF: " + std::to_string(nodeId));
+        throw std::runtime_error(OBF_STR("Node not found while mapping DOF: ") + std::to_string(nodeId));
     }
     return it->second * 6 + localDof;
 }
@@ -140,7 +141,7 @@ ShellAssembly buildShellAssembly(const SolverInput& input, const std::unordered_
         for (int i = 0; i < 4; ++i) {
             const auto it = nodeIndexById.find(data.nodeIds[static_cast<size_t>(i)]);
             if (it == nodeIndexById.end()) {
-                throw std::runtime_error("Shell " + std::to_string(data.id) + " references unknown node");
+                throw std::runtime_error(OBF_STR("Shell ") + std::to_string(data.id) + OBF_STR(" references unknown node"));
             }
             const auto& node = nodes[static_cast<size_t>(it->second)];
             p[static_cast<size_t>(i)] = fem::Vec3(node->getX(), node->getY(), node->getZ());
@@ -149,7 +150,7 @@ ShellAssembly buildShellAssembly(const SolverInput& input, const std::unordered_
             }
         }
         if (data.thickness <= 0.0 || data.E <= 0.0) {
-            throw std::runtime_error("Shell " + std::to_string(data.id) + ": invalid material or thickness");
+            throw std::runtime_error(OBF_STR("Shell ") + std::to_string(data.id) + OBF_STR(": invalid material or thickness"));
         }
         item.material.E = data.E;
         item.material.nu = data.nu;
@@ -167,7 +168,7 @@ ShellAssembly buildShellAssembly(const SolverInput& input, const std::unordered_
         item.thickness = data.thickness;
         item.frame = fem::shellFrame(p);
         if (item.frame.area < 1e-14) {
-            throw std::runtime_error("Shell " + std::to_string(data.id) + ": zero area");
+            throw std::runtime_error(OBF_STR("Shell ") + std::to_string(data.id) + OBF_STR(": zero area"));
         }
         item.stiffness = fem::shellStiffness(item.frame, item.material, data.thickness, 5.0 / 6.0);
         item.transform = fem::shellTransform(item.frame);
@@ -196,7 +197,7 @@ void addShellLoads(const SolverInput& input, const ShellAssembly& assembly, Eige
     for (const auto& l : input.shellLoads) {
         const auto it = assembly.indexById.find(l.shellId);
         if (it == assembly.indexById.end()) {
-            throw std::runtime_error("Shell load references unknown shell: " + std::to_string(l.shellId));
+            throw std::runtime_error(OBF_STR("Shell load references unknown shell: ") + std::to_string(l.shellId));
         }
         const auto& item = assembly.items[static_cast<size_t>(it->second)];
         fem::Vec24 local;
@@ -263,13 +264,13 @@ void assembleTies(const SolverInput& input, const std::unordered_map<int, int>& 
     for (const auto& tie : input.ties) {
         const auto slave = nodeIndexById.find(tie.slaveId);
         if (slave == nodeIndexById.end() || tie.masterIds.empty() || tie.masterIds.size() != tie.weights.size()) {
-            throw std::runtime_error("Invalid tie (slave node " + std::to_string(tie.slaveId) + ")");
+            throw std::runtime_error(OBF_STR("Invalid tie (slave node ") + std::to_string(tie.slaveId) + OBF_STR(")"));
         }
         std::vector<int> masters;
         for (const int id : tie.masterIds) {
             const auto it = nodeIndexById.find(id);
             if (it == nodeIndexById.end()) {
-                throw std::runtime_error("Tie references unknown master node: " + std::to_string(id));
+                throw std::runtime_error(OBF_STR("Tie references unknown master node: ") + std::to_string(id));
             }
             masters.push_back(it->second);
         }
@@ -304,7 +305,7 @@ void assembleSprings(const SolverInput& input, const std::unordered_map<int, int
         }
         const auto it = nodeIndexById.find(sp.nodeId);
         if (it == nodeIndexById.end()) {
-            throw std::runtime_error("Spring references unknown node: " + std::to_string(sp.nodeId));
+            throw std::runtime_error(OBF_STR("Spring references unknown node: ") + std::to_string(sp.nodeId));
         }
         const int base = 6 * it->second;
         if (sp.compressionOnly) {
@@ -337,17 +338,17 @@ void assembleGlobalLoad(
     globalLoad = Eigen::VectorXd::Zero(totalDof);
 
     for (const auto& load : loads) {
-        if (const auto nodalLoad = std::dynamic_pointer_cast<NodalLoad>(load)) {
+        if (const auto nodalLoad = load->asNodalLoad()) {
             for (int localDof = 0; localDof < 6; ++localDof) {
                 const int globalDof = toGlobalDof(nodeIndexById, nodalLoad->getNodeId(), localDof);
                 globalLoad(globalDof) += nodalLoad->getForce(localDof);
             }
         }
 
-        if (const auto barLoad = std::dynamic_pointer_cast<BarLoad>(load)) {
+        if (const auto barLoad = load->asBarLoad()) {
             const auto memberIt = memberById.find(barLoad->getMemberId());
             if (memberIt == memberById.end()) {
-                throw std::runtime_error("Member load references unknown member: " + std::to_string(barLoad->getMemberId()));
+                throw std::runtime_error(OBF_STR("Member load references unknown member: ") + std::to_string(barLoad->getMemberId()));
             }
 
             const auto& member = memberIt->second;
@@ -372,13 +373,13 @@ void applyBoundaryConditions(
     Eigen::VectorXd& loadVector) {
     const int totalDof = static_cast<int>(loadVector.size());
     if (static_cast<int>(restrainedDof.size()) == totalDof) {
-        throw std::runtime_error("No free DOF available after restraints");
+        throw std::runtime_error(OBF_STR("No free DOF available after restraints"));
     }
 
     std::vector<bool> isRestrained(static_cast<size_t>(totalDof), false);
     for (const int dof : restrainedDof) {
         if (dof < 0 || dof >= totalDof) {
-            throw std::runtime_error("Restrained DOF out of range");
+            throw std::runtime_error(OBF_STR("Restrained DOF out of range"));
         }
         isRestrained[static_cast<size_t>(dof)] = true;
     }
@@ -500,7 +501,7 @@ bool expandTapers(const SolverInput& in, TaperExpansion& out, std::string& error
         }
         const auto ni = nodeById.find(m.nodeI), nj = nodeById.find(m.nodeJ);
         if (ni == nodeById.end() || nj == nodeById.end()) {
-            error = "Tapered member references unknown node";
+            error = OBF_STR("Tapered member references unknown node");
             return false;
         }
         const int n = std::clamp(m.taperSegments, 2, 40);
@@ -742,8 +743,8 @@ bool SolverCore::runExpanded(const SolverInput& input, SolverOutput& output, std
             if (!runPass(input, inactive, inactiveSprings, output, errorMessage)) {
                 return false;
             }
-            output.warnings.push_back("Tension-only members / compression-only springs oscillate between active and inactive states and do not settle: "
-                                      "the last state was kept; review the model (slack cables, redundant ties) or the loading");
+            output.warnings.push_back(OBF_STR("Tension-only members / compression-only springs oscillate between active and inactive states and do not settle: ") +
+                                      OBF_STR("the last state was kept; review the model (slack cables, redundant ties) or the loading"));
             return true;
         }
         if (!runPass(input, inactive, inactiveSprings, output, errorMessage)) {
@@ -810,7 +811,7 @@ bool SolverCore::runExpanded(const SolverInput& input, SolverOutput& output, std
             return true;
         }
     }
-    output.warnings.push_back("Tension-only members / compression-only springs: 40 iterations without settling the active set; the last pass was kept");
+    output.warnings.push_back(OBF_STR("Tension-only members / compression-only springs: 40 iterations without settling the active set; the last pass was kept"));
     errorMessage.clear();
     return true;   // accepts the last pass when the active set keeps oscillating
 }
@@ -818,7 +819,7 @@ bool SolverCore::runExpanded(const SolverInput& input, SolverOutput& output, std
 bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>& inactiveMembers, const std::unordered_set<int>& inactiveSprings, SolverOutput& output, std::string& errorMessage) const {
     try {
         if (input.nodes.empty()) {
-            throw std::runtime_error("Input has no nodes");
+            throw std::runtime_error(OBF_STR("Input has no nodes"));
         }
 
         std::vector<std::shared_ptr<Material>> materials;
@@ -876,13 +877,13 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             const auto sectionIt = sectionById.find(memberData.sectionId);
 
             if (nodeIIt == nodeById.end() || nodeJIt == nodeById.end()) {
-                throw std::runtime_error("Member references unknown node");
+                throw std::runtime_error(OBF_STR("Member references unknown node"));
             }
             if (materialIt == materialById.end()) {
-                throw std::runtime_error("Member references unknown material");
+                throw std::runtime_error(OBF_STR("Member references unknown material"));
             }
             if (sectionIt == sectionById.end()) {
-                throw std::runtime_error("Member references unknown section");
+                throw std::runtime_error(OBF_STR("Member references unknown section"));
             }
 
             auto member = std::make_shared<Member>(
@@ -911,7 +912,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             for (const auto& hingeData : input.plasticHinges) {
                 if (hingeData.memberId == memberData.id) {
                     if (hingeData.dof < 0 || hingeData.dof >= 12 || (hingeData.dof % 6) < 3) {
-                        throw std::runtime_error("Plastic hinge on member " + std::to_string(memberData.id) + ": the hinge must be on a rotation (dof 3..5 or 9..11)");
+                        throw std::runtime_error(OBF_STR("Plastic hinge on member ") + std::to_string(memberData.id) + OBF_STR(": the hinge must be on a rotation (dof 3..5 or 9..11)"));
                     }
                     PlasticHinge hinge;
                     hinge.enabled = true;
@@ -926,7 +927,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             if (memberData.warping != 0 && sectionIt->second->getCw() > 0.0) {
                 if (input.modalModes > 0) {
                     if (!warpingIgnoredForModes) {
-                        warnings.push_back("Torsion with warping is not combined with the modal analysis: the St. Venant torsion model was used in this run");
+                        warnings.push_back(OBF_STR("Torsion with warping is not combined with the modal analysis: the St. Venant torsion model was used in this run"));
                     }
                     warpingIgnoredForModes = true;
                 } else {
@@ -980,7 +981,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 ? DistributedLoad::CoordinateSystem::Local
                 : DistributedLoad::CoordinateSystem::Global;
             if (actionData.kind < 0 || actionData.kind > 3) {
-                throw std::runtime_error("Unknown member load kind: " + std::to_string(actionData.kind));
+                throw std::runtime_error(OBF_STR("Unknown member load kind: ") + std::to_string(actionData.kind));
             }
             loads.push_back(std::make_shared<MemberAction>(
                 actionData.memberId,
@@ -1068,9 +1069,9 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         const int totalDof = static_cast<int>(nodes.size()) * 6 + warpingDofCount;
         auto dofLabel = [&](int i) -> std::string {
             if (i >= static_cast<int>(nodes.size()) * 6) {
-                return "warping parameter " + std::to_string(i - static_cast<int>(nodes.size()) * 6 + 1);
+                return OBF_STR("warping parameter ") + std::to_string(i - static_cast<int>(nodes.size()) * 6 + 1);
             }
-            return "node " + std::to_string(nodes[static_cast<size_t>(i / 6)]->getId()) + ", dof " + std::to_string(i % 6 + 1);
+            return OBF_STR("node ") + std::to_string(nodes[static_cast<size_t>(i / 6)]->getId()) + OBF_STR(", dof ") + std::to_string(i % 6 + 1);
         };
         restrainedDof.reserve(static_cast<size_t>(totalDof));
 
@@ -1112,8 +1113,8 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         // o motor incremental trata as rotulas plasticas, as ligacoes nao lineares e o pedido explicito (controle de deslocamento, etc.)
         const bool useEngine = anyHinge || links.nonlinear() || input.nonlinear.force;
         if (useEngine && (input.bucklingModes > 0 || input.modalModes > 0)) {
-            warnings.push_back("Buckling and modal analyses are not combined with the incremental nonlinear analysis (plastic hinges, nonlinear links): they were skipped; "
-                               "run them on the elastic model");
+            warnings.push_back(OBF_STR("Buckling and modal analyses are not combined with the incremental nonlinear analysis (plastic hinges, nonlinear links): they were skipped; ") +
+                               OBF_STR("run them on the elastic model"));
         }
 
         Eigen::SparseMatrix<double> stiffnessForSolve = fullStiffness;
@@ -1135,11 +1136,11 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                     continue;
                 }
                 if (std::abs(loadForSolve(i)) > 1e-9) {
-                    throw std::runtime_error("Unstable structure: load applied to a degree of freedom without stiffness (" + dofLabel(i) + ")");
+                    throw std::runtime_error(OBF_STR("Unstable structure: load applied to a degree of freedom without stiffness (") + dofLabel(i) + OBF_STR(")"));
                 }
                 restrainedDof.push_back(i);
                 if (warnings.size() < 20) {
-                    warnings.push_back(dofLabel(i) + ": no stiffness (all members released there); fixed automatically");
+                    warnings.push_back(dofLabel(i) + OBF_STR(": no stiffness (all members released there); fixed automatically"));
                 }
             }
         }
@@ -1158,10 +1159,10 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 displacement = iterative;
                 solvedIteratively = true;
                 char text[200];
-                std::snprintf(text, sizeof(text), "Iterative solver (PCG, incomplete Cholesky): %d iterations, relative residual %.1e; mechanism check skipped", iterations, error);
+                std::snprintf(text, sizeof(text), OBF_STR("Iterative solver (PCG, incomplete Cholesky): %d iterations, relative residual %.1e; mechanism check skipped").c_str(), iterations, error);
                 warnings.push_back(text);
             } else {
-                warnings.push_back("Iterative solver (PCG) did not converge: the direct solution was used");
+                warnings.push_back(OBF_STR("Iterative solver (PCG) did not converge: the direct solution was used"));
             }
         }
         if (!solvedIteratively) {
@@ -1190,16 +1191,16 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                     const double diagonal = std::abs(stiffnessForSolve.coeff(i, i));
                     if (!restrained[static_cast<size_t>(i)] && diagonal > 0.0 && pivots(permutation(i)) < 1e-7 * maxDiagonal) {
                         if (++count <= 8) {
-                            list += (list.empty() ? "" : "; ") + dofLabel(i);
+                            list += (list.empty() ? "" : OBF_STR("; ")) + dofLabel(i);
                         }
                     }
                 }
             }
             if (count > 0) {
-                throw std::runtime_error("Unstable structure (mechanism): " + std::to_string(count) + " degree(s) of freedom not restrained by the stiffness of the model (" + list
-                                         + (count > 8 ? "; ..." : "") + "); check supports, releases and connections");
+                throw std::runtime_error(OBF_STR("Unstable structure (mechanism): ") + std::to_string(count) + OBF_STR(" degree(s) of freedom not restrained by the stiffness of the model (") + list
+                                         + (count > 8 ? OBF_STR("; ...") : "") + OBF_STR("); check supports, releases and connections"));
             }
-            throw std::runtime_error("Failed to decompose global stiffness matrix");
+            throw std::runtime_error(OBF_STR("Failed to decompose global stiffness matrix"));
         }
 
         {
@@ -1222,10 +1223,10 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             if (unstableCount > 0) {
                 std::string list;
                 for (const auto& label : unstable) {
-                    list += (list.empty() ? "" : "; ") + label;
+                    list += (list.empty() ? "" : OBF_STR("; ")) + label;
                 }
-                throw std::runtime_error("Unstable structure (mechanism): " + std::to_string(unstableCount) + " degree(s) of freedom not restrained by the stiffness of the model ("
-                                         + list + (unstableCount > 8 ? "; ..." : "") + "); check supports, releases and connections");
+                throw std::runtime_error(OBF_STR("Unstable structure (mechanism): ") + std::to_string(unstableCount) + OBF_STR(" degree(s) of freedom not restrained by the stiffness of the model (")
+                                         + list + (unstableCount > 8 ? OBF_STR("; ...") : "") + OBF_STR("); check supports, releases and connections"));
             }
         }
         {
@@ -1235,14 +1236,14 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 const double smallest = pivots.cwiseAbs().minCoeff(), largest = pivots.cwiseAbs().maxCoeff();
                 if (smallest > 0.0 && largest / smallest > 1e12) {
                     char text[200];
-                    std::snprintf(text, sizeof(text), "Ill-conditioned stiffness matrix (pivot ratio %.1e): check very different stiffnesses, very short members, near-rigid links or almost-mechanisms", largest / smallest);
+                    std::snprintf(text, sizeof(text), OBF_STR("Ill-conditioned stiffness matrix (pivot ratio %.1e): check very different stiffnesses, very short members, near-rigid links or almost-mechanisms").c_str(), largest / smallest);
                     warnings.push_back(text);
                 }
             }
         }
         displacement = linearSolver.solve(loadForSolve);
         if (linearSolver.info() != Eigen::Success) {
-            throw std::runtime_error("Failed to solve linear system");
+            throw std::runtime_error(OBF_STR("Failed to solve linear system"));
         }
         }   // !solvedIteratively
 
@@ -1250,7 +1251,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         // tolerancia relativa a soma dos termos |K||u| (ligacoes por penalidade tem rigidez muito maior que o resto do modelo)
         const double residualScale = (stiffnessForSolve.cwiseAbs() * displacement.cwiseAbs()).norm() + loadForSolve.norm();
         if (residual > std::max(1e-6, 1e-9 * residualScale)) {
-            throw std::runtime_error("Linear solve residual is too large: " + std::to_string(residual));
+            throw std::runtime_error(OBF_STR("Linear solve residual is too large: ") + std::to_string(residual));
         }
         }   // !useEngine
 
@@ -1259,7 +1260,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 member->clearDistributedLoads();
             }
             for (const auto& load : loads) {
-                if (const auto barLoad = std::dynamic_pointer_cast<BarLoad>(load)) {
+                if (const auto barLoad = load->asBarLoad()) {
                     registerBarLoad(*memberById.at(barLoad->getMemberId()), *barLoad);
                 }
             }
@@ -1325,10 +1326,10 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 const auto result = Structura::Solver::largestGeneralizedEigenpairs(restrictToFree(k0, freeIndex, n, 1.0), restrictToFree(kg, freeIndex, n, -1.0),
                                                                                     input.bucklingModes, input.iterativeTolerance);
                 if (result.mu.size() == 0) {
-                    throw std::runtime_error("Buckling analysis: the sparse eigenvalue problem failed (" + result.error + ")");
+                    throw std::runtime_error(OBF_STR("Buckling analysis: the sparse eigenvalue problem failed (") + result.error + OBF_STR(")"));
                 }
                 if (!result.converged) {
-                    warnings.push_back("Buckling analysis: subspace iteration did not fully converge; the highest modes may be inaccurate");
+                    warnings.push_back(OBF_STR("Buckling analysis: subspace iteration did not fully converge; the highest modes may be inaccurate"));
                 }
                 // ordem crescente, como a do solver denso
                 mu = result.mu.reverse();
@@ -1354,7 +1355,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 }
                 Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es(matB, matA);   // B x = mu A x, A positive definite
                 if (es.info() != Eigen::Success) {
-                    throw std::runtime_error("Buckling analysis: the eigenvalue problem failed (unstable or singular stiffness)");
+                    throw std::runtime_error(OBF_STR("Buckling analysis: the eigenvalue problem failed (unstable or singular stiffness)"));
                 }
                 mu = es.eigenvalues();
                 modeVectors = es.eigenvectors();
@@ -1470,7 +1471,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 totalMass[d] = influence[static_cast<size_t>(d)].dot(massMatrix * influence[static_cast<size_t>(d)]);
             }
             if (totalMass[0] <= 0.0) {
-                throw std::runtime_error("Modal analysis: the model has no mass (set the material density / unit weight)");
+                throw std::runtime_error(OBF_STR("Modal analysis: the model has no mass (set the material density / unit weight)"));
             }
             Eigen::VectorXd mu;
             Eigen::MatrixXd modeVectors;
@@ -1478,17 +1479,17 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                 const auto result = Structura::Solver::largestGeneralizedEigenpairs(restrictToFree(fullStiffness, freeIndex, n, 1.0), restrictToFree(massMatrix, freeIndex, n, 1.0),
                                                                                     input.modalModes, input.iterativeTolerance);
                 if (result.mu.size() == 0) {
-                    throw std::runtime_error("Modal analysis: the sparse eigenvalue problem failed (" + result.error + ")");
+                    throw std::runtime_error(OBF_STR("Modal analysis: the sparse eigenvalue problem failed (") + result.error + OBF_STR(")"));
                 }
                 if (!result.converged) {
-                    warnings.push_back("Modal analysis: subspace iteration did not fully converge; the highest modes may be inaccurate");
+                    warnings.push_back(OBF_STR("Modal analysis: subspace iteration did not fully converge; the highest modes may be inaccurate"));
                 }
                 mu = result.mu.reverse();
                 modeVectors = result.vectors.rowwise().reverse();
             } else {
                 Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> es(matM, matK);   // M x = mu K x, K positive definite
                 if (es.info() != Eigen::Success) {
-                    throw std::runtime_error("Modal analysis: the eigenvalue problem failed (unstable or singular stiffness)");
+                    throw std::runtime_error(OBF_STR("Modal analysis: the eigenvalue problem failed (unstable or singular stiffness)"));
                 }
                 mu = es.eigenvalues();
                 modeVectors = es.eigenvectors();
@@ -1633,24 +1634,24 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
                     char text[320];
                     if (failure == Status::NoConvergence) {
                         std::snprintf(text, sizeof(text),
-                                      "Second-order analysis did not converge: the structure only balances loads up to %.3f of the applied load; the critical load factor is "
-                                      "estimated between %.3f and %.3f (loads close to the critical load)", okLambda, okLambda, failLambda);
+                                      (OBF_STR("Second-order analysis did not converge: the structure only balances loads up to %.3f of the applied load; the critical load factor is ") +
+                                       OBF_STR("estimated between %.3f and %.3f (loads close to the critical load)")).c_str(), okLambda, okLambda, failLambda);
                     } else {
                         std::snprintf(text, sizeof(text),
-                                      "Second-order analysis: the structure is unstable under these loads (critical load reached or exceeded); critical load factor "
-                                      "estimated between %.3f and %.3f of the applied load", okLambda, failLambda);
+                                      (OBF_STR("Second-order analysis: the structure is unstable under these loads (critical load reached or exceeded); critical load factor ") +
+                                       OBF_STR("estimated between %.3f and %.3f of the applied load")).c_str(), okLambda, failLambda);
                     }
                     throw std::runtime_error(text);
                 }
                 if (!forcedIncrements) {
-                    warnings.push_back("Second-order analysis converged only with incremental loading (direct iteration diverged): check how close the loads are to the critical load");
+                    warnings.push_back(OBF_STR("Second-order analysis converged only with incremental loading (direct iteration diverged): check how close the loads are to the critical load"));
                 }
             }
             for (auto& member : members) {
                 member->setLoadFactor(1.0);
             }
             if (input.stabilityFunctions && input.shearDeformation) {
-                warnings.push_back("Stability functions assume Euler-Bernoulli members: with shear deformation enabled the consistent geometric stiffness was used instead");
+                warnings.push_back(OBF_STR("Stability functions assume Euler-Bernoulli members: with shear deformation enabled the consistent geometric stiffness was used instead"));
             }
         }
 
@@ -1704,10 +1705,10 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         }
 
         for (const auto& load : loads) {
-            if (const auto barLoad = std::dynamic_pointer_cast<BarLoad>(load)) {
+            if (const auto barLoad = load->asBarLoad()) {
                 const auto memberIt = memberById.find(barLoad->getMemberId());
                 if (memberIt == memberById.end()) {
-                    throw std::runtime_error("Member load references unknown member in post-processing");
+                    throw std::runtime_error(OBF_STR("Member load references unknown member in post-processing"));
                 }
                 registerBarLoad(*memberIt->second, *barLoad);
             }

@@ -1,8 +1,10 @@
 #include "SolverBridge.h"
+#include "../../Structuradll/src/core/solver_security.h"
 
 #include <QLibrary>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
 
@@ -85,10 +87,27 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         throw SolverBridgeError(errorFromLibrary(solverLibrary));
     }
 
-    auto *rawSymbolV4 = solverLibrary.resolve("structura_solve_v4");
-    auto *rawSymbolV3 = solverLibrary.resolve("structura_solve_v3");
-    auto *rawSymbolV2 = solverLibrary.resolve("structura_solve_v2");
-    auto *rawSymbol = solverLibrary.resolve("structura_solve");
+    using GatekeeperFn = int (*)(std::uint64_t, std::uint64_t, std::uint64_t *, std::uint32_t);
+    const std::string gateName = OBF_STR("_z8r4q");
+    auto gatekeeper = reinterpret_cast<GatekeeperFn>(solverLibrary.resolve(gateName.c_str()));
+    if (!gatekeeper) {
+        throw SolverBridgeError("Failed to authenticate solver shared library (rds).");
+    }
+    const std::uint64_t nonce = solver_sec::generateNonce(&solverLibrary);
+    const std::uint64_t authTag = solver_sec::computeAuthTag(nonce, solver_sec::kDomainRds);
+    const std::uint64_t sessionKey = solver_sec::deriveSessionKey(nonce, authTag, solver_sec::kDomainRds);
+    std::array<std::uint64_t, solver_sec::Rds_SlotCount> sealedTable {};
+    if (gatekeeper(nonce, authTag, sealedTable.data(), solver_sec::Rds_SlotCount) != 0) {
+        throw SolverBridgeError("Solver library authentication handshake rejected (rds).");
+    }
+    auto resolveSlot = [&](solver_sec::RdsSlot slot) -> QFunctionPointer {
+        return solver_sec::unsealPointer<QFunctionPointer>(sealedTable[static_cast<std::size_t>(slot)], nonce, static_cast<std::uint32_t>(slot), solver_sec::kDomainRds);
+    };
+
+    auto *rawSymbolV4 = resolveSlot(solver_sec::Rds_SolveV4);
+    auto *rawSymbolV3 = resolveSlot(solver_sec::Rds_SolveV3);
+    auto *rawSymbolV2 = resolveSlot(solver_sec::Rds_SolveV2);
+    auto *rawSymbol = resolveSlot(solver_sec::Rds_Solve);
     if (!rawSymbolV4 && !rawSymbolV3 && !rawSymbolV2 && !rawSymbol) {
         throw SolverBridgeError("Failed to resolve exported function structura_solve.");
     }
@@ -109,7 +128,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
     }
 
     using SetOptionsFn = void (*)(int, int, double);
-    auto setOptions = reinterpret_cast<SetOptionsFn>(solverLibrary.resolve("structura_set_options"));
+    auto setOptions = reinterpret_cast<SetOptionsFn>(resolveSlot(solver_sec::Rds_SetOptions));
     if (model.secondOrder && !setOptions) {
         throw SolverBridgeError("A DLL do solver nao suporta analise de segunda ordem (structura_set_options ausente). "
                                 "Recompile Structuradll e copie rds.dll para a raiz.");
@@ -118,9 +137,9 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         setOptions(model.secondOrder ? 1 : 0, 0, 0.0);
     }
     using SetAnalysisFn = void (*)(int, int, int);
-    auto setAnalysis = reinterpret_cast<SetAnalysisFn>(solverLibrary.resolve("structura_set_analysis_options"));
+    auto setAnalysis = reinterpret_cast<SetAnalysisFn>(resolveSlot(solver_sec::Rds_SetAnalysisOptions));
     using SetShearAreasFn = void (*)(int, const int *, const double *, const double *);
-    auto setShearAreas = reinterpret_cast<SetShearAreasFn>(solverLibrary.resolve("structura_set_shear_areas"));
+    auto setShearAreas = reinterpret_cast<SetShearAreasFn>(resolveSlot(solver_sec::Rds_SetShearAreas));
     if ((model.shearDeformation || model.stabilityFunctions || model.loadSteps > 1) && (!setAnalysis || (model.shearDeformation && !setShearAreas))) {
         throw SolverBridgeError("A DLL do solver nao suporta deformacao por cortante/funcoes de estabilidade (structura_set_analysis_options ausente). "
                                 "Recompile Structuradll e copie rds.dll para a raiz.");
@@ -143,8 +162,8 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
     {
         using SetWarpingSectionsFn = void (*)(int, const int *, const double *);
         using SetWarpingMembersFn = void (*)(int, const int *, const int *, const int *);
-        auto setWarpingSections = reinterpret_cast<SetWarpingSectionsFn>(solverLibrary.resolve("structura_set_warping_sections"));
-        auto setWarpingMembers = reinterpret_cast<SetWarpingMembersFn>(solverLibrary.resolve("structura_set_warping_members"));
+        auto setWarpingSections = reinterpret_cast<SetWarpingSectionsFn>(resolveSlot(solver_sec::Rds_SetWarpingSections));
+        auto setWarpingMembers = reinterpret_cast<SetWarpingMembersFn>(resolveSlot(solver_sec::Rds_SetWarpingMembers));
         std::vector<int> sectionIds, memberIds, modeStart, modeEnd;
         std::vector<double> constants;
         for (const auto &member : model.members) {
@@ -171,7 +190,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
             setWarpingMembers(static_cast<int>(memberIds.size()), memberIds.data(), modeStart.data(), modeEnd.data());
         }
         using SetShearCentersFn = void (*)(int, const int *, const double *, const double *);
-        auto setShearCenters = reinterpret_cast<SetShearCentersFn>(solverLibrary.resolve("structura_set_shear_centers"));
+        auto setShearCenters = reinterpret_cast<SetShearCentersFn>(resolveSlot(solver_sec::Rds_SetShearCenters));
         std::vector<int> centerIds;
         std::vector<double> centerY, centerZ;
         for (const auto &section : model.sections) {
@@ -191,7 +210,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
     }
     {
         using SetTaperFn = void (*)(int, const int *, const double *, const double *, const double *, const double *, const double *, const int *);
-        auto setTaper = reinterpret_cast<SetTaperFn>(solverLibrary.resolve("structura_set_taper"));
+        auto setTaper = reinterpret_cast<SetTaperFn>(resolveSlot(solver_sec::Rds_SetTaper));
         std::vector<int> ids, segments;
         std::vector<double> d1, d2, bf, tw, tf;
         for (const auto &member : model.members) {
@@ -214,7 +233,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         }
     }
     using SetRigidZonesFn = void (*)(int, const int *, const double *, const double *);
-    auto setRigidZones = reinterpret_cast<SetRigidZonesFn>(solverLibrary.resolve("structura_set_rigid_zones"));
+    auto setRigidZones = reinterpret_cast<SetRigidZonesFn>(resolveSlot(solver_sec::Rds_SetRigidZones));
     {
         std::vector<int> rigidIds;
         std::vector<double> rigidStart, rigidEnd;
@@ -235,7 +254,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
     }
     {
         using SetMemberActionsFn = void (*)(int, const int *, const int *, const int *, const double *, const double *, const double *, const double *);
-        auto setMemberActions = reinterpret_cast<SetMemberActionsFn>(solverLibrary.resolve("structura_set_member_actions"));
+        auto setMemberActions = reinterpret_cast<SetMemberActionsFn>(resolveSlot(solver_sec::Rds_SetMemberActions));
         if (!model.memberActions.empty() && !setMemberActions) {
             throw SolverBridgeError("A DLL do solver nao suporta cargas de barra com posicao (trapezoidais, pontuais, temperatura; structura_set_member_actions ausente). "
                                     "Recompile Structuradll e copie rds.dll para a raiz.");
@@ -257,16 +276,15 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
     }
     {
         // semirrigidez, rotulas plasticas, vinculos, ligacoes entre nos e controle da analise nao linear (estado global da DLL: sempre redefinido)
-        auto resolve = [&](const char *name) { return solverLibrary.resolve(name); };
-        auto *setEndSprings = reinterpret_cast<void (*)(int, const int *, const double *)>(resolve("structura_set_end_springs"));
+        auto *setEndSprings = reinterpret_cast<void (*)(int, const int *, const double *)>(resolveSlot(solver_sec::Rds_SetEndSprings));
         auto *setHinges = reinterpret_cast<void (*)(int, const int *, const int *, const double *, const double *, const double *, const double *, const double *)>(
-            resolve("structura_set_plastic_hinges"));
+            resolveSlot(solver_sec::Rds_SetPlasticHinges));
         auto *setConstraints = reinterpret_cast<void (*)(int, const int *, const int *, const int *, const int *, int, const int *, const int *, const int *, const int *,
                                                          int, const int *, const double *, const int *, int, const int *, const int *, const int *, const double *, const int *)>(
-            resolve("structura_set_constraints"));
+            resolveSlot(solver_sec::Rds_SetConstraints));
         auto *setLinks = reinterpret_cast<void (*)(int, const int *, const int *, const int *, const double *, const int *, const double *, const double *, const double *,
-                                                   const int *, const double *, const double *)>(resolve("structura_set_links"));
-        auto *setNonlinear = reinterpret_cast<void (*)(int, int, int, double, int, int, int, int, int, double, double)>(resolve("structura_set_nonlinear_options"));
+                                                   const int *, const double *, const double *)>(resolveSlot(solver_sec::Rds_SetLinks));
+        auto *setNonlinear = reinterpret_cast<void (*)(int, int, int, double, int, int, int, int, int, double, double)>(resolveSlot(solver_sec::Rds_SetNonlinearOptions));
         const bool needsNew = !model.endSprings.empty() || !model.plasticHinges.empty() || !model.diaphragms.empty() || !model.rigidLinks.empty()
                               || !model.inclinedSupports.empty() || !model.constraints.empty() || !model.links.empty() || model.nonlinear.force;
         if (needsNew && (!setEndSprings || !setHinges || !setConstraints || !setLinks || !setNonlinear)) {
@@ -351,7 +369,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
             setLinks(static_cast<int>(ids.size()), ids.data(), nodeI.data(), nodeJ.data(), axes.data(), kinds.data(), k.data(), p1.data(), p2.data(), tableCounts.data(),
                      tableDef.data(), tableForce.data());
         }
-        if (auto *setSolverOptions = reinterpret_cast<void (*)(int, int, int, double, int)>(resolve("structura_set_solver_options"))) {
+        if (auto *setSolverOptions = reinterpret_cast<void (*)(int, int, int, double, int)>(resolveSlot(solver_sec::Rds_SetSolverOptions))) {
             setSolverOptions(model.linearSolver, model.eigenSolver, 400, 1e-10, 5000);
         }
         if (setNonlinear) {
@@ -361,7 +379,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         }
     }
     using SetBucklingFn = void (*)(int);
-    auto setBuckling = reinterpret_cast<SetBucklingFn>(solverLibrary.resolve("structura_set_buckling"));
+    auto setBuckling = reinterpret_cast<SetBucklingFn>(resolveSlot(solver_sec::Rds_SetBuckling));
     if (model.bucklingModes > 0 && !setBuckling) {
         throw SolverBridgeError("A DLL do solver nao suporta flambagem elastica (structura_set_buckling ausente). "
                                 "Recompile Structuradll e copie rds.dll para a raiz.");
@@ -370,7 +388,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         setBuckling(model.secondOrder ? 0 : model.bucklingModes);
     }
     using SetModalFn = void (*)(int, int, const int *, const double *, int, const int *, const double *);
-    auto setModal = reinterpret_cast<SetModalFn>(solverLibrary.resolve("structura_set_modal"));
+    auto setModal = reinterpret_cast<SetModalFn>(resolveSlot(solver_sec::Rds_SetModal));
     if (model.modalModes > 0 && !setModal) {
         throw SolverBridgeError("A DLL do solver nao suporta analise modal (structura_set_modal ausente). "
                                 "Recompile Structuradll e copie rds.dll para a raiz.");
@@ -396,7 +414,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         }
     }
     using SetTensionOnlyFn = void (*)(int, const int *);
-    auto setTensionOnly = reinterpret_cast<SetTensionOnlyFn>(solverLibrary.resolve("structura_set_tension_only"));
+    auto setTensionOnly = reinterpret_cast<SetTensionOnlyFn>(resolveSlot(solver_sec::Rds_SetTensionOnly));
     if (!tensionOnlyIds.empty() && !setTensionOnly) {
         throw SolverBridgeError("A DLL do solver nao suporta tirantes (structura_set_tension_only ausente). "
                                 "Recompile Structuradll e copie rds.dll para a raiz.");
@@ -477,9 +495,9 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
                                 int, const int *, const int *, const int *, const double *, const int *,
                                 int, const int *, const double *, const int *, const double *);
     using GetShellResultsFn = int (*)(int, double *, double *);
-    auto clearShells = reinterpret_cast<ClearShellsFn>(solverLibrary.resolve("structura_clear_shells"));
-    auto setShells = reinterpret_cast<SetShellsFn>(solverLibrary.resolve("structura_set_shells"));
-    auto getShellResults = reinterpret_cast<GetShellResultsFn>(solverLibrary.resolve("structura_get_shell_results"));
+    auto clearShells = reinterpret_cast<ClearShellsFn>(resolveSlot(solver_sec::Rds_ClearShells));
+    auto setShells = reinterpret_cast<SetShellsFn>(resolveSlot(solver_sec::Rds_SetShells));
+    auto getShellResults = reinterpret_cast<GetShellResultsFn>(resolveSlot(solver_sec::Rds_GetShellResults));
     const bool hasShells = model.shell && !model.shell->empty();
     if (hasShells && (!setShells || !getShellResults || !rawSymbolV4)) {
         throw SolverBridgeError("A DLL do solver nao suporta cascas acopladas (structura_set_shells ausente). "
@@ -525,7 +543,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
             throw SolverBridgeError("Dados de cascas invalidos para o solver.");
         }
         using SetShellAlphaFn = int (*)(int, const double *);
-        auto setShellAlpha = reinterpret_cast<SetShellAlphaFn>(solverLibrary.resolve("structura_set_shell_alpha"));
+        auto setShellAlpha = reinterpret_cast<SetShellAlphaFn>(resolveSlot(solver_sec::Rds_SetShellAlpha));
         std::vector<double> shellAlpha;
         for (const auto &e : model.shell->elements) {
             shellAlpha.push_back(e.alpha);
@@ -533,7 +551,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         const bool anyOrtho = std::any_of(model.shell->elements.begin(), model.shell->elements.end(), [](const auto &e) { return e.orthotropic; });
         if (anyOrtho) {
             using SetShellOrthoFn = int (*)(int, const int *, const double *, const double *, const double *, const double *, const double *, const double *);
-            auto setOrtho = reinterpret_cast<SetShellOrthoFn>(solverLibrary.resolve("structura_set_shell_orthotropy"));
+            auto setOrtho = reinterpret_cast<SetShellOrthoFn>(resolveSlot(solver_sec::Rds_SetShellOrthotropy));
             if (!setOrtho) {
                 throw SolverBridgeError("A DLL do solver nao suporta material ortotropico em cascas (structura_set_shell_orthotropy ausente). "
                                         "Recompile Structuradll e copie rds.dll para a raiz.");
@@ -693,6 +711,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         static_cast<int>(errorBuffer.size()), errorBuffer.data());
 
     if (returnCode != 0) {
+        solver_sec::cipherCString(errorBuffer.data(), errorBuffer.size(), sessionKey);
         std::string errorMessage(errorBuffer.data());
         if (errorMessage.empty()) {
             errorMessage = "structura_solve returned an error without message.";
@@ -757,7 +776,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
             }
         }
         using GetWarpingFn = int (*)(int, const int *, double *);
-        auto getWarping = reinterpret_cast<GetWarpingFn>(solverLibrary.resolve("structura_get_warping"));
+        auto getWarping = reinterpret_cast<GetWarpingFn>(resolveSlot(solver_sec::Rds_GetWarping));
         if (!warpIds.empty() && getWarping) {
             std::vector<double> values(warpIds.size() * 4U, 0.0);
             const bool used = getWarping(static_cast<int>(warpIds.size()), warpIds.data(), values.data()) > 0;
@@ -773,7 +792,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
 
     if (model.bucklingModes > 0 && !model.secondOrder) {
         using GetBucklingFn = int (*)(int, int, double *, double *);
-        auto getBuckling = reinterpret_cast<GetBucklingFn>(solverLibrary.resolve("structura_get_buckling"));
+        auto getBuckling = reinterpret_cast<GetBucklingFn>(resolveSlot(solver_sec::Rds_GetBuckling));
         if (getBuckling) {
             const int nodeCount = static_cast<int>(totalNodeCount);
             std::vector<double> factors(static_cast<std::size_t>(model.bucklingModes));
@@ -789,7 +808,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
 
     if (model.modalModes > 0 && !model.secondOrder) {
         using GetModalFn = int (*)(int, int, double *, double *, double *);
-        auto getModal = reinterpret_cast<GetModalFn>(solverLibrary.resolve("structura_get_modal"));
+        auto getModal = reinterpret_cast<GetModalFn>(resolveSlot(solver_sec::Rds_GetModal));
         if (getModal) {
             const int nodeCount = static_cast<int>(totalNodeCount);
             std::vector<double> omega(static_cast<std::size_t>(model.modalModes));
@@ -812,11 +831,11 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         using GetHingesFn = int (*)(int, int *, double *);
         using GetLinksFn = int (*)(int, int *, double *, double *);
         using GetConstraintForcesFn = int (*)(int, double *);
-        auto getSummary = reinterpret_cast<GetSummaryFn>(solverLibrary.resolve("structura_get_nonlinear_summary"));
-        auto getCurve = reinterpret_cast<GetCurveFn>(solverLibrary.resolve("structura_get_nonlinear_curve"));
-        auto getHinges = reinterpret_cast<GetHingesFn>(solverLibrary.resolve("structura_get_hinge_results"));
-        auto getLinks = reinterpret_cast<GetLinksFn>(solverLibrary.resolve("structura_get_link_results"));
-        auto getConstraintForces = reinterpret_cast<GetConstraintForcesFn>(solverLibrary.resolve("structura_get_constraint_forces"));
+        auto getSummary = reinterpret_cast<GetSummaryFn>(resolveSlot(solver_sec::Rds_GetNonlinearSummary));
+        auto getCurve = reinterpret_cast<GetCurveFn>(resolveSlot(solver_sec::Rds_GetNonlinearCurve));
+        auto getHinges = reinterpret_cast<GetHingesFn>(resolveSlot(solver_sec::Rds_GetHingeResults));
+        auto getLinks = reinterpret_cast<GetLinksFn>(resolveSlot(solver_sec::Rds_GetLinkResults));
+        auto getConstraintForces = reinterpret_cast<GetConstraintForcesFn>(resolveSlot(solver_sec::Rds_GetConstraintForces));
         if (getSummary && getCurve && getHinges && getLinks) {
             double summary[8] = {0, 0, 0, 0, 0, 0, 0, 0};
             getSummary(summary);
@@ -866,9 +885,10 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
     }
 
     using GetWarningsFn = int (*)(char *, int);
-    if (auto getWarnings = reinterpret_cast<GetWarningsFn>(solverLibrary.resolve("structura_get_warnings"))) {
+    if (auto getWarnings = reinterpret_cast<GetWarningsFn>(resolveSlot(solver_sec::Rds_GetWarnings))) {
         std::vector<char> text(8192, '\0');
         if (getWarnings(text.data(), static_cast<int>(text.size())) > 0) {
+            solver_sec::cipherCString(text.data(), text.size(), sessionKey);
             result.warnings = QString::fromUtf8(text.data()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
         }
     }

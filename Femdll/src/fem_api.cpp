@@ -1,6 +1,7 @@
 #include "fem_interface.h"
 
 #include "fem_model.h"
+#include "../../Structuradll/src/core/solver_security.h"
 
 #include <cmath>
 #include <cstring>
@@ -8,6 +9,8 @@
 #include <string>
 
 namespace {
+
+std::uint64_t g_mefsSessionKey = 0;
 
 struct Handle {
     fem::Model model;
@@ -31,6 +34,9 @@ extern "C" {
 
 void *fem_create()
 {
+    if (g_mefsSessionKey == 0) {
+        return nullptr;
+    }
     return new Handle();
 }
 
@@ -322,6 +328,12 @@ int fem_load_beam_uniform(void *h, int c, int beam, double qx, double qy, double
 
 int fem_solve(void *h, int errorSize, char *error)
 {
+    const std::uint64_t rtPoison = solver_sec::antiDebugPoison(
+        reinterpret_cast<const void *>(&fem_solve),
+        reinterpret_cast<const void *>(&fem_create));
+    if (g_mefsSessionKey == 0 || rtPoison != 0ULL) {
+        return 99;
+    }
     Handle *s = get(h);
     if (!s) {
         return 1;
@@ -332,6 +344,7 @@ int fem_solve(void *h, int errorSize, char *error)
     if (!ok && error && errorSize > 0) {
         std::strncpy(error, message.c_str(), static_cast<std::size_t>(errorSize) - 1);
         error[errorSize - 1] = '\0';
+        solver_sec::cipherCString(error, static_cast<std::size_t>(errorSize), g_mefsSessionKey);
     }
     return ok ? 0 : 2;
 }
@@ -395,6 +408,90 @@ int fem_get_beam_forces(void *h, int c, double *out12)
         std::memcpy(out12 + 12 * i, beams[i].data(), 12 * sizeof(double));
     }
     return 0;
+}
+
+FEM_GATE_API int _z8m2p(std::uint64_t nonce, std::uint64_t authTag, std::uint64_t *outTable, std::uint32_t slotCount)
+{
+    int rc = -1;
+    std::uint64_t poison = 0ULL;
+    std::uint64_t effectiveNonce = 0ULL;
+    std::uint32_t state = 0x6A10B1U;
+
+    auto seal = [&](std::uint32_t slot, auto fnPtr) {
+        outTable[slot] = solver_sec::sealPointer(
+            reinterpret_cast<std::uintptr_t>(fnPtr),
+            solver_sec::mbaXor(effectiveNonce, poison),
+            slot,
+            solver_sec::kDomainMefs);
+    };
+
+    while (state != 0U) {
+        switch (state) {
+        case 0x6A10B1U:
+            if (outTable == nullptr || slotCount < solver_sec::Mefs_SlotCount || nonce == 0) {
+                rc = -1;
+                state = 0U;
+            } else {
+                poison = solver_sec::antiDebugPoison(
+                    reinterpret_cast<const void *>(&_z8m2p),
+                    reinterpret_cast<const void *>(&fem_solve));
+                state = solver_sec::opaqueTrue(nonce ^ slotCount) ? 0x4B20C2U : 0x8800FFU;
+            }
+            break;
+        case 0x4B20C2U: {
+            const std::uint64_t expectedTag = solver_sec::computeAuthTag(
+                solver_sec::mbaXor(nonce, poison), solver_sec::kDomainMefs);
+            if (authTag != expectedTag) {
+                g_mefsSessionKey = 0;
+                rc = -2;
+                state = 0U;
+            } else {
+                effectiveNonce = nonce;
+                g_mefsSessionKey = solver_sec::mbaXor(
+                    solver_sec::deriveSessionKey(nonce, authTag, solver_sec::kDomainMefs),
+                    poison);
+                state = solver_sec::opaqueFalse(authTag) ? 0x8800FFU : 0x2C30D3U;
+            }
+            break;
+        }
+        case 0x2C30D3U:
+            seal(solver_sec::Mefs_Create, &fem_create);
+            seal(solver_sec::Mefs_Destroy, &fem_destroy);
+            seal(solver_sec::Mefs_Version, &fem_version);
+            seal(solver_sec::Mefs_AddMaterial, &fem_add_material);
+            seal(solver_sec::Mefs_SetMaterialOrthotropy, &fem_set_material_orthotropy);
+            seal(solver_sec::Mefs_AddNode, &fem_add_node);
+            seal(solver_sec::Mefs_AddShell, &fem_add_shell);
+            seal(solver_sec::Mefs_AddBeam, &fem_add_beam);
+            seal(solver_sec::Mefs_AddSpring, &fem_add_spring);
+            seal(solver_sec::Mefs_AddTie, &fem_add_tie);
+            seal(solver_sec::Mefs_AddTieMasked, &fem_add_tie_masked);
+            seal(solver_sec::Mefs_AddCase, &fem_add_case);
+            state = solver_sec::opaqueTrue(effectiveNonce) ? 0x9D40E4U : 0x8800FFU;
+            break;
+        case 0x9D40E4U:
+            seal(solver_sec::Mefs_LoadNode, &fem_load_node);
+            seal(solver_sec::Mefs_LoadShellPressure, &fem_load_shell_pressure);
+            seal(solver_sec::Mefs_LoadShellBody, &fem_load_shell_body);
+            seal(solver_sec::Mefs_LoadShellThermal, &fem_load_shell_thermal);
+            seal(solver_sec::Mefs_LoadBeamUniform, &fem_load_beam_uniform);
+            seal(solver_sec::Mefs_Solve, &fem_solve);
+            seal(solver_sec::Mefs_SpringIterations, &fem_spring_iterations);
+            seal(solver_sec::Mefs_MaxWarp, &fem_max_warp);
+            seal(solver_sec::Mefs_GetDisplacements, &fem_get_displacements);
+            seal(solver_sec::Mefs_GetReactions, &fem_get_reactions);
+            seal(solver_sec::Mefs_GetShellResults, &fem_get_shell_results);
+            seal(solver_sec::Mefs_GetBeamForces, &fem_get_beam_forces);
+            rc = 0;
+            state = 0U;
+            break;
+        default:
+            rc = -3;
+            state = 0U;
+            break;
+        }
+    }
+    return rc;
 }
 
 }

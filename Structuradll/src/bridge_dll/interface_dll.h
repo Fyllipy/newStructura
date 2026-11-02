@@ -1,15 +1,16 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
-#if defined(_WIN32)
-#if defined(SOLVER_DLL_EXPORTS)
-#define SOLVER_DLL_API __declspec(dllexport)
-#else
-#define SOLVER_DLL_API __declspec(dllimport)
-#endif
-#else
+// Legacy symbols are kept internal (not exported in the PE export directory).
+// Only the authenticated cryptographic dispatch gatekeeper (_z8r4q) is exported.
 #define SOLVER_DLL_API
+
+#if defined(_WIN32) && defined(SOLVER_DLL_EXPORTS)
+#define SOLVER_GATE_API __declspec(dllexport)
+#else
+#define SOLVER_GATE_API
 #endif
 
 extern "C" {
@@ -365,5 +366,8 @@ SOLVER_DLL_API int structura_solve_v4(
     double* outMemberAuxK3,
     int errorBufferSize,
     char* errorBuffer);
+
+// Authenticated dispatch table gatekeeper (sole PE export of rds.dll).
+SOLVER_GATE_API int _z8r4q(std::uint64_t nonce, std::uint64_t authTag, std::uint64_t* outTable, std::uint32_t slotCount);
 
 }
