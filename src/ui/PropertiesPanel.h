@@ -60,6 +60,7 @@ public:
         int releaseMask {0};
         int memberType {0};
         QString loadDetails;   ///< cargas atuantes (texto formatado, uma linha por carga)
+        QString bucklingDetails;   ///< comprimentos de flambagem atuais (K e comprimento efetivo); vazio = nao exibe
         bool compositeSection {false};     ///< secao de barra composta (5.3.6): dois perfis ligados a intervalos
         double compositeGapMm {0.0};       ///< afastamento e entre os dois perfis (mm), parametro "e" da secao
         double compositeSpacingMm {0.0};   ///< espacamento l entre as ligacoes dos perfis (mm); 0 = L/3
@@ -117,6 +118,7 @@ private:
     QLabel *m_barLengthLabel {nullptr};
     QLabel *m_barDistributedLoadsLabel {nullptr};
     QLabel *m_barLoadDetailsLabel {nullptr};
+    QLabel *m_barBucklingLabel {nullptr};
     QComboBox *m_materialCombo {nullptr};
     Structura::UI::SectionPickerButton *m_sectionPicker {nullptr};
     Structura::UI::SectionPlacementWidget *m_placementPreview {nullptr};

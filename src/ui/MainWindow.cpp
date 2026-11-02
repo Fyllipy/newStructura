@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "app/Edition.h"
 #include "app/services/MaterialLibrary.h"
 #include "app/Product.h"
 
@@ -316,6 +317,20 @@ QVector<PropertiesPanel::BarEntry> MainWindow::buildBarEntries(const QSet<QUuid>
             entry.compositeGapMm = entry.section.geometry.value(QStringLiteral("e"));
             entry.compositeSpacingMm = params.compositeSpacing;
             entry.compositeWelded = params.compositeWelded;
+        }
+    }
+    if (Structura::App::Edition::kHasDesign) {
+        // comprimentos de flambagem atuais de cada barra (K e comprimento efetivo K.L, ou o comprimento efetivo informado)
+        auto number = [](double v) { return QString::number(v, 'f', 3).replace(QLatin1Char('.'), QLatin1Char(',')); };
+        for (auto &entry : entries) {
+            const auto params = m_extras.design.paramsFor(entry.externalId);
+            auto line = [&](const QString &name, double k, double length) {
+                return length > 0.0 ? tr("%1: comprimento efetivo informado = %2 m").arg(name, number(length))
+                                    : tr("%1: K = %2 → comprimento efetivo = %3 m").arg(name, number(k), number(k * entry.length));
+            };
+            entry.bucklingDetails = tr("<b>Comprimentos de flambagem:</b><br>")
+                + line(QStringLiteral("Kx"), params.kx, params.lx) + QStringLiteral("<br>") + line(QStringLiteral("Ky"), params.ky, params.ly)
+                + QStringLiteral("<br>") + line(QStringLiteral("Kz (torção)"), params.kz, params.lz);
         }
     }
     if (entries.size() == 1) {

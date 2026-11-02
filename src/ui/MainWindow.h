@@ -179,6 +179,7 @@ private slots:
     void onDesignSettings();
     void onVerifyDesign();
     void onOptimizeDesign();
+    void onBucklingLengths();   ///< define K ou comprimento efetivo de flambagem das barras selecionadas (so Comercial)
     void onChangeProfileForMember(int memberId);
     void focusMember(int memberId);
     void showDesignResults(bool optimized);
@@ -584,6 +585,7 @@ private:
     class QDockWidget *m_groupsDock {nullptr};
     Structura::UI::GroupsPanel *m_groupsPanel {nullptr};
     QAction *m_optimizeDesignAction {nullptr};
+    QAction *m_bucklingLengthsAction {nullptr};
     Structura::UI::DesignPanel *m_designPanel {nullptr};
     QDockWidget *m_designDock {nullptr};
     QHash<int, double> m_designEta;   ///< barra (id externo) -> aproveitamento, para colorir

@@ -61,4 +61,8 @@ void MainWindow::createCommercialActions()
     m_optimizeDesignAction->setIcon(Structura::UI::actionIcon(QStringLiteral("design-optimize.svg")));
     m_optimizeDesignAction->setToolTip(tr("Adota o perfil mais leve da série que atende, reanalisando até convergir"));
     connect(m_optimizeDesignAction, &QAction::triggered, this, &MainWindow::onOptimizeDesign);
+    m_bucklingLengthsAction = new QAction(tr("Comprimentos de\nflambagem (K)"), this);
+    m_bucklingLengthsAction->setIcon(Structura::UI::actionIcon(QStringLiteral("design-params.svg")));
+    m_bucklingLengthsAction->setToolTip(tr("Define o comprimento de flambagem das barras selecionadas: pelo tipo de vinculação (K teórico ou recomendado), por um K arbitrário ou pelo comprimento efetivo"));
+    connect(m_bucklingLengthsAction, &QAction::triggered, this, &MainWindow::onBucklingLengths);
 }

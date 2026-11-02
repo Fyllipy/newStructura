@@ -36,11 +36,13 @@ void MainWindow::createCommercialActions()
     m_compositeAction = make(tr("Vigas e lajes\nmistas"), "composite.svg", tr("Viga mista de aço e concreto e laje mista com forma de aço incorporada."));
     m_designSettingsAction = make(tr("Parâmetros"), "design-params.svg", tr("Aço, comprimentos efetivos, travamentos e combinações do dimensionamento."));
     m_verifyDesignAction = make(tr("Verificar\nperfis"), "check-design.svg", tr("Verifica os perfis adotados com os esforços da última análise."));
+    m_bucklingLengthsAction = make(tr("Comprimentos de\nflambagem (K)"), "design-params.svg", tr("Define o comprimento de flambagem das barras: tipo de vinculação, K arbitrário ou comprimento efetivo."));
     m_optimizeDesignAction = make(tr("Dimensionar\nperfis"), "design-optimize.svg", tr("Adota o perfil mais leve da série que atende, reanalisando até convergir."));
 }
 void MainWindow::onDesignSettings() {}
 void MainWindow::onVerifyDesign() {}
 void MainWindow::onOptimizeDesign() {}
+void MainWindow::onBucklingLengths() {}
 void MainWindow::showDesignResults(bool) {}
 void MainWindow::ensureDesignPanel() {}
 void MainWindow::focusMember(int) {}

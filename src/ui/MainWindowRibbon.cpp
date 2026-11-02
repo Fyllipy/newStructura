@@ -545,7 +545,7 @@ void MainWindow::createRibbon()
     calc->addGroup(tr("Análise"), analysisItems);
     calc->addGroup(tr("Não linearidade"), {item(m_nonlinearOptionsAction, tr("Opções não lineares"), true), item(m_capacityCurveAction, tr("Curva de capacidade"), true)});
     {   // na Demonstrativa o botao aparece desabilitado
-        calc->addGroup(tr("Dimensionamento"), {item(m_designSettingsAction, tr("Parâmetros"), true), item(m_verifyDesignAction, tr("Verificar perfis"), true),
+        calc->addGroup(tr("Dimensionamento"), {item(m_designSettingsAction, tr("Parâmetros"), true), item(m_bucklingLengthsAction, tr("Comprimentos de flambagem"), true), item(m_verifyDesignAction, tr("Verificar perfis"), true),
                                                item(m_optimizeDesignAction, tr("Dimensionar perfis"), true)});
         calc->addGroup(tr("Ligações e mistas"), {item(m_connectionsAction, tr("Ligações"), true), item(m_copyConnectionsAction, tr("Copiar ligações"), true), item(m_compositeAction, tr("Vigas e lajes mistas"), true)});
     }
