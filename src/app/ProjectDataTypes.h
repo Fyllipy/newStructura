@@ -773,6 +773,14 @@ struct SheetGroupEdit {
     bool deleted {false};
 };
 
+/// Linhas do .dat que esta edicao nao interpreta (secoes ou chaves desconhecidas, ou dados exclusivos de outra edicao). Sao regravadas sem alteracao.
+struct PreservedBlock {
+    QString header;            ///< cabecalho da secao, como lido (ex.: "[MEMBER_DESIGN]")
+    QStringList lines;         ///< linhas como lidas (sem a quebra de linha)
+    bool wholeSection {false}; ///< true: a secao inteira nao e interpretada; false: so algumas linhas de uma secao conhecida
+    bool derived {false};      ///< resultado derivado da analise: so e regravado se a analise nao mudou (senao ficaria desatualizado)
+};
+
 struct ProjectExtras {
     QVector<MemberMoment> memberMoments;
     QVector<MemberAction> memberActions;   ///< cargas gerais de barra (trapezoidal/parcial, pontual, momento pontual, temperatura, retracao)
@@ -802,6 +810,8 @@ struct ProjectExtras {
     QMap<int, QMap<QString, double>> compositeBeams;   ///< entradas da viga mista por barra (id externo)
     QMap<QString, double> deckSlab;                    ///< entradas da laje mista (steel deck)
     Structura::Shell::Model shell;                     ///< cascas e chapas (placas, tanques, vasos de pressao)
+    QVector<PreservedBlock> preserved;                 ///< o que o arquivo traz e esta edicao nao conhece: regravado intacto
+    QString loadedFingerprint;                         ///< impressao digital dos resultados lidos do arquivo (valida os blocos derivados preservados)
 };
 
 struct NodalLoadPreset {

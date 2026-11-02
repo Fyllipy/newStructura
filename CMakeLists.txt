@@ -222,6 +222,7 @@ set(APP_SOURCES
     src/app/services/UserDataMigration.h
     src/app/services/UserDataMigration.cpp
     src/app/Product.h
+    src/app/Edition.h
     src/app/services/ModelCheckService.h
     src/app/services/ModelCheckService.cpp
     src/app/services/IntegrityService.h

@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QRegularExpression>
+#include <QSet>
 #include <QTextStream>
 
 #include <algorithm>
@@ -157,8 +158,50 @@ bool DatModelIoService::load(const QString &filePath,
     QTextStream stream(&file);
     stream.setLocale(QLocale::c());
 
-    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, MemberActions, MaterialThermal, Diaphragms, RigidLinks, InclinedSupports, LinearConstraints, MemberConnections, Links, Nonlinear, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor, ShellModel };
+    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, MemberActions, MaterialThermal, Diaphragms, RigidLinks, InclinedSupports, LinearConstraints, MemberConnections, Links, Nonlinear, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor, ShellModel, Preserved };
     Section current = Section::None;
+
+    // Preservacao: o que esta edicao nao interpreta volta ao arquivo intacto (ver ProjectExtras::preserved).
+    QVector<Structura::App::ProjectData::PreservedBlock> preservedTmp;
+    auto startPreserved = [&](const QString &header, bool derived) {
+        Structura::App::ProjectData::PreservedBlock block;
+        block.header = header;
+        block.wholeSection = true;
+        block.derived = derived;
+        preservedTmp.append(block);
+    };
+    auto keepLine = [&](const QString &header, const QString &text) {
+        for (auto &block : preservedTmp) {
+            if (!block.wholeSection && block.header.compare(header, Qt::CaseInsensitive) == 0) {
+                block.lines.append(text);
+                return;
+            }
+        }
+        Structura::App::ProjectData::PreservedBlock block;
+        block.header = header;
+        block.lines.append(text);
+        preservedTmp.append(block);
+    };
+    auto isDesignOnly = [](Section section) {
+        return section == Section::MemberDesign || section == Section::DesignResults || section == Section::BucklingResults
+            || section == Section::ModalResults || section == Section::Connections || section == Section::CompositeFloor || section == Section::SheetLayouts;
+    };
+    auto isDerivedResult = [](Section section) {
+        return section == Section::DesignResults || section == Section::BucklingResults || section == Section::ModalResults;
+    };
+    // chaves de [DESIGN_SETTINGS] que sao opcoes da analise estrutural (as demais pertencem ao dimensionamento)
+    static const QSet<QString> analysisSettingKeys {
+        QStringLiteral("DEFAULT_STEEL"), QStringLiteral("RECT_TUBE_STANDARD"), QStringLiteral("SECOND_ORDER"), QStringLiteral("STABILITY_FUNCTIONS"),
+        QStringLiteral("SHEAR_DEFORMATION"), QStringLiteral("WARPING_TORSION"), QStringLiteral("GEOMETRIC_IMPERFECTION"), QStringLiteral("IMPERFECTION_RATIO"),
+        QStringLiteral("RIGID_ZONE_FACTOR"), QStringLiteral("LOAD_STEPS"), QStringLiteral("STIFFNESS_REDUCTION"), QStringLiteral("NOTIONAL_LOADS"),
+        QStringLiteral("NOTIONAL_FACTOR")};
+    auto designSettingKnown = [](const QString &key) {
+        static const QSet<QString> known {
+            QStringLiteral("AMPLIFY_B1"), QStringLiteral("SLENDERNESS"), QStringLiteral("VON_MISES"), QStringLiteral("FIRE_CHECK"), QStringLiteral("FIRE_TRRF"),
+            QStringLiteral("AUTO_B2"), QStringLiteral("RS"), QStringLiteral("SINGLE_STOREY"), QStringLiteral("GROUP_BY_FAMILY"), QStringLiteral("TARGET_ETA"),
+            QStringLiteral("COMBINATION")};
+        return known.contains(key) || analysisSettingKeys.contains(key);
+    };
 
     QVector<MaterialInfo> materialsTmp;
     QVector<SectionInfo> sectionsTmp;
@@ -249,6 +292,11 @@ bool DatModelIoService::load(const QString &filePath,
         ++lineNumber;
         const QString trimmed = line.trimmed();
 
+        if (current == Section::Preserved && !trimmed.startsWith(QLatin1Char('['))) {
+            preservedTmp.last().lines.append(line);
+            continue;
+        }
+
         if (trimmed.isEmpty() || trimmed.startsWith(QLatin1Char('#'))) {
             continue;
         }
@@ -329,7 +377,12 @@ bool DatModelIoService::load(const QString &filePath,
             } else if (trimmed.compare(QStringLiteral("[MEMBER_LOADS]"), Qt::CaseInsensitive) == 0) {
                 current = Section::MemberLoads;
             } else {
-                current = Section::None;
+                startPreserved(trimmed, false);   // secao desconhecida (de outra versao ou edicao): preservada
+                current = Section::Preserved;
+            }
+            if (!m_designSections && isDesignOnly(current)) {
+                startPreserved(trimmed, isDerivedResult(current));
+                current = Section::Preserved;
             }
             continue;
         }
@@ -571,6 +624,9 @@ bool DatModelIoService::load(const QString &filePath,
                     element.axes[static_cast<std::size_t>(i)] = toDouble(parts[42 + i], &ok);
                 }
                 resultsTmp.runs.last().shellElements.append(element);
+            } else if (key != QLatin1String("FINGERPRINT") && key != QLatin1String("RUN") && key != QLatin1String("N") && key != QLatin1String("M")
+                       && key != QLatin1String("SN") && key != QLatin1String("SE")) {
+                keepLine(QStringLiteral("[ANALYSIS_RESULTS]"), line);
             }
             break;
         }
@@ -687,6 +743,10 @@ bool DatModelIoService::load(const QString &filePath,
                     s.springNormal[static_cast<std::size_t>(i)] = toDouble(parts[21 + i], &ok);
                 }
                 shellTmp.supports.push_back(s);
+            } else if (key != QLatin1String("TRIBUTARY") && key != QLatin1String("MONOLITHIC") && key != QLatin1String("COUPLED") && key != QLatin1String("MAT")
+                       && key != QLatin1String("ORTHO") && key != QLatin1String("OBJ") && key != QLatin1String("PARAM") && key != QLatin1String("POLY")
+                       && key != QLatin1String("LOAD") && key != QLatin1String("SUPPORT")) {
+                keepLine(QStringLiteral("[SHELL_MODEL]"), line);
             }
             break;
         }
@@ -832,6 +892,10 @@ bool DatModelIoService::load(const QString &filePath,
                 break;
             }
             const QString key = parts[0].toUpper();
+            if (!m_designSections && !analysisSettingKeys.contains(key)) {
+                keepLine(QStringLiteral("[DESIGN_SETTINGS]"), line);   // dimensionamento: a Demonstrativa nao interpreta, so preserva
+                break;
+            }
             const QString text = QStringList(parts.mid(1)).join(QLatin1Char(' '));
             auto name = [&]() { return QString(text).replace(QLatin1Char('_'), QLatin1Char(' ')); };
             if (key == QLatin1String("DEFAULT_STEEL")) {
@@ -940,6 +1004,8 @@ bool DatModelIoService::load(const QString &filePath,
                     d.compositeWelded = toInt(parts[37], &ok) != 0;
                 }
                 applyExtraTokens(d, parts, 38);
+            } else if (key != QLatin1String("DEFAULTS") && !designSettingKnown(key)) {
+                keepLine(QStringLiteral("[DESIGN_SETTINGS]"), line);   // chave desconhecida
             }
             break;
         }
@@ -1196,6 +1262,7 @@ bool DatModelIoService::load(const QString &filePath,
         }
         case Section::Nonlinear: {
             // chave=valor ...
+            QStringList unknownTokens;
             for (const QString &token : parts) {
                 const int eq = token.indexOf(QLatin1Char('='));
                 if (eq <= 0) {
@@ -1215,6 +1282,10 @@ bool DatModelIoService::load(const QString &filePath,
                 else if (key == QLatin1String("dof")) n.controlDof = std::clamp(value.toInt(), 0, 5);
                 else if (key == QLatin1String("target")) n.controlTarget = value.toDouble();
                 else if (key == QLatin1String("lambda")) n.loadFactorMax = value.toDouble();
+                else unknownTokens.append(token);
+            }
+            if (!unknownTokens.isEmpty()) {
+                keepLine(QStringLiteral("[NONLINEAR]"), unknownTokens.join(QLatin1Char(' ')));
             }
             break;
         }
@@ -1416,6 +1487,8 @@ bool DatModelIoService::load(const QString &filePath,
         shellTmp.materials.push_back(Structura::Shell::Material {});
     }
     extras.shell = shellTmp;
+    extras.preserved = preservedTmp;
+    extras.loadedFingerprint = resultsTmp.fingerprint;
 
     // Projetos antigos nao tem casos: cria o caso padrao e atribui as cargas a ele.
     extras.loadCases = loadCasesTmp;
@@ -1611,6 +1684,27 @@ bool DatModelIoService::save(const QString &filePath,
     std::sort(members.begin(), members.end(), [](const Structura::App::SceneBarInfo &a, const Structura::App::SceneBarInfo &b) {
         return a.externalId < b.externalId;
     });
+
+    // Preservacao: linhas que esta edicao nao interpreta (ver ProjectExtras::preserved).
+    QSet<QString> preservedEmitted;
+    auto emitLeftover = [&](const QString &header) {   // linhas soltas de uma secao conhecida, logo apos o que a edicao gravou nela
+        for (const auto &block : extras.preserved) {
+            if (!block.wholeSection && block.header.compare(header, Qt::CaseInsensitive) == 0) {
+                for (const QString &text : block.lines) {
+                    stream << text << "\n";
+                }
+                preservedEmitted.insert(block.header.toUpper());
+            }
+        }
+    };
+    auto hasLeftover = [&](const QString &header) {
+        for (const auto &block : extras.preserved) {
+            if (!block.wholeSection && block.header.compare(header, Qt::CaseInsensitive) == 0 && !block.lines.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    };
 
     stream << "[MATERIALS]\n";
     stream << "# ID    E (Pa)          G (Pa)\n";
@@ -1866,12 +1960,14 @@ bool DatModelIoService::save(const QString &filePath,
         const auto &n = extras.nonlinear;
         const Structura::App::ProjectData::NonlinearSettings defaults;
         if (n.force || n.steps != defaults.steps || n.controlMode != 0 || n.tolerance != defaults.tolerance || n.maxIterations != defaults.maxIterations
-            || n.criteria != defaults.criteria || n.maxCutbacks != defaults.maxCutbacks || n.loadFactorMax != defaults.loadFactorMax) {
+            || n.criteria != defaults.criteria || n.maxCutbacks != defaults.maxCutbacks || n.loadFactorMax != defaults.loadFactorMax
+            || hasLeftover(QStringLiteral("[NONLINEAR]"))) {
             stream << "\n[NONLINEAR]\n";
             stream << "# Analise nao linear incremental: criterio = soma de 1 (forcas), 2 (deslocamentos), 4 (energia); control 0 = carga, 1 = deslocamento\n";
             stream << QString::asprintf("force=%d steps=%d maxiter=%d tol=%.9g criteria=%d cutbacks=%d control=%d node=%d dof=%d target=%.9g lambda=%.9g\n",
                                         n.force ? 1 : 0, n.steps, n.maxIterations, n.tolerance, n.criteria, n.maxCutbacks, n.controlMode, n.controlNode, n.controlDof,
                                         n.controlTarget, n.loadFactorMax);
+            emitLeftover(QStringLiteral("[NONLINEAR]"));
         }
     }
 
@@ -1948,7 +2044,7 @@ bool DatModelIoService::save(const QString &filePath,
         }
     }
 
-    if (!extras.design.isDefault()) {
+    if (!extras.design.isDefault() || hasLeftover(QStringLiteral("[DESIGN_SETTINGS]"))) {
         const auto &ds = extras.design;
         auto token = [](QString text) { return text.isEmpty() ? QStringLiteral("-") : text.replace(QLatin1Char(' '), QLatin1Char('_')); };
         stream << "\n[DESIGN_SETTINGS]\n";
@@ -1956,8 +2052,10 @@ bool DatModelIoService::save(const QString &filePath,
         stream << "# DEFAULTS kx ky kz trechos Lb(m) mesa_contida Cb=1 B2 An/Ag Lx Ly Lz (m; 0 = usa K.L)\n";
         stream << "DEFAULT_STEEL " << token(ds.defaultSteel) << "\n";
         stream << "RECT_TUBE_STANDARD " << ds.rectTubeStandard << "\n";
-        stream << "AMPLIFY_B1 " << (ds.amplifyB1 ? 1 : 0) << "\n";
-        stream << "SLENDERNESS " << (ds.slendernessGoverns ? 1 : 0) << "\n";
+        if (m_designSections) {
+            stream << "AMPLIFY_B1 " << (ds.amplifyB1 ? 1 : 0) << "\n";
+            stream << "SLENDERNESS " << (ds.slendernessGoverns ? 1 : 0) << "\n";
+        }
         stream << "SECOND_ORDER " << (ds.secondOrder ? 1 : 0) << "\n";
         if (ds.stabilityFunctions) {
             stream << "STABILITY_FUNCTIONS 1\n";
@@ -1968,13 +2066,13 @@ bool DatModelIoService::save(const QString &filePath,
         if (ds.warpingTorsion) {
             stream << "WARPING_TORSION 1\n";
         }
-        if (ds.vonMises) {
+        if (m_designSections && ds.vonMises) {
             stream << "VON_MISES 1\n";
         }
-        if (ds.fireCheck) {
+        if (m_designSections && ds.fireCheck) {
             stream << "FIRE_CHECK 1\n";
         }
-        if (ds.fireTrrf != 60.0) {
+        if (m_designSections && ds.fireTrrf != 60.0) {
             stream << "FIRE_TRRF " << ds.fireTrrf << "\n";
         }
         if (ds.geometricImperfection) {
@@ -1990,16 +2088,21 @@ bool DatModelIoService::save(const QString &filePath,
             stream << "LOAD_STEPS " << ds.loadSteps << "\n";
         }
         stream << "STIFFNESS_REDUCTION " << ds.stiffnessReduction << "\n";
-        stream << "AUTO_B2 " << (ds.autoB2 ? 1 : 0) << "\n";
-        stream << "RS " << ds.rs << "\n";
-        stream << "SINGLE_STOREY " << (ds.singleStorey ? 1 : 0) << "\n";
+        if (m_designSections) {
+            stream << "AUTO_B2 " << (ds.autoB2 ? 1 : 0) << "\n";
+            stream << "RS " << ds.rs << "\n";
+            stream << "SINGLE_STOREY " << (ds.singleStorey ? 1 : 0) << "\n";
+        }
         stream << "NOTIONAL_LOADS " << (ds.notionalLoads ? 1 : 0) << "\n";
         stream << "NOTIONAL_FACTOR " << ds.notionalFactor << "\n";
-        stream << "GROUP_BY_FAMILY " << (ds.groupByFamily ? 1 : 0) << "\n";
-        stream << "TARGET_ETA " << ds.targetEta << "\n";
-        for (const QString &name : ds.combinations) {
-            stream << "COMBINATION " << token(name) << "\n";
+        if (m_designSections) {
+            stream << "GROUP_BY_FAMILY " << (ds.groupByFamily ? 1 : 0) << "\n";
+            stream << "TARGET_ETA " << ds.targetEta << "\n";
+            for (const QString &name : ds.combinations) {
+                stream << "COMBINATION " << token(name) << "\n";
+            }
         }
+        if (m_designSections)
         stream << QString::asprintf("DEFAULTS %g %g %g %d %g %d %d %g %g %g %g %g %g %d %d %g %d %g %g %g %g %g %g %d %d %d %g %g %g %g %d %g %g %g %d %g %d", ds.defaults.kx, ds.defaults.ky, ds.defaults.kz,
                                     ds.defaults.segments, ds.defaults.lb, ds.defaults.braced ? 1 : 0, ds.defaults.cbOne ? 1 : 0,
                                     ds.defaults.b2, ds.defaults.netAreaRatio, ds.defaults.lx, ds.defaults.ly, ds.defaults.lz, ds.defaults.stiffenerSpacing,
@@ -2010,7 +2113,8 @@ bool DatModelIoService::save(const QString &filePath,
                                     ds.defaults.holesInChain, ds.defaults.holeThickness, ds.defaults.staggerPitch, ds.defaults.staggerGauge, ds.defaults.staggerLinks,
                                     ds.defaults.compositeSpacing, ds.defaults.compositeWelded ? 1 : 0)
                << extraTokens(ds.defaults) << "\n";
-        if (!ds.members.isEmpty()) {
+        emitLeftover(QStringLiteral("[DESIGN_SETTINGS]"));
+        if (m_designSections && !ds.members.isEmpty()) {
             stream << "\n[MEMBER_DESIGN]\n";
             stream << "# Member_ID  Aco(-=padrao)  kx ky kz  trechos  Lb(m)  mesa_contida  Cb=1  B2  An/Ag  flecha_L/n(0=auto)  Lx Ly Lz (m; 0 = usa K.L)\n";
             for (const auto &p : ds.members) {
@@ -2084,6 +2188,7 @@ bool DatModelIoService::save(const QString &filePath,
             }
             stream << ' ' << num(s.springPerArea) << ' ' << (s.compressionOnly ? 1 : 0) << ' ' << num(s.springNormal[0]) << ' ' << num(s.springNormal[1]) << ' ' << num(s.springNormal[2]) << "\n";
         }
+        emitLeftover(QStringLiteral("[SHELL_MODEL]"));
     }
     if (!extras.compositeBeams.isEmpty() || !extras.deckSlab.isEmpty()) {
         stream << "\n[COMPOSITE_FLOOR]\n";
@@ -2200,6 +2305,7 @@ bool DatModelIoService::save(const QString &filePath,
                 stream << "\n";
             }
         }
+        emitLeftover(QStringLiteral("[ANALYSIS_RESULTS]"));
     }
     if (!results.design.isEmpty()) {
         stream << "\n[DESIGN_RESULTS]\n";
@@ -2231,6 +2337,25 @@ bool DatModelIoService::save(const QString &filePath,
         stream << "# Chave  Valor (booleanos: 0/1)\n";
         for (auto it = extras.viewOptions.constBegin(); it != extras.viewOptions.constEnd(); ++it) {
             stream << QString::asprintf("%-28s %g\n", it.key().toLatin1().constData(), it.value());
+        }
+    }
+
+    // Secoes que esta edicao nao interpreta (e linhas soltas de secoes que nao chegaram a ser gravadas): voltam ao arquivo como foram lidas.
+    const bool analysisUnchanged = extras.loadedFingerprint.isEmpty() || extras.results.fingerprint == extras.loadedFingerprint;
+    for (const auto &block : extras.preserved) {
+        if (block.wholeSection) {
+            if (block.derived && !analysisUnchanged) {
+                continue;   // resultado derivado de uma analise que foi refeita: estaria desatualizado
+            }
+            stream << "\n" << block.header << "\n";
+        } else {
+            if (preservedEmitted.contains(block.header.toUpper())) {
+                continue;
+            }
+            stream << "\n" << block.header << "\n";
+        }
+        for (const QString &text : block.lines) {
+            stream << text << "\n";
         }
     }
 

@@ -5,6 +5,7 @@
 #include <QUuid>
 #include <QVector>
 
+#include "app/Edition.h"
 #include "app/ISceneModelGateway.h"
 #include "app/ProjectDataTypes.h"
 
@@ -13,6 +14,13 @@ namespace Structura::App::Services {
 class DatModelIoService
 {
 public:
+    /**
+     * @param designSections  true: interpreta tambem as secoes de dimensionamento, ligacoes e detalhamento (edicao Comercial);
+     *                        false: essas secoes (e as chaves de dimensionamento de [DESIGN_SETTINGS]) sao apenas preservadas e regravadas
+     *                        sem alteracao (edicao Demonstrativa). Qualquer secao ou chave desconhecida e preservada nos dois casos.
+     */
+    explicit DatModelIoService(bool designSections = Structura::App::Edition::kHasDesign) : m_designSections(designSections) {}
+
     using MaterialInfo = Structura::App::ProjectData::MaterialInfo;
     using SectionInfo = Structura::App::ProjectData::SectionInfo;
     using NodeSupport = Structura::App::ProjectData::NodeSupport;
@@ -42,6 +50,9 @@ public:
               const QVector<MemberLoad> &memberLoads,
               const ProjectExtras &extras,
               QString *errorMessage) const;
+
+private:
+    bool m_designSections;
 };
 
 } // namespace Structura::App::Services
