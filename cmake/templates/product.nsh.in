@@ -7,5 +7,5 @@
 !define PRODUCT_EXE         "@STRUCTURA_EXE_NAME@.exe"
 !define PRODUCT_INSTALL_DIR "@STRUCTURA_INSTALL_DIR@"
 !define PRODUCT_REG_KEY     "@STRUCTURA_REG_KEY@"
-!define PRODUCT_DIST_DIR    "@CMAKE_SOURCE_DIR@/dist/@STRUCTURA_DIST_NAME@"
+!define PRODUCT_DIST_DIR    "..\dist\@STRUCTURA_DIST_NAME@"   ; relativo a installer/ (evita acentos no caminho)
 !define PRODUCT_SETUP_NAME  "@STRUCTURA_INSTALLER_NAME@.exe"

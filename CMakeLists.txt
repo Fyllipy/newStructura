@@ -744,3 +744,17 @@ add_custom_command(TARGET StructuraRibbon3D POST_BUILD
     COMMENT "Montando a pasta de distribuicao em ${STRUCTURA_DIST_DIR}"
     VERBATIM
 )
+
+# --- Instalador (NSIS) ---
+# cmake --build <pasta> --target installer  ->  dist/installers/<APP_ID>-Setup-<versao>.exe (um por edicao; usa a pasta de distribuicao ja montada)
+find_program(STRUCTURA_MAKENSIS makensis HINTS "C:/Program Files (x86)/NSIS" "C:/Program Files/NSIS")
+if (STRUCTURA_MAKENSIS)
+    file(TO_NATIVE_PATH "${STRUCTURA_GENERATED_DIR}/product.nsh" STRUCTURA_PRODUCT_NSH_NATIVE)
+    add_custom_target(installer
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/dist/installers"
+        COMMAND "${STRUCTURA_MAKENSIS}" -V2 "-DPRODUCT_NSH=${STRUCTURA_PRODUCT_NSH_NATIVE}" structura.nsi
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/installer"
+        DEPENDS StructuraRibbon3D
+        COMMENT "Gerando o instalador de ${STRUCTURA_DISPLAY_NAME}"
+        VERBATIM)
+endif()
