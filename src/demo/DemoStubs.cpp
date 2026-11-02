@@ -11,6 +11,7 @@
 #include "viz/structure/ConnectionRenderer.h"
 
 // --- janela principal ---------------------------------------------------------------------------------------------
+void MainWindow::createCommercialActions() {}
 void MainWindow::onDesignSettings() {}
 void MainWindow::onVerifyDesign() {}
 void MainWindow::onOptimizeDesign() {}

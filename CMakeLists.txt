@@ -380,6 +380,7 @@ set(SHELL_SOURCES
 
 # Exclusivos da edicao Comercial: dimensionamento, ligacoes, detalhamento, flambagem, modal e dinamica. A Demonstrativa nao os compila.
 set(STRUCTURA_DESIGN_SOURCES
+    src/ui/MainWindowCommercialActions.cpp
     src/ui/MainWindowConnectionsView.cpp
     src/ui/MainWindowFabrication.cpp
     src/ui/MainWindowAutomation.cpp

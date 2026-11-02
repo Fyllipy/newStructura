@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "app/Edition.h"
 #include "app/Product.h"
 #include "RibbonWidgets.h"
 #include "ShellDialog.h"
@@ -354,10 +355,6 @@ void MainWindow::createRibbon()
     m_checkModelAction->setIcon(icon(QStringLiteral("model-check.svg")));
     m_checkModelAction->setToolTip(tr("Procura problemas antes de analisar: nós soltos, barras duplicadas, mecanismos, apoios insuficientes, cargas e unidades"));
     connect(m_checkModelAction, &QAction::triggered, this, &MainWindow::onCheckModel);
-    m_integrityAction = new QAction(tr("Integridade") + QLatin1Char(10) + tr("estrutural"), this);
-    m_integrityAction->setIcon(icon(QStringLiteral("model-check.svg")));
-    m_integrityAction->setToolTip(tr("NBR 8800:2024, 4.13: travamento dos pilares, força de tração das contenções e ligações, e colapso progressivo por falha acidental de um pilar"));
-    connect(m_integrityAction, &QAction::triggered, this, &MainWindow::onStructuralIntegrity);
     m_templateAction = new QAction(tr("Modelo\npronto"), this);
     m_templateAction->setIcon(icon(QStringLiteral("template.svg")));
     m_templateAction->setToolTip(tr("Gera um galpão de duas águas ou um edifício de pórticos parametrizado (perfis, grupos, tirantes, cargas e combinações)"));
@@ -393,22 +390,6 @@ void MainWindow::createRibbon()
     m_compareAction->setToolTip(tr("Compara deslocamentos, reações e esforços entre combinações, com a envoltória e a combinação que governa"));
     connect(m_compareAction, &QAction::triggered, this, &MainWindow::onCompareResults);
 
-    m_compositeAction = new QAction(tr("Vigas e lajes\nmistas"), this);
-    m_compositeAction->setIcon(icon(QStringLiteral("composite.svg")));
-    m_compositeAction->setToolTip(tr("Viga mista de aço e concreto (NBR 8800, Anexo L) e laje mista com forma de aço incorporada — steel deck (Anexo N)"));
-    connect(m_compositeAction, &QAction::triggered, this, &MainWindow::onCompositeFloor);
-    m_designSettingsAction = new QAction(tr("Parâmetros"), this);
-    m_designSettingsAction->setIcon(icon(QStringLiteral("design-params.svg")));
-    m_designSettingsAction->setToolTip(tr("Aço, comprimentos efetivos, travamentos e combinações do dimensionamento"));
-    connect(m_designSettingsAction, &QAction::triggered, this, &MainWindow::onDesignSettings);
-    m_verifyDesignAction = new QAction(tr("Verificar\nperfis"), this);
-    m_verifyDesignAction->setIcon(icon(QStringLiteral("check-design.svg")));
-    m_verifyDesignAction->setToolTip(tr("Verifica os perfis adotados (NBR 8800 / NBR 14762) com os esforços da última análise"));
-    connect(m_verifyDesignAction, &QAction::triggered, this, &MainWindow::onVerifyDesign);
-    m_optimizeDesignAction = new QAction(tr("Dimensionar\nperfis"), this);
-    m_optimizeDesignAction->setIcon(icon(QStringLiteral("design-optimize.svg")));
-    m_optimizeDesignAction->setToolTip(tr("Adota o perfil mais leve da série que atende, reanalisando até convergir"));
-    connect(m_optimizeDesignAction, &QAction::triggered, this, &MainWindow::onOptimizeDesign);
     m_reportAction = new QAction(tr("Memorial"), this);
     m_reportAction->setIcon(icon(QStringLiteral("report.svg")));
     m_reportAction->setToolTip(tr("Gera o memorial de cálculo e o relatório geral: escolha o conteúdo, visualize e exporte para Word (.docx)"));
@@ -523,8 +504,21 @@ void MainWindow::createRibbon()
     auto *tools = new RibbonPage(this);
     tools->addGroup(tr("Geração"), {item(m_generateTrussAction, tr("Gerar treliça"), true)});
     tools->addGroup(tr("Eixos"), {item(m_axesAction, tr("Eixos de referência"), true)});
-    tools->addGroup(tr("Modelo"), {item(m_templateAction, tr("Modelo pronto"), true), item(m_checkModelAction, tr("Checar modelo"), true), item(m_integrityAction, tr("Integridade estrutural"), true)});
-    tools->addGroup(tr("Documentação"), {item(m_quantitiesAction, tr("Quantitativos"), true), item(m_exportDxfAction, tr("Exportar DXF"), true), item(m_exportDstvAction, tr("Exportar NC (DSTV)"), true), item(m_exportIfcAction, tr("Exportar IFC"), true), item(m_importCadAction, tr("Importar DXF/IFC"), true), item(m_sheetsAction, tr("Pranchas"), true)});
+    QList<RibbonItem> modelTools = {item(m_templateAction, tr("Modelo pronto"), true), item(m_checkModelAction, tr("Checar modelo"), true)};
+    if (Structura::App::Edition::kHasDesign) {
+        modelTools.append(item(m_integrityAction, tr("Integridade estrutural"), true));
+    }
+    tools->addGroup(tr("Modelo"), modelTools);
+    QList<RibbonItem> docTools = {item(m_quantitiesAction, tr("Quantitativos"), true), item(m_exportDxfAction, tr("Exportar DXF"), true)};
+    if (Structura::App::Edition::kHasFabrication) {
+        docTools.append(item(m_exportDstvAction, tr("Exportar NC (DSTV)"), true));
+        docTools.append(item(m_exportIfcAction, tr("Exportar IFC"), true));
+    }
+    docTools.append(item(m_importCadAction, tr("Importar DXF/IFC"), true));
+    if (Structura::App::Edition::kHasFabrication) {
+        docTools.append(item(m_sheetsAction, tr("Pranchas"), true));
+    }
+    tools->addGroup(tr("Documentação"), docTools);
 
     // ---- Carregamentos ----------------------------------------------------------------------------------------------------------
     auto *loads = new RibbonPage(this);
@@ -542,12 +536,19 @@ void MainWindow::createRibbon()
     auto *calc = new RibbonPage(this);
     RibbonItem process = item(m_runAnalysisAction, tr("Processar"), true, tr("Roda a análise estrutural linear do modelo com todos os casos e combinações."));
     process.icon = quickIcon(QStringLiteral("play"), QColor(QStringLiteral("#0d7fb9")), 32);
-    calc->addGroup(tr("Análise"), {process,
-                                   item(m_bucklingAction, tr("Flambagem elástica"), true), item(m_modalAction, tr("Análise modal"), true), item(m_dynamicsAction, tr("Dinâmica"), true)});
+    QList<RibbonItem> analysisItems = {process};
+    if (Structura::App::Edition::kHasStabilityAndDynamics) {
+        analysisItems.append(item(m_bucklingAction, tr("Flambagem elástica"), true));
+        analysisItems.append(item(m_modalAction, tr("Análise modal"), true));
+        analysisItems.append(item(m_dynamicsAction, tr("Dinâmica"), true));
+    }
+    calc->addGroup(tr("Análise"), analysisItems);
     calc->addGroup(tr("Não linearidade"), {item(m_nonlinearOptionsAction, tr("Opções não lineares"), true), item(m_capacityCurveAction, tr("Curva de capacidade"), true)});
-    calc->addGroup(tr("Dimensionamento"), {item(m_designSettingsAction, tr("Parâmetros"), true), item(m_verifyDesignAction, tr("Verificar perfis"), true),
-                                           item(m_optimizeDesignAction, tr("Dimensionar perfis"), true)});
-    calc->addGroup(tr("Ligações e mistas"), {item(m_connectionsAction, tr("Ligações"), true), item(m_copyConnectionsAction, tr("Copiar ligações"), true), item(m_compositeAction, tr("Vigas e lajes mistas"), true)});
+    if (Structura::App::Edition::kHasDesign) {
+        calc->addGroup(tr("Dimensionamento"), {item(m_designSettingsAction, tr("Parâmetros"), true), item(m_verifyDesignAction, tr("Verificar perfis"), true),
+                                               item(m_optimizeDesignAction, tr("Dimensionar perfis"), true)});
+        calc->addGroup(tr("Ligações e mistas"), {item(m_connectionsAction, tr("Ligações"), true), item(m_copyConnectionsAction, tr("Copiar ligações"), true), item(m_compositeAction, tr("Vigas e lajes mistas"), true)});
+    }
     calc->addGroup(tr("Resultados"), {item(m_showDiagramsAction, tr("Mostrar diagramas"), true), item(m_hideDiagramsAction, tr("Ocultar diagramas"), true),
                                       item(m_compareAction, tr("Comparar combinações"), true)});
     calc->addGroup(tr("Documentação"), {item(m_reportAction, tr("Memorial"), true)});

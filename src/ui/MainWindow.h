@@ -329,6 +329,7 @@ private:
     void flipSelectedShell();
     void showShellContextMenu(const QPoint &globalPos);
 
+    void createCommercialActions();   ///< acoes exclusivas da edicao Comercial (MainWindowCommercialActions.cpp)
     void createActions();
     void createRibbon();
     QWidget *createQuickAccessBar();
