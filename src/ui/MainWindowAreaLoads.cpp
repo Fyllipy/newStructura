@@ -151,6 +151,7 @@ void MainWindow::onApplyAreaLoad()
         record.qx = load.q[0];
         record.qy = load.q[1];
         record.qz = load.q[2];
+        record.fromArea = true;
         m_memberLoads.append(record);
         ++applied;
     }

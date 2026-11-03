@@ -52,6 +52,12 @@ NodeRenderer::NodeRenderer()
 
 NodeRenderer::~NodeRenderer() = default;
 
+void NodeRenderer::setScreenSize(double pixels)
+{
+    m_distanceFilter->SetScreenSize(pixels);
+    m_distanceFilter->Modified();
+}
+
 void NodeRenderer::addToRenderer(vtkRenderer* renderer)
 {
     if (renderer) {

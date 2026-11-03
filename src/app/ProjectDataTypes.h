@@ -65,6 +65,7 @@ struct MemberLoad {
     double qy {0.0};
     double qz {0.0};
     QString loadCase;
+    bool fromArea {false};   ///< gerada por uma carga de area: entra na analise, mas o pano (carga de area) e que e exibido e listado
 };
 
 /// Momento uniformemente distribuido ao longo da barra (N*m/m).

@@ -54,6 +54,8 @@ void MainWindow::createActions()
     m_saveAsModelAction->setShortcut(QKeySequence::SaveAs);
     connect(m_saveAsModelAction, &QAction::triggered, this, &MainWindow::onSaveModelAs);
 
+    m_optionsAction = new QAction(tr("Opções…"), this);
+    connect(m_optionsAction, &QAction::triggered, this, &MainWindow::onOptions);
     m_aboutAction = new QAction(tr("Sobre"), this);
     connect(m_aboutAction, &QAction::triggered, this, &MainWindow::onAbout);
 

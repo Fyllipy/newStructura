@@ -417,6 +417,14 @@ void SceneController::refreshConstructionGeometry()
     emit geometryRefreshed();
 }
 
+void SceneController::setNodeScreenSize(double pixels)
+{
+    if (m_structureRenderer) {
+        m_structureRenderer->setNodeScreenSize(pixels);
+    }
+    requestRender();
+}
+
 void SceneController::setNodesVisible(bool visible)
 {
     m_showNodes = visible;

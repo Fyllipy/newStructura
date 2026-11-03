@@ -191,6 +191,7 @@ QWidget *MainWindow::createQuickAccessBar()
     fileMenu->addAction(m_saveModelAction);
     fileMenu->addAction(m_saveAsModelAction);
     fileMenu->addSeparator();
+    fileMenu->addAction(m_optionsAction);
     fileMenu->addAction(m_aboutAction);
     m_homeTabButton->setMenu(fileMenu);
     m_homeTabButton->setProperty("startButton", QStringLiteral("true"));
@@ -529,8 +530,6 @@ void MainWindow::createRibbon()
                                                  item(m_loadCaseVisibilityAction, tr("Casos visíveis"), true)});
 
     // ---- Visualização -----------------------------------------------------------------------------------------------------------
-    auto *view = new RibbonPage(this);
-    view->addGroup(tr("Visualização"), {item(m_resetCameraAction, tr("Visão inicial"), true), item(m_zoomExtentsAction, tr("Ajustar à tela"), true)});
 
     // ---- Cálculo: todas as funções de análise e dimensionamento --------------------------------------------------------------
     auto *calc = new RibbonPage(this);
@@ -563,11 +562,10 @@ void MainWindow::createRibbon()
                                                   item(m_shellSplitAction, tr("Dividir barras nos nós"), true)});
     shell->addGroup(tr("Análise"), {item(m_shellAction, tr("Editor de cascas"), true)});
 
-    m_ribbonPages = {home, tools, loads, view, calc, shell};
-    m_ribbon->addTab(home, tr("Início"));
+    m_ribbonPages = {home, tools, loads, calc, shell};
+    m_ribbon->addTab(home, tr("Geometria"));
     m_ribbon->addTab(tools, tr("Ferramentas"));
     m_ribbon->addTab(loads, tr("Carregamentos"));
-    m_ribbon->addTab(view, tr("Visualização"));
     m_ribbon->addTab(calc, tr("Cálculo"));
     m_ribbon->addTab(shell, tr("Cascas"));
 

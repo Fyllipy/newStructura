@@ -174,6 +174,9 @@ set(APP_SOURCES
 
 set(UI_SOURCES
     src/ui/MainWindow.h
+    src/ui/OptionsDialog.h
+    src/ui/OptionsDialog.cpp
+    src/app/AppSettings.h
     src/ui/MainWindow.cpp
     src/ui/MainWindowActions.cpp
     src/ui/MainWindowRibbon.cpp

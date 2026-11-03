@@ -338,6 +338,10 @@ void MainWindow::applyViewOptionsFromExtras()
             applyViewOption(key, on);
         }
     }
+    if (!m_extras.axes.isEmpty() && !options.contains(Bar::kReferenceAxes)) {
+        m_viewOptionsBar->setChecked(Bar::kReferenceAxes, true);   // o arquivo tem eixos e nao registra a opcao: mostra os eixos
+        applyViewOption(Bar::kReferenceAxes, true);
+    }
     for (const QString &key : snapTypeKeys()) {
         if (options.contains(key)) {
             const bool on = options.value(key) != 0.0;

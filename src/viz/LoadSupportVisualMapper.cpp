@@ -141,6 +141,9 @@ QVector<SceneController::MemberActionVisual> LoadSupportVisualMapper::mapMemberA
     if (context.memberLoads) {
         for (int loadIndex = 0; loadIndex < context.memberLoads->size(); ++loadIndex) {
             const auto &load = (*context.memberLoads)[loadIndex];
+            if (load.fromArea) {
+                continue;   // a carga de area ja e mostrada pelo pano
+            }
             if (!isCaseShown(load.loadCase, context, defaultCase)) {
                 continue;
             }

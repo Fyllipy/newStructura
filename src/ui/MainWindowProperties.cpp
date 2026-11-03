@@ -1,4 +1,6 @@
 #include "MainWindow.h"
+#include "OptionsDialog.h"
+#include "app/AppSettings.h"
 #include "app/Edition.h"
 #include "app/Product.h"
 #include "SvgIcons.h"
@@ -712,6 +714,33 @@ void MainWindow::onNewModel()
     showStatusMessage(fromTemplate ? tr("Novo projeto criado a partir de um modelo pronto.") : tr("Novo projeto criado. Defina perfis, desenhe o modelo e aplique as cargas."), 6000);
     if (!fromTemplate && settings.openCombinationGenerator && !m_extras.loadCases.isEmpty()) {
         onGenerateCombinations();
+    }
+}
+
+void MainWindow::applyVisualOptions()
+{
+    if (!m_sceneController) {
+        return;
+    }
+    const auto settings = Structura::App::appSettings();
+    m_sceneController->setNodeScreenSize(settings.value(QString::fromLatin1(Structura::App::Options::kNodeScreenSize), Structura::App::Options::kNodeScreenSizeDefault).toDouble());
+}
+
+void MainWindow::onOptions()
+{
+    auto settings = Structura::App::appSettings();
+    const QString key = QString::fromLatin1(Structura::App::Options::kNodeScreenSize);
+    const double current = settings.value(key, Structura::App::Options::kNodeScreenSizeDefault).toDouble();
+    Structura::UI::OptionsDialog dialog(current, this);
+    connect(&dialog, &Structura::UI::OptionsDialog::nodeScreenSizeChanged, this, [this](double pixels) {
+        if (m_sceneController) {
+            m_sceneController->setNodeScreenSize(pixels);
+        }
+    });
+    if (dialog.exec() == QDialog::Accepted) {
+        settings.setValue(key, dialog.nodeScreenSize());
+    } else if (m_sceneController) {
+        m_sceneController->setNodeScreenSize(current);   // cancelou: volta ao valor anterior
     }
 }
 

@@ -51,6 +51,7 @@ public:
     // Aparencia (esmaecer/ocultar/cor)
     void setNodeAppearance(const AppearanceMap& appearance);
     void setBarAppearance(const AppearanceMap& appearance);
+    void setNodeScreenSize(double pixels);
 
     // Getters para Pickers
     vtkActor* getNodeActor() const;

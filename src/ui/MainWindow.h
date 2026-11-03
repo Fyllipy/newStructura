@@ -330,6 +330,8 @@ private:
     void flipSelectedShell();
     void showShellContextMenu(const QPoint &globalPos);
 
+    void onOptions();             ///< Arquivo > Opcoes
+    void applyVisualOptions();    ///< aplica as opcoes visuais gravadas (tamanho do no)
     void createCommercialActions();   ///< acoes exclusivas da edicao Comercial (MainWindowCommercialActions.cpp)
     void createActions();
     void createRibbon();
@@ -541,6 +543,7 @@ private:
     QAction *m_saveModelAction;
     QAction *m_saveAsModelAction;
     QAction *m_newModelAction;
+    QAction *m_optionsAction {nullptr};
     QAction *m_aboutAction;
     QAction *m_runAnalysisAction;
     QAction *m_undoAction;

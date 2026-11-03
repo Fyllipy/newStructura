@@ -125,6 +125,11 @@ void StructureRenderer::setBarAppearance(const AppearanceMap& appearance)
     m_memberRenderer->setAppearance(appearance);
 }
 
+void StructureRenderer::setNodeScreenSize(double pixels)
+{
+    m_nodeRenderer->setScreenSize(pixels);
+}
+
 vtkActor* StructureRenderer::getNodeActor() const
 {
     return m_nodeRenderer->getActor();

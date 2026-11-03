@@ -122,12 +122,18 @@ bool DefaultLocalAxisProvider::areParallel(const std::array<double, 3> &a,
 std::array<double, 3> DefaultLocalAxisProvider::selectAuxiliaryVector(
     const std::array<double, 3> &xPrime) const
 {
-    // Mesma convencao do solver (Structuradll): Z global; barras verticais usam Y global.
-    if (std::abs(xPrime[2]) > 1.0 - m_parallelEps) {
-        return {0.0, 1.0, 0.0};
-    } else {
-        return {0.0, 0.0, 1.0};
+    // Mesma regra do solver (Structuradll, Member::selectReferenceVector): Z global, depois Y, depois X, o primeiro que nao for paralelo a barra.
+    // O criterio e o mesmo (norma do produto vetorial > 1e-10): com outro limite, barras quase verticais (ex.: pilares importados com ruido de
+    // coordenadas) teriam eixos locais diferentes no desenho e na analise (giro de 90 graus na secao, nas cargas e nos diagramas).
+    constexpr double kTolerance = 1e-10;
+    const std::array<std::array<double, 3>, 3> candidates = {{{0.0, 0.0, 1.0}, {0.0, 1.0, 0.0}, {1.0, 0.0, 0.0}}};
+    for (const auto &candidate : candidates) {
+        const auto c = cross(xPrime, candidate);
+        if (std::sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]) > kTolerance) {
+            return candidate;
+        }
     }
+    return {0.7071067811865476, 0.7071067811865476, 0.0};
 }
 
 } // namespace Structura::Geometry

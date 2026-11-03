@@ -367,12 +367,8 @@ void MainWindow::ensureDesignPanel()
     connect(m_designPanel, &Structura::UI::DesignPanel::settingsRequested, this, &MainWindow::onDesignSettings);
     connect(m_designPanel, &Structura::UI::DesignPanel::memberActivated, this, &MainWindow::focusMember);
     connect(m_designPanel, &Structura::UI::DesignPanel::changeProfileRequested, this, &MainWindow::onChangeProfileForMember);
-    connect(m_designDock, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        if (!visible && !m_designEta.isEmpty()) {
-            m_designEta.clear();
-            applyAppearance();
-        }
-    });
+    // As cores por aproveitamento (e a legenda) permanecem ao fechar a janela de verificacao: so saem ao trocar o modo de cores ou
+    // quando a analise muda.
 }
 
 void MainWindow::showDesignResults(bool optimized)

@@ -520,17 +520,19 @@ bool DatModelIoService::load(const QString &filePath,
                 }
                 return axesTmp.levels.last();
             };
+            // nomes e rotulos vem codificados (%20 = espaco, acentos etc.; "-" = vazio); arquivos antigos, em texto simples, continuam validos
+            const QString label = parts[1] == QLatin1String("-") ? QString() : decodeName(parts[1]);
             if (direction == QLatin1String("LEVEL")) {
                 // LEVEL nome elevacao: abre um novo plano de eixos.
-                axesTmp.levels.append({parts[1], value, {}, {}});
+                axesTmp.levels.append({label, value, {}, {}});
             } else if (direction == QLatin1String("X")) {
-                currentLevel().x.append({parts[1].toUpper(), value});
+                currentLevel().x.append({label.toUpper(), value});
             } else if (direction == QLatin1String("Y")) {
-                currentLevel().y.append({parts[1].toUpper(), value});
+                currentLevel().y.append({label.toUpper(), value});
             } else if (direction == QLatin1String("Z")) {
                 // Formato antigo: eixo Z = nivel sem eixos proprios.
                 if (!axesTmp.levelAt(value)) {
-                    axesTmp.levels.append({parts[1].toUpper(), value, {}, {}});
+                    axesTmp.levels.append({label.toUpper(), value, {}, {}});
                 }
             }
             break;
@@ -1422,6 +1424,7 @@ bool DatModelIoService::load(const QString &filePath,
             if (parts.size() > 5) {
                 load.loadCase = parts[5];
             }
+            load.fromArea = parts.size() > 6 && parts[6].compare(QLatin1String("AREA"), Qt::CaseInsensitive) == 0;
             memberLoadsTmp.append(load);
             break;
         }
@@ -1837,15 +1840,16 @@ bool DatModelIoService::save(const QString &filePath,
     stream << "\n";
 
     stream << "[MEMBER_LOADS]\n";
-    stream << "# Formato: Member_ID  Sistema(Local/Global)  qx (N/m)  qy (N/m)  qz (N/m)  Caso\n";
+    stream << "# Formato: Member_ID  Sistema(Local/Global)  qx (N/m)  qy (N/m)  qz (N/m)  Caso  [AREA = gerada por carga de area]\n";
     stream << "# Sistemas aceitos: LOCAL, GLOBAL (ou L/G)\n";
     for (const auto &load : memberLoads) {
         const QByteArray systemBytes = load.system.isEmpty() ? QByteArray("LOCAL") : load.system.toUpper().toLatin1();
-        stream << QString::asprintf("%-12d %-10s %12.6f %12.6f %12.6f %s\n",
+        stream << QString::asprintf("%-12d %-10s %12.6f %12.6f %12.6f %s%s\n",
                                     load.memberId,
                                     systemBytes.constData(),
                                     load.qx, load.qy, load.qz,
-                                    caseToken(load.loadCase).constData());
+                                    caseToken(load.loadCase).constData(),
+                                    load.fromArea ? " AREA" : "");
     }
 
     if (!extras.memberMoments.isEmpty()) {
@@ -2002,13 +2006,17 @@ bool DatModelIoService::save(const QString &filePath,
     if (!extras.axes.isEmpty()) {
         stream << "\n[AXES]\n";
         stream << "# LEVEL nome elevacao (m): abre um plano de eixos; X/Y rotulo coordenada (m) pertencem ao ultimo LEVEL\n";
+        // nomes e rotulos codificados: espacos e acentos ("Terreo 1", "Nivel") quebravam a leitura da linha
+        auto axisToken = [](const QString &text) {
+            return text.isEmpty() ? QStringLiteral("-") : QString::fromLatin1(QUrl::toPercentEncoding(text));
+        };
         for (const auto &level : extras.axes.levels) {
-            stream << QString::asprintf("LEVEL %s %12.3f\n", level.name.toLatin1().constData(), level.elevation);
+            stream << "LEVEL " << axisToken(level.name) << QString::asprintf(" %12.3f\n", level.elevation);
             for (const auto &entry : level.x) {
-                stream << QString::asprintf("X %-8s %12.3f\n", entry.label.toLatin1().constData(), entry.value);
+                stream << "X " << axisToken(entry.label) << QString::asprintf(" %12.3f\n", entry.value);
             }
             for (const auto &entry : level.y) {
-                stream << QString::asprintf("Y %-8s %12.3f\n", entry.label.toLatin1().constData(), entry.value);
+                stream << "Y " << axisToken(entry.label) << QString::asprintf(" %12.3f\n", entry.value);
             }
         }
     }

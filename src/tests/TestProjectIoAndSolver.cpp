@@ -4,6 +4,7 @@
 #include "app/services/MaterialLibrary.h"
 #include "app/services/SectionPropertiesService.h"
 #include "app/SolverBridge.h"
+#include "viz/LocalCoordinateSystem.h"
 #include "app/services/SheetBuilder.h"
 #include "drawing/HiddenLine.h"
 #include "drawing/SheetPainter.h"
@@ -434,6 +435,118 @@ private slots:
         // A 45 graus a rigidez efetiva e a media das flexibilidades (Iy e Iz principais).
         const double diagonal = tipDeflectionY(45.0);
         QVERIFY(std::abs(diagonal - 0.5 * (base + rotated)) < 1e-9);
+    }
+
+    void rotatedSectionKeepsGlobalEndForcesAndReportedAxes()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // Balanco ao longo de X com carga global em Y e em Z na ponta: as forcas e os momentos GLOBAIS no engaste nao dependem do giro da secao.
+        // Reconstroi os eixos locais como o programa faz (z = x cross auxK, y = z cross x) e confere o vetor global.
+        auto globalEnd = [&dll](double rotationDeg, double axisAngleDeg) {
+            SolverBridge::ModelData model;
+            model.materials.push_back({1, 2.0e11, 8.0e10});
+            model.sections.push_back({1, 0.01, 4e-6, 8e-6, 1e-5});
+            SolverBridge::NodeData fixed;
+            fixed.id = 1;
+            fixed.restraints = {{1, 1, 1, 1, 1, 1}};
+            SolverBridge::NodeData tip;
+            tip.id = 2;
+            const double a = axisAngleDeg * 3.14159265358979 / 180.0;
+            tip.x = 5.0 * std::cos(a);
+            tip.y = 5.0 * std::sin(a);
+            model.nodes = {fixed, tip};
+            SolverBridge::MemberData member {1, 1, 2, 1, 1};
+            member.sectionRotationDeg = rotationDeg;
+            model.members.push_back(member);
+            SolverBridge::NodalLoadData load;
+            load.nodeId = 2;
+            load.values = {{300.0, -1000.0, -700.0, 0.0, 0.0, 0.0}};
+            model.nodalLoads.push_back(load);
+            const auto result = SolverBridge(dll).solve(model);
+            const auto &m = result.memberResults[0];
+            auto cross = [](const std::array<double, 3> &u, const std::array<double, 3> &v) {
+                return std::array<double, 3> {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+            };
+            auto unit = [](std::array<double, 3> v) {
+                const double n = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+                return std::array<double, 3> {v[0] / n, v[1] / n, v[2] / n};
+            };
+            const std::array<double, 3> x = unit({tip.x, tip.y, 0.0});
+            const std::array<double, 3> z = unit(cross(x, {m.auxK[0], m.auxK[1], m.auxK[2]}));
+            const std::array<double, 3> y = cross(z, x);
+            // forcas de extremidade do no I (convencao da barra: sobre o no): shear e momento reconstruidos no sistema global
+            std::array<double, 6> global {};
+            for (int k = 0; k < 3; ++k) {
+                global[static_cast<std::size_t>(k)] = m.localForces[0] * x[k] + m.localForces[1] * y[k] + m.localForces[2] * z[k];
+                global[static_cast<std::size_t>(3 + k)] = m.localForces[3] * x[k] + m.localForces[4] * y[k] + m.localForces[5] * z[k];
+            }
+            return global;
+        };
+        for (const double axisAngle : {0.0, 35.0, 90.0}) {
+            const auto base = globalEnd(0.0, axisAngle);
+            for (const double rotation : {30.0, 90.0, -45.0, 180.0}) {
+                const auto rotated = globalEnd(rotation, axisAngle);
+                for (std::size_t i = 0; i < 6; ++i) {
+                    QVERIFY2(std::abs(rotated[i] - base[i]) < 1e-6 * (1.0 + std::abs(base[i])),
+                             qPrintable(QStringLiteral("eixo %1 graus, giro %2: componente %3 difere (%4 x %5)").arg(axisAngle).arg(rotation).arg(i).arg(rotated[i]).arg(base[i])));
+                }
+            }
+        }
+    }
+
+    void viewportLocalAxesMatchSolverAxesForAnyOrientationAndRotation()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        struct Orientation { double x, y, z; };
+        const std::vector<Orientation> directions = {{5, 0, 0}, {0, 5, 0}, {0, 0, 5}, {0, 0, -5}, {-5, 0, 0}, {3, 4, 0}, {3, 0, 4}, {2, 3, 4}, {-2, 3, -4}, {0, 3, 4}, {0.01, 0, 5}};
+        for (const auto &d : directions) {
+            for (const double rotation : {0.0, 30.0, 90.0, 180.0, -60.0}) {
+                SolverBridge::ModelData model;
+                model.materials.push_back({1, 2.0e11, 8.0e10});
+                model.sections.push_back({1, 0.01, 4e-6, 8e-6, 1e-5});
+                SolverBridge::NodeData fixed;
+                fixed.id = 1;
+                fixed.restraints = {{1, 1, 1, 1, 1, 1}};
+                SolverBridge::NodeData tip;
+                tip.id = 2;
+                tip.x = d.x;
+                tip.y = d.y;
+                tip.z = d.z;
+                model.nodes = {fixed, tip};
+                SolverBridge::MemberData member {1, 1, 2, 1, 1};
+                member.sectionRotationDeg = rotation;
+                model.members.push_back(member);
+                SolverBridge::NodalLoadData load;
+                load.nodeId = 2;
+                load.values = {{10.0, 20.0, 30.0, 0.0, 0.0, 0.0}};
+                model.nodalLoads.push_back(load);
+                const auto result = SolverBridge(dll).solve(model);
+                const auto &m = result.memberResults[0];
+                auto cross = [](const std::array<double, 3> &u, const std::array<double, 3> &v) {
+                    return std::array<double, 3> {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+                };
+                auto unit = [](std::array<double, 3> v) {
+                    const double n = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+                    return std::array<double, 3> {v[0] / n, v[1] / n, v[2] / n};
+                };
+                const std::array<double, 3> sx = unit({d.x, d.y, d.z});
+                const std::array<double, 3> sz = unit(cross(sx, {m.auxK[0], m.auxK[1], m.auxK[2]}));
+                const std::array<double, 3> sy = cross(sz, sx);
+                Structura::Geometry::DefaultLocalAxisProvider provider;
+                const auto lcs = Structura::Geometry::rotatedAboutX(provider.computeLCS({0, 0, 0}, {d.x, d.y, d.z}, std::nullopt), rotation);
+                for (int k = 0; k < 3; ++k) {
+                    const QString where = QStringLiteral("direcao (%1,%2,%3) giro %4").arg(d.x).arg(d.y).arg(d.z).arg(rotation);
+                    QVERIFY2(std::abs(sy[static_cast<std::size_t>(k)] - lcs.yPrime[static_cast<std::size_t>(k)]) < 1e-9, qPrintable(where + QStringLiteral(": eixo y difere")));
+                    QVERIFY2(std::abs(sz[static_cast<std::size_t>(k)] - lcs.zPrime[static_cast<std::size_t>(k)]) < 1e-9, qPrintable(where + QStringLiteral(": eixo z difere")));
+                }
+            }
+        }
     }
 
     void solverRigidOffsetCreatesEccentricMoment()

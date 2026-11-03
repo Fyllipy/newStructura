@@ -352,6 +352,61 @@ private slots:
         QCOMPARE(again.extras.compositeBeams.size(), 1);
     }
 
+    void referenceAxesWithSpacesAndAccentsRoundTrip()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString source = writeProject(dir, QStringLiteral("a.dat"), kCommercialProject);
+        const QString saved = dir.filePath(QStringLiteral("axes.dat"));
+        const DatModelIoService service(true);
+        const QString level = QString::fromUtf8("TÃ©rreo 1");
+        QVERIFY(resave(service, source, saved, [&](Loaded &loaded) {
+            Structura::App::ProjectData::AxisLevel l;
+            l.name = level;
+            l.elevation = 0.0;
+            l.x.append({QStringLiteral("EIXO A"), 0.0});
+            l.x.append({QStringLiteral("B"), 4.5});
+            l.y.append({QString::fromUtf8("ÃREA 1"), 2.0});
+            loaded.extras.axes.levels.clear();
+            loaded.extras.axes.levels.append(l);
+        }));
+        Loaded again;
+        QVERIFY(load(service, saved, again));
+        QCOMPARE(again.extras.axes.levels.size(), 1);
+        QCOMPARE(again.extras.axes.levels.first().name, level);
+        QCOMPARE(again.extras.axes.levels.first().x.size(), 2);
+        QCOMPARE(again.extras.axes.levels.first().x.first().label, QStringLiteral("EIXO A"));
+        QCOMPARE(again.extras.axes.levels.first().x.at(1).value, 4.5);
+        QCOMPARE(again.extras.axes.levels.first().y.first().label, QString::fromUtf8("ÃREA 1"));
+    }
+
+    void loadsGeneratedByAreaLoadsStayTagged()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString source = writeProject(dir, QStringLiteral("a.dat"), kCommercialProject);
+        const QString saved = dir.filePath(QStringLiteral("area.dat"));
+        const DatModelIoService service(true);
+        QVERIFY(resave(service, source, saved, [](Loaded &loaded) {
+            Structura::App::ProjectData::MemberLoad plain;
+            plain.memberId = 1;
+            plain.system = QStringLiteral("GLOBAL");
+            plain.qz = -3.0;
+            plain.loadCase = QStringLiteral("SC");
+            Structura::App::ProjectData::MemberLoad fromArea = plain;
+            fromArea.qz = -5.0;
+            fromArea.fromArea = true;
+            loaded.member = {plain, fromArea};
+        }));
+        Loaded again;
+        QVERIFY(load(service, saved, again));
+        QCOMPARE(again.member.size(), 2);
+        QVERIFY(!again.member.at(0).fromArea);
+        QVERIFY(again.member.at(1).fromArea);
+        QCOMPARE(again.member.at(1).qz, -5.0);
+        QCOMPARE(again.member.at(1).loadCase, QStringLiteral("SC"));
+    }
+
     void projectWithoutDesignDataStaysWithoutIt()
     {
         QTemporaryDir dir;

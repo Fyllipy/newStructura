@@ -48,6 +48,9 @@ public:
 
     // Visibility
     void setVisible(bool visible);
+
+    /// Raio do no na tela, em pixels (constante com o zoom).
+    void setScreenSize(double pixels);
     bool isVisible() const;
 
     // Pickable

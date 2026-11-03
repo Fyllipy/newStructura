@@ -138,6 +138,7 @@ public:
 
     // Visibilidade de elementos (barra de opcoes de exibicao)
     void setNodesVisible(bool visible);
+    void setNodeScreenSize(double pixels);   ///< raio do no na tela (pixels)
     void setSupportsVisible(bool visible);
     void setConstraintsVisible(bool visible);
     [[nodiscard]] bool nodesVisible() const { return m_showNodes; }

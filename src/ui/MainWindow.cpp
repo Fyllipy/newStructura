@@ -112,6 +112,7 @@ MainWindow::MainWindow(QWidget *parent)
     refreshPropertiesPanel();
 
     m_sceneController->initialize(m_vtkWidget);
+    applyVisualOptions();
 
     if (m_postProcessor && m_vtkWidget->renderWindow() && m_vtkWidget->renderWindow()->GetRenderers()->GetFirstRenderer()) {
         m_postProcessor->initialize(m_vtkWidget->renderWindow()->GetRenderers()->GetFirstRenderer());
@@ -345,7 +346,7 @@ QVector<PropertiesPanel::BarEntry> MainWindow::buildBarEntries(const QSet<QUuid>
             }
         }
         for (const auto &l : m_memberLoads) {
-            if (l.memberId == id) {
+            if (l.memberId == id && !l.fromArea) {
                 lines << tr("<b>%1</b>: q (%2) = [%3; %4; %5] kN/m").arg(caseName(l.loadCase).toHtmlEscaped(), l.system.isEmpty() ? tr("global") : l.system.toLower(), fmt(l.qx), fmt(l.qy), fmt(l.qz));
             }
         }
