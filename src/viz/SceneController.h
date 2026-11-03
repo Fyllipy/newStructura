@@ -17,6 +17,7 @@
 #include <array>
 
 #include "viz/AreaPanelRenderer.h"
+#include "viz/DimensionRenderer.h"
 #include "viz/ModeShapeRenderer.h"
 #include "viz/BarTypeRenderer.h"
 #include "core/model/Node.h"
@@ -183,6 +184,7 @@ public:
 
     /// Panos de cargas de area (superficie, setas de pressao e acao nas barras).
     void setAreaPanels(const std::vector<Structura::Visualization::AreaPanelRenderer::Panel> &panels);
+    void setDimensionLines(const std::vector<std::vector<std::array<double, 3>>> &lines);   ///< linhas das cotas
     void setAreaPanelsVisible(bool visible);
     /// Forma modal / deformada desenhada sobre o modelo (lista vazia remove).
     /// Marcadores de rotulas, trelicas e tirantes (lista vazia remove).
@@ -320,6 +322,7 @@ private:
     QVector<MemberActionVisual> m_memberActionVisuals;
     std::unique_ptr<Structura::Visualization::LoadActionRenderer> m_loadRenderer;
     std::unique_ptr<Structura::Visualization::AreaPanelRenderer> m_areaPanelRenderer;
+    std::unique_ptr<Structura::Visualization::DimensionRenderer> m_dimensionRenderer;
     std::unique_ptr<Structura::Visualization::ModeShapeRenderer> m_modeShapeRenderer;
     std::unique_ptr<Structura::Visualization::BarTypeRenderer> m_barTypeRenderer;
     bool m_barTypeMarkersVisible {true};

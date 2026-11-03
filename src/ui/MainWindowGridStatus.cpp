@@ -308,6 +308,10 @@ void MainWindow::updateStatus()
         showStatusMessage(message);
         break;
     }
+    case Command::Dimension:
+        showStatusMessage((m_placement && m_placement->hasStartPoint() ? tr("Cota: clique no segundo ponto") : tr("Cota: clique no primeiro ponto"))
+                          + tr(" (snap em nós, centros e ao longo das barras) | Esc sai"));
+        break;
     case Command::InsertNode:
     {
         showStatusMessage(tr("Inserir nó: clique no ponto (sobre uma barra, ela é dividida) | Tab edita | Esc sai"));

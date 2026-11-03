@@ -476,6 +476,9 @@ void MainWindow::onEditLoadCases()
 
 void MainWindow::onApplyRestraints()
 {
+    if (deferForSelection(PickNeed::Nodes, tr("Restrições nodais"), [this]() { onApplyRestraints(); })) {
+        return;
+    }
     StateGuard guard(this, tr("Restrições nodais"));
     if (!m_selectionModel || !m_sceneController) {
         return;

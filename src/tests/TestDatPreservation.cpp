@@ -2,6 +2,7 @@
 
 #include "app/ISceneModelGateway.h"
 #include "app/services/DatModelIoService.h"
+#include "app/services/DimensionService.h"
 
 #include <QFile>
 #include <QTemporaryDir>
@@ -405,6 +406,46 @@ private slots:
         QVERIFY(again.member.at(1).fromArea);
         QCOMPARE(again.member.at(1).qz, -5.0);
         QCOMPARE(again.member.at(1).loadCase, QStringLiteral("SC"));
+    }
+
+    void dimensionsAreSavedAndGeometryIsConsistent()
+    {
+        using Structura::App::Services::DimensionService;
+        // afastamento padrao: perpendicular em planta (segmento horizontal) e na direcao X (segmento vertical)
+        const auto horizontal = DimensionService::defaultOffset({0, 0, 0}, {10, 0, 0});
+        QCOMPARE(horizontal[0], 0.0);
+        QCOMPARE(horizontal[1], 1.0);
+        const auto vertical = DimensionService::defaultOffset({0, 0, 0}, {0, 0, 3});
+        QCOMPARE(vertical[0], 0.3);
+        QCOMPARE(vertical[2], 0.0);
+
+        Structura::App::ProjectData::DimensionLine d;
+        d.a = {1.0, 2.0, 0.0};
+        d.b = {7.0, 10.0, 0.0};
+        d.offset = {-0.8, 0.6, 0.0};
+        const auto geometry = DimensionService::build(d);
+        QCOMPARE(geometry.length, 10.0);
+        QCOMPARE(geometry.lines.size(), static_cast<std::size_t>(5));   // duas chamadas, a linha de cota e duas marcas
+        QCOMPARE(geometry.labelPosition[0], 4.0 - 0.8);
+        QCOMPARE(geometry.labelPosition[1], 6.0 + 0.6);
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString source = writeProject(dir, QStringLiteral("a.dat"), kCommercialProject);
+        const QString saved = dir.filePath(QStringLiteral("dim.dat"));
+        const DatModelIoService service(true);
+        QVERIFY(resave(service, source, saved, [&](Loaded &loaded) { loaded.extras.dimensions = {d}; }));
+        Loaded again;
+        QVERIFY(load(service, saved, again));
+        QCOMPARE(again.extras.dimensions.size(), 1);
+        QCOMPARE(again.extras.dimensions.first().b[1], 10.0);
+        QCOMPARE(again.extras.dimensions.first().offset[0], -0.8);
+        // a Demonstrativa tambem guarda e regrava as cotas
+        const QString viaDemo = dir.filePath(QStringLiteral("dim_demo.dat"));
+        QVERIFY(resave(DatModelIoService(false), saved, viaDemo));
+        Loaded fromDemo;
+        QVERIFY(load(service, viaDemo, fromDemo));
+        QCOMPARE(fromDemo.extras.dimensions.size(), 1);
     }
 
     void projectWithoutDesignDataStaysWithoutIt()

@@ -63,6 +63,8 @@ set(VIZ_SOURCES
     src/viz/SceneController.cpp
     src/viz/LocalCoordinateSystem.h
     src/viz/LocalCoordinateSystem.cpp
+    src/viz/DimensionRenderer.h
+    src/viz/DimensionRenderer.cpp
     src/viz/LoadSupportVisualMapper.h
     src/viz/LoadSupportVisualMapper.cpp
     src/viz/CustomInteractorStyle.h
@@ -152,6 +154,8 @@ set(APP_SOURCES
     src/report/FormulaText.cpp
     src/report/MathRenderer.h
     src/report/MathRenderer.cpp
+    src/app/services/DimensionService.h
+    src/app/services/DimensionService.cpp
     src/app/services/LoadMassService.h
     src/app/services/LoadMassService.cpp
     src/app/services/ReportService.h

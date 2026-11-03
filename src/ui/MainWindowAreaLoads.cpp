@@ -25,6 +25,9 @@ void eraseIf(Container &container, Predicate predicate)
 
 void MainWindow::onApplyAreaLoad()
 {
+    if (deferForSelection(PickNeed::Bars, tr("Carga de área"), [this]() { onApplyAreaLoad(); })) {
+        return;
+    }
     StateGuard guard(this, tr("Carga de área"));
     if (!m_selectionModel || !m_sceneController) {
         return;

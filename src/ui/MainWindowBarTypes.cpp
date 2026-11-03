@@ -16,6 +16,9 @@ namespace PD = Structura::App::ProjectData;
 // op: 0 rotular inicio, 1 rotular fim, 2 bi-rotulada, 3 engastar extremidades, 4 trelica, 5 tirante
 void MainWindow::applyBarTypeOperation(int op)
 {
+    if (deferForSelection(PickNeed::Bars, tr("Tipo de barra"), [this, op]() { applyBarTypeOperation(op); })) {
+        return;
+    }
     if (!m_sceneController || !m_selectionModel || !m_undoService) {
         return;
     }

@@ -60,6 +60,9 @@ void MainWindow::onEditConnectivity()
 
 void MainWindow::onEditMemberEnds()
 {
+    if (deferForSelection(PickNeed::Bars, tr("Extremidades e rótulas"), [this]() { onEditMemberEnds(); })) {
+        return;
+    }
     if (!m_sceneController || !m_selectionModel) {
         return;
     }

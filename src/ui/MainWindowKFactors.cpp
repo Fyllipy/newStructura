@@ -13,6 +13,9 @@
 /// ou pelo comprimento efetivo. Os valores ficam nos parametros de dimensionamento de cada barra e valem para a verificacao dos perfis.
 void MainWindow::onBucklingLengths()
 {
+    if (deferForSelection(PickNeed::Bars, tr("Comprimentos de flambagem"), [this]() { onBucklingLengths(); })) {
+        return;
+    }
     if (!m_sceneController || !m_selectionModel) {
         return;
     }

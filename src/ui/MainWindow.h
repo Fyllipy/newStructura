@@ -287,6 +287,7 @@ private:
         MirrorElements,
         InsertNode,
         Measure,
+        Dimension,
         ShellPolygon,     ///< chapa por contorno (polilinha fechada)
         ShellRectangle,   ///< chapa retangular (dois cantos)
         ShellDisk,        ///< disco / anel (centro e raio)
@@ -411,6 +412,10 @@ private:
     void applySavedView(int index);
     void deleteSavedView(int index);
     void onMeasure();
+    void onDimension();                                                          ///< comando Cota: dois pontos, a linha de cota fica no modelo
+    bool applyDimension(const std::array<double, 3> &from, const std::array<double, 3> &to);
+    void onClearDimensions();
+    void syncDimensionVisuals();
     bool applyMeasure(const std::array<double, 3> &from, const std::array<double, 3> &to);
     /// Extremidade de barra que chega a um no (direcao saindo do no) - base das ligacoes viga-apoio.
     struct ConnectionEndRef {
@@ -533,6 +538,8 @@ private:
     QAction *m_generateTrussAction {nullptr};
     QAction *m_compareAction {nullptr};
     QAction *m_measureAction {nullptr};
+    QAction *m_dimensionAction {nullptr};
+    QAction *m_clearDimensionsAction {nullptr};
     class QLabel *m_measureCard {nullptr};
     Structura::UI::ViewCubeWidget *m_viewCube {nullptr};
     QAction *m_deleteElementsAction {nullptr};
@@ -655,7 +662,16 @@ private:
     QSet<QString> m_visibleLoadCases;
     bool loadCaseShown(const QString &loadCase) const;
     // Comando de carga sem selecao previa: os alvos sao escolhidos na viewport e o comando conclui com Enter ou botao direito
-    enum class LoadPick { None, Nodal, Distributed, Moment, Positioned };
+    enum class LoadPick { None, Nodal, Distributed, Moment, Positioned, Custom };
+    /// O que o comando precisa ter selecionado para ser executado.
+    enum class PickNeed { Nodes, Bars, NodesOrBars };
+    /// Comandos que dependem de selecao: sem nada selecionado, o comando fica "armado" (escolha os alvos na viewport e conclua com Enter ou botao
+    /// direito; Esc cancela); com a selecao pronta, executa de imediato. Devolve true quando ficou aguardando (o chamador deve retornar);
+    /// `retry` reexecuta o comando quando a escolha termina.
+    bool deferForSelection(PickNeed need, const QString &commandName, std::function<void()> retry);
+    PickNeed m_pickNeed {PickNeed::Bars};
+    QString m_pickName;
+    std::function<void()> m_pickRetry;
     LoadPick m_loadPick {LoadPick::None};
     void beginLoadPick(LoadPick kind);
     void cancelLoadPick();

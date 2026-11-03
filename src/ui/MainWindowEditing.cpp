@@ -79,6 +79,9 @@ void MainWindow::updateEditActionsEnabled()
 
 void MainWindow::beginDisplacementCommand(Command command)
 {
+    if (deferForSelection(PickNeed::NodesOrBars, tr("Edição"), [this, command]() { beginDisplacementCommand(command); })) {
+        return;
+    }
     if (editNodeIds().isEmpty()) {
         QMessageBox::information(this,
                                  tr("Editar elementos"),
@@ -124,6 +127,9 @@ void MainWindow::beginDisplacementCommand(Command command)
 
 void MainWindow::onSerialCopy()
 {
+    if (deferForSelection(PickNeed::NodesOrBars, tr("Cópia em série"), [this]() { onSerialCopy(); })) {
+        return;
+    }
     if (editNodeIds().isEmpty()) {
         QMessageBox::information(this, tr("Copia em serie"), tr("Selecione nos e/ou barras antes de usar este comando."));
         return;
@@ -149,6 +155,9 @@ void MainWindow::onSerialCopy()
 
 void MainWindow::onArrayCopy()
 {
+    if (deferForSelection(PickNeed::NodesOrBars, tr("Cópia em matriz"), [this]() { onArrayCopy(); })) {
+        return;
+    }
     if (editNodeIds().isEmpty()) {
         QMessageBox::information(this, tr("Copia em matriz"), tr("Selecione nos e/ou barras antes de usar este comando."));
         return;

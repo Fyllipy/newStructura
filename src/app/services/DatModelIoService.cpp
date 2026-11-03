@@ -158,7 +158,7 @@ bool DatModelIoService::load(const QString &filePath,
     QTextStream stream(&file);
     stream.setLocale(QLocale::c());
 
-    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, MemberActions, MaterialThermal, Diaphragms, RigidLinks, InclinedSupports, LinearConstraints, MemberConnections, Links, Nonlinear, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor, ShellModel, Preserved };
+    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, MemberActions, MaterialThermal, Diaphragms, RigidLinks, InclinedSupports, LinearConstraints, MemberConnections, Links, Nonlinear, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor, ShellModel, Dimensions, Preserved };
     Section current = Section::None;
 
     // Preservacao: o que esta edicao nao interpreta volta ao arquivo intacto (ver ProjectExtras::preserved).
@@ -255,6 +255,7 @@ bool DatModelIoService::load(const QString &filePath,
     QMap<int, QMap<QString, double>> compositeBeamsTmp;
     QMap<QString, double> deckSlabTmp;
     Structura::Shell::Model shellTmp;
+    QVector<Structura::App::ProjectData::DimensionLine> dimensionsTmp;
     shellTmp.materials.clear();
     auto decodeName = [](const QString &token) { return QUrl::fromPercentEncoding(token.toLatin1()); };
     struct SectionGeometryRecord {
@@ -340,6 +341,8 @@ bool DatModelIoService::load(const QString &filePath,
                 current = Section::AreaLoads;
             } else if (trimmed.compare(QStringLiteral("[VIEWS_3D]"), Qt::CaseInsensitive) == 0) {
                 current = Section::Views3D;
+            } else if (trimmed.compare(QStringLiteral("[DIMENSIONS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Dimensions;
             } else if (trimmed.compare(QStringLiteral("[SHELL_MODEL]"), Qt::CaseInsensitive) == 0) {
                 current = Section::ShellModel;
             } else if (trimmed.compare(QStringLiteral("[COMPOSITE_FLOOR]"), Qt::CaseInsensitive) == 0) {
@@ -655,6 +658,25 @@ bool DatModelIoService::load(const QString &filePath,
                 }
             }
             views3dTmp.append(v);
+            break;
+        }
+        case Section::Dimensions: {
+            if (parts.size() < 9) {
+                break;
+            }
+            Structura::App::ProjectData::DimensionLine d;
+            bool allOk = true;
+            for (int i = 0; i < 3; ++i) {
+                d.a[static_cast<std::size_t>(i)] = toDouble(parts[i], &ok);
+                allOk = allOk && ok;
+                d.b[static_cast<std::size_t>(i)] = toDouble(parts[3 + i], &ok);
+                allOk = allOk && ok;
+                d.offset[static_cast<std::size_t>(i)] = toDouble(parts[6 + i], &ok);
+                allOk = allOk && ok;
+            }
+            if (allOk) {
+                dimensionsTmp.append(d);
+            }
             break;
         }
         case Section::ShellModel: {
@@ -1490,6 +1512,7 @@ bool DatModelIoService::load(const QString &filePath,
         shellTmp.materials.push_back(Structura::Shell::Material {});
     }
     extras.shell = shellTmp;
+    extras.dimensions = dimensionsTmp;
     extras.preserved = preservedTmp;
     extras.loadedFingerprint = resultsTmp.fingerprint;
 
@@ -2018,6 +2041,14 @@ bool DatModelIoService::save(const QString &filePath,
             for (const auto &entry : level.y) {
                 stream << "Y " << axisToken(entry.label) << QString::asprintf(" %12.3f\n", entry.value);
             }
+        }
+    }
+
+    if (!extras.dimensions.isEmpty()) {
+        stream << "\n[DIMENSIONS]\n";
+        stream << "# ax ay az bx by bz ox oy oz (m): pontos medidos e afastamento da linha de cota\n";
+        for (const auto &d : extras.dimensions) {
+            stream << QString::asprintf("%.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", d.a[0], d.a[1], d.a[2], d.b[0], d.b[1], d.b[2], d.offset[0], d.offset[1], d.offset[2]);
         }
     }
 

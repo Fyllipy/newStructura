@@ -43,7 +43,7 @@ void MainWindow::updateAxisLabels()
         texts.append(text);
     }
     m_labelOverlay->setGroup(QStringLiteral("reference-axis"), labels.positions, texts,
-                             construction->referenceAxesVisible());
+                             construction->referenceAxesVisible(), {}, {}, false, /*bubble=*/true);
     m_labelOverlay->sync(m_sceneController->compositeMatrix());
 }
 
@@ -143,7 +143,7 @@ void MainWindow::setupPlacement()
             return ok;
         }
         if (mode == Structura::UI::PlacementController::Mode::Measure) {
-            return applyMeasure(from, to);
+            return m_command == Command::Dimension ? applyDimension(from, to) : applyMeasure(from, to);
         }
         if (mode == Structura::UI::PlacementController::Mode::Mirror) {
             return applyMirror(from, to);

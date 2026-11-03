@@ -270,6 +270,7 @@ void MainWindow::onTogglePlacementPanel()
     }
     if (m_placementPanel->isVisible()) {
         m_placementPanel->hide();
+        positionPlaneLabel();   // as propriedades voltam ao canto
         return;
     }
     if (m_axesPanel) {
@@ -279,6 +280,7 @@ void MainWindow::onTogglePlacementPanel()
     refreshPlacementPanel();
     m_placementPanel->reposition();
     m_placementPanel->raise();
+    positionPlaneLabel();   // as propriedades passam para a esquerda do painel de posicionamento
 }
 
 void MainWindow::refreshPlacementPanel()

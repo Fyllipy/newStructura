@@ -268,7 +268,8 @@ void ViewportLabelOverlay::setGroup(const QString &kind,
                                     bool visible,
                                     const std::vector<QColor> &colors,
                                     const std::vector<double> &weights,
-                                    bool declutter)
+                                    bool declutter,
+                                    bool bubble)
 {
     Group group;
     group.positions = positions;
@@ -279,6 +280,7 @@ void ViewportLabelOverlay::setGroup(const QString &kind,
     group.colors = colors;
     group.weights = weights;
     group.declutter = declutter;
+    group.bubble = bubble;
     m_groups.insert(kind, std::move(group));
 }
 
@@ -348,6 +350,14 @@ void ViewportLabelOverlay::paintEvent(QPaintEvent *)
                 }
                 const QString &text = group.labels[static_cast<int>(i)];
                 const QSizeF size(metrics.horizontalAdvance(text), metrics.height());
+                if (group.bubble) {
+                    // bolha do eixo, como nas plantas de arquitetura: circulo com o rotulo no centro
+                    const double radius = std::max(size.width(), size.height()) / 2.0 + 5.0;
+                    painter.setPen(QPen(defaultColor, 1.4));
+                    painter.setBrush(QColor(255, 255, 255, 240));
+                    painter.drawEllipse(group.screen[i], radius, radius);
+                    painter.setBrush(Qt::NoBrush);
+                }
                 painter.drawText(QPointF(group.screen[i].x() - size.width() / 2.0, group.screen[i].y() + metrics.ascent() - size.height() / 2.0), text);
             }
             continue;

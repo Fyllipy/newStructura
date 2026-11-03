@@ -774,6 +774,13 @@ struct SheetGroupEdit {
     bool deleted {false};
 };
 
+/// Cota (dimensao) desenhada no modelo: pontos medidos e afastamento da linha de cota (m, coordenadas globais).
+struct DimensionLine {
+    std::array<double, 3> a {0.0, 0.0, 0.0};
+    std::array<double, 3> b {0.0, 0.0, 0.0};
+    std::array<double, 3> offset {0.0, 0.0, 0.0};
+};
+
 /// Linhas do .dat que esta edicao nao interpreta (secoes ou chaves desconhecidas, ou dados exclusivos de outra edicao). Sao regravadas sem alteracao.
 struct PreservedBlock {
     QString header;            ///< cabecalho da secao, como lido (ex.: "[MEMBER_DESIGN]")
@@ -811,6 +818,7 @@ struct ProjectExtras {
     QMap<int, QMap<QString, double>> compositeBeams;   ///< entradas da viga mista por barra (id externo)
     QMap<QString, double> deckSlab;                    ///< entradas da laje mista (steel deck)
     Structura::Shell::Model shell;                     ///< cascas e chapas (placas, tanques, vasos de pressao)
+    QVector<DimensionLine> dimensions;                 ///< cotas desenhadas no modelo
     QVector<PreservedBlock> preserved;                 ///< o que o arquivo traz e esta edicao nao conhece: regravado intacto
     QString loadedFingerprint;                         ///< impressao digital dos resultados lidos do arquivo (valida os blocos derivados preservados)
 };

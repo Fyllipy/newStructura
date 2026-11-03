@@ -505,6 +505,7 @@ void MainWindow::createRibbon()
     auto *tools = new RibbonPage(this);
     tools->addGroup(tr("Geração"), {item(m_generateTrussAction, tr("Gerar treliça"), true), item(m_templateAction, tr("Gerar porticos"), true)});
     tools->addGroup(tr("Eixos"), {item(m_axesAction, tr("Eixos de referência"), true)});
+    tools->addGroup(tr("Cotas"), {item(m_dimensionAction, tr("Cota"), true), dangerItem(m_clearDimensionsAction, tr("Excluir cotas"), true, QStringLiteral("delete-loads.svg"))});
     QList<RibbonItem> modelTools = {item(m_checkModelAction, tr("Checar modelo"), true)};
     {   // na Demonstrativa o botao aparece desabilitado
         modelTools.append(item(m_integrityAction, tr("Integridade estrutural"), true));

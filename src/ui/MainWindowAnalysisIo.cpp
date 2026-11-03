@@ -841,6 +841,7 @@ void MainWindow::resetModel()
         m_shellDialog->close();
     }
     syncPlacementVisuals();
+    syncDimensionVisuals();
     rebuildCaseSelector();
     rebuildResultViewSelector();
     if (m_axesPanel) {
@@ -894,6 +895,7 @@ bool MainWindow::loadFromDat(const QString &filePath)
     refreshGroupsPanel();
 
     syncLoadVisuals();
+    syncDimensionVisuals();
     syncSupportVisuals();
     ensureDefaultMaterial();
     syncPlacementVisuals();

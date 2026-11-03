@@ -548,7 +548,7 @@ void MainWindow::setCommand(Command command)
         || command == Command::ShellCopy;
     const bool willBeEditMode = (command == Command::CopyElements || command == Command::MoveElements
                                  || command == Command::RotateElements || command == Command::MirrorElements
-                                 || command == Command::InsertNode || command == Command::Measure || willBeShellMode);
+                                 || command == Command::InsertNode || command == Command::Measure || command == Command::Dimension || willBeShellMode);
     m_shellDraft = ShellDraft {};
 
     if (wasBarMode && !willBeBarMode) {
@@ -574,7 +574,7 @@ void MainWindow::setCommand(Command command)
             m_placement->start(Structura::UI::PlacementController::Mode::Mirror);
         } else if (command == Command::InsertNode) {
             m_placement->start(Structura::UI::PlacementController::Mode::Node);
-        } else if (command == Command::Measure) {
+        } else if (command == Command::Measure || command == Command::Dimension) {
             m_placement->start(Structura::UI::PlacementController::Mode::Measure);
         } else if (command == Command::ShellPolygon || command == Command::ShellExtrude || command == Command::ShellRevolve) {
             m_placement->start(Structura::UI::PlacementController::Mode::Polyline);

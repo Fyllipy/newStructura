@@ -23,6 +23,7 @@
         <file alias="dynamics.svg">icons/svg/dynamics.svg</file>
         <file alias="split-bar.svg">icons/svg/split-bar.svg</file>
         <file alias="measure.svg">icons/svg/measure.svg</file>
+        <file alias="dimension.svg">icons/svg/dimension.svg</file>
         <file alias="compare.svg">icons/svg/compare.svg</file>
         <file alias="composite.svg">icons/svg/composite.svg</file>
         <file alias="shell.svg">icons/svg/shell.svg</file>

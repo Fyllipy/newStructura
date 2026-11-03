@@ -205,6 +205,9 @@ void MainWindow::onGenerateReport()
 
 void MainWindow::onBarReport()
 {
+    if (deferForSelection(PickNeed::Bars, tr("Memorial da barra"), [this]() { onBarReport(); })) {
+        return;
+    }
     if (!m_sceneController || !m_selectionModel) {
         return;
     }

@@ -1,4 +1,6 @@
 #include "MainWindow.h"
+#include "app/services/DimensionService.h"
+#include "PlacementOverlay.h"
 
 #include "PlacementController.h"
 #include "SelectionModel.h"
@@ -452,6 +454,9 @@ bool MainWindow::applyInsertNode(const std::array<double, 3> &point)
 
 void MainWindow::onSplitBars()
 {
+    if (deferForSelection(PickNeed::Bars, tr("Dividir barras"), [this]() { onSplitBars(); })) {
+        return;
+    }
     if (!m_sceneController || !m_selectionModel) {
         return;
     }
@@ -719,6 +724,68 @@ void MainWindow::onMeasure()
     setCommand(Command::Measure);
     if (m_vtkWidget) {
         m_vtkWidget->setFocus();
+    }
+}
+
+void MainWindow::onDimension()
+{
+    setCommand(Command::Dimension);
+    if (m_vtkWidget) {
+        m_vtkWidget->setFocus();
+    }
+}
+
+bool MainWindow::applyDimension(const std::array<double, 3> &from, const std::array<double, 3> &to)
+{
+    const double length = std::sqrt((to[0] - from[0]) * (to[0] - from[0]) + (to[1] - from[1]) * (to[1] - from[1]) + (to[2] - from[2]) * (to[2] - from[2]));
+    if (length < 1e-9) {
+        showStatusMessage(tr("Os dois pontos coincidem."), 3000);
+        return false;
+    }
+    StateGuard guard(this, tr("Cota"));
+    Structura::App::ProjectData::DimensionLine dimension;
+    dimension.a = from;
+    dimension.b = to;
+    dimension.offset = Structura::App::Services::DimensionService::defaultOffset(from, to);
+    m_extras.dimensions.append(dimension);
+    syncDimensionVisuals();
+    showStatusMessage(tr("Cota de %1 m criada. Clique em dois novos pontos para outra cota; Esc sai.").arg(length, 0, 'f', 3), 5000);
+    return true;
+}
+
+void MainWindow::onClearDimensions()
+{
+    if (m_extras.dimensions.isEmpty()) {
+        showStatusMessage(tr("Não há cotas no modelo."), 3000);
+        return;
+    }
+    if (QMessageBox::question(this, tr("Excluir cotas"), tr("Excluir as %1 cota(s) do modelo?").arg(m_extras.dimensions.size())) != QMessageBox::Yes) {
+        return;
+    }
+    StateGuard guard(this, tr("Excluir cotas"));
+    m_extras.dimensions.clear();
+    syncDimensionVisuals();
+}
+
+void MainWindow::syncDimensionVisuals()
+{
+    if (!m_sceneController) {
+        return;
+    }
+    std::vector<std::vector<std::array<double, 3>>> lines;
+    std::vector<std::array<double, 3>> labelPositions;
+    QVector<QString> labels;
+    for (const auto &dimension : m_extras.dimensions) {
+        const auto geometry = Structura::App::Services::DimensionService::build(dimension);
+        lines.insert(lines.end(), geometry.lines.begin(), geometry.lines.end());
+        labelPositions.push_back(geometry.labelPosition);
+        labels.append(QString::number(geometry.length, 'f', 3).replace(QLatin1Char('.'), QLatin1Char(',')) + QStringLiteral(" m"));
+    }
+    m_sceneController->setDimensionLines(lines);
+    if (m_labelOverlay) {
+        const std::vector<QColor> colors(labelPositions.size(), QColor(QStringLiteral("#1f5fae")));
+        m_labelOverlay->setGroup(QStringLiteral("dimension"), labelPositions, labels, true, colors, {}, true);
+        m_labelOverlay->sync(m_sceneController->compositeMatrix());
     }
 }
 

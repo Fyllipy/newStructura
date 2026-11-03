@@ -470,6 +470,16 @@ void SceneController::setAreaPanels(const std::vector<Structura::Visualization::
     setAreaPanelsVisible(m_areaPanelsVisible);
 }
 
+void SceneController::setDimensionLines(const std::vector<std::vector<std::array<double, 3>>> &lines)
+{
+    if (!m_dimensionRenderer) {
+        m_dimensionRenderer = std::make_unique<Structura::Visualization::DimensionRenderer>();
+        m_dimensionRenderer->attach(m_renderer);
+    }
+    m_dimensionRenderer->render(lines);
+    requestRender();
+}
+
 bool SceneController::cameraState(double position[3], double target[3], double up[3], double &viewAngleDeg, bool &parallel) const
 {
     if (!m_renderer) {

@@ -53,6 +53,7 @@ void MainWindow::applyState(const ModelState &state)
     m_memberLoads = state.memberLoads;
     m_extras = state.extras;
     syncLoadVisuals();
+    syncDimensionVisuals();
     syncSupportVisuals();
     syncPlacementVisuals();
     rebuildCaseSelector();
@@ -195,6 +196,10 @@ quint64 MainWindow::stateFingerprint() const
         for (const int member : a.members) {
             num(member);
         }
+    }
+    bytes += '|';
+    for (const auto &d : m_extras.dimensions) {
+        for (int i = 0; i < 3; ++i) { num(d.a[static_cast<std::size_t>(i)]); num(d.b[static_cast<std::size_t>(i)]); num(d.offset[static_cast<std::size_t>(i)]); }
     }
     bytes += '|' + QByteArray::fromStdString(Structura::Shell::fingerprint(m_extras.shell));
     return qHash(QCryptographicHash::hash(bytes, QCryptographicHash::Md5), 0);

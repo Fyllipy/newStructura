@@ -289,6 +289,9 @@ void MainWindow::adoptGroupProperties(int referenceMember, const QVector<int> &n
 
 void MainWindow::onCreateGroup()
 {
+    if (deferForSelection(PickNeed::Bars, tr("Criar grupo"), [this]() { onCreateGroup(); })) {
+        return;
+    }
     StateGuard guard(this, tr("Criar grupo"));
     if (!m_sceneController || !m_selectionModel) {
         return;

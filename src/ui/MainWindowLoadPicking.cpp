@@ -73,6 +73,10 @@ void MainWindow::beginLoadPick(LoadPick kind)
     case LoadPick::Distributed: what = tr("Carga distribuída: selecione uma ou mais barras"); break;
     case LoadPick::Moment: what = tr("Momento distribuído: selecione uma ou mais barras"); break;
     case LoadPick::Positioned: what = tr("Carga geral em barra: selecione uma ou mais barras"); break;
+    case LoadPick::Custom:
+        what = m_pickNeed == PickNeed::Nodes ? tr("%1: selecione um ou mais nós").arg(m_pickName)
+            : (m_pickNeed == PickNeed::Bars ? tr("%1: selecione uma ou mais barras").arg(m_pickName) : tr("%1: selecione nós e/ou barras").arg(m_pickName));
+        break;
     case LoadPick::None: return;
     }
     showStatusMessage(tr("%1 (clique, Ctrl/Shift para somar ou janela) e pressione Enter ou o botão direito do mouse para concluir; Esc cancela.").arg(what), 0);
@@ -87,7 +91,26 @@ void MainWindow::cancelLoadPick()
         return;
     }
     m_loadPick = LoadPick::None;
-    showStatusMessage(tr("Comando de carga cancelado."), 3000);
+    m_pickRetry = {};
+    showStatusMessage(tr("Comando cancelado."), 3000);
+}
+
+bool MainWindow::deferForSelection(PickNeed need, const QString &commandName, std::function<void()> retry)
+{
+    if (!m_selectionModel) {
+        return false;
+    }
+    const bool hasNodes = !m_selectionModel->selectedNodes().isEmpty();
+    const bool hasBars = !m_selectionModel->selectedBars().isEmpty();
+    const bool ready = need == PickNeed::Nodes ? hasNodes : (need == PickNeed::Bars ? hasBars : (hasNodes || hasBars));
+    if (ready) {
+        return false;
+    }
+    m_pickNeed = need;
+    m_pickName = commandName;
+    m_pickRetry = std::move(retry);
+    beginLoadPick(LoadPick::Custom);
+    return true;
 }
 
 void MainWindow::finishLoadPick()
@@ -96,10 +119,17 @@ void MainWindow::finishLoadPick()
         return;
     }
     const LoadPick kind = m_loadPick;
-    const bool hasTargets = kind == LoadPick::Nodal ? !m_selectionModel->selectedNodes().isEmpty() : !m_selectionModel->selectedBars().isEmpty();
+    const bool hasNodes = !m_selectionModel->selectedNodes().isEmpty();
+    const bool hasBars = !m_selectionModel->selectedBars().isEmpty();
+    const bool hasTargets = kind == LoadPick::Nodal ? hasNodes
+        : (kind == LoadPick::Custom ? (m_pickNeed == PickNeed::Nodes ? hasNodes : (m_pickNeed == PickNeed::Bars ? hasBars : (hasNodes || hasBars))) : hasBars);
     m_loadPick = LoadPick::None;
     if (!hasTargets) {
-        showStatusMessage(kind == LoadPick::Nodal ? tr("Nenhum nó selecionado: comando de carga encerrado.") : tr("Nenhuma barra selecionada: comando de carga encerrado."), 4000);
+        m_pickRetry = {};
+        showStatusMessage(kind == LoadPick::Nodal ? tr("Nenhum nó selecionado: comando encerrado.")
+                                                  : (kind == LoadPick::Custom && m_pickNeed == PickNeed::NodesOrBars ? tr("Nada selecionado: comando encerrado.")
+                                                                                                                      : tr("Nenhuma barra selecionada: comando encerrado.")),
+                          4000);
         return;
     }
     showStatusMessage(QString(), 1);
@@ -108,6 +138,13 @@ void MainWindow::finishLoadPick()
     case LoadPick::Distributed: onApplyDistributedLoad(); break;
     case LoadPick::Moment: onApplyMemberMoment(); break;
     case LoadPick::Positioned: onApplyMemberAction(); break;
+    case LoadPick::Custom:
+        if (m_pickRetry) {
+            const auto retry = std::move(m_pickRetry);
+            m_pickRetry = {};
+            retry();
+        }
+        break;
     case LoadPick::None: break;
     }
 }

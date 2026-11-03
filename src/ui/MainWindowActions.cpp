@@ -23,6 +23,15 @@ void MainWindow::createActions()
     m_measureAction->setToolTip(tr("Mede a distância entre dois pontos (com snap em nós, centros e ao longo das barras): distância, deltas e inclinação"));
     connect(m_measureAction, &QAction::triggered, this, &MainWindow::onMeasure);
 
+    m_dimensionAction = new QAction(tr("Cota"), this);
+    m_dimensionAction->setIcon(Structura::UI::actionIcon(QStringLiteral("dimension.svg")));
+    m_dimensionAction->setToolTip(tr("Coloca uma cota (dimensão) entre dois pontos, com snap em nós, centros e ao longo das barras: a cota fica desenhada no modelo e é salva no arquivo"));
+    connect(m_dimensionAction, &QAction::triggered, this, &MainWindow::onDimension);
+    m_clearDimensionsAction = new QAction(tr("Excluir\ncotas"), this);
+    m_clearDimensionsAction->setIcon(Structura::UI::actionIcon(QStringLiteral("delete-loads.svg")));
+    m_clearDimensionsAction->setToolTip(tr("Exclui todas as cotas do modelo"));
+    connect(m_clearDimensionsAction, &QAction::triggered, this, &MainWindow::onClearDimensions);
+
     m_splitBarsAction = new QAction(tr("Dividir\nbarras"), this);
     m_splitBarsAction->setIcon(Structura::UI::actionIcon(QStringLiteral("split-bar.svg")));
     m_splitBarsAction->setToolTip(tr("Divide as barras selecionadas em N partes iguais, a cada X metros ou em distâncias informadas"));

@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "SectionPlacementPanel.h"
 #include "DesignColors.h"
 #include "SvgIcons.h"
 #include "AxesPanel.h"
@@ -414,6 +415,9 @@ void MainWindow::positionPlaneLabel()
     if (m_axesPanel && m_axesPanel->isVisible()) {
         panelsLeft = std::min(panelsLeft, m_axesPanel->x());
     }
+    if (m_placementPanel && m_placementPanel->isVisible()) {
+        panelsLeft = std::min(panelsLeft, m_placementPanel->x());
+    }
     if (m_propertiesContainer) {
         const int width = m_propertiesContainer->width();
         // altura do cartao = cabecalho + todo o conteudo do painel (o QScrollArea so rola se nao couber na viewport)
@@ -426,9 +430,15 @@ void MainWindow::positionPlaneLabel()
         }
         const int chrome = 34 + 8 + 10 + 2;   // cabecalho, espacamento, margem inferior e bordas
         const int height = std::max(120, std::min(chrome + content, m_vtkWidget->height() - 24));
-        const int x = (m_axesPanel && m_axesPanel->isVisible()) ? m_axesPanel->x() - 8 - width : m_vtkWidget->width() - panelMargin - width;
+        // as propriedades ficam a esquerda do painel aberto (eixos ou posicionamento da secao): os dois nao se sobrepoem, e agir num deles
+        // nao traz o outro para a frente
+        const QWidget *neighbour = (m_axesPanel && m_axesPanel->isVisible()) ? static_cast<const QWidget *>(m_axesPanel)
+            : ((m_placementPanel && m_placementPanel->isVisible()) ? static_cast<const QWidget *>(m_placementPanel) : nullptr);
+        const int x = neighbour ? neighbour->x() - 8 - width : m_vtkWidget->width() - panelMargin - width;
         m_propertiesContainer->setGeometry(x, 12, width, height);
-        m_propertiesContainer->raise();
+        if (!neighbour) {
+            m_propertiesContainer->raise();
+        }
         if (m_propertiesContainer->isVisible()) {
             panelsLeft = std::min(panelsLeft, x);
         }

@@ -82,7 +82,8 @@ public:
                   bool visible,
                   const std::vector<QColor> &colors = {},
                   const std::vector<double> &weights = {},
-                  bool declutter = false);
+                  bool declutter = false,
+                  bool bubble = false);
     void setGroupVisible(const QString &kind, bool visible);
     void clearAll();
 
@@ -103,6 +104,7 @@ private:
         std::vector<QColor> colors;     ///< vazio = cor padrao
         std::vector<double> weights;    ///< prioridade (maior primeiro) quando `declutter`
         bool declutter {false};         ///< evita sobreposicao e repeticao de rotulos iguais proximos
+        bool bubble {false};            ///< rotulo dentro de um circulo (bolha dos eixos de referencia)
     };
 
     QHash<QString, Group> m_groups;
