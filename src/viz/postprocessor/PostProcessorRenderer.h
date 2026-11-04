@@ -60,6 +60,8 @@ public:
     void activate();
     void deactivate();
     bool isActive() const { return m_active; }
+    /// Diagrama de deslocamentos (deformada); alimentado pela interface a cada combinacao exibida.
+    DeformedShapeRenderer &deformedShape() { return m_deformedShape; }
 
     // ── Controle de diagrama (Footer bar) ────────────────────────────────────
     void showDiagram(DiagramType type);

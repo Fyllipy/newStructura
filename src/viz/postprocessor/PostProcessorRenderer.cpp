@@ -72,6 +72,7 @@ void PostProcessorRenderer::activate()
 void PostProcessorRenderer::deactivate()
 {
     m_active = false;
+    m_deformedShape.setVisible(false);
     removeActorsFromRenderer();
     m_labelManager.clearAll();
 }

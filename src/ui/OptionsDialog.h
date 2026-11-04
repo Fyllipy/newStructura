@@ -2,6 +2,7 @@
 
 #include <QDialog>
 
+class QComboBox;
 class QLabel;
 class QSlider;
 
@@ -13,15 +14,18 @@ class OptionsDialog final : public QDialog
     Q_OBJECT
 
 public:
-    explicit OptionsDialog(double nodeScreenSize, QWidget *parent = nullptr);
+    OptionsDialog(double nodeScreenSize, bool darkMode, QWidget *parent = nullptr);
 
     [[nodiscard]] double nodeScreenSize() const;
+    [[nodiscard]] bool darkMode() const;
 
 signals:
     void nodeScreenSizeChanged(double pixels);   ///< previa enquanto o controle se move
+    void darkModeChanged(bool dark);             ///< previa do tema ao trocar a opcao
 
 private:
     QSlider *m_nodeSize {nullptr};
+    QComboBox *m_theme {nullptr};
     QLabel *m_nodeSizeValue {nullptr};
 };
 

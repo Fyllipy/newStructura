@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/ProjectDataTypes.h"
+#include "SectionPlacementPanel.h"
 
 #include <QWidget>
 #include <QVector>
@@ -73,14 +74,16 @@ public:
     void setBarEntries(const QVector<BarEntry> &entries);
     void setMaterialOptions(const QVector<QPair<QUuid, QString>> &options);
     void setSections(const QVector<Structura::App::ProjectData::SectionInfo> &sections);
+    /// Barras selecionadas com os dados completos de posicionamento (o editor mostra a primeira).
+    void setPlacementTargets(const QVector<Structura::UI::SectionPlacementPanel::Target> &targets);
 
 signals:
     void nodeCoordinateEdited(const QVector<QUuid> &ids, char axis, double value);
     void barMaterialEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &materialId);
     void barSectionEdited(const QVector<QUuid> &ids, const std::optional<QUuid> &sectionId);
     void manageProfilesRequested();
-    /// Abre a janela de posicionamento da secao para as barras selecionadas.
-    void placementEditorRequested();
+    /// Posicionamento da secao (giro, ponto de referencia, deslocamento e articulacoes) editado dentro das Propriedades.
+    void placementEdited(const QVector<QUuid> &ids, const Structura::App::ProjectData::MemberPlacementPatch &patch);
     /// Abre o memorial de calculo da barra selecionada.
     void barReportRequested();
     /// Espacamento entre as ligacoes dos perfis de uma barra composta (mm) e tipo da ligacao; entra no dimensionamento (NBR 8800, 5.3.6).
@@ -96,7 +99,6 @@ private slots:
     void handleSectionPicked(const QUuid &id);
 
 private:
-    void updatePlacementSummary(const QVector<BarEntry> &entries);
     void buildNodeGroup();
     void buildBarGroup();
     QString formatDouble(double value) const;
@@ -121,9 +123,7 @@ private:
     QLabel *m_barBucklingLabel {nullptr};
     QComboBox *m_materialCombo {nullptr};
     Structura::UI::SectionPickerButton *m_sectionPicker {nullptr};
-    Structura::UI::SectionPlacementWidget *m_placementPreview {nullptr};
-    QLabel *m_placementSummary {nullptr};
-    QPushButton *m_placementButton {nullptr};
+    Structura::UI::SectionPlacementPanel *m_placementEditor {nullptr};
     QWidget *m_compositeRow {nullptr};
     QDoubleSpinBox *m_compositeGap {nullptr};
     QDoubleSpinBox *m_compositeSpacing {nullptr};

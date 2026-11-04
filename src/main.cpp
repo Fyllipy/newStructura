@@ -1,4 +1,5 @@
 #include "ui/MainWindow.h"
+#include "ui/Theme.h"
 
 #include "app/Product.h"
 #include "app/services/UserDataMigration.h"
@@ -124,6 +125,9 @@ void applyUiAutomationHooks(MainWindow &window)
             action->trigger();   // abre a janela de eixos de referencia
         }
     }
+    if (const int bar = qEnvironmentVariableIntValue("STRUCTURA_SELECT_BAR"); bar > 0) {
+        window.selectBarForAutomation(bar);
+    }
     if (const int tab = qEnvironmentVariableIntValue("STRUCTURA_RIBBON_TAB"); tab > 0) {
         if (auto *ribbon = window.findChild<QTabWidget *>(QStringLiteral("mainRibbon"))) {
             ribbon->setCurrentIndex(tab);
@@ -146,6 +150,7 @@ int main(int argc, char *argv[])
     app.setApplicationVersion(QString::fromUtf8(Structura::Product::kVersion));
     Structura::App::Services::UserDataMigration::runIfNeeded();   // Comercial: copia (sem apagar) os dados da identidade antiga "Structura"
     app.setWindowIcon(applicationIcon());
+    Structura::UI::Theme::initialize();   // tema claro ou escuro (Arquivo > Opcoes > Opcoes visuais)
 
     // a arte da abertura tem 950 x 713 px: exibida com 720 px de largura
     StartupSplash splash(QPixmap(QStringLiteral(":/images/splash.png")).scaledToWidth(720, Qt::SmoothTransformation));

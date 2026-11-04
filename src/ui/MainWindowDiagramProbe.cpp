@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "app/services/SectionPropertiesService.h"
 
 #include "BusyProgress.h"
 #include "ViewOptionsBar.h"
@@ -79,6 +80,42 @@ void MainWindow::updateDiagramInfo()
         return;
     }
     const bool enable = m_postProcessor && m_postProcessor->isActive();
+    if (enable && m_diagramCombo && m_diagramCombo->currentData().toInt() == kDisplacementDiagram) {
+        // diagrama de deslocamentos: cartao com o maior deslocamento e a escala de desenho
+        const auto& deformed = m_postProcessor->deformedShape();
+        if (!m_diagramInfo) {
+            m_diagramInfo = new QLabel(m_vtkWidget);
+            m_diagramInfo->setAttribute(Qt::WA_TransparentForMouseEvents);
+            m_diagramInfo->setTextFormat(Qt::RichText);
+            m_diagramInfo->setStyleSheet(QStringLiteral("QLabel { background: rgba(255,255,255,235); border: 1px solid #cbd4e2; border-radius: 6px; padding: 8px 10px; color: #1e232b; font-size: 11px; }"));
+        }
+        if (m_diagramLabelCombo) {
+            m_diagramLabelCombo->setEnabled(false);
+        }
+        if (m_diagramHatchCheck) {
+            m_diagramHatchCheck->setEnabled(false);
+        }
+        if (!deformed.hasData()) {
+            m_diagramInfo->hide();
+        } else {
+            const double lengthMm = Structura::App::Services::SectionPropertiesService::unitFactors(m_materials).second;
+            m_diagramInfo->setText(tr("<b style='color:#e8590c;'>Deslocamentos</b> <span style='color:#5a6472;'>(deformada)</span><br>"
+                                      "máx: <b>%1 mm</b> (nó %2)<br>"
+                                      "<span style='color:#5a6472;'>Desenhada ×%3 em relação ao real.</span>")
+                                       .arg(deformed.maxDisplacement() * lengthMm, 0, 'f', 3).arg(deformed.maxNode()).arg(deformed.scaleFactor(), 0, 'g', 3));
+            m_diagramInfo->adjustSize();
+            m_diagramInfo->move(12, 12);
+            m_diagramInfo->show();
+            m_diagramInfo->raise();
+        }
+        if (m_probeCard) {
+            m_probeCard->hide();
+        }
+        if (m_probeDot) {
+            m_probeDot->hide();
+        }
+        return;
+    }
     if (m_diagramLabelCombo) {
         m_diagramLabelCombo->setEnabled(enable && m_diagramCombo && m_diagramCombo->currentIndex() > 0);
     }

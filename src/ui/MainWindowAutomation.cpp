@@ -222,7 +222,7 @@ void MainWindow::automatedCapture(const QString &directory)
     if (m_showDiagramsAction) {
         m_showDiagramsAction->trigger();
     }
-    for (int index = 3; index <= 6 && m_diagramCombo; ++index) {
+    for (int index = 3; index <= 7 && m_diagramCombo; ++index) {
         m_diagramCombo->setCurrentIndex(index);
         shot(QStringLiteral("2_diagrama_%1.png").arg(m_diagramCombo->itemText(index)));
     }

@@ -85,21 +85,24 @@ double DiagramMeshBuilder::extractValue(const InternalForces& f, DiagramType typ
     case DiagramType::Vy: return f.Vy;
     case DiagramType::Vz: return f.Vz;
     case DiagramType::Mt: return f.Mt;
-    // Inverte o momento para desenhar no lado da fibra tracionada
+    // Inverte o momento para desenhar no lado da fibra tracionada (My e Mz usam o mesmo sinal; a diferenca esta no eixo, ver selectPerpAxis)
     case DiagramType::My: return -f.My;
     case DiagramType::Mz: return -f.Mz;
     default:              return 0.0;
     }
 }
 
-const std::array<double, 3>& DiagramMeshBuilder::selectPerpAxis(
+std::array<double, 3> DiagramMeshBuilder::selectPerpAxis(
     const BeamElementResults& el, DiagramType type)
 {
-    // N, Vy, Mz deslocam em yLocal; Vz, My deslocam em zLocal; Mt usa ambos
+    // N, Vy, Mz deslocam em yLocal; Vz em zLocal; Mt usa ambos.
+    // My desloca em -zLocal: com sigma = +My.z/I (regra da mao direita) o momento positivo traciona a fibra +z, e o diagrama e desenhado do lado
+    // tracionado (com o valor -My, o deslocamento = (-My).(-z) = +My.z). Assim My e Mz seguem a mesma convencao de sinal e cor.
     switch (type) {
     case DiagramType::Vz:
-    case DiagramType::My:
         return el.zLocal;
+    case DiagramType::My:
+        return {-el.zLocal[0], -el.zLocal[1], -el.zLocal[2]};
     default:
         return el.yLocal;
     }

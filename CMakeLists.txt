@@ -34,6 +34,7 @@ find_package(VTK REQUIRED COMPONENTS
     RenderingOpenGL2
     InteractionStyle
     RenderingAnnotation
+    RenderingFreeType    # vtkVectorText: letras das bolhas dos eixos de referencia
     GUISupportQt
 )
 
@@ -119,6 +120,7 @@ set(VIZ_SOURCES
     src/viz/postprocessor/DeformedShapeRenderer.h
     src/viz/postprocessor/PostProcessorRenderer.h
     src/viz/postprocessor/PostProcessorRenderer.cpp
+    src/viz/postprocessor/DeformedShapeRenderer.cpp
 )
 
 set(APP_SOURCES
@@ -179,6 +181,8 @@ set(APP_SOURCES
 set(UI_SOURCES
     src/ui/MainWindow.h
     src/ui/OptionsDialog.h
+    src/ui/Theme.h
+    src/ui/Theme.cpp
     src/ui/OptionsDialog.cpp
     src/app/AppSettings.h
     src/ui/MainWindow.cpp

@@ -125,23 +125,10 @@ void PropertiesPanel::buildBarGroup()
             this, &PropertiesPanel::manageProfilesRequested);
     form->addRow(tr("Seção"), m_sectionPicker);
 
-    // --- Disposicao da secao: miniatura + resumo + atalho para a janela de posicionamento ---
-    m_placementPreview = new Structura::UI::SectionPlacementWidget(m_barGroup);
-    m_placementPreview->setCompact(true);
-    m_placementPreview->setInteractive(false);
-    m_placementPreview->setFixedHeight(150);
-    form->addRow(m_placementPreview);
-
-    m_placementSummary = new QLabel(tr("-"), m_barGroup);
-    m_placementSummary->setWordWrap(true);
-    m_placementSummary->setStyleSheet(QStringLiteral("color: #5a6574; font-size: 11px;"));
-    form->addRow(m_placementSummary);
-
-    m_placementButton = new QPushButton(tr("Posicionar seção e articulações…"), m_barGroup);
-    m_placementButton->setCursor(Qt::PointingHandCursor);
-    m_placementButton->setToolTip(tr("Abre a janela para girar a seção, escolher o ponto de referência e definir articulações."));
-    connect(m_placementButton, &QPushButton::clicked, this, &PropertiesPanel::placementEditorRequested);
-    form->addRow(m_placementButton);
+    // --- Posicionamento da secao: o desenho do perfil e interativo e concentra giro, ponto de referencia, deslocamento e articulacoes ---
+    m_placementEditor = new Structura::UI::SectionPlacementPanel(m_barGroup, true);
+    connect(m_placementEditor, &Structura::UI::SectionPlacementPanel::placementEdited, this, &PropertiesPanel::placementEdited);
+    form->addRow(m_placementEditor);
 
     // --- Barra composta (5.3.6): espacamento entre as ligacoes dos perfis ---
     m_compositeRow = new QWidget(m_barGroup);
@@ -341,7 +328,6 @@ void PropertiesPanel::setBarEntries(const QVector<BarEntry> &entries)
 
         updateMaterialComboSelection(entries);
         updateSectionComboSelection(entries);
-        updatePlacementSummary(entries);
         const bool allComposite = std::all_of(entries.begin(), entries.end(), [](const BarEntry &e) { return e.compositeSection; });
         m_compositeRow->setVisible(allComposite);
         if (allComposite) {
@@ -354,53 +340,11 @@ void PropertiesPanel::setBarEntries(const QVector<BarEntry> &entries)
     m_blockSignals = false;
 }
 
-void PropertiesPanel::updatePlacementSummary(const QVector<BarEntry> &entries)
+void PropertiesPanel::setPlacementTargets(const QVector<Structura::UI::SectionPlacementPanel::Target> &targets)
 {
-    if (entries.isEmpty()) {
-        return;
+    if (m_placementEditor) {
+        m_placementEditor->setTargets(targets);
     }
-    using Structura::App::Services::SectionPlacementService;
-    namespace Release = Structura::App::ProjectData::MemberRelease;
-    const BarEntry &first = entries.first();
-
-    if (first.hasSection) {
-        m_placementPreview->setSection(first.section);
-    } else {
-        m_placementPreview->clearSection();
-    }
-    m_placementPreview->setPlacement(first.rotationDeg, first.reference, first.offsetA, first.offsetB);
-
-    auto releaseText = [](int mask, int rx, int ry, int rz) {
-        QStringList parts;
-        if (mask & rx) parts << QStringLiteral("Mx");
-        if (mask & ry) parts << QStringLiteral("My");
-        if (mask & rz) parts << QStringLiteral("Mz");
-        return parts.isEmpty() ? QStringLiteral("—") : parts.join(QLatin1Char('+'));
-    };
-    const auto offset = SectionPlacementService::axisOffset(first.hasSection ? &first.section : nullptr,
-                                                            [&first]() {
-                                                                Structura::App::ProjectData::MemberPlacement placement;
-                                                                placement.reference = first.reference;
-                                                                placement.offsetA = first.offsetA;
-                                                                placement.offsetB = first.offsetB;
-                                                                return placement;
-                                                            }());
-    QString text = tr("Giro %1°  ·  ponto: %2\nCentroide: y = %3 mm, z = %4 mm\nLiberações  I: %5   J: %6")
-                       .arg(first.rotationDeg, 0, 'f', 1)
-                       .arg(SectionPlacementService::referenceLabels().value(first.reference))
-                       .arg(offset.dy * 1000.0, 0, 'f', 1)
-                       .arg(offset.dz * 1000.0, 0, 'f', 1)
-                       .arg(releaseText(first.releaseMask, Release::kStartRx, Release::kStartRy, Release::kStartRz))
-                       .arg(releaseText(first.releaseMask, Release::kEndRx, Release::kEndRy, Release::kEndRz));
-    if (first.memberType == Structura::App::ProjectData::MemberType::kTruss) {
-        text.prepend(tr("Tipo: treliça (biarticulada, só esforço axial)\n"));
-    } else if (first.memberType == Structura::App::ProjectData::MemberType::kTie) {
-        text.prepend(tr("Tipo: tirante (biarticulado, só tração)\n"));
-    }
-    if (entries.size() > 1) {
-        text.prepend(tr("(valores da primeira barra)\n"));
-    }
-    m_placementSummary->setText(text);
 }
 
 void PropertiesPanel::setMaterialOptions(const QVector<QPair<QUuid, QString>> &options)

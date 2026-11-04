@@ -59,9 +59,6 @@ void MainWindow::onToggleAxesPanel()
         m_axesPanel->hide();
         return;
     }
-    if (m_placementPanel) {
-        m_placementPanel->hide();
-    }
     m_axesPanel->setAxes(m_extras.axes,
                          m_sceneController->constructionScene() ? m_sceneController->constructionScene()->level() : 0.0);
     if (m_viewOptionsBar) {
@@ -89,9 +86,31 @@ void MainWindow::rebuildResultViewSelector()
     if (!m_viewOptionsBar) {
         return;
     }
+    // combinacao critica: a de maior deslocamento (modulo da translacao nodal); casos isolados nao concorrem
+    int critical = -1;
+    double worst = 0.0;
+    for (int i = 0; i < m_resultViews.size(); ++i) {
+        if (!m_resultViews.at(i).isCombination) {
+            continue;
+        }
+        double peak = 0.0;
+        for (const auto &node : m_resultViews.at(i).result.nodeResults) {
+            peak = std::max(peak, std::sqrt(node.displacements[0] * node.displacements[0] + node.displacements[1] * node.displacements[1]
+                                            + node.displacements[2] * node.displacements[2]));
+        }
+        if (peak > worst) {
+            worst = peak;
+            critical = i;
+        }
+    }
     QStringList names;
-    for (const auto &view : m_resultViews) {
-        names << (view.isCombination ? view.name : tr("Caso: %1").arg(view.name));
+    for (int i = 0; i < m_resultViews.size(); ++i) {
+        const auto &view = m_resultViews.at(i);
+        QString name = view.isCombination ? view.name : tr("Caso: %1").arg(view.name);
+        if (i == critical) {
+            name += tr(" (Crítico)");
+        }
+        names << name;
     }
     m_viewOptionsBar->setResultViews(names, 0);
 }
@@ -371,10 +390,6 @@ void MainWindow::setupViewOptions()
     if (!construction) {
         return;
     }
-
-    m_placementPanel = new Structura::UI::SectionPlacementPanel(m_vtkWidget);
-    connect(m_placementPanel, &Structura::UI::SectionPlacementPanel::placementEdited, this,
-            &MainWindow::onBarPlacementEdited);
 
     m_axesPanel = new Structura::UI::AxesPanel(m_vtkWidget);
     m_axesPanel->installEventFilter(this);   // reposiciona os controles da viewport ao mostrar/ocultar

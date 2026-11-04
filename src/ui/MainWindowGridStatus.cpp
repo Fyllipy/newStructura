@@ -128,6 +128,7 @@ void MainWindow::setupFooterBar()
     m_diagramCombo->addItem(tr("Mt"),   static_cast<int>(Structura::Visualization::DiagramType::Mt));
     m_diagramCombo->addItem(tr("My"),   static_cast<int>(Structura::Visualization::DiagramType::My));
     m_diagramCombo->addItem(tr("Mz"),   static_cast<int>(Structura::Visualization::DiagramType::Mz));
+    m_diagramCombo->addItem(tr("Deslocamentos"), kDisplacementDiagram);
     m_diagramCombo->setMinimumWidth(56);
     m_diagramCombo->setEnabled(false);
     m_diagramCombo->setToolTip(tr("Selecionar tipo de diagrama de esforços"));
@@ -190,20 +191,18 @@ void MainWindow::setupFooterBar()
 
 // ── Slots do pós-processador ───────────────────────────────────────────────────────
 
-void MainWindow::onShowDiagrams()
+void MainWindow::onShowDiagrams(bool on)
 {
     if (!m_postProcessor) return;
-    m_postProcessor->activate();
-    applyLoadVisibility();
-    // Selecionar diagrama atual (se houver)
-    if (m_diagramCombo) {
-        onDiagramTypeChanged(m_diagramCombo->currentIndex());
+    if (on) {
+        m_postProcessor->activate();
+        applyLoadVisibility();
+        // Selecionar diagrama atual (se houver)
+        if (m_diagramCombo) {
+            onDiagramTypeChanged(m_diagramCombo->currentIndex());
+        }
+        return;
     }
-}
-
-void MainWindow::onHideDiagrams()
-{
-    if (!m_postProcessor) return;
     m_postProcessor->deactivate();
     applyLoadVisibility();
     if (m_vtkWidget && m_vtkWidget->renderWindow()) {
@@ -215,8 +214,21 @@ void MainWindow::onHideDiagrams()
 void MainWindow::onDiagramTypeChanged(int /*index*/)
 {
     if (!m_postProcessor || !m_diagramCombo) return;
-    const auto type = static_cast<Structura::Visualization::DiagramType>(
-        m_diagramCombo->currentData().toInt());
+    const int selected = m_diagramCombo->currentData().toInt();
+    if (selected == kDisplacementDiagram) {
+        // diagrama de deslocamentos: mostra a deformada no lugar dos diagramas de esforcos
+        m_postProcessor->showDiagram(Structura::Visualization::DiagramType::None);
+        m_postProcessor->deformedShape().setUserScale(m_pendingDiagramScale / 1.72);
+        m_postProcessor->deformedShape().setVisible(m_postProcessor->isActive());
+        applyLoadVisibility();
+        if (m_vtkWidget && m_vtkWidget->renderWindow()) {
+            m_vtkWidget->renderWindow()->Render();
+        }
+        updateDiagramInfo();
+        return;
+    }
+    m_postProcessor->deformedShape().setVisible(false);
+    const auto type = static_cast<Structura::Visualization::DiagramType>(selected);
     m_postProcessor->showDiagram(type);
     applyLoadVisibility();
     if (m_vtkWidget && m_vtkWidget->renderWindow()) {
@@ -240,6 +252,7 @@ void MainWindow::onDiagramScaleChanged(int value)
                 return;
             }
             m_postProcessor->setUserScale(m_pendingDiagramScale);   // reconstroi a geometria uma unica vez por rajada de movimentos
+            m_postProcessor->deformedShape().setUserScale(m_pendingDiagramScale / 1.72);   // 1,72 = escala do controle na posicao inicial
             if (m_vtkWidget && m_vtkWidget->renderWindow()) {
                 m_vtkWidget->renderWindow()->Render();
             }

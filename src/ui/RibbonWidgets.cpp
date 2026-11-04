@@ -1,4 +1,5 @@
 #include "RibbonWidgets.h"
+#include "Theme.h"
 
 #include <QAction>
 #include <QApplication>
@@ -24,7 +25,7 @@ namespace Structura::UI {
 
 namespace {
 
-QColor color(const char *hex) { return QColor(QString::fromLatin1(hex)); }
+QColor color(const char *hex) { return Structura::UI::Theme::color(QString::fromLatin1(hex)); }
 
 QFont labelFont()
 {

@@ -91,6 +91,7 @@ public:
     bool openModelFile(const QString &filePath) { return loadFromDat(filePath); }
     /// Verificacao automatizada (variavel STRUCTURA_AUTOSHOT): analisa o modelo aberto, exibe os diagramas e grava capturas da tela em `directory`.
     void automatedCapture(const QString &directory);
+    void selectBarForAutomation(int externalId);   ///< so desenvolvimento (STRUCTURA_SELECT_BAR): seleciona uma barra para a verificacao da interface
     void offerRecovery();
 
 private slots:
@@ -220,12 +221,10 @@ private slots:
     void onBarCompositeEdited(const QVector<QUuid> &ids, double spacingMm, bool welded);
     void onBarPlacementEdited(const QVector<QUuid> &ids,
                               const Structura::App::ProjectData::MemberPlacementPatch &patch);
-    void onTogglePlacementPanel();
     /// Atualiza (se visivel) a janela de posicionamento com as barras selecionadas.
     void refreshPlacementPanel();
     // Pós-processador
-    void onShowDiagrams();
-    void onHideDiagrams();
+    void onShowDiagrams(bool on);   ///< botao liga/desliga: ativo = comando mostrar diagramas em uso
     void onDiagramTypeChanged(int index);
     void onDiagramScaleChanged(int value);
     void onScaleModeChanged(int index);
@@ -576,8 +575,6 @@ private:
     Structura::UI::ViewportLabelOverlay *m_labelOverlay {nullptr};
     Structura::UI::ViewOptionsBar *m_viewOptionsBar {nullptr};
     Structura::UI::AxesPanel *m_axesPanel {nullptr};
-    Structura::UI::SectionPlacementPanel *m_placementPanel {nullptr};
-    QAction *m_placementAction {nullptr};
     QAction *m_designSettingsAction {nullptr};
     QAction *m_verifyDesignAction {nullptr};
     QAction *m_createGroupAction {nullptr};
@@ -662,6 +659,7 @@ private:
     QSet<QString> m_visibleLoadCases;
     bool loadCaseShown(const QString &loadCase) const;
     // Comando de carga sem selecao previa: os alvos sao escolhidos na viewport e o comando conclui com Enter ou botao direito
+    static constexpr int kDisplacementDiagram = 100;   ///< item "Deslocamentos" do seletor de diagramas (os demais sao Structura::Visualization::DiagramType)
     enum class LoadPick { None, Nodal, Distributed, Moment, Positioned, Custom };
     /// O que o comando precisa ter selecionado para ser executado.
     enum class PickNeed { Nodes, Bars, NodesOrBars };
@@ -713,7 +711,6 @@ private:
 
     // Ações da ribbon (aba Resultados)
     QAction *m_showDiagramsAction{nullptr};
-    QAction *m_hideDiagramsAction{nullptr};
 
     // Controles da footer bar
     QComboBox *m_diagramCombo{nullptr};       ///< N / Vy / Vz / Mt / My / Mz
@@ -722,7 +719,7 @@ private:
     class QTimer *m_diagramScaleTimer{nullptr};
     class QTimer *m_probeTimer{nullptr};
     QPoint m_probePos;
-    double m_pendingDiagramScale{1.0};
+    double m_pendingDiagramScale{1.72};   ///< escala do controle na posicao inicial (slider em 33)
     class QCheckBox *m_diagramHatchCheck{nullptr};
     class QLabel *m_probeCard{nullptr};
     class QLabel *m_probeDot{nullptr};

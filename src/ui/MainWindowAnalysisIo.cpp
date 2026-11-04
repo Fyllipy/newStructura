@@ -60,8 +60,7 @@ static void feedPostProcessor(
     QComboBox* diagramCombo,
     QSlider* diagramScaleSlider,
     QComboBox* scaleModeCombo,
-    QAction* showDiagramsAction,
-    QAction* hideDiagramsAction)
+    QAction* showDiagramsAction)
 {
     // Cargas distribuídas e momentos por barra (todos os casos do termo, ponderados)
     std::unordered_multimap<int, Structura::Visualization::UniformDistributedLoad> loadMap;
@@ -104,6 +103,37 @@ static void feedPostProcessor(
     for (const auto& mb : geometry.members) {
         memberMap[mb.id] = mb;
     }
+
+    // Diagrama de deslocamentos: deformada de cada barra (deslocamentos nodais + flexao entre os nos, com a correcao das cargas uniformes)
+    std::unordered_map<int, Structura::App::SolverBridge::NodeResult> nodeResultMap;
+    double maxTranslation = 0.0;
+    int maxTranslationNode = 0;
+    for (const auto& nr : result.nodeResults) {
+        nodeResultMap[nr.nodeId] = nr;
+        const double t = std::sqrt(nr.displacements[0] * nr.displacements[0] + nr.displacements[1] * nr.displacements[1] + nr.displacements[2] * nr.displacements[2]);
+        if (t > maxTranslation) {
+            maxTranslation = t;
+            maxTranslationNode = nr.nodeId;
+        }
+    }
+    std::unordered_map<int, Structura::App::SolverBridge::SectionData> sectionMap;
+    for (const auto& sc : geometry.sections) {
+        sectionMap[sc.id] = sc;
+    }
+    std::unordered_map<int, Structura::App::SolverBridge::MaterialData> materialMap;
+    for (const auto& mt : geometry.materials) {
+        materialMap[mt.id] = mt;
+    }
+    std::vector<Structura::Visualization::DeformedShapeRenderer::Member> deformation;
+    double extentLo[3] = {1e300, 1e300, 1e300}, extentHi[3] = {-1e300, -1e300, -1e300};
+    for (const auto& nd : geometry.nodes) {
+        const double p[3] = {nd.x, nd.y, nd.z};
+        for (int k = 0; k < 3; ++k) {
+            extentLo[k] = std::min(extentLo[k], p[k]);
+            extentHi[k] = std::max(extentHi[k], p[k]);
+        }
+    }
+    const double modelExtent = geometry.nodes.empty() ? 1.0 : std::max({extentHi[0] - extentLo[0], extentHi[1] - extentLo[1], extentHi[2] - extentLo[2], 1e-6});
 
     // Construir BeamElementResults para cada MemberResult
     Structura::Geometry::DefaultLocalAxisProvider lcsProvider;
@@ -191,18 +221,67 @@ static void feedPostProcessor(
             ber.positionedLoads.push_back(it->second);
         }
 
+        // deformada da barra (nos eixos locais do solver, antes de reescrever os diagramas no sistema de referencia)
+        {
+            const auto n1 = nodeResultMap.find(mb.nodeI), n2 = nodeResultMap.find(mb.nodeJ);
+            if (n1 != nodeResultMap.end() && n2 != nodeResultMap.end()) {
+                auto dot3 = [](const std::array<double, 3>& a, const double* b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
+                const double length = std::sqrt((ber.node2[0] - ber.node1[0]) * (ber.node2[0] - ber.node1[0]) + (ber.node2[1] - ber.node1[1]) * (ber.node2[1] - ber.node1[1])
+                                                + (ber.node2[2] - ber.node1[2]) * (ber.node2[2] - ber.node1[2]));
+                const double* t1 = n1->second.displacements.data();
+                const double* t2 = n2->second.displacements.data();
+                const double* r1 = t1 + 3;
+                const double* r2 = t2 + 3;
+                const double ux1 = dot3(ber.xLocal, t1), vy1 = dot3(ber.yLocal, t1), wz1 = dot3(ber.zLocal, t1);
+                const double ux2 = dot3(ber.xLocal, t2), vy2 = dot3(ber.yLocal, t2), wz2 = dot3(ber.zLocal, t2);
+                const double thz1 = dot3(ber.zLocal, r1), thz2 = dot3(ber.zLocal, r2), thy1 = dot3(ber.yLocal, r1), thy2 = dot3(ber.yLocal, r2);
+                // cargas uniformes transversais nos eixos locais (as globais sao projetadas)
+                double qy = 0.0, qz = 0.0;
+                for (const auto& load : ber.distributedLoads) {
+                    const std::array<double, 3> q {load.qx, load.qy, load.qz};
+                    qy += load.isLocalSystem ? load.qy : dot3(ber.yLocal, q.data());
+                    qz += load.isLocalSystem ? load.qz : dot3(ber.zLocal, q.data());
+                }
+                double eiz = 0.0, eiy = 0.0;
+                const auto sc = sectionMap.find(mb.sectionId);
+                const auto mt = materialMap.find(mb.materialId);
+                if (sc != sectionMap.end() && mt != materialMap.end()) {
+                    eiz = mt->second.e * sc->second.iz;
+                    eiy = mt->second.e * sc->second.iy;
+                }
+                Structura::Visualization::DeformedShapeRenderer::Member member;
+                member.id = mr.memberId;
+                constexpr int kSamples = 21;
+                for (int i = 0; i < kSamples; ++i) {
+                    const double xi = static_cast<double>(i) / (kSamples - 1);
+                    const double s = xi * length;
+                    const double h1 = 1.0 - 3.0 * xi * xi + 2.0 * xi * xi * xi, h2 = xi - 2.0 * xi * xi + xi * xi * xi;
+                    const double h3 = 3.0 * xi * xi - 2.0 * xi * xi * xi, h4 = -xi * xi + xi * xi * xi;
+                    const double bubble = s * s * (length - s) * (length - s) / 24.0;
+                    const double u = ux1 * (1.0 - xi) + ux2 * xi;
+                    const double v = vy1 * h1 + thz1 * length * h2 + vy2 * h3 + thz2 * length * h4 + (eiz > 0.0 ? qy * bubble / eiz : 0.0);
+                    const double w = wz1 * h1 - thy1 * length * h2 + wz2 * h3 - thy2 * length * h4 + (eiy > 0.0 ? qz * bubble / eiy : 0.0);
+                    member.base.push_back({ber.node1[0] + ber.xLocal[0] * s, ber.node1[1] + ber.xLocal[1] * s, ber.node1[2] + ber.xLocal[2] * s});
+                    member.disp.push_back({u * ber.xLocal[0] + v * ber.yLocal[0] + w * ber.zLocal[0], u * ber.xLocal[1] + v * ber.yLocal[1] + w * ber.zLocal[1],
+                                           u * ber.xLocal[2] + v * ber.yLocal[2] + w * ber.zLocal[2]});
+                }
+                deformation.push_back(std::move(member));
+            }
+        }
+        // diagramas de todas as barras no mesmo sistema (o de referencia, sem o giro da secao); o dimensionamento segue nos eixos da secao
+        Structura::Visualization::toReferenceFrame(ber, mb.sectionRotationDeg);
         postResults.push_back(std::move(ber));
     }
 
     // Alimentar o pós-processador
     pp->setResults(postResults, analysisRevision);
+    pp->deformedShape().setData(std::move(deformation), modelExtent, maxTranslationNode);
 
     // Habilitar controles de diagrama na footer bar
     if (diagramCombo)       diagramCombo->setEnabled(true);
     if (diagramScaleSlider) diagramScaleSlider->setEnabled(true);
     if (scaleModeCombo)     scaleModeCombo->setEnabled(true);
     if (showDiagramsAction) showDiagramsAction->setEnabled(true);
-    if (hideDiagramsAction) hideDiagramsAction->setEnabled(true);
 
     (void)window; // futuro uso
 }
@@ -238,8 +317,7 @@ void MainWindow::showResultView(int index)
                       m_diagramCombo,
                       m_diagramScaleSlider,
                       m_scaleModeCombo,
-                      m_showDiagramsAction,
-                      m_hideDiagramsAction);
+                      m_showDiagramsAction);
     if (m_postProcessor->isActive() && m_diagramCombo) {
         onDiagramTypeChanged(m_diagramCombo->currentIndex());
     }

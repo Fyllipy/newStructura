@@ -483,3 +483,16 @@ void MainWindow::showViewportContextMenu(const QPoint &widgetPos, const QPoint &
     add(tr("Limpar selecao"), hasSelection, [this]() { m_selectionModel->clear(); });
     menu.exec(globalPos);
 }
+
+void MainWindow::selectBarForAutomation(int externalId)
+{
+    if (!m_sceneController || !m_selectionModel) {
+        return;
+    }
+    for (const auto &bar : m_sceneController->bars()) {
+        if (bar.externalId == externalId) {
+            m_selectionModel->selectBar(bar.id);
+            return;
+        }
+    }
+}

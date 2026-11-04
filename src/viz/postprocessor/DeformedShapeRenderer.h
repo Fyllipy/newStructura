@@ -1,53 +1,64 @@
 #pragma once
 
+#include <vtkSmartPointer.h>
+
+#include <array>
+#include <vector>
+
+class vtkActor;
+class vtkPolyData;
+class vtkPolyDataMapper;
 class vtkRenderer;
 
 namespace Structura::Visualization {
 
 /**
- * @brief Stub para futura renderização da deformada estrutural.
+ * @brief Diagrama de deslocamentos: deformada de cada barra (polilinha amostrada ao longo do eixo), com escala automatica.
  *
- * A arquitetura está preparada para expansão. A adição da deformada
- * não exigirá refatoração do PostProcessorRenderer.
- *
- * Modos futuros:
- *   Original  — apenas geometria não deformada
- *   Deformed  — apenas geometria deformada
- *   Overlay   — original + deformada sobrepostos
+ * Cada barra traz os pontos do eixo indeformado e o vetor de deslocamento global em cada ponto (translacoes da barra: deslocamentos nodais mais a
+ * flexao entre os nos). A escala automatica faz o maior deslocamento valer uma fracao do tamanho do modelo; o controle de escala dos diagramas
+ * multiplica essa escala.
  */
 class DeformedShapeRenderer {
 public:
-    enum class DisplayMode {
-        Original,   ///< Apenas geometria original
-        Deformed,   ///< Apenas geometria deformada
-        Overlay     ///< Original + deformada sobrepostos
+    using Vec3 = std::array<double, 3>;
+
+    struct Member {
+        int id {0};
+        std::vector<Vec3> base;   ///< pontos do eixo indeformado
+        std::vector<Vec3> disp;   ///< deslocamento global em cada ponto (mesma unidade de comprimento do modelo)
     };
 
-    void initialize(vtkRenderer* renderer)
-    {
-        m_renderer = renderer;
-    }
+    DeformedShapeRenderer();
+    ~DeformedShapeRenderer();
 
-    void clearAll()
-    {
-        // Noop até implementação
-    }
+    void initialize(vtkRenderer *renderer);
+    void clearAll();
 
-    // ── Reservado para implementação futura ────────────────────────────────
-    // struct NodeDisplacement {
-    //     int nodeId;
-    //     std::array<double, 3> translation;
-    //     std::array<double, 3> rotation;
-    // };
-    //
-    // void setDisplacements(const std::vector<NodeDisplacement>& displacements);
-    // void setScaleFactor(double scale);
-    // void setDisplayMode(DisplayMode mode);
-    // void show();
-    // void hide();
+    void setData(std::vector<Member> members, double modelExtent, int maxNode);
+    void setUserScale(double scale);   ///< 1 = escala automatica
+    void setVisible(bool visible);
+    [[nodiscard]] bool visible() const noexcept { return m_visible; }
+
+    [[nodiscard]] bool hasData() const noexcept { return !m_members.empty(); }
+    [[nodiscard]] double maxDisplacement() const noexcept { return m_maxDisplacement; }   ///< modulo, na unidade do modelo
+    [[nodiscard]] int maxNode() const noexcept { return m_maxNode; }
+    [[nodiscard]] double scaleFactor() const noexcept { return m_autoScale * m_userScale; }
 
 private:
-    vtkRenderer* m_renderer{nullptr};
+    void rebuild();
+
+    vtkRenderer *m_renderer {nullptr};
+    vtkSmartPointer<vtkPolyData> m_data;
+    vtkSmartPointer<vtkPolyDataMapper> m_mapper;
+    vtkSmartPointer<vtkActor> m_actor;
+    std::vector<Member> m_members;
+    double m_extent {1.0};
+    double m_maxDisplacement {0.0};
+    double m_autoScale {1.0};
+    double m_userScale {1.0};
+    int m_maxNode {0};
+    bool m_visible {false};
 };
 
 } // namespace Structura::Visualization

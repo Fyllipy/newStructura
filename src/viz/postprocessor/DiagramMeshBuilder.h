@@ -64,7 +64,7 @@ private:
                                            double scale);
     static int computeSampleCount(double length);
     static double extractValue(const InternalForces& f, DiagramType type);
-    static const std::array<double, 3>& selectPerpAxis(const BeamElementResults& el, DiagramType type);
+    static std::array<double, 3> selectPerpAxis(const BeamElementResults& el, DiagramType type);
 };
 
 } // namespace Structura::Visualization

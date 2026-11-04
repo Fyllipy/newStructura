@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <vector>
 
 namespace Structura::Visualization {
@@ -62,6 +63,51 @@ struct BeamElementResults {
     /// Temperatura e retração não entram: não são cargas transversais e não alteram o equilíbrio das seções.
     std::vector<PositionedLoad> positionedLoads;
 };
+
+/// Reescreve o elemento no SISTEMA DE REFERENCIA da barra: eixos locais definidos so pela geometria, sem o giro da secao.
+/// O solver trabalha com os eixos girados junto com a secao (y', z' = y, z girados de `rotationDeg` em torno de x); os diagramas, porem, devem
+/// seguir um unico sistema para todas as barras. Os esforcos (cortantes e momentos), as cargas locais e os eixos sao reescritos na base de
+/// referencia: v_y = cos.v_y' - sen.v_z' ; v_z = sen.v_y' + cos.v_z'. Cargas globais nao mudam (sao projetadas nos eixos depois).
+/// O dimensionamento nao usa esta funcao: ele precisa dos esforcos nos eixos da propria secao.
+inline void toReferenceFrame(BeamElementResults &el, double rotationDeg)
+{
+    if (rotationDeg == 0.0) {
+        return;
+    }
+    constexpr double kPi = 3.14159265358979323846;
+    const double c = std::cos(rotationDeg * kPi / 180.0), s = std::sin(rotationDeg * kPi / 180.0);
+    auto rotate = [c, s](double &vy, double &vz) {
+        const double y = c * vy - s * vz, z = s * vy + c * vz;
+        vy = y;
+        vz = z;
+    };
+    for (int i = 0; i < 3; ++i) {
+        const double y = c * el.yLocal[static_cast<std::size_t>(i)] - s * el.zLocal[static_cast<std::size_t>(i)];
+        const double z = s * el.yLocal[static_cast<std::size_t>(i)] + c * el.zLocal[static_cast<std::size_t>(i)];
+        el.yLocal[static_cast<std::size_t>(i)] = y;
+        el.zLocal[static_cast<std::size_t>(i)] = z;
+    }
+    rotate(el.endForces.Vy1, el.endForces.Vz1);
+    rotate(el.endForces.My1, el.endForces.Mz1);
+    rotate(el.endForces.Vy2, el.endForces.Vz2);
+    rotate(el.endForces.My2, el.endForces.Mz2);
+    for (auto &load : el.distributedLoads) {
+        if (load.isLocalSystem) {
+            rotate(load.qy, load.qz);
+        }
+    }
+    for (auto &moment : el.distributedMoments) {
+        if (moment.isLocalSystem) {
+            rotate(moment.my, moment.mz);
+        }
+    }
+    for (auto &load : el.positionedLoads) {
+        if (load.isLocalSystem) {
+            rotate(load.v1[1], load.v1[2]);
+            rotate(load.v2[1], load.v2[2]);
+        }
+    }
+}
 
 /// Tipo de diagrama de esforços internos.
 enum class DiagramType {

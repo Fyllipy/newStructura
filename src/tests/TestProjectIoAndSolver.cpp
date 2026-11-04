@@ -4,6 +4,7 @@
 #include "app/services/MaterialLibrary.h"
 #include "app/services/SectionPropertiesService.h"
 #include "app/SolverBridge.h"
+#include "viz/postprocessor/DiagramMeshBuilder.h"
 #include "viz/LocalCoordinateSystem.h"
 #include "app/services/SheetBuilder.h"
 #include "drawing/HiddenLine.h"
@@ -545,6 +546,86 @@ private slots:
                     QVERIFY2(std::abs(sy[static_cast<std::size_t>(k)] - lcs.yPrime[static_cast<std::size_t>(k)]) < 1e-9, qPrintable(where + QStringLiteral(": eixo y difere")));
                     QVERIFY2(std::abs(sz[static_cast<std::size_t>(k)] - lcs.zPrime[static_cast<std::size_t>(k)]) < 1e-9, qPrintable(where + QStringLiteral(": eixo z difere")));
                 }
+            }
+        }
+    }
+
+    void momentDiagramsArePlottedOnTheTensionSideForAnySectionRotation()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // Viga biapoiada ao longo de X com carga uniforme global em Z ou em Y: a fibra tracionada fica do lado da carga. O diagrama de momentos deve
+        // ser desenhado desse lado e, no sistema de referencia das barras (independente do giro da secao), sempre no mesmo tipo de esforco:
+        // carga vertical -> Mz, carga horizontal em Y -> My, qualquer que seja o giro da secao.
+        using Structura::Visualization::DiagramGeometryCache;
+        using Structura::Visualization::DiagramMeshBuilder;
+        using Structura::Visualization::DiagramType;
+        struct Case { double qy, qz; };
+        for (const Case loadCase : {Case {0.0, -10.0}, Case {-10.0, 0.0}, Case {0.0, 10.0}}) {
+            for (const double rotation : {0.0, 90.0, 180.0, -90.0, 270.0, 30.0}) {
+                SolverBridge::ModelData model;
+                model.materials.push_back({1, 2.0e11, 8.0e10});
+                model.sections.push_back({1, 0.01, 4e-6, 8e-6, 1e-5});
+                SolverBridge::NodeData a;
+                a.id = 1;
+                a.restraints = {{1, 1, 1, 1, 0, 0}};
+                SolverBridge::NodeData b;
+                b.id = 2;
+                b.x = 6.0;
+                b.restraints = {{0, 1, 1, 1, 0, 0}};
+                model.nodes = {a, b};
+                SolverBridge::MemberData member {1, 1, 2, 1, 1};
+                member.sectionRotationDeg = rotation;
+                model.members.push_back(member);
+                SolverBridge::MemberLoadData load;
+                load.memberId = 1;
+                load.coordSystem = SolverBridge::MemberLoadCoordSystem::Global;
+                load.qy = loadCase.qy;
+                load.qz = loadCase.qz;
+                model.memberLoads.push_back(load);
+                const auto result = SolverBridge(dll).solve(model);
+                const auto &m = result.memberResults[0];
+                auto cross = [](const std::array<double, 3> &u, const std::array<double, 3> &v) {
+                    return std::array<double, 3> {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+                };
+                Structura::Visualization::BeamElementResults element;
+                element.externalId = 1;
+                element.node1 = {0.0, 0.0, 0.0};
+                element.node2 = {6.0, 0.0, 0.0};
+                element.xLocal = {1.0, 0.0, 0.0};
+                const std::array<double, 3> aux {m.auxK[0], m.auxK[1], m.auxK[2]};
+                element.zLocal = cross(element.xLocal, aux);
+                element.yLocal = cross(element.zLocal, element.xLocal);
+                const auto &lf = m.localForces;
+                element.endForces = {-lf[0], -lf[1], -lf[2], -lf[3], -lf[4], -lf[5], lf[6], lf[7], lf[8], lf[9], lf[10], lf[11]};
+                Structura::Visualization::UniformDistributedLoad udl;
+                udl.qy = loadCase.qy;
+                udl.qz = loadCase.qz;
+                udl.isLocalSystem = false;
+                element.distributedLoads.push_back(udl);
+                // todas as barras orientam os diagramas pelo mesmo sistema (o de referencia, sem o giro da secao)
+                Structura::Visualization::toReferenceFrame(element, rotation);
+
+                DiagramMeshBuilder builder;
+                DiagramGeometryCache cache;
+                int revision = 0;
+                const double expectedY = loadCase.qy, expectedZ = loadCase.qz;
+                const bool vertical = std::abs(loadCase.qz) > 0.0;
+                const DiagramType expectedType = vertical ? DiagramType::Mz : DiagramType::My;
+                const DiagramType otherType = vertical ? DiagramType::My : DiagramType::Mz;
+                builder.sampleElement(element, expectedType, ++revision, cache);
+                const auto &main = cache.get({1, expectedType, revision});
+                const double midValue = main.rawValues[main.rawValues.size() / 2];
+                const QString where = QStringLiteral("giro %1, carga (%2, %3)").arg(rotation).arg(loadCase.qy).arg(loadCase.qz);
+                QVERIFY2(std::abs(midValue) > 1.0, qPrintable(where + QStringLiteral(": sem momento no tipo esperado")));
+                // deslocamento do diagrama = valor x eixo: deve apontar para o lado da carga (fibra tracionada)
+                const double towardsLoad = midValue * (main.perpAxis[1] * expectedY + main.perpAxis[2] * expectedZ);
+                QVERIFY2(towardsLoad > 0.0, qPrintable(where + QStringLiteral(": diagrama de momentos do lado errado")));
+                builder.sampleElement(element, otherType, ++revision, cache);
+                const auto &other = cache.get({1, otherType, revision});
+                QVERIFY2(std::abs(other.rawValues[other.rawValues.size() / 2]) < 1e-6 * std::abs(midValue) + 1e-6, qPrintable(where + QStringLiteral(": momento no tipo errado")));
             }
         }
     }

@@ -8,6 +8,7 @@
 #include "ui/ProfileLibrary.h"
 #include "ui/ProfileManagerDialog.h"
 #include "ui/ProfilePickerDialog.h"
+#include "ui/PropertiesPanel.h"
 #include "ui/SectionPlacementPanel.h"
 #include "ui/SectionPlacementWidget.h"
 #include "ui/TransformDialogs.h"
@@ -338,6 +339,39 @@ private slots:
         mini.setPlacement(90.0, 3, 0.0, 0.0);
         mini.resize(190, 150);
         QVERIFY(mini.grab().save(outputDir() + QStringLiteral("/placement_mini.png")));
+    }
+
+    void propertiesPanelEmbedsThePlacementEditor()
+    {
+        PropertiesPanel panel;
+        PropertiesPanel::BarEntry entry;
+        entry.id = QUuid::createUuid();
+        entry.externalId = 5;
+        entry.nodeI = 1;
+        entry.nodeJ = 2;
+        entry.length = 6.0;
+        entry.sectionName = QStringLiteral("W 310 x 32.7");
+        entry.hasSection = true;
+        entry.section.name = entry.sectionName;
+        entry.section.family = QStringLiteral("W Laminado");
+        entry.section.geometry = {{QStringLiteral("d"), 313.0}, {QStringLiteral("bf"), 102.0}, {QStringLiteral("tw"), 6.6}, {QStringLiteral("tf"), 10.8}, {QStringLiteral("r"), 10.0}};
+        panel.setBarEntries({entry});
+        SectionPlacementPanel::Target target;
+        target.barId = entry.id;
+        target.externalId = 5;
+        target.section = entry.section;
+        target.hasSection = true;
+        target.placement.memberId = 5;
+        panel.setPlacementTargets({target});
+        panel.resize(340, 900);
+        panel.show();
+        QSignalSpy spy(&panel, &PropertiesPanel::placementEdited);
+        // o editor de posicionamento esta dentro das Propriedades: girar a secao emite o sinal da propria janela
+        const auto spins = panel.findChildren<QDoubleSpinBox *>();
+        QVERIFY(!spins.isEmpty());
+        spins.first()->setValue(90.0);
+        QVERIFY(spy.count() >= 1);
+        QVERIFY(panel.grab().save(outputDir() + QStringLiteral("/properties_with_placement.png")));
     }
 
     void windShedDialogComputesLoadsFromBars()

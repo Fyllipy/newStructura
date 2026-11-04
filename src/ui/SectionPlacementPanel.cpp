@@ -70,11 +70,14 @@ QFrame *makeCard(QWidget *parent, const QString &title, QVBoxLayout **bodyOut)
 
 } // namespace
 
-SectionPlacementPanel::SectionPlacementPanel(QWidget *parent)
+SectionPlacementPanel::SectionPlacementPanel(QWidget *parent, bool embedded)
     : QFrame(parent)
+    , m_embedded(embedded)
 {
     setObjectName(QStringLiteral("placementPanel"));
-    setFixedWidth(372);
+    if (!embedded) {
+        setFixedWidth(372);
+    }
     setStyleSheet(QStringLiteral(
         "QFrame#placementPanel { background: #f2f5fa; border: 1px solid #cbd4e2; border-radius: 8px; }"
         "QFrame#placementHeader { background: #0d7fb9; border: 0; border-top-left-radius: 8px; border-top-right-radius: 8px; }"
@@ -101,12 +104,18 @@ SectionPlacementPanel::SectionPlacementPanel(QWidget *parent)
         "QPushButton#smallAction:hover { background: rgba(19, 147, 214, 0.14); }"
         "QSlider::groove:horizontal { height: 4px; background: #d6dde8; border-radius: 2px; }"
         "QSlider::handle:horizontal { width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; background: #0d7fb9; }"));
+    if (embedded) {
+        // dentro das Propriedades: sem cartao proprio (a janela ja tem), so o conteudo
+        setStyleSheet(styleSheet() + QStringLiteral("QFrame#placementPanel { background: transparent; border: 0; }"));
+    }
     buildUi();
-    if (parent) {
+    if (parent && !embedded) {
         parent->installEventFilter(this);
     }
     setTargets({});
-    hide();
+    if (!embedded) {
+        hide();
+    }
 }
 
 void SectionPlacementPanel::buildUi()
@@ -115,41 +124,51 @@ void SectionPlacementPanel::buildUi()
     root->setContentsMargins(0, 0, 0, 10);
     root->setSpacing(8);
 
-    // --- cabecalho ---
-    auto *header = new QFrame(this);
-    header->setObjectName(QStringLiteral("placementHeader"));
-    header->setFixedHeight(34);
-    auto *headerLayout = new QHBoxLayout(header);
-    headerLayout->setContentsMargins(12, 0, 6, 0);
-    auto *title = new QLabel(tr("Posicionamento da seção"), header);
-    title->setObjectName(QStringLiteral("placementTitle"));
-    headerLayout->addWidget(title);
-    headerLayout->addStretch(1);
-    auto *close = new QToolButton(header);
-    close->setIcon(svgIcon(QStringLiteral("close.svg"), QColor(Qt::white), 14));
-    close->setIconSize(QSize(14, 14));
-    close->setFixedSize(24, 24);
-    close->setToolTip(tr("Fechar"));
-    close->setStyleSheet(QStringLiteral(
-        "QToolButton { border: 0; border-radius: 4px; background: transparent; }"
-        "QToolButton:hover { background: rgba(255, 255, 255, 0.25); }"));
-    connect(close, &QToolButton::clicked, this, &QWidget::hide);
-    headerLayout->addWidget(close);
-    root->addWidget(header);
+    if (!m_embedded) {
+        // --- cabecalho ---
+        auto *header = new QFrame(this);
+        header->setObjectName(QStringLiteral("placementHeader"));
+        header->setFixedHeight(34);
+        auto *headerLayout = new QHBoxLayout(header);
+        headerLayout->setContentsMargins(12, 0, 6, 0);
+        auto *title = new QLabel(tr("Posicionamento da seção"), header);
+        title->setObjectName(QStringLiteral("placementTitle"));
+        headerLayout->addWidget(title);
+        headerLayout->addStretch(1);
+        auto *close = new QToolButton(header);
+        close->setIcon(svgIcon(QStringLiteral("close.svg"), QColor(Qt::white), 14));
+        close->setIconSize(QSize(14, 14));
+        close->setFixedSize(24, 24);
+        close->setToolTip(tr("Fechar"));
+        close->setStyleSheet(QStringLiteral(
+            "QToolButton { border: 0; border-radius: 4px; background: transparent; }"
+            "QToolButton:hover { background: rgba(255, 255, 255, 0.25); }"));
+        connect(close, &QToolButton::clicked, this, &QWidget::hide);
+        headerLayout->addWidget(close);
+        root->addWidget(header);
 
-    m_scroll = new QScrollArea(this);
-    m_scroll->setFrameShape(QFrame::NoFrame);
-    m_scroll->setWidgetResizable(true);
-    m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_scroll->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; } QScrollArea > QWidget > QWidget { background: transparent; }"));
+    }
+
+    if (!m_embedded) {
+        m_scroll = new QScrollArea(this);
+        m_scroll->setFrameShape(QFrame::NoFrame);
+        m_scroll->setWidgetResizable(true);
+        m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_scroll->setStyleSheet(QStringLiteral("QScrollArea { background: transparent; } QScrollArea > QWidget > QWidget { background: transparent; }"));
+    }
     m_content = new QWidget();
     m_content->setObjectName(QStringLiteral("placementContent"));
     m_content->setStyleSheet(QStringLiteral("QWidget#placementContent { background: transparent; }"));
     auto *contentLayout = new QVBoxLayout(m_content);
     contentLayout->setContentsMargins(0, 0, 0, 0);
     contentLayout->setSpacing(8);
-    m_scroll->setWidget(m_content);
-    root->addWidget(m_scroll, 1);
+    if (m_scroll) {
+        m_scroll->setWidget(m_content);
+        root->addWidget(m_scroll, 1);
+    } else {
+        root->addWidget(m_content);
+        root->setContentsMargins(0, 0, 0, 0);
+    }
 
     m_emptyLabel = new QLabel(tr("Selecione uma ou mais barras para posicionar a seção em relação ao nó e definir giro e articulações."), m_content);
     m_emptyLabel->setObjectName(QStringLiteral("placementHint"));
@@ -622,7 +641,7 @@ void SectionPlacementPanel::refreshResult()
 
 void SectionPlacementPanel::applyHeight()
 {
-    if (!parentWidget() || !m_content) {
+    if (m_embedded || !parentWidget() || !m_content) {
         return;
     }
     // O conteudo rola quando a janela principal e menor que o painel.
@@ -633,7 +652,7 @@ void SectionPlacementPanel::applyHeight()
 
 void SectionPlacementPanel::reposition()
 {
-    if (!parentWidget()) {
+    if (m_embedded || !parentWidget()) {
         return;
     }
     applyHeight();

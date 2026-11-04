@@ -198,12 +198,6 @@ void MainWindow::createActions()
                                                   QColor(QStringLiteral("#0d7fb9")), 64));
     connect(m_axesAction, &QAction::triggered, this, &MainWindow::onToggleAxesPanel);
 
-    m_placementAction = new QAction(tr("Posicionar\nseção"), this);
-    m_placementAction->setIcon(Structura::UI::svgIcon(QStringLiteral("section-place.svg"),
-                                                      QColor(QStringLiteral("#0d7fb9")), 64));
-    m_placementAction->setToolTip(tr("Posicionar a seção em relação ao nó: giro, ponto de referência, excentricidade e articulações"));
-    connect(m_placementAction, &QAction::triggered, this, &MainWindow::onTogglePlacementPanel);
-
     addAction(m_openModelAction);
     addAction(m_saveModelAction);
     addAction(m_saveAsModelAction);

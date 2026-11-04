@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 #include "OptionsDialog.h"
+#include "Theme.h"
+#include "PlacementOverlay.h"
 #include "app/AppSettings.h"
 #include "app/Edition.h"
 #include "app/Product.h"
@@ -141,13 +143,7 @@ void MainWindow::ensurePropertiesPanel()
     connect(m_propertiesPanel, &PropertiesPanel::barReportRequested, this, &MainWindow::onBarReport);
     connect(m_propertiesPanel, &PropertiesPanel::barCompositeGapEdited, this, &MainWindow::onBarCompositeGapEdited);
     connect(m_propertiesPanel, &PropertiesPanel::barCompositeEdited, this, &MainWindow::onBarCompositeEdited);
-    connect(m_propertiesPanel, &PropertiesPanel::placementEditorRequested, this, [this]() {
-        if (m_placementPanel && !m_placementPanel->isVisible()) {
-            onTogglePlacementPanel();
-        } else if (m_placementPanel) {
-            m_placementPanel->raise();
-        }
-    });
+    connect(m_propertiesPanel, &PropertiesPanel::placementEdited, this, &MainWindow::onBarPlacementEdited);
     connect(m_propertiesPanel, &PropertiesPanel::manageProfilesRequested,
             this, &MainWindow::onOpenProfileManager);
 
@@ -263,29 +259,9 @@ void MainWindow::onBarPlacementEdited(const QVector<QUuid> &requestedIds,
         keyParts.join(QLatin1Char(','))));
 }
 
-void MainWindow::onTogglePlacementPanel()
-{
-    if (!m_placementPanel) {
-        return;
-    }
-    if (m_placementPanel->isVisible()) {
-        m_placementPanel->hide();
-        positionPlaneLabel();   // as propriedades voltam ao canto
-        return;
-    }
-    if (m_axesPanel) {
-        m_axesPanel->hide();
-    }
-    m_placementPanel->show();
-    refreshPlacementPanel();
-    m_placementPanel->reposition();
-    m_placementPanel->raise();
-    positionPlaneLabel();   // as propriedades passam para a esquerda do painel de posicionamento
-}
-
 void MainWindow::refreshPlacementPanel()
 {
-    if (!m_placementPanel || !m_placementPanel->isVisible() || !m_sceneController) {
+    if (!m_propertiesPanel || !m_sceneController) {
         return;
     }
     QHash<QUuid, const SectionInfo *> sectionsById;
@@ -320,7 +296,7 @@ void MainWindow::refreshPlacementPanel()
         }
         targets.append(target);
     }
-    m_placementPanel->setTargets(targets);
+    m_propertiesPanel->setPlacementTargets(targets);
 }
 
 void MainWindow::syncBarTypeMarkers()
@@ -726,6 +702,10 @@ void MainWindow::applyVisualOptions()
     }
     const auto settings = Structura::App::appSettings();
     m_sceneController->setNodeScreenSize(settings.value(QString::fromLatin1(Structura::App::Options::kNodeScreenSize), Structura::App::Options::kNodeScreenSizeDefault).toDouble());
+    m_sceneController->setDarkBackground(Structura::UI::Theme::isDark());
+    if (m_labelOverlay) {
+        m_labelOverlay->update();
+    }
 }
 
 void MainWindow::onOptions()
@@ -733,16 +713,30 @@ void MainWindow::onOptions()
     auto settings = Structura::App::appSettings();
     const QString key = QString::fromLatin1(Structura::App::Options::kNodeScreenSize);
     const double current = settings.value(key, Structura::App::Options::kNodeScreenSizeDefault).toDouble();
-    Structura::UI::OptionsDialog dialog(current, this);
+    const bool wasDark = Structura::UI::Theme::isDark();
+    Structura::UI::OptionsDialog dialog(current, wasDark, this);
     connect(&dialog, &Structura::UI::OptionsDialog::nodeScreenSizeChanged, this, [this](double pixels) {
         if (m_sceneController) {
             m_sceneController->setNodeScreenSize(pixels);
         }
     });
+    connect(&dialog, &Structura::UI::OptionsDialog::darkModeChanged, this, [this](bool dark) {
+        Structura::UI::Theme::apply(dark ? Structura::UI::Theme::Mode::Dark : Structura::UI::Theme::Mode::Light, false);   // previa
+        applyVisualOptions();
+        applyAppearance();
+    });
     if (dialog.exec() == QDialog::Accepted) {
         settings.setValue(key, dialog.nodeScreenSize());
-    } else if (m_sceneController) {
-        m_sceneController->setNodeScreenSize(current);   // cancelou: volta ao valor anterior
+        Structura::UI::Theme::apply(dialog.darkMode() ? Structura::UI::Theme::Mode::Dark : Structura::UI::Theme::Mode::Light, true);
+        applyVisualOptions();
+        applyAppearance();
+    } else {
+        if (m_sceneController) {
+            m_sceneController->setNodeScreenSize(current);   // cancelou: volta ao valor anterior
+        }
+        Structura::UI::Theme::apply(wasDark ? Structura::UI::Theme::Mode::Dark : Structura::UI::Theme::Mode::Light, false);
+        applyVisualOptions();
+        applyAppearance();
     }
 }
 

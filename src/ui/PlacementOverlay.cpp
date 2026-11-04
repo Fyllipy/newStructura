@@ -1,4 +1,5 @@
 #include "PlacementOverlay.h"
+#include "Theme.h"
 
 #include <QFont>
 #include <QFontMetricsF>
@@ -335,7 +336,7 @@ void ViewportLabelOverlay::paintEvent(QPaintEvent *)
     font.setBold(true);
     painter.setFont(font);
     const QFontMetricsF metrics(font);
-    const QColor defaultColor(QStringLiteral("#24292f"));
+    const QColor defaultColor = Theme::color(QStringLiteral("#24292f"));
     for (auto it = m_groups.constBegin(); it != m_groups.constEnd(); ++it) {
         const Group &group = it.value();
         if (!group.visible) {
@@ -354,7 +355,7 @@ void ViewportLabelOverlay::paintEvent(QPaintEvent *)
                     // bolha do eixo, como nas plantas de arquitetura: circulo com o rotulo no centro
                     const double radius = std::max(size.width(), size.height()) / 2.0 + 5.0;
                     painter.setPen(QPen(defaultColor, 1.4));
-                    painter.setBrush(QColor(255, 255, 255, 240));
+                    painter.setBrush(Theme::color(QColor(255, 255, 255, 240)));
                     painter.drawEllipse(group.screen[i], radius, radius);
                     painter.setBrush(Qt::NoBrush);
                 }
@@ -415,7 +416,7 @@ void ViewportLabelOverlay::paintEvent(QPaintEvent *)
                 painter.drawLine(anchor, QPointF(rect.center().x(), rect.center().y() + (anchor.y() > rect.center().y() ? size.height() / 2.0 : -size.height() / 2.0)));
             }
             painter.setPen(QPen(color, 1.2));
-            painter.setBrush(QColor(255, 255, 255, 225));
+            painter.setBrush(Theme::color(QColor(255, 255, 255, 225)));
             painter.drawRoundedRect(rect, 4, 4);
             painter.setPen(color.darker(115));
             painter.drawText(rect, Qt::AlignCenter, text);

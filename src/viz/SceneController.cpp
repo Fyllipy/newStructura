@@ -417,6 +417,21 @@ void SceneController::refreshConstructionGeometry()
     emit geometryRefreshed();
 }
 
+void SceneController::setDarkBackground(bool dark)
+{
+    if (!m_renderer) {
+        return;
+    }
+    if (dark) {
+        m_renderer->SetBackground(0.16, 0.19, 0.24);    // topo
+        m_renderer->SetBackground2(0.07, 0.09, 0.12);   // base
+    } else {
+        m_renderer->SetBackground(0.91, 0.94, 0.98);
+        m_renderer->SetBackground2(0.78, 0.85, 0.93);
+    }
+    requestRender();
+}
+
 void SceneController::setNodeScreenSize(double pixels)
 {
     if (m_structureRenderer) {

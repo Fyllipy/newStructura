@@ -381,11 +381,9 @@ void MainWindow::createRibbon()
     m_showDiagramsAction = new QAction(tr("Mostrar\nDiagramas"), this);
     m_showDiagramsAction->setIcon(icon(QStringLiteral("diagrams-show.svg")));
     m_showDiagramsAction->setEnabled(false);   // habilitado apos a analise
-    connect(m_showDiagramsAction, &QAction::triggered, this, &MainWindow::onShowDiagrams);
-    m_hideDiagramsAction = new QAction(tr("Ocultar\nDiagramas"), this);
-    m_hideDiagramsAction->setIcon(icon(QStringLiteral("diagrams-hide.svg")));
-    m_hideDiagramsAction->setEnabled(false);
-    connect(m_hideDiagramsAction, &QAction::triggered, this, &MainWindow::onHideDiagrams);
+    m_showDiagramsAction->setCheckable(true);   // fica ativo enquanto o comando estiver em uso; novo clique encerra
+    m_showDiagramsAction->setToolTip(tr("Mostra os diagramas de esforços e de deslocamentos da combinação escolhida. O botão fica ativo enquanto o comando está em uso; clique de novo para ocultar."));
+    connect(m_showDiagramsAction, &QAction::toggled, this, &MainWindow::onShowDiagrams);
     m_compareAction = new QAction(tr("Comparar\ncombinações"), this);
     m_compareAction->setIcon(icon(QStringLiteral("compare.svg")));
     m_compareAction->setToolTip(tr("Compara deslocamentos, reações e esforços entre combinações, com a envoltória e a combinação que governa"));
@@ -484,8 +482,7 @@ void MainWindow::createRibbon()
                                          item(m_connectivityAction, tr("Vínculos e ligações"), true), item(m_memberEndsAction, tr("Extremidades e rótulas"), true),
                                          item(m_splitBarsAction, tr("Dividir barras"), false), item(m_measureAction, tr("Medir"), false)});
         home->addGroup(tr("Propriedades"), {item(m_profileManagerAction, tr("Gerenciador de perfis"), true), item(m_assignPropertiesAction, tr("Atribuir a barras"), true),
-                                            item(m_createMaterialAction, tr("Novo material"), false), item(m_createSectionAction, tr("Nova seção"), false),
-                                            item(m_placementAction, tr("Posicionar seção"), false)});
+                                            item(m_createMaterialAction, tr("Novo material"), false), item(m_createSectionAction, tr("Nova seção"), false)});
         RibbonItem copy = item(m_copyElementsAction, tr("Copiar"), true, tr("Copia os elementos selecionados para outro ponto: clique no ponto base e no destino."));
         copy.variants = {{m_copyElementsAction, tr("Copiar")}, {m_serialCopyAction, tr("Cópia em série…")}, {m_arrayCopyAction, tr("Cópia em matriz…")}, {nullptr, QString(), true}, {m_mirrorElementsAction, tr("Copiar espelhado…")}};
         home->addGroup(tr("Edição"), {item(m_moveElementsAction, tr("Mover"), true), copy, item(m_serialCopyAction, tr("Cópia em série"), false),
@@ -549,7 +546,7 @@ void MainWindow::createRibbon()
                                                item(m_optimizeDesignAction, tr("Dimensionar perfis"), true)});
         calc->addGroup(tr("Ligações e mistas"), {item(m_connectionsAction, tr("Ligações"), true), item(m_copyConnectionsAction, tr("Copiar ligações"), true), item(m_compositeAction, tr("Vigas e lajes mistas"), true)});
     }
-    calc->addGroup(tr("Resultados"), {item(m_showDiagramsAction, tr("Mostrar diagramas"), true), item(m_hideDiagramsAction, tr("Ocultar diagramas"), true),
+    calc->addGroup(tr("Resultados"), {item(m_showDiagramsAction, tr("Mostrar diagramas"), true),
                                       item(m_compareAction, tr("Comparar combinações"), true)});
     calc->addGroup(tr("Documentação"), {item(m_reportAction, tr("Memorial"), true)});
 

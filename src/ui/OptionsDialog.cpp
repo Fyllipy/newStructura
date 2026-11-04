@@ -2,6 +2,7 @@
 
 #include "app/AppSettings.h"
 
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -13,7 +14,7 @@
 
 namespace Structura::UI {
 
-OptionsDialog::OptionsDialog(double nodeScreenSize, QWidget *parent)
+OptionsDialog::OptionsDialog(double nodeScreenSize, bool startDark, QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle(tr("Opções"));
@@ -23,6 +24,12 @@ OptionsDialog::OptionsDialog(double nodeScreenSize, QWidget *parent)
 
     auto *visual = new QWidget(tabs);
     auto *form = new QFormLayout(visual);
+    m_theme = new QComboBox(visual);
+    m_theme->addItem(tr("Modo claro"), false);
+    m_theme->addItem(tr("Modo escuro"), true);
+    m_theme->setCurrentIndex(startDark ? 1 : 0);
+    form->addRow(tr("Tema:"), m_theme);
+    connect(m_theme, &QComboBox::currentIndexChanged, this, [this]() { emit darkModeChanged(this->darkMode()); });
     m_nodeSize = new QSlider(Qt::Horizontal, visual);
     m_nodeSize->setRange(static_cast<int>(Structura::App::Options::kNodeScreenSizeMin), static_cast<int>(Structura::App::Options::kNodeScreenSizeMax));
     m_nodeSize->setValue(static_cast<int>(nodeScreenSize + 0.5));
@@ -59,6 +66,11 @@ OptionsDialog::OptionsDialog(double nodeScreenSize, QWidget *parent)
 double OptionsDialog::nodeScreenSize() const
 {
     return m_nodeSize->value();
+}
+
+bool OptionsDialog::darkMode() const
+{
+    return m_theme->currentData().toBool();
 }
 
 } // namespace Structura::UI

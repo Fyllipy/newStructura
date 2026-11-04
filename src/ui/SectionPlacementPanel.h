@@ -49,7 +49,8 @@ public:
         double length {0.0};
     };
 
-    explicit SectionPlacementPanel(QWidget *parent);
+    /// `embedded`: o editor fica dentro de outra janela (Propriedades), sem moldura, cabecalho, rolagem propria nem posicionamento flutuante.
+    explicit SectionPlacementPanel(QWidget *parent, bool embedded = false);
 
     /// Barras editadas (a primeira define os valores exibidos). Vazio mostra a orientacao de uso.
     void setTargets(const QVector<Target> &targets);
@@ -77,6 +78,7 @@ private:
     QVector<Target> m_targets;
     int m_end {0};              ///< 0 = extremidade I, 1 = J (para o deslocamento adicional)
     bool m_block {false};
+    bool m_embedded {false};
 
     QLabel *m_targetLabel {nullptr};
     QLabel *m_mixedLabel {nullptr};
