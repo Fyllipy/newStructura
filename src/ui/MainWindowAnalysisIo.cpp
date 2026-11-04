@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "app/Edition.h"
 #include "BeamResultsBuilder.h"
+#include "app/BarFrame.h"
 
 #include <QVBoxLayout>
 
@@ -781,6 +782,7 @@ void MainWindow::collectResultsForSave()
 
 void MainWindow::resetModel()
 {
+    Structura::App::BarFrame::setLegacy(false);   // projeto novo: referencial atual das barras (loadFromDat volta ao legado se o arquivo for antigo)
     setCommand(Command::None);
     m_sceneController->clearAll();
     m_firstBarNodeId = QUuid();

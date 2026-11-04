@@ -1,5 +1,7 @@
 #include "SolverBridge.h"
 
+#include "BarFrame.h"
+
 #include <unordered_map>
 #include "../../Structuradll/src/core/solver_security.h"
 
@@ -74,8 +76,7 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
-/// Angulo (graus) entre os eixos de referencia do programa (vertical: y = X global) e os da base do solver (vertical: y = Y global).
-/// Fora das barras verticais os dois coincidem (0). Soma-se ao giro da secao enviado ao solver.
+/// Giro de compensacao entre o referencial do programa e a base do solver (ver app/BarFrame.h); soma-se ao giro da secao enviado ao solver.
 double referenceToSolverBaseDeg(const SolverBridge::ModelData &model, const SolverBridge::MemberData &member)
 {
     const SolverBridge::NodeData *a = nullptr;
@@ -91,34 +92,13 @@ double referenceToSolverBaseDeg(const SolverBridge::ModelData &model, const Solv
     if (!a || !b) {
         return 0.0;
     }
-    double x[3] = {b->x - a->x, b->y - a->y, b->z - a->z};
-    const double length = std::sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+    Structura::App::BarFrame::Vec3 x {b->x - a->x, b->y - a->y, b->z - a->z};
+    const double length = Structura::App::BarFrame::norm(x);
     if (length < 1e-12) {
         return 0.0;
     }
-    for (double &v : x) {
-        v /= length;
-    }
-    auto cross = [](const double *p, const double *q, double *r) {
-        r[0] = p[1] * q[2] - p[2] * q[1];
-        r[1] = p[2] * q[0] - p[0] * q[2];
-        r[2] = p[0] * q[1] - p[1] * q[0];
-    };
-    double zc[3];
-    const double up[3] = {0.0, 0.0, 1.0};
-    cross(x, up, zc);
-    if (std::sqrt(zc[0] * zc[0] + zc[1] * zc[1] + zc[2] * zc[2]) > 1e-10) {
-        return 0.0;   // nao vertical
-    }
-    const double axisY[3] = {0.0, 1.0, 0.0}, axisX[3] = {1.0, 0.0, 0.0};
-    double zb[3], yb[3], zr[3], yr[3];
-    cross(x, axisY, zb);
-    cross(zb, x, yb);
-    cross(x, axisX, zr);
-    cross(zr, x, yr);
-    const double c = yr[0] * yb[0] + yr[1] * yb[1] + yr[2] * yb[2];
-    const double s = yr[0] * zb[0] + yr[1] * zb[1] + yr[2] * zb[2];
-    return std::atan2(s, c) * 180.0 / kPi;
+    x = {x[0] / length, x[1] / length, x[2] / length};
+    return Structura::App::BarFrame::referenceToSolverBaseDeg(x);
 }
 
 /// Giro da secao (quarto de volta, 90 ou 270 graus): as rotacoes em torno de y e z trocam de lugar entre a barra e a secao.
@@ -951,13 +931,29 @@ SolverBridge::Result SolverBridge::solve(const ModelData &input) const
                 back(memberResult.localForces[base + 1], memberResult.localForces[base + 2]);   // Vy, Vz
                 back(memberResult.localForces[base + 4], memberResult.localForces[base + 5]);   // My, Mz
             }
-            const std::array<double, 3> aux = memberResult.auxK;   // o solver informa y' (x cross y' = z')
-            if (found && (aux[0] != 0.0 || aux[1] != 0.0 || aux[2] != 0.0)) {
-                const double an = std::sqrt(aux[0] * aux[0] + aux[1] * aux[1] + aux[2] * aux[2]);
-                const std::array<double, 3> yr {aux[0] / an, aux[1] / an, aux[2] / an};
-                const std::array<double, 3> zr {x[1] * yr[2] - x[2] * yr[1], x[2] * yr[0] - x[0] * yr[2], x[0] * yr[1] - x[1] * yr[0]};
-                for (std::size_t k = 0; k < 3; ++k) {
-                    memberResult.auxK[k] = c * yr[k] - sn * zr[k];   // y da barra (sem o giro da secao)
+            (void)0;
+        }
+        // eixo y local (referencial do programa) a partir da geometria: o auxiliar enviado aos consumidores e o proprio y (z = x cross y; y = z cross x)
+        {
+            const NodeData *na = nullptr;
+            const NodeData *nb = nullptr;
+            for (const auto &node : model.nodes) {
+                if (node.id == model.members[i].nodeI) {
+                    na = &node;
+                }
+                if (node.id == model.members[i].nodeJ) {
+                    nb = &node;
+                }
+            }
+            if (na && nb) {
+                Structura::App::BarFrame::Vec3 x {nb->x - na->x, nb->y - na->y, nb->z - na->z};
+                const double length = Structura::App::BarFrame::norm(x);
+                if (length > 1e-12) {
+                    x = {x[0] / length, x[1] / length, x[2] / length};
+                    const auto y = Structura::App::BarFrame::axisY(x, Structura::App::BarFrame::referenceAux(x));
+                    if (Structura::App::BarFrame::norm(y) > 0.5) {
+                        memberResult.auxK = y;
+                    }
                 }
             }
         }

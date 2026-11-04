@@ -1,5 +1,7 @@
 #include "LocalCoordinateSystem.h"
 
+#include "app/BarFrame.h"
+
 #include <cmath>
 #include <stdexcept>
 
@@ -122,17 +124,8 @@ bool DefaultLocalAxisProvider::areParallel(const std::array<double, 3> &a,
 std::array<double, 3> DefaultLocalAxisProvider::selectAuxiliaryVector(
     const std::array<double, 3> &xPrime) const
 {
-    // Referencia do programa: Z global; para barras verticais, X global (y local no plano XZ, como nas vigas ao longo de X: o momento da
-    // flexao no plano do portico e sempre Mz). O solver usa Y nas verticais; a ponte do solver compensa a diferenca (ver SolverBridge).
-    constexpr double kTolerance = 1e-10;
-    const std::array<std::array<double, 3>, 3> candidates = {{{0.0, 0.0, 1.0}, {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}}};
-    for (const auto &candidate : candidates) {
-        const auto c = cross(xPrime, candidate);
-        if (std::sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]) > kTolerance) {
-            return candidate;
-        }
-    }
-    return {0.7071067811865476, 0.7071067811865476, 0.0};
+    // Regra unica do referencial das barras (ver app/BarFrame.h)
+    return Structura::App::BarFrame::referenceAux(xPrime);
 }
 
 } // namespace Structura::Geometry

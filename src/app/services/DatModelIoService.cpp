@@ -1,4 +1,5 @@
 #include "DatModelIoService.h"
+#include "app/BarFrame.h"
 
 #include <QUrl>
 
@@ -147,6 +148,7 @@ bool DatModelIoService::load(const QString &filePath,
                              QString *errorMessage,
                              QStringList *warnings) const
 {
+    Structura::App::BarFrame::setLegacy(true);   // sem o bloco [FRAME] o arquivo e antigo: base do solver nas barras (resultados iguais aos de antes)
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         if (errorMessage) {
@@ -313,6 +315,9 @@ bool DatModelIoService::load(const QString &filePath,
                 current = Section::LoadCases;
             } else if (trimmed.compare(QStringLiteral("[COMBINATIONS]"), Qt::CaseInsensitive) == 0) {
                 current = Section::Combinations;
+            } else if (trimmed.compare(QStringLiteral("[FRAME]"), Qt::CaseInsensitive) == 0) {
+                Structura::App::BarFrame::setLegacy(false);   // arquivo gravado com o referencial atual das barras (pilares com y = +X)
+                current = Section::None;
             } else if (trimmed.compare(QStringLiteral("[AXES]"), Qt::CaseInsensitive) == 0) {
                 current = Section::Axes;
             } else if (trimmed.compare(QStringLiteral("[VIEW_OPTIONS]"), Qt::CaseInsensitive) == 0) {
@@ -1732,6 +1737,9 @@ bool DatModelIoService::save(const QString &filePath,
         return false;
     };
 
+    if (!Structura::App::BarFrame::legacy()) {
+        stream << "[FRAME]\nVERSION " << Structura::App::BarFrame::kFileVersion << "\n\n";
+    }
     stream << "[MATERIALS]\n";
     stream << "# ID    E (Pa)          G (Pa)\n";
     for (const auto &mat : materialsSorted) {

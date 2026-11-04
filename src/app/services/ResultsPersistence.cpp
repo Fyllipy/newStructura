@@ -1,4 +1,5 @@
 #include "ResultsPersistence.h"
+#include "app/BarFrame.h"
 
 #include <QByteArray>
 #include <QCryptographicHash>
@@ -26,7 +27,7 @@ QString ResultsPersistence::fingerprint(const std::vector<const SolverBridge::Mo
                                         double imperfectionRatio)
 {
     QByteArray bytes;
-    bytes += "|AX3";   // eixos locais de referencia (pilares com y no plano XZ): resultados de versoes anteriores nao valem
+    bytes += Structura::App::BarFrame::legacy() ? "|AX2" : "|AX3";   // eixos locais de referencia (pilares com y no plano XZ): resultados de versoes anteriores nao valem
     put(bytes, secondOrder ? 1 : 0);
     put(bytes, stiffnessReduction);
     if (imperfectionRatio != 0.0) {

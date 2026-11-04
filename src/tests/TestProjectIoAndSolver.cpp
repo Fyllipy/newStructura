@@ -44,6 +44,7 @@
 #include <QLibrary>
 #include <QRegularExpression>
 #include <QTemporaryDir>
+#include "app/BarFrame.h"
 
 #include <deque>
 
@@ -208,6 +209,11 @@ class TestProjectIoAndSolver : public QObject
     Q_OBJECT
 
 private slots:
+    void init()
+    {
+        Structura::App::BarFrame::setLegacy(false);   // o carregamento de arquivos antigos liga o modo legado (estado global): cada teste parte do referencial atual
+    }
+
     void datExtensionsRoundTrip()
     {
         QTemporaryDir dir;
@@ -713,6 +719,101 @@ private slots:
             const double inertia = rotation == 0.0 ? 4e-6 : 8e-6;
             QVERIFY(std::abs(result.nodeResults[1].displacements[0] - 10.0 * 64.0 / (3.0 * 2.0e11 * inertia)) < 1e-9);
         }
+    }
+
+    void barFrameRuleIsStableNearVerticalAndVersionedInFiles()
+    {
+        using namespace Structura::App;
+        BarFrame::setLegacy(false);
+        // pilares verticais ou com ruido de coordenada: y = +X, em qualquer sentido e de qualquer lado da vertical
+        for (const BarFrame::Vec3 &x : {BarFrame::Vec3 {0, 0, 1}, BarFrame::Vec3 {0, 0, -1}, BarFrame::Vec3 {1e-6, 0, 1}, BarFrame::Vec3 {-1e-6, 0, 1},
+                                        BarFrame::Vec3 {0, 1e-4, -1}}) {
+            const auto y = BarFrame::axisY(x, BarFrame::referenceAux(x));
+            QVERIFY2(y[0] > 0.999, "y do pilar deve ser +X");
+        }
+        // vigas e tesouras: y sempre com componente positiva em Z, nos dois sentidos
+        for (const BarFrame::Vec3 &x : {BarFrame::Vec3 {1, 0, 0}, BarFrame::Vec3 {-1, 0, 0}, BarFrame::Vec3 {0, 1, 0}, BarFrame::Vec3 {0.995, 0, 0.0998},
+                                        BarFrame::Vec3 {-0.995, 0, 0.0998}}) {
+            const auto y = BarFrame::axisY(x, BarFrame::referenceAux(x));
+            QVERIFY2(y[2] > 0.5, "y da viga deve apontar para cima");
+        }
+        // o giro de compensacao leva a base do solver ao referencial do programa (0 nas nao verticais, 180 ou -90 etc. nas verticais)
+        QVERIFY(std::abs(BarFrame::referenceToSolverBaseDeg({1, 0, 0})) < 1e-9);
+        QVERIFY(std::abs(std::abs(BarFrame::referenceToSolverBaseDeg({0, 0, 1})) - 90.0) < 1e-9);
+        // modo legado: base do solver em todas as barras
+        BarFrame::setLegacy(true);
+        QVERIFY(std::abs(BarFrame::axisY({0, 0, 1}, BarFrame::referenceAux({0, 0, 1}))[1] - 1.0) < 1e-12);
+        QCOMPARE(BarFrame::referenceToSolverBaseDeg({0, 0, 1}), 0.0);
+        BarFrame::setLegacy(false);
+
+        // arquivos: sem [FRAME] = legado; gravado com o referencial atual = novo
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString oldFile = dir.filePath(QStringLiteral("antigo.dat"));
+        {
+            QFile f(oldFile);
+            QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Text));
+            f.write(QByteArray("[MATERIALS]") + char(10) + "1 2.0e11 8.0e10" + char(10));
+        }
+        DatModelIoService service;
+        MemoryGateway gateway;
+        Loaded loaded;
+        QVERIFY(load(service, gateway, oldFile, loaded));
+        QVERIFY(BarFrame::legacy());
+        QString error;
+        const QString legacySaved = dir.filePath(QStringLiteral("legado.dat"));
+        QVERIFY(service.save(legacySaved, &gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, &error));
+        {
+            QFile f(legacySaved);
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            QVERIFY(!f.readAll().contains("[FRAME]"));
+        }
+        BarFrame::setLegacy(false);
+        const QString current = dir.filePath(QStringLiteral("atual.dat"));
+        QVERIFY(service.save(current, &gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, &error));
+        {
+            QFile f(current);
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            QVERIFY(f.readAll().contains("[FRAME]"));
+        }
+        MemoryGateway gateway2;
+        Loaded again;
+        QVERIFY(load(service, gateway2, current, again));
+        QVERIFY(!BarFrame::legacy());
+    }
+
+    void nearVerticalColumnKeepsTheSameMomentSignOnBothSides()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        Structura::App::BarFrame::setLegacy(false);
+        double signs[2] = {0.0, 0.0};
+        int index = 0;
+        for (const double lean : {1e-6, -1e-6}) {
+            SolverBridge::ModelData model;
+            model.materials.push_back({1, 2.0e11, 8.0e10});
+            model.sections.push_back({1, 0.01, 4e-6, 8e-6, 1e-5});
+            SolverBridge::NodeData fixed;
+            fixed.id = 1;
+            fixed.restraints = {{1, 1, 1, 1, 1, 1}};
+            SolverBridge::NodeData tip;
+            tip.id = 2;
+            tip.x = lean;
+            tip.z = 4.0;
+            model.nodes = {fixed, tip};
+            model.members.push_back(SolverBridge::MemberData {1, 1, 2, 1, 1});
+            SolverBridge::NodalLoadData load;
+            load.nodeId = 2;
+            load.values = {{10.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
+            model.nodalLoads.push_back(load);
+            const auto m = SolverBridge(dll).solve(model).memberResults[0];
+            QVERIFY(std::abs(std::abs(m.localForces[5]) - 40.0) < 1e-5);
+            QVERIFY(m.auxK[0] > 0.999);   // y = +X dos dois lados da vertical
+            signs[index++] = m.localForces[5];
+        }
+        QVERIFY(signs[0] * signs[1] > 0.0);   // mesmo sinal de Mz nos dois pilares
     }
 
     void solverRigidOffsetCreatesEccentricMoment()
