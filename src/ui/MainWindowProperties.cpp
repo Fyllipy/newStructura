@@ -82,7 +82,7 @@ void MainWindow::ensurePropertiesPanel()
     // flutuante: filho da viewport, no lado direito, sem empurrar a visualizacao (ver positionPlaneLabel)
     m_propertiesContainer = new QFrame(static_cast<QWidget *>(m_vtkWidget));
     m_propertiesContainer->setObjectName(QStringLiteral("PropertiesContainer"));
-    m_propertiesContainer->setFixedWidth(350);
+    m_propertiesContainer->setFixedWidth(430);   // largura para o editor de posicionamento embutido (preview, giro, vinculos)
     // mesmo estilo da janela de eixos de referencia: cartao arredondado com cabecalho azul e botao de fechar
     m_propertiesContainer->setStyleSheet(QStringLiteral(
         "QFrame#PropertiesContainer { background: #f2f5fa; border: 1px solid #cbd4e2; border-radius: 8px; }"
@@ -126,7 +126,7 @@ void MainWindow::ensurePropertiesPanel()
     scroll->setObjectName(QStringLiteral("propertiesScroll"));
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);   // nada fica cortado se algum conteudo exigir mais largura
     m_propertiesPanel = new PropertiesPanel(scroll);
     scroll->setWidget(m_propertiesPanel);
     m_propertiesPanel->installEventFilter(this);   // mudancas de layout (secoes que aparecem/somem) reajustam a altura do cartao

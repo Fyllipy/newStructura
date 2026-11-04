@@ -246,8 +246,13 @@ static void feedPostProcessor(
                 const auto sc = sectionMap.find(mb.sectionId);
                 const auto mt = materialMap.find(mb.materialId);
                 if (sc != sectionMap.end() && mt != materialMap.end()) {
-                    eiz = mt->second.e * sc->second.iz;
-                    eiy = mt->second.e * sc->second.iy;
+                    // inercias da secao girada, nos eixos locais da barra
+                    const double beta = mb.sectionRotationDeg * 3.14159265358979323846 / 180.0;
+                    const double cb = std::cos(beta), sb = std::sin(beta);
+                    const double izz = sc->second.iz * cb * cb + sc->second.iy * sb * sb;
+                    const double iyy = sc->second.iy * cb * cb + sc->second.iz * sb * sb;
+                    eiz = mt->second.e * izz;
+                    eiy = mt->second.e * iyy;
                 }
                 Structura::Visualization::DeformedShapeRenderer::Member member;
                 member.id = mr.memberId;
@@ -268,8 +273,6 @@ static void feedPostProcessor(
                 deformation.push_back(std::move(member));
             }
         }
-        // diagramas de todas as barras no mesmo sistema (o de referencia, sem o giro da secao); o dimensionamento segue nos eixos da secao
-        Structura::Visualization::toReferenceFrame(ber, mb.sectionRotationDeg);
         postResults.push_back(std::move(ber));
     }
 

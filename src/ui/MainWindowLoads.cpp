@@ -436,6 +436,27 @@ void MainWindow::onEditLoadCases()
     }
 
     const auto newCases = dialog.loadCases();
+    // casos renomeados: cargas e caso ativo passam a apontar para o novo nome
+    const QHash<QString, QString> renames = dialog.renamedCases();
+    auto renamed = [&renames](QString &name) {
+        const auto it = renames.constFind(name);
+        if (it != renames.constEnd()) {
+            name = it.value();
+        }
+    };
+    for (auto &load : m_nodalLoads) {
+        renamed(load.loadCase);
+    }
+    for (auto &load : m_memberLoads) {
+        renamed(load.loadCase);
+    }
+    for (auto &moment : m_extras.memberMoments) {
+        renamed(moment.loadCase);
+    }
+    for (auto &action : m_extras.memberActions) {
+        renamed(action.loadCase);
+    }
+    renamed(m_extras.activeLoadCase);
     QSet<QString> names;
     for (const auto &loadCase : newCases) {
         names.insert(loadCase.name);

@@ -64,12 +64,10 @@ struct BeamElementResults {
     std::vector<PositionedLoad> positionedLoads;
 };
 
-/// Reescreve o elemento no SISTEMA DE REFERENCIA da barra: eixos locais definidos so pela geometria, sem o giro da secao.
-/// O solver trabalha com os eixos girados junto com a secao (y', z' = y, z girados de `rotationDeg` em torno de x); os diagramas, porem, devem
-/// seguir um unico sistema para todas as barras. Os esforcos (cortantes e momentos), as cargas locais e os eixos sao reescritos na base de
-/// referencia: v_y = cos.v_y' - sen.v_z' ; v_z = sen.v_y' + cos.v_z'. Cargas globais nao mudam (sao projetadas nos eixos depois).
-/// O dimensionamento nao usa esta funcao: ele precisa dos esforcos nos eixos da propria secao.
-inline void toReferenceFrame(BeamElementResults &el, double rotationDeg)
+/// Reescreve o elemento nos eixos da SECAO girada (y', z' = y, z girados de `rotationDeg` em torno de x): eixos, esforcos de extremidade e cargas
+/// locais. Os resultados do programa seguem os eixos locais da barra (que o giro da secao nao altera); o dimensionamento, porem, precisa dos esforcos
+/// nos eixos da propria secao. v_y' = cos.v_y + sen.v_z ; v_z' = -sen.v_y + cos.v_z. Cargas globais nao mudam (sao projetadas nos eixos depois).
+inline void toSectionFrame(BeamElementResults &el, double rotationDeg)
 {
     if (rotationDeg == 0.0) {
         return;
@@ -77,15 +75,15 @@ inline void toReferenceFrame(BeamElementResults &el, double rotationDeg)
     constexpr double kPi = 3.14159265358979323846;
     const double c = std::cos(rotationDeg * kPi / 180.0), s = std::sin(rotationDeg * kPi / 180.0);
     auto rotate = [c, s](double &vy, double &vz) {
-        const double y = c * vy - s * vz, z = s * vy + c * vz;
+        const double y = c * vy + s * vz, z = -s * vy + c * vz;
         vy = y;
         vz = z;
     };
-    for (int i = 0; i < 3; ++i) {
-        const double y = c * el.yLocal[static_cast<std::size_t>(i)] - s * el.zLocal[static_cast<std::size_t>(i)];
-        const double z = s * el.yLocal[static_cast<std::size_t>(i)] + c * el.zLocal[static_cast<std::size_t>(i)];
-        el.yLocal[static_cast<std::size_t>(i)] = y;
-        el.zLocal[static_cast<std::size_t>(i)] = z;
+    for (std::size_t i = 0; i < 3; ++i) {
+        const double y = c * el.yLocal[i] + s * el.zLocal[i];
+        const double z = -s * el.yLocal[i] + c * el.zLocal[i];
+        el.yLocal[i] = y;
+        el.zLocal[i] = z;
     }
     rotate(el.endForces.Vy1, el.endForces.Vz1);
     rotate(el.endForces.My1, el.endForces.Mz1);

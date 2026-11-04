@@ -117,16 +117,8 @@ QVector<SceneController::MemberActionVisual> LoadSupportVisualMapper::mapMemberA
         if (dx * dx + dy * dy + dz * dz < 1e-12) {
             return false;
         }
-        double rotationDeg = 0.0;
-        if (context.placements) {
-            for (const auto &placement : *context.placements) {
-                if (placement.memberId == memberId) {
-                    rotationDeg = placement.rotationDeg;
-                    break;
-                }
-            }
-        }
-        const auto lcs = Structura::Geometry::rotatedAboutX(axisProvider.computeLCS(a, b, std::nullopt), rotationDeg);
+        // eixos locais da barra: o giro da secao nao os altera (so a geometria do perfil)
+        const auto lcs = axisProvider.computeLCS(a, b, std::nullopt);
         auto toVector = [](const std::array<double, 3> &v) {
             return QVector3D(static_cast<float>(v[0]), static_cast<float>(v[1]), static_cast<float>(v[2]));
         };

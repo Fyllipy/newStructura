@@ -43,9 +43,14 @@ CompareResultsDialog::CompareResultsDialog(CompareData data, QWidget *parent)
     m_bars->setChecked(true);
     left->addWidget(m_nodes);
     left->addWidget(m_bars);
-    m_quantity = new QComboBox;
-    left->addWidget(new QLabel(tr("Grandeza:")));
-    left->addWidget(m_quantity);
+    left->addWidget(new QLabel(tr("Tabela:")));
+    m_modeEnvelope = new QRadioButton(tr("Casos × esforços (envoltória dos elementos)"));
+    m_modeCritical = new QRadioButton(tr("Esforços mais críticos (uma linha)"));
+    m_modeDetail = new QRadioButton(tr("Detalhada (elemento × caso)"));
+    m_modeEnvelope->setChecked(true);
+    left->addWidget(m_modeEnvelope);
+    left->addWidget(m_modeCritical);
+    left->addWidget(m_modeDetail);
     m_endMode = new QComboBox;
     m_endMode->addItem(tr("Máximo em valor absoluto das extremidades"), 2);
     m_endMode->addItem(tr("Extremidade inicial (I)"), 0);
@@ -75,39 +80,51 @@ CompareResultsDialog::CompareResultsDialog(CompareData data, QWidget *parent)
     right->addWidget(m_table, 1);
     root->addLayout(right, 1);
 
-    connect(m_nodes, &QRadioButton::toggled, this, [this]() { rebuildQuantities(); });
-    connect(m_quantity, &QComboBox::currentIndexChanged, this, [this]() { refresh(); });
+    connect(m_nodes, &QRadioButton::toggled, this, [this]() { refresh(); });
+    for (auto *mode : {m_modeEnvelope, m_modeCritical, m_modeDetail}) {
+        connect(mode, &QRadioButton::toggled, this, [this]() { refresh(); });
+    }
     connect(m_endMode, &QComboBox::currentIndexChanged, this, [this]() { refresh(); });
     connect(m_onlySelected, &QCheckBox::toggled, this, [this]() { refresh(); });
     connect(m_viewList, &QListWidget::itemChanged, this, [this]() { refresh(); });
     connect(exportButton, &QPushButton::clicked, this, [this]() { exportCsv(); });
-    rebuildQuantities();
+    refresh();
 }
 
-void CompareResultsDialog::rebuildQuantities()
+namespace {
+
+struct Quantity {
+    QString label;
+    int code {0};   ///< 0..5 deslocamentos ou esforcos; 100..105 reacoes
+};
+
+QVector<Quantity> quantitiesFor(bool nodes)
 {
-    const bool nodes = m_nodes->isChecked();
-    QSignalBlocker block(m_quantity);
-    m_quantity->clear();
+    QVector<Quantity> list;
     if (nodes) {
         const char *disp[6] = {"Ux (mm)", "Uy (mm)", "Uz (mm)", "Rx (mrad)", "Ry (mrad)", "Rz (mrad)"};
         const char *react[6] = {"Reação Fx (kN)", "Reação Fy (kN)", "Reação Fz (kN)", "Reação Mx (kN·m)", "Reação My (kN·m)", "Reação Mz (kN·m)"};
         for (int i = 0; i < 6; ++i) {
-            m_quantity->addItem(QString::fromUtf8(disp[i]), i);
+            list.append({QString::fromUtf8(disp[i]), i});
         }
         for (int i = 0; i < 6; ++i) {
-            m_quantity->addItem(QString::fromUtf8(react[i]), 100 + i);
+            list.append({QString::fromUtf8(react[i]), 100 + i});
         }
     } else {
         const char *names[6] = {"N (kN)", "Vy (kN)", "Vz (kN)", "T (kN·m)", "My (kN·m)", "Mz (kN·m)"};
         for (int i = 0; i < 6; ++i) {
-            m_quantity->addItem(QString::fromUtf8(names[i]), i);
+            list.append({QString::fromUtf8(names[i]), i});
         }
-        m_quantity->setCurrentIndex(5);
     }
-    m_endMode->setEnabled(!nodes);
-    refresh();
+    return list;
 }
+
+double rounded(double v)
+{
+    return std::round(v * 1000.0) / 1000.0;
+}
+
+} // namespace
 
 void CompareResultsDialog::refresh()
 {
@@ -118,8 +135,8 @@ void CompareResultsDialog::refresh()
             chosen.append(i);
         }
     }
-    const int code = m_quantity->currentData().toInt();
     const int mode = m_endMode->currentData().toInt();
+    m_endMode->setEnabled(!nodes);
     const auto &ids = nodes ? m_data.nodeIds : m_data.barIds;
     const auto &selected = nodes ? m_data.selectedNodes : m_data.selectedBars;
     QVector<int> rows;
@@ -128,7 +145,8 @@ void CompareResultsDialog::refresh()
             rows.append(id);
         }
     }
-    auto value = [&](const CompareData::View &view, int id, bool &ok) {
+    const QVector<Quantity> quantities = quantitiesFor(nodes);
+    auto value = [&](const CompareData::View &view, int id, int code, bool &ok) {
         ok = false;
         if (nodes) {
             const bool reaction = code >= 100;
@@ -149,88 +167,152 @@ void CompareResultsDialog::refresh()
         const double a = (*it)[static_cast<std::size_t>(code)], b = (*it)[static_cast<std::size_t>(code + 6)];
         return mode == 0 ? a : (mode == 1 ? b : (std::abs(a) >= std::abs(b) ? a : b));
     };
+    const QString elementName = nodes ? tr("nó") : tr("barra");
+
+    // maior valor absoluto de cada grandeza sobre os elementos considerados: valor, elemento
+    struct Extreme {
+        double value {0.0};
+        int id {-1};
+        bool found {false};
+    };
+    auto extremeOf = [&](int view, int code) {
+        Extreme e;
+        for (const int id : rows) {
+            bool ok = false;
+            const double v = value(m_data.views[view], id, code, ok);
+            if (ok && (!e.found || std::abs(v) > std::abs(e.value))) {
+                e = {v, id, true};
+            }
+        }
+        return e;
+    };
 
     m_table->setSortingEnabled(false);
-    QStringList headers {nodes ? tr("Nó") : tr("Barra")};
-    for (const int v : chosen) {
-        headers << m_data.views[v].name;
-    }
-    headers << tr("Máx") << tr("Mín") << tr("Governa (|valor|)");
     m_table->clear();
+    QStringList headers;
+    const bool detail = m_modeDetail->isChecked();
+    if (detail) {
+        headers << (nodes ? tr("Nó") : tr("Barra")) << tr("Caso / combinação");
+    } else if (m_modeCritical->isChecked()) {
+        headers << QString();
+    } else {
+        headers << tr("Caso / combinação");
+    }
+    for (const auto &q : quantities) {
+        headers << q.label;
+    }
     m_table->setColumnCount(headers.size());
     m_table->setHorizontalHeaderLabels(headers);
-    m_table->setRowCount(rows.size());
-    double globalMax = -1e300, globalMin = 1e300, globalAbs = 0.0;
-    int globalAbsRow = -1;
-    QString globalAbsView;
-    for (int r = 0; r < rows.size(); ++r) {
-        auto *idItem = new QTableWidgetItem;
-        idItem->setData(Qt::DisplayRole, rows[r]);
-        idItem->setTextAlignment(Qt::AlignCenter);
-        m_table->setItem(r, 0, idItem);
-        double maxV = -1e300, minV = 1e300, bestAbs = -1.0;
-        int bestCol = -1;
-        QVector<double> values(chosen.size(), 0.0);
-        for (int c = 0; c < chosen.size(); ++c) {
-            bool ok = false;
-            const double v = value(m_data.views[chosen[c]], rows[r], ok);
-            values[c] = v;
-            if (!ok) {
-                continue;
-            }
-            maxV = std::max(maxV, v);
-            minV = std::min(minV, v);
-            if (std::abs(v) > bestAbs) {
-                bestAbs = std::abs(v);
-                bestCol = c;
-            }
-        }
-        for (int c = 0; c < chosen.size(); ++c) {
-            auto *item = new QTableWidgetItem;
-            item->setData(Qt::DisplayRole, std::round(values[c] * 1000.0) / 1000.0);
-            item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            if (c == bestCol) {
-                QFont f = item->font();
-                f.setBold(true);
-                item->setFont(f);
-                item->setBackground(QColor(QStringLiteral("#fff3cd")));
-            }
-            m_table->setItem(r, 1 + c, item);
-        }
-        const int base = 1 + chosen.size();
-        auto *maxItem = new QTableWidgetItem;
-        auto *minItem = new QTableWidgetItem;
-        auto *govItem = new QTableWidgetItem(bestCol >= 0 ? m_data.views[chosen[bestCol]].name : QString());
-        if (bestCol >= 0) {
-            maxItem->setData(Qt::DisplayRole, std::round(maxV * 1000.0) / 1000.0);
-            minItem->setData(Qt::DisplayRole, std::round(minV * 1000.0) / 1000.0);
-        }
-        maxItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        minItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        m_table->setItem(r, base, maxItem);
-        m_table->setItem(r, base + 1, minItem);
-        m_table->setItem(r, base + 2, govItem);
-        if (bestCol >= 0) {
-            globalMax = std::max(globalMax, maxV);
-            globalMin = std::min(globalMin, minV);
-            if (bestAbs > globalAbs) {
-                globalAbs = bestAbs;
-                globalAbsRow = rows[r];
-                globalAbsView = m_data.views[chosen[bestCol]].name;
-            }
-        }
+    const int first = detail ? 2 : 1;
+    auto numberItem = [](double v) {
+        auto *item = new QTableWidgetItem;
+        item->setData(Qt::DisplayRole, rounded(v));
+        item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        return item;
+    };
+    auto highlight = [](QTableWidgetItem *item) {
+        QFont f = item->font();
+        f.setBold(true);
+        item->setFont(f);
+        item->setBackground(QColor(QStringLiteral("#fff3cd")));
+    };
+
+    if (chosen.isEmpty() || rows.isEmpty()) {
+        m_table->setRowCount(0);
+        m_summary->setText(tr("Marque ao menos uma combinação (e rode a análise) para comparar."));
+        return;
     }
-    m_table->setSortingEnabled(true);
+
+    if (detail) {
+        m_table->setRowCount(static_cast<int>(rows.size() * chosen.size()));
+        // o destaque marca, em cada coluna, a linha de maior valor absoluto
+        QVector<double> bestAbs(quantities.size(), -1.0);
+        QVector<int> bestRow(quantities.size(), -1);
+        int r = 0;
+        for (const int id : rows) {
+            for (const int v : chosen) {
+                auto *idItem = new QTableWidgetItem;
+                idItem->setData(Qt::DisplayRole, id);
+                idItem->setTextAlignment(Qt::AlignCenter);
+                m_table->setItem(r, 0, idItem);
+                m_table->setItem(r, 1, new QTableWidgetItem(m_data.views[v].name));
+                for (int q = 0; q < quantities.size(); ++q) {
+                    bool ok = false;
+                    const double x = value(m_data.views[v], id, quantities[q].code, ok);
+                    m_table->setItem(r, first + q, numberItem(ok ? x : 0.0));
+                    if (ok && std::abs(x) > bestAbs[q]) {
+                        bestAbs[q] = std::abs(x);
+                        bestRow[q] = r;
+                    }
+                }
+                ++r;
+            }
+        }
+        for (int q = 0; q < quantities.size(); ++q) {
+            if (bestRow[q] >= 0 && bestAbs[q] > 0.0) {
+                highlight(m_table->item(bestRow[q], first + q));
+            }
+        }
+        m_summary->setText(tr("<b>%1 linhas</b>: %2 × %3 combinações. A célula em destaque é o maior valor absoluto de cada coluna.")
+                               .arg(r).arg(nodes ? tr("%1 nós").arg(rows.size()) : tr("%1 barras").arg(rows.size())).arg(chosen.size()));
+        m_table->setSortingEnabled(true);
+    } else if (m_modeEnvelope->isChecked()) {
+        m_table->setRowCount(static_cast<int>(chosen.size()));
+        QVector<double> bestAbs(quantities.size(), -1.0);
+        QVector<int> bestRow(quantities.size(), -1);
+        for (int r = 0; r < chosen.size(); ++r) {
+            m_table->setItem(r, 0, new QTableWidgetItem(m_data.views[chosen[r]].name));
+            for (int q = 0; q < quantities.size(); ++q) {
+                const Extreme e = extremeOf(chosen[r], quantities[q].code);
+                auto *item = numberItem(e.value);
+                if (e.found) {
+                    item->setToolTip(tr("Maior valor absoluto em %1 %2").arg(elementName).arg(e.id));
+                    if (std::abs(e.value) > bestAbs[q]) {
+                        bestAbs[q] = std::abs(e.value);
+                        bestRow[q] = r;
+                    }
+                }
+                m_table->setItem(r, first + q, item);
+            }
+        }
+        for (int q = 0; q < quantities.size(); ++q) {
+            if (bestRow[q] >= 0 && bestAbs[q] > 0.0) {
+                highlight(m_table->item(bestRow[q], first + q));
+            }
+        }
+        m_summary->setText(tr("Cada célula é o maior valor absoluto da grandeza entre os %1 considerados (passe o mouse para ver qual). "
+                              "Em destaque, a combinação que governa cada coluna.").arg(nodes ? tr("nós") : tr("barras")));
+    } else {
+        // uma linha: o valor mais critico de cada grandeza, com a combinacao e o elemento que o produzem
+        m_table->setRowCount(1);
+        auto *label = new QTableWidgetItem(tr("Mais crítico"));
+        QFont f = label->font();
+        f.setBold(true);
+        label->setFont(f);
+        m_table->setItem(0, 0, label);
+        for (int q = 0; q < quantities.size(); ++q) {
+            Extreme best;
+            int bestView = -1;
+            for (const int v : chosen) {
+                const Extreme e = extremeOf(v, quantities[q].code);
+                if (e.found && (!best.found || std::abs(e.value) > std::abs(best.value))) {
+                    best = e;
+                    bestView = v;
+                }
+            }
+            QString text;
+            if (best.found) {
+                text = QStringLiteral("%1\n%2 · %3 %4").arg(QString::number(rounded(best.value), 'f', 3), m_data.views[bestView].name, elementName).arg(best.id);
+            }
+            auto *item = new QTableWidgetItem(text);
+            item->setTextAlignment(Qt::AlignCenter);
+            m_table->setItem(0, 1 + q, item);
+        }
+        m_table->resizeRowsToContents();
+        m_summary->setText(tr("Maior valor absoluto de cada grandeza entre as combinações marcadas, com a combinação e o %1 que o produzem.").arg(elementName));
+    }
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_table->resizeColumnsToContents();
-    if (globalAbsRow >= 0) {
-        m_summary->setText(tr("<b>%1</b> — maior valor absoluto: <b>%2</b> em %3 %4 (combinação <b>%5</b>). Envoltória global: máx %6, mín %7. "
-                              "A célula em destaque é a combinação que governa cada linha.")
-                               .arg(m_quantity->currentText()).arg(globalAbs, 0, 'f', 3).arg(nodes ? tr("nó") : tr("barra")).arg(globalAbsRow)
-                               .arg(globalAbsView).arg(globalMax, 0, 'f', 3).arg(globalMin, 0, 'f', 3));
-    } else {
-        m_summary->setText(tr("Marque ao menos uma combinação (e rode a análise) para comparar."));
-    }
 }
 
 void CompareResultsDialog::exportCsv()

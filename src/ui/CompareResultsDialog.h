@@ -33,7 +33,8 @@ struct CompareData {
     QSet<int> selectedBars;
 };
 
-/// Compara uma grandeza (deslocamento, reacao ou esforco) entre varias combinacoes e mostra a envoltoria e a que governa.
+/// Compara os resultados (deslocamentos, reacoes ou esforcos) de varias combinacoes numa tabela: uma coluna por grandeza.
+/// Tres formas: detalhada (uma linha por elemento e combinacao), envoltoria (uma linha por combinacao) e a linha unica dos valores mais criticos.
 class CompareResultsDialog final : public QDialog
 {
     Q_OBJECT
@@ -42,14 +43,15 @@ public:
     explicit CompareResultsDialog(CompareData data, QWidget *parent = nullptr);
 
 private:
-    void rebuildQuantities();
     void refresh();
     void exportCsv();
 
     CompareData m_data;
     QRadioButton *m_nodes {nullptr};
     QRadioButton *m_bars {nullptr};
-    QComboBox *m_quantity {nullptr};
+    QRadioButton *m_modeDetail {nullptr};
+    QRadioButton *m_modeEnvelope {nullptr};
+    QRadioButton *m_modeCritical {nullptr};
     QComboBox *m_endMode {nullptr};
     QCheckBox *m_onlySelected {nullptr};
     QListWidget *m_viewList {nullptr};

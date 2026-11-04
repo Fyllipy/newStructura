@@ -1,4 +1,6 @@
 #include "SolverBridge.h"
+
+#include <unordered_map>
 #include "../../Structuradll/src/core/solver_security.h"
 
 #include <QLibrary>
@@ -68,13 +70,112 @@ using StructuraSolveV3Fn = int (*) (
 
 } // namespace
 
+namespace {
+
+constexpr double kPi = 3.14159265358979323846;
+
+/// Giro da secao (quarto de volta, 90 ou 270 graus): as rotacoes em torno de y e z trocam de lugar entre a barra e a secao.
+bool isQuarterTurn(double degrees)
+{
+    return std::abs(std::fmod(std::abs(degrees), 180.0) - 90.0) < 1e-6;
+}
+
+void swapPair(std::array<int, 12> &v, std::size_t a, std::size_t b)
+{
+    std::swap(v[a], v[b]);
+}
+
+/**
+ * O solver gira os eixos locais da barra junto com a secao (y', z' = y, z girados em torno de x). Para o resto do programa, porem, o giro da
+ * secao so muda a geometria e as propriedades geometricas do perfil: os eixos locais da barra seguem sendo os definidos pela geometria. Esta funcao
+ * converte para o referencial do solver tudo o que foi dado nos eixos locais da barra (cargas e momentos locais, articulacoes, molas e rotulas),
+ * e o final de solve() devolve os esforcos e o vetor auxiliar nos eixos locais da barra.
+ *   v_y' = cos.v_y + sen.v_z ;  v_z' = -sen.v_y + cos.v_z
+ */
+SolverBridge::ModelData toSolverFrame(const SolverBridge::ModelData &in)
+{
+    using Data = SolverBridge::ModelData;
+    Data out = in;
+    std::unordered_map<int, double> rotation;
+    for (const auto &member : in.members) {
+        if (member.sectionRotationDeg != 0.0) {
+            rotation[member.id] = member.sectionRotationDeg;
+        }
+    }
+    auto forward = [](double degrees, double &a, double &b) {
+        const double c = std::cos(degrees * kPi / 180.0), s = std::sin(degrees * kPi / 180.0);
+        const double na = c * a + s * b, nb = -s * a + c * b;
+        a = na;
+        b = nb;
+    };
+    for (auto &load : out.memberLoads) {
+        const auto it = rotation.find(load.memberId);
+        if (it != rotation.end() && load.coordSystem == SolverBridge::MemberLoadCoordSystem::Local) {
+            forward(it->second, load.qy, load.qz);
+        }
+    }
+    for (auto &moment : out.memberMoments) {
+        const auto it = rotation.find(moment.memberId);
+        if (it != rotation.end() && moment.coordSystem == SolverBridge::MemberLoadCoordSystem::Local) {
+            forward(it->second, moment.my, moment.mz);
+        }
+    }
+    for (auto &action : out.memberActions) {
+        const auto it = rotation.find(action.memberId);
+        if (it != rotation.end() && action.coordSystem == SolverBridge::MemberLoadCoordSystem::Local) {
+            forward(it->second, action.v1[1], action.v1[2]);
+            forward(it->second, action.v2[1], action.v2[2]);
+        }
+    }
+    for (auto &member : out.members) {
+        if (isQuarterTurn(member.sectionRotationDeg)) {
+            for (const std::size_t base : {std::size_t {0}, std::size_t {6}}) {
+                swapPair(member.releases, base + 1, base + 2);
+                swapPair(member.releases, base + 4, base + 5);
+            }
+        }
+    }
+    for (auto &spring : out.endSprings) {
+        const auto it = rotation.find(spring.memberId);
+        if (it != rotation.end() && isQuarterTurn(it->second)) {
+            for (const std::size_t base : {std::size_t {0}, std::size_t {6}}) {
+                std::swap(spring.k[base + 1], spring.k[base + 2]);
+                std::swap(spring.k[base + 4], spring.k[base + 5]);
+            }
+        }
+    }
+    for (auto &hinge : out.plasticHinges) {
+        const auto it = rotation.find(hinge.memberId);
+        if (it != rotation.end() && isQuarterTurn(it->second)) {
+            const int base = hinge.dof >= 9 ? 9 : 3;
+            const int local = hinge.dof - base;
+            if (local == 1 || local == 2) {
+                hinge.dof = base + (local == 1 ? 2 : 1);
+            }
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 SolverBridge::SolverBridge(QString libraryPath)
     : m_libraryPath(std::move(libraryPath))
 {
 }
 
-SolverBridge::Result SolverBridge::solve(const ModelData &model) const
+SolverBridge::Result SolverBridge::solve(const ModelData &input) const
 {
+    // giro da secao: o solver gira os eixos locais, o programa nao (ver toSolverFrame)
+    bool anyRotation = false;
+    for (const auto &member : input.members) {
+        anyRotation = anyRotation || member.sectionRotationDeg != 0.0;
+    }
+    ModelData converted;
+    if (anyRotation) {
+        converted = toSolverFrame(input);
+    }
+    const ModelData &model = anyRotation ? converted : input;
     QLibrary solverLibrary;
     if (!m_libraryPath.isEmpty()) {
         solverLibrary.setFileName(m_libraryPath);
@@ -764,6 +865,51 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
         for (int j = 0; j < 3; ++j) {
             memberResult.auxK[static_cast<std::size_t>(j)] = outMemberAuxK3[i * 3 + static_cast<std::size_t>(j)];
         }
+        // do referencial girado do solver para os eixos locais da barra: v_y = cos.v_y' - sen.v_z' ; v_z = sen.v_y' + cos.v_z'
+        const double rotationDeg = model.members[i].sectionRotationDeg;
+        if (rotationDeg != 0.0) {
+            std::array<double, 3> x {0.0, 0.0, 0.0};
+            bool found = false;
+            {
+                const NodeData *a = nullptr;
+                const NodeData *b = nullptr;
+                for (const auto &node : model.nodes) {
+                    if (node.id == model.members[i].nodeI) {
+                        a = &node;
+                    }
+                    if (node.id == model.members[i].nodeJ) {
+                        b = &node;
+                    }
+                }
+                if (a && b) {
+                    x = {b->x - a->x, b->y - a->y, b->z - a->z};
+                    const double length = std::sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+                    if (length > 1e-12) {
+                        x = {x[0] / length, x[1] / length, x[2] / length};
+                        found = true;
+                    }
+                }
+            }
+            const double c = std::cos(rotationDeg * kPi / 180.0), sn = std::sin(rotationDeg * kPi / 180.0);
+            auto back = [c, sn](double &vy, double &vz) {
+                const double y = c * vy - sn * vz, z = sn * vy + c * vz;
+                vy = y;
+                vz = z;
+            };
+            for (const std::size_t base : {std::size_t {0}, std::size_t {6}}) {
+                back(memberResult.localForces[base + 1], memberResult.localForces[base + 2]);   // Vy, Vz
+                back(memberResult.localForces[base + 4], memberResult.localForces[base + 5]);   // My, Mz
+            }
+            const std::array<double, 3> aux = memberResult.auxK;   // o solver informa y' (x cross y' = z')
+            if (found && (aux[0] != 0.0 || aux[1] != 0.0 || aux[2] != 0.0)) {
+                const double an = std::sqrt(aux[0] * aux[0] + aux[1] * aux[1] + aux[2] * aux[2]);
+                const std::array<double, 3> yr {aux[0] / an, aux[1] / an, aux[2] / an};
+                const std::array<double, 3> zr {x[1] * yr[2] - x[2] * yr[1], x[2] * yr[0] - x[0] * yr[2], x[0] * yr[1] - x[1] * yr[0]};
+                for (std::size_t k = 0; k < 3; ++k) {
+                    memberResult.auxK[k] = c * yr[k] - sn * zr[k];   // y da barra (sem o giro da secao)
+                }
+            }
+        }
     }
 
     {
@@ -858,6 +1004,15 @@ SolverBridge::Result SolverBridge::solve(const ModelData &model) const
                     HingeResult h;
                     h.memberId = hingeIds[static_cast<std::size_t>(i) * 2U];
                     h.dof = hingeIds[static_cast<std::size_t>(i) * 2U + 1U];
+                    for (const auto &member : model.members) {
+                        if (member.id == h.memberId && isQuarterTurn(member.sectionRotationDeg)) {
+                            const int base = h.dof >= 9 ? 9 : 3;
+                            const int local = h.dof - base;
+                            if (local == 1 || local == 2) {
+                                h.dof = base + (local == 1 ? 2 : 1);
+                            }
+                        }
+                    }
                     h.plasticRotation = hingeValues[static_cast<std::size_t>(i) * 3U];
                     h.moment = hingeValues[static_cast<std::size_t>(i) * 3U + 1U];
                     h.yielded = hingeValues[static_cast<std::size_t>(i) * 3U + 2U] != 0.0;

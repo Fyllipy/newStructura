@@ -137,6 +137,9 @@ QString ResultsPersistence::fingerprint(const std::vector<const SolverBridge::Mo
             put(bytes, m.materialId);
             put(bytes, m.sectionId);
             put(bytes, m.sectionRotationDeg);
+            if (m.sectionRotationDeg != 0.0) {
+                bytes += "F2";   // esforcos nos eixos locais da barra (versoes antigas gravaram nos eixos girados da secao): resultados antigos nao valem
+            }
             put(bytes, m.offsetY1);
             put(bytes, m.offsetZ1);
             put(bytes, m.offsetY2);

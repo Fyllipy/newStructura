@@ -209,34 +209,67 @@ std::vector<DesignService::ElementData> DesignService::buildElements(const Struc
             ber.zLocal = normalized(cross(ber.xLocal, up), {0, 0, 1});
             ber.yLocal = cross(ber.zLocal, ber.xLocal);
         }
+        // Os resultados chegam nos eixos locais da barra (o giro da secao nao os altera); o dimensionamento usa os eixos da propria secao,
+        // girados de `beta` em torno de x: v_y' = cos.v_y + sen.v_z ; v_z' = -sen.v_y + cos.v_z.
+        const double beta = mit->second.sectionRotationDeg * 3.14159265358979323846 / 180.0;
+        const double cb = std::cos(beta), sb = std::sin(beta);
+        auto toSection = [cb, sb](double &vy, double &vz) {
+            const double y = cb * vy + sb * vz, z = -sb * vy + cb * vz;
+            vy = y;
+            vz = z;
+        };
+        if (beta != 0.0) {
+            const Vec3 y0 = ber.yLocal, z0 = ber.zLocal;
+            for (std::size_t k = 0; k < 3; ++k) {
+                ber.yLocal[k] = cb * y0[k] + sb * z0[k];
+                ber.zLocal[k] = -sb * y0[k] + cb * z0[k];
+            }
+        }
         const auto &lf = mr.localForces;
         ber.endForces = {-lf[0], -lf[1], -lf[2], -lf[3], -lf[4], -lf[5], lf[6], lf[7], lf[8], lf[9], lf[10], lf[11]};
+        toSection(ber.endForces.Vy1, ber.endForces.Vz1);
+        toSection(ber.endForces.My1, ber.endForces.Mz1);
+        toSection(ber.endForces.Vy2, ber.endForces.Vz2);
+        toSection(ber.endForces.My2, ber.endForces.Mz2);
         const auto lr = loads.equal_range(mr.memberId);
         for (auto it = lr.first; it != lr.second; ++it) {
-            ber.distributedLoads.push_back(it->second);
-            const Vec3 q {it->second.qx, it->second.qy, it->second.qz};
-            data.qy += it->second.isLocalSystem ? it->second.qy : dot(q, ber.yLocal);
-            data.qz += it->second.isLocalSystem ? it->second.qz : dot(q, ber.zLocal);
+            UniformDistributedLoad udl = it->second;
+            if (udl.isLocalSystem) {
+                toSection(udl.qy, udl.qz);
+            }
+            ber.distributedLoads.push_back(udl);
+            const Vec3 q {udl.qx, udl.qy, udl.qz};
+            data.qy += udl.isLocalSystem ? udl.qy : dot(q, ber.yLocal);
+            data.qz += udl.isLocalSystem ? udl.qz : dot(q, ber.zLocal);
         }
         const auto pr = positioned.equal_range(mr.memberId);
         for (auto it = pr.first; it != pr.second; ++it) {
-            ber.positionedLoads.push_back(it->second);
-            if (it->second.kind != PositionedLoad::Kind::PointMoment) {
+            PositionedLoad pl = it->second;
+            if (pl.isLocalSystem) {
+                toSection(pl.v1[1], pl.v1[2]);
+                toSection(pl.v2[1], pl.v2[2]);
+            }
+            ber.positionedLoads.push_back(pl);
+            if (pl.kind != PositionedLoad::Kind::PointMoment) {
                 // so a presenca de carga transversal importa (Cb/curvatura); o sentido nao
                 auto local = [&](const std::array<double, 3> &v, int axis) {
-                    if (it->second.isLocalSystem) {
+                    if (pl.isLocalSystem) {
                         return std::abs(v[static_cast<std::size_t>(axis)]);
                     }
                     return std::abs(dot(Vec3 {v[0], v[1], v[2]}, axis == 1 ? ber.yLocal : ber.zLocal));
                 };
-                data.qy += local(it->second.v1, 1) + local(it->second.v2, 1);
-                data.qz += local(it->second.v1, 2) + local(it->second.v2, 2);
+                data.qy += local(pl.v1, 1) + local(pl.v2, 1);
+                data.qz += local(pl.v1, 2) + local(pl.v2, 2);
             }
         }
         const auto mrg = moments.equal_range(mr.memberId);
         for (auto it = mrg.first; it != mrg.second; ++it) {
-            ber.distributedMoments.push_back(it->second);
-            data.torqueLoad += it->second.isLocalSystem ? it->second.mx : dot(Vec3 {it->second.mx, it->second.my, it->second.mz}, ber.xLocal);
+            UniformDistributedMoment udm = it->second;
+            if (udm.isLocalSystem) {
+                toSection(udm.my, udm.mz);
+            }
+            ber.distributedMoments.push_back(udm);
+            data.torqueLoad += udm.isLocalSystem ? udm.mx : dot(Vec3 {udm.mx, udm.my, udm.mz}, ber.xLocal);
         }
         if (mr.hasWarping) {
             data.warping = true;

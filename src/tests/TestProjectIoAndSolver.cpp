@@ -540,7 +540,8 @@ private slots:
                 const std::array<double, 3> sz = unit(cross(sx, {m.auxK[0], m.auxK[1], m.auxK[2]}));
                 const std::array<double, 3> sy = cross(sz, sx);
                 Structura::Geometry::DefaultLocalAxisProvider provider;
-                const auto lcs = Structura::Geometry::rotatedAboutX(provider.computeLCS({0, 0, 0}, {d.x, d.y, d.z}, std::nullopt), rotation);
+                // o giro da secao nao altera os eixos locais da barra: os resultados chegam nos mesmos eixos de uma barra sem giro
+                const auto lcs = provider.computeLCS({0, 0, 0}, {d.x, d.y, d.z}, std::nullopt);
                 for (int k = 0; k < 3; ++k) {
                     const QString where = QStringLiteral("direcao (%1,%2,%3) giro %4").arg(d.x).arg(d.y).arg(d.z).arg(rotation);
                     QVERIFY2(std::abs(sy[static_cast<std::size_t>(k)] - lcs.yPrime[static_cast<std::size_t>(k)]) < 1e-9, qPrintable(where + QStringLiteral(": eixo y difere")));
@@ -605,8 +606,7 @@ private slots:
                 udl.qz = loadCase.qz;
                 udl.isLocalSystem = false;
                 element.distributedLoads.push_back(udl);
-                // todas as barras orientam os diagramas pelo mesmo sistema (o de referencia, sem o giro da secao)
-                Structura::Visualization::toReferenceFrame(element, rotation);
+                // os resultados ja chegam nos eixos locais da barra: o giro da secao nao muda a orientacao dos diagramas
 
                 DiagramMeshBuilder builder;
                 DiagramGeometryCache cache;
@@ -627,6 +627,53 @@ private slots:
                 const auto &other = cache.get({1, otherType, revision});
                 QVERIFY2(std::abs(other.rawValues[other.rawValues.size() / 2]) < 1e-6 * std::abs(midValue) + 1e-6, qPrintable(where + QStringLiteral(": momento no tipo errado")));
             }
+        }
+    }
+
+    void sectionRotationDoesNotChangeTheBarLocalAxes()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // Balanco ao longo de X com carga LOCAL em y (global Z). O giro da secao so troca a inercia que resiste (Iz sem giro, Iy com giro de 90):
+        // a carga continua no eixo y da barra, o deslocamento continua em Z global e o momento continua sendo Mz.
+        auto solve = [&dll](double rotation) {
+            SolverBridge::ModelData model;
+            model.materials.push_back({1, 2.0e11, 8.0e10});
+            model.sections.push_back({1, 0.01, 4e-6, 8e-6, 1e-5});   // iz = 4e-6, iy = 8e-6
+            SolverBridge::NodeData fixed;
+            fixed.id = 1;
+            fixed.restraints = {{1, 1, 1, 1, 1, 1}};
+            SolverBridge::NodeData tip;
+            tip.id = 2;
+            tip.x = 5.0;
+            model.nodes = {fixed, tip};
+            SolverBridge::MemberData member {1, 1, 2, 1, 1};
+            member.sectionRotationDeg = rotation;
+            model.members.push_back(member);
+            SolverBridge::MemberLoadData load;
+            load.memberId = 1;
+            load.coordSystem = SolverBridge::MemberLoadCoordSystem::Local;
+            load.qy = -1000.0;
+            model.memberLoads.push_back(load);
+            return SolverBridge(dll).solve(model);
+        };
+        const auto base = solve(0.0), rotated = solve(90.0);
+        const double q = 1000.0, length = 5.0, e = 2.0e11;
+        // deslocamento da ponta em Z global (eixo y local da barra), sem e com giro: so a inercia muda
+        QVERIFY(std::abs(base.nodeResults[1].displacements[2] + q * std::pow(length, 4) / (8.0 * e * 4e-6)) < 1e-9);
+        QVERIFY(std::abs(rotated.nodeResults[1].displacements[2] + q * std::pow(length, 4) / (8.0 * e * 8e-6)) < 1e-9);
+        QVERIFY(std::abs(rotated.nodeResults[1].displacements[1]) < 1e-12);
+        // esforcos: mesmo momento no engaste (Mz), nos mesmos eixos locais
+        for (const auto *r : {&base, &rotated}) {
+            const auto &m = r->memberResults[0];
+            QVERIFY(std::abs(std::abs(m.localForces[5]) - q * length * length / 2.0) < 1e-6);   // Mz
+            QVERIFY(std::abs(m.localForces[4]) < 1e-6);                                         // My
+        }
+        // vetor auxiliar identico: eixos locais da barra iguais com e sem giro
+        for (int k = 0; k < 3; ++k) {
+            QVERIFY(std::abs(base.memberResults[0].auxK[static_cast<std::size_t>(k)] - rotated.memberResults[0].auxK[static_cast<std::size_t>(k)]) < 1e-12);
         }
     }
 

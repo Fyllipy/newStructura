@@ -17,6 +17,7 @@ namespace Structura::UI {
 namespace {
 
 constexpr int kOriginalNameRole = Qt::UserRole + 1;
+constexpr int kSyncedNameRole = Qt::UserRole + 2;   ///< nome que a aba de combinacoes conhece (para acompanhar renomeacoes)
 
 bool validName(const QString &name)
 {
@@ -135,12 +136,29 @@ LoadCasesDialog::LoadCasesDialog(const QVector<LoadCase> &cases,
     });
     connect(m_tabs, &QTabWidget::currentChanged, this, [this](int index) {
         if (index == 1 && currentCaseNames() != m_comboCaseColumns) {
-            const auto snapshot = combinationFactorsSnapshot();
+            auto snapshot = combinationFactorsSnapshot();
+            // renomeacoes feitas na aba de casos: os fatores acompanham o novo nome
+            for (int row = 0; row < m_caseTable->rowCount(); ++row) {
+                const QString synced = m_caseTable->item(row, 0)->data(kSyncedNameRole).toString();
+                const QString now = m_caseTable->item(row, 0)->text().trimmed();
+                if (synced.isEmpty() || synced == now) {
+                    continue;
+                }
+                for (auto it = snapshot.begin(); it != snapshot.end(); ++it) {
+                    if (it->contains(synced)) {
+                        const double value = it->take(synced);
+                        it->insert(now, value);
+                    }
+                }
+            }
             QStringList names;
             for (int row = 0; row < m_comboTable->rowCount(); ++row) {
                 names << m_comboTable->item(row, 0)->text();
             }
             m_comboCaseColumns = currentCaseNames();
+            for (int row = 0; row < m_caseTable->rowCount(); ++row) {
+                m_caseTable->item(row, 0)->setData(kSyncedNameRole, m_caseTable->item(row, 0)->text().trimmed());
+            }
             rebuildCombinationColumns();
             for (const QString &name : names) {
                 QHash<QString, double> factors = snapshot.value(name);
@@ -167,11 +185,7 @@ void LoadCasesDialog::addCaseRow(const QString &name, const QString &abbreviatio
     m_caseTable->insertRow(row);
     auto *nameItem = new QTableWidgetItem(name);
     nameItem->setData(kOriginalNameRole, originalName);
-    if (!originalName.isEmpty()) {
-        // Casos existentes nao sao renomeados (as cargas e combinacoes os referenciam pelo nome).
-        nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
-        nameItem->setToolTip(tr("Casos existentes nao podem ser renomeados"));
-    }
+    nameItem->setData(kSyncedNameRole, originalName);   // casos existentes podem ser renomeados: cargas e combinacoes acompanham (MainWindow::onEditLoadCases)
     m_caseTable->setItem(row, 0, nameItem);
     m_caseTable->setItem(row, 1, new QTableWidgetItem(abbreviation));
     auto *weightItem = new QTableWidgetItem();

@@ -1436,8 +1436,7 @@ void SceneController::rebuildBarLCSVisuals()
         }
         
         try {
-            auto lcs = Structura::Geometry::rotatedAboutX(lcsProvider.computeLCS(pointA, pointB, kPointArray),
-                                                          m_barSectionRotations.value(bar.externalId(), 0.0));
+            auto lcs = lcsProvider.computeLCS(pointA, pointB, kPointArray);   // eixos locais da barra (o giro da secao nao os altera)
             
             // Origin point (midpoint of bar)
             const auto &origin = lcs.origin;
