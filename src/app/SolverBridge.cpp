@@ -74,6 +74,53 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
+/// Angulo (graus) entre os eixos de referencia do programa (vertical: y = X global) e os da base do solver (vertical: y = Y global).
+/// Fora das barras verticais os dois coincidem (0). Soma-se ao giro da secao enviado ao solver.
+double referenceToSolverBaseDeg(const SolverBridge::ModelData &model, const SolverBridge::MemberData &member)
+{
+    const SolverBridge::NodeData *a = nullptr;
+    const SolverBridge::NodeData *b = nullptr;
+    for (const auto &node : model.nodes) {
+        if (node.id == member.nodeI) {
+            a = &node;
+        }
+        if (node.id == member.nodeJ) {
+            b = &node;
+        }
+    }
+    if (!a || !b) {
+        return 0.0;
+    }
+    double x[3] = {b->x - a->x, b->y - a->y, b->z - a->z};
+    const double length = std::sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+    if (length < 1e-12) {
+        return 0.0;
+    }
+    for (double &v : x) {
+        v /= length;
+    }
+    auto cross = [](const double *p, const double *q, double *r) {
+        r[0] = p[1] * q[2] - p[2] * q[1];
+        r[1] = p[2] * q[0] - p[0] * q[2];
+        r[2] = p[0] * q[1] - p[1] * q[0];
+    };
+    double zc[3];
+    const double up[3] = {0.0, 0.0, 1.0};
+    cross(x, up, zc);
+    if (std::sqrt(zc[0] * zc[0] + zc[1] * zc[1] + zc[2] * zc[2]) > 1e-10) {
+        return 0.0;   // nao vertical
+    }
+    const double axisY[3] = {0.0, 1.0, 0.0}, axisX[3] = {1.0, 0.0, 0.0};
+    double zb[3], yb[3], zr[3], yr[3];
+    cross(x, axisY, zb);
+    cross(zb, x, yb);
+    cross(x, axisX, zr);
+    cross(zr, x, yr);
+    const double c = yr[0] * yb[0] + yr[1] * yb[1] + yr[2] * yb[2];
+    const double s = yr[0] * zb[0] + yr[1] * zb[1] + yr[2] * zb[2];
+    return std::atan2(s, c) * 180.0 / kPi;
+}
+
 /// Giro da secao (quarto de volta, 90 ou 270 graus): as rotacoes em torno de y e z trocam de lugar entre a barra e a secao.
 bool isQuarterTurn(double degrees)
 {
@@ -170,6 +217,10 @@ SolverBridge::Result SolverBridge::solve(const ModelData &input) const
     bool anyRotation = false;
     for (const auto &member : input.members) {
         anyRotation = anyRotation || member.sectionRotationDeg != 0.0;
+    }
+    std::vector<double> baseOffsetDeg(input.members.size(), 0.0);   // verticais: referencia do programa x base do solver
+    for (std::size_t i = 0; i < input.members.size(); ++i) {
+        baseOffsetDeg[i] = referenceToSolverBaseDeg(input, input.members[i]);
     }
     ModelData converted;
     if (anyRotation) {
@@ -699,7 +750,7 @@ SolverBridge::Result SolverBridge::solve(const ModelData &input) const
         memberNodeJ.push_back(member.nodeJ);
         memberMaterialId.push_back(member.materialId);
         memberSectionId.push_back(member.sectionId);
-        memberSectionRotationDeg.push_back(member.sectionRotationDeg);
+        memberSectionRotationDeg.push_back(member.sectionRotationDeg + baseOffsetDeg[static_cast<std::size_t>(&member - model.members.data())]);
         memberOffsets4.push_back(member.offsetY1);
         memberOffsets4.push_back(member.offsetZ1);
         memberOffsets4.push_back(member.offsetY2);

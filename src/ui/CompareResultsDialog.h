@@ -24,7 +24,14 @@ struct CompareData {
         bool isCombination {true};
         QHash<int, std::array<double, 6>> displacements;   ///< por no (m, rad)
         QHash<int, std::array<double, 6>> reactions;       ///< por no (kN, kN m)
-        QHash<int, std::array<double, 12>> forces;         ///< por barra (esforcos locais nas duas extremidades)
+        /// Esforcos de uma barra ao longo de todo o comprimento (convencao dos diagramas): maximo, minimo e valores nas extremidades.
+        struct BarForces {
+            std::array<double, 6> maxAlong {};   ///< N, Vy, Vz, T, My, Mz
+            std::array<double, 6> minAlong {};
+            std::array<double, 6> atI {};
+            std::array<double, 6> atJ {};
+        };
+        QHash<int, BarForces> forces;
     };
     QVector<View> views;
     QVector<int> nodeIds;

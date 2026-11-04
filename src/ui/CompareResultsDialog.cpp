@@ -52,7 +52,7 @@ CompareResultsDialog::CompareResultsDialog(CompareData data, QWidget *parent)
     left->addWidget(m_modeCritical);
     left->addWidget(m_modeDetail);
     m_endMode = new QComboBox;
-    m_endMode->addItem(tr("Máximo em valor absoluto das extremidades"), 2);
+    m_endMode->addItem(tr("Ao longo de toda a barra (máx. / mín.)"), 2);
     m_endMode->addItem(tr("Extremidade inicial (I)"), 0);
     m_endMode->addItem(tr("Extremidade final (J)"), 1);
     left->addWidget(m_endMode);
@@ -164,8 +164,15 @@ void CompareResultsDialog::refresh()
             return 0.0;
         }
         ok = true;
-        const double a = (*it)[static_cast<std::size_t>(code)], b = (*it)[static_cast<std::size_t>(code + 6)];
-        return mode == 0 ? a : (mode == 1 ? b : (std::abs(a) >= std::abs(b) ? a : b));
+        const auto c = static_cast<std::size_t>(code);
+        if (mode == 0) {
+            return it->atI[c];
+        }
+        if (mode == 1) {
+            return it->atJ[c];
+        }
+        // ao longo da barra: o extremo de maior modulo (o maximo ou o minimo, conforme o caso)
+        return std::abs(it->maxAlong[c]) >= std::abs(it->minAlong[c]) ? it->maxAlong[c] : it->minAlong[c];
     };
     const QString elementName = nodes ? tr("nó") : tr("barra");
 

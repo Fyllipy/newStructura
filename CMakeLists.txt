@@ -201,6 +201,8 @@ set(UI_SOURCES
     src/ui/LoadCaseVisibilityDialog.h
     src/ui/LoadCaseVisibilityDialog.cpp
     src/ui/MainWindowAnalysisIo.cpp
+    src/ui/BeamResultsBuilder.h
+    src/ui/BeamResultsBuilder.cpp
     src/ui/MainWindowPlacement.cpp
     src/ui/MainWindowViewOptions.cpp
     src/ui/MainWindowEditing.cpp

@@ -677,6 +677,44 @@ private slots:
         }
     }
 
+    void verticalColumnBendsAboutLocalZInTheFramePlane()
+    {
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
+        if (!QFile::exists(dll)) {
+            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        }
+        // Pilar em balanco ao longo de Z com carga horizontal em X (plano XZ do portico): o momento e Mz, como nas vigas ao longo de X;
+        // My fica nulo e o eixo y local (vetor auxiliar) e o X global, com e sem giro da secao.
+        for (const double rotation : {0.0, 90.0}) {
+            SolverBridge::ModelData model;
+            model.materials.push_back({1, 2.0e11, 8.0e10});
+            model.sections.push_back({1, 0.01, 4e-6, 8e-6, 1e-5});
+            SolverBridge::NodeData fixed;
+            fixed.id = 1;
+            fixed.restraints = {{1, 1, 1, 1, 1, 1}};
+            SolverBridge::NodeData tip;
+            tip.id = 2;
+            tip.z = 4.0;
+            model.nodes = {fixed, tip};
+            SolverBridge::MemberData member {1, 1, 2, 1, 1};
+            member.sectionRotationDeg = rotation;
+            model.members.push_back(member);
+            SolverBridge::NodalLoadData load;
+            load.nodeId = 2;
+            load.values = {{10.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
+            model.nodalLoads.push_back(load);
+            const auto result = SolverBridge(dll).solve(model);
+            const auto &m = result.memberResults[0];
+            const double expected = 10.0 * 4.0;
+            QVERIFY2(std::abs(std::abs(m.localForces[5]) - expected) < 1e-6, "momento deve ser Mz");
+            QVERIFY(std::abs(m.localForces[4]) < 1e-6);
+            QVERIFY(std::abs(std::abs(m.auxK[0]) - 1.0) < 1e-9);   // y local = X global
+            // deslocamento: a inercia que resiste e Iz (sem giro) ou Iy (giro 90)
+            const double inertia = rotation == 0.0 ? 4e-6 : 8e-6;
+            QVERIFY(std::abs(result.nodeResults[1].displacements[0] - 10.0 * 64.0 / (3.0 * 2.0e11 * inertia)) < 1e-9);
+        }
+    }
+
     void solverRigidOffsetCreatesEccentricMoment()
     {
         const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
