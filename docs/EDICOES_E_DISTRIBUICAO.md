@@ -1,4 +1,4 @@
-# Edições, compilação e distribuição — Structura::Metalicas 0.8 beta
+# Edições, compilação e distribuição — Structura::Metalicas 0.8.2 beta
 
 Uma única base de código gera duas edições:
 
@@ -8,7 +8,7 @@ Uma única base de código gera duas edições:
 | Pasta de distribuição | `dist/Structura-Metalicas` | `dist/Structura-Metalicas-Demo` |
 | Instalação (padrão) | `Program Files\Structura Metalicas` | `Program Files\Structura Metalicas Demo` |
 | Chave de registro / dados do usuário | `Structura-Metalicas` / `%APPDATA%\Structura-Metalicas` | `Structura-Metalicas-Demo` / `%APPDATA%\Structura-Metalicas-Demo` |
-| Instalador | `dist/installers/Structura-Metalicas-Setup-0.8beta.exe` | `dist/installers/Structura-Metalicas-Demo-Setup-0.8beta.exe` |
+| Instalador | `dist/installers/Structura-Metalicas-Setup-0.8.2beta.exe` | `dist/installers/Structura-Metalicas-Demo-Setup-0.8.2beta.exe` |
 
 As duas edições coexistem no mesmo computador (pastas, atalhos, chaves de registro e dados do usuário distintos); desinstalar uma não afeta a outra e
 nenhuma remove os dados do usuário. Nenhuma associa a extensão `.dat`.

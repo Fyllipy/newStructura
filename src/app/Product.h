@@ -12,7 +12,7 @@ inline QString displayName() { return QString::fromUtf8(Structura::Product::kDis
 /// Nome comercial do produto, sem o sufixo da edicao.
 inline QString productName() { return QString::fromUtf8(Structura::Product::kProductName); }
 
-/// Versao para o usuario (ex.: "0.8 beta").
+/// Versao para o usuario (ex.: "0.8.2 beta").
 inline QString versionDisplay() { return QString::fromUtf8(Structura::Product::kVersionDisplay); }
 
 /// "Structura::Metalicas 0.8 beta" (edicao demonstrativa inclui o " Demo").

@@ -37,8 +37,8 @@ private slots:
     {
         QCOMPARE(Product::productName(), QStringLiteral("Structura::Metalicas"));
         QVERIFY(Product::displayName().startsWith(Product::productName()));
-        QVERIFY(Product::versionDisplay().contains(QStringLiteral("beta")));   // versao atual: 0.8 beta
-        QCOMPARE(QString::fromUtf8(Structura::Product::kVersion), QStringLiteral("0.8.0"));
+        QVERIFY(Product::versionDisplay().contains(QStringLiteral("beta")));   // versao atual: 0.8.2 beta
+        QCOMPARE(QString::fromUtf8(Structura::Product::kVersion), QStringLiteral("0.8.2"));
 
         // cada edicao tem identificador proprio, distinto do antigo: pastas de dados e configuracoes nao se misturam
         QVERIFY(QString::fromUtf8(Structura::Product::kAppId) != QString::fromUtf8(Structura::Product::kLegacyAppId));

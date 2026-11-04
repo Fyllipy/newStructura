@@ -9,7 +9,7 @@ inline constexpr const char *kEdition = "@STRUCTURA_EDITION@";                //
 inline constexpr bool kIsDemo = @STRUCTURA_IS_DEMO@ != 0;
 inline constexpr const char *kCompany = "@STRUCTURA_COMPANY@";
 inline constexpr const char *kVersion = "@STRUCTURA_VERSION@";                ///< major.minor.patch
-inline constexpr const char *kVersionDisplay = "@STRUCTURA_VERSION_DISPLAY@"; ///< texto para o usuario (ex.: "0.8 beta")
+inline constexpr const char *kVersionDisplay = "@STRUCTURA_VERSION_DISPLAY@"; ///< texto para o usuario (ex.: "0.8.2 beta")
 inline constexpr const char *kAppId = "@STRUCTURA_APP_ID@";                   ///< applicationName do Qt: define a pasta de dados e as configuracoes
 inline constexpr const char *kLegacyAppId = "@STRUCTURA_LEGACY_APP_ID@";      ///< identificador antigo (origem da migracao dos dados do usuario)
 inline constexpr const char *kExeName = "@STRUCTURA_EXE_NAME@";

@@ -17,13 +17,13 @@ set(STRUCTURA_PRODUCT_NAME      "Structura::Metalicas")      # nome comercial ex
 set(STRUCTURA_COMPANY           "Structura")                 # fabricante (VERSIONINFO e instalador) - ajustar quando houver razao social
 set(STRUCTURA_VERSION_MAJOR     0)
 set(STRUCTURA_VERSION_MINOR     8)
-set(STRUCTURA_VERSION_PATCH     0)
+set(STRUCTURA_VERSION_PATCH     2)
 set(STRUCTURA_VERSION_STAGE     "beta")                      # vazio = versao final
 set(STRUCTURA_LEGACY_APP_ID     "Structura")                 # applicationName antigo: origem da migracao dos dados do usuario
 
 set(STRUCTURA_VERSION "${STRUCTURA_VERSION_MAJOR}.${STRUCTURA_VERSION_MINOR}.${STRUCTURA_VERSION_PATCH}")
 if (STRUCTURA_VERSION_STAGE)
-    set(STRUCTURA_VERSION_DISPLAY "${STRUCTURA_VERSION_MAJOR}.${STRUCTURA_VERSION_MINOR} ${STRUCTURA_VERSION_STAGE}")
+    set(STRUCTURA_VERSION_DISPLAY "${STRUCTURA_VERSION} ${STRUCTURA_VERSION_STAGE}")
     set(STRUCTURA_VERSION_FILE_FLAGS "0x2L")                 # VS_FF_PRERELEASE
 else()
     set(STRUCTURA_VERSION_DISPLAY "${STRUCTURA_VERSION}")
@@ -52,7 +52,7 @@ else()
     set(STRUCTURA_FILE_DESCRIPTION  "${STRUCTURA_PRODUCT_NAME} - analise e dimensionamento de estruturas metalicas")
 endif()
 set(STRUCTURA_REG_KEY               "${STRUCTURA_APP_ID}")
-set(STRUCTURA_INSTALLER_NAME        "${STRUCTURA_APP_ID}-Setup-${STRUCTURA_VERSION_MAJOR}.${STRUCTURA_VERSION_MINOR}${STRUCTURA_VERSION_STAGE}")
+set(STRUCTURA_INSTALLER_NAME        "${STRUCTURA_APP_ID}-Setup-${STRUCTURA_VERSION}${STRUCTURA_VERSION_STAGE}")
 
 # --- Arquivos gerados ---------------------------------------------------------------------------------------------------------------
 set(STRUCTURA_GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
