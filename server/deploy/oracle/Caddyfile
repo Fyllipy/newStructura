@@ -1,0 +1,20 @@
+__DOMAIN__ {
+	encode gzip
+	# Limite de corpo (o maior payload legitimo e o modelo estrutural enviado ao /compute/validate)
+	request_body {
+		max_size 10MB
+	}
+	reverse_proxy 127.0.0.1:8000 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 20MB
+			roll_keep 5
+		}
+	}
+}

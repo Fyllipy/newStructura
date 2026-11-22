@@ -4,12 +4,18 @@
 
 #include <unordered_map>
 #include "../../Structuradll/src/core/solver_security.h"
+#include "../../client/dll_cipher.h"
+#include "../../client/license_client.h"
+#include "../../client/license_config.h"
+#include "../../client/export_gatekeeper.h"
+#include "../../client/sha256.h"
 
 #include <QLibrary>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <string>
 
 namespace Structura::App {
@@ -184,6 +190,165 @@ SolverBridge::ModelData toSolverFrame(const SolverBridge::ModelData &in)
     return out;
 }
 
+// Carga de barra em GLOBAL. coordSystem Local usa a mesma convencao de eixos do solver/servidor
+// (x = I->J; k = Z, Y ou X global, o primeiro nao paralelo; z = x*k; y = z*x; giro da secao em x).
+// O servidor de licencas confere o equilibrio com a mesma formula: as duas pontas PRECISAM coincidir.
+std::array<double, 3> memberLoadToGlobal(const SolverBridge::MemberLoadData &ml,
+                                         const std::array<double, 3> &ri, const std::array<double, 3> &rj,
+                                         double rotationDeg)
+{
+    std::array<double, 3> q{{ml.qx, ml.qy, ml.qz}};
+    if (ml.coordSystem == SolverBridge::MemberLoadCoordSystem::Global) {
+        return q;
+    }
+    auto cross = [](const std::array<double, 3> &a, const std::array<double, 3> &b) {
+        return std::array<double, 3>{{a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]}};
+    };
+    auto norm = [](const std::array<double, 3> &v) { return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); };
+    std::array<double, 3> x{{rj[0] - ri[0], rj[1] - ri[1], rj[2] - ri[2]}};
+    const double L = norm(x);
+    if (L < 1e-10) {
+        return q;
+    }
+    for (double &c : x) c /= L;
+    const std::array<std::array<double, 3>, 4> ks{{{{0.0, 0.0, 1.0}}, {{0.0, 1.0, 0.0}}, {{1.0, 0.0, 0.0}}, {{0.7071067811865476, 0.7071067811865476, 0.0}}}};
+    std::array<double, 3> z{{0.0, 0.0, 0.0}};
+    for (const auto &k : ks) {
+        z = cross(x, k);
+        if (norm(z) > 1e-10) break;
+    }
+    const double zn = norm(z);
+    if (zn < 1e-10) {
+        return q;
+    }
+    for (double &c : z) c /= zn;
+    std::array<double, 3> y = cross(z, x);
+    const double yn = norm(y);
+    for (double &c : y) c /= yn;
+    if (std::abs(rotationDeg) > 0.0) {
+        const double r = rotationDeg * 3.14159265358979323846 / 180.0;
+        const double c = std::cos(r), sn = std::sin(r);
+        const auto y0 = y, z0 = z;
+        for (int i = 0; i < 3; ++i) {
+            y[i] = c * y0[i] + sn * z0[i];
+            z[i] = -sn * y0[i] + c * z0[i];
+        }
+    }
+    return {{q[0] * x[0] + q[1] * y[0] + q[2] * z[0],
+             q[0] * x[1] + q[1] * y[1] + q[2] * z[1],
+             q[0] * x[2] + q[1] * y[2] + q[2] * z[2]}};
+}
+
+std::string buildModelJsonAndReactions(const SolverBridge::ModelData &model,
+                                      structura_license::ReactionTotals &outReactions)
+{
+    double F[3] = {0.0, 0.0, 0.0};
+    double M[3] = {0.0, 0.0, 0.0};
+
+    std::unordered_map<int, std::array<double, 3>> nodeCoords;
+    for (const auto &n : model.nodes) {
+        nodeCoords[n.id] = {{n.x, n.y, n.z}};
+    }
+
+    // 1. Cargas Nodais
+    for (const auto &nl : model.nodalLoads) {
+        auto it = nodeCoords.find(nl.nodeId);
+        if (it != nodeCoords.end()) {
+            double x = it->second[0], y = it->second[1], z = it->second[2];
+            double fx = nl.values[0], fy = nl.values[1], fz = nl.values[2];
+            double mx = nl.values[3], my = nl.values[4], mz = nl.values[5];
+            F[0] += fx; F[1] += fy; F[2] += fz;
+            M[0] += (y * fz - z * fy) + mx;
+            M[1] += (z * fx - x * fz) + my;
+            M[2] += (x * fy - y * fx) + mz;
+        }
+    }
+
+    // 2. Cargas de Barra (Uniformemente distribuídas)
+    for (const auto &ml : model.memberLoads) {
+        const SolverBridge::MemberData *foundMember = nullptr;
+        for (const auto &m : model.members) {
+            if (m.id == ml.memberId) {
+                foundMember = &m;
+                break;
+            }
+        }
+        if (foundMember) {
+            auto itI = nodeCoords.find(foundMember->nodeI);
+            auto itJ = nodeCoords.find(foundMember->nodeJ);
+            if (itI != nodeCoords.end() && itJ != nodeCoords.end()) {
+                double xi = itI->second[0], yi = itI->second[1], zi = itI->second[2];
+                double xj = itJ->second[0], yj = itJ->second[1], zj = itJ->second[2];
+                double dx = xj - xi, dy = yj - yi, dz = zj - zi;
+                double L = std::sqrt(dx*dx + dy*dy + dz*dz);
+                double xm = 0.5 * (xi + xj), ym = 0.5 * (yi + yj), zm = 0.5 * (zi + zj);
+
+                const auto qg = memberLoadToGlobal(ml, {{xi, yi, zi}}, {{xj, yj, zj}}, foundMember->sectionRotationDeg);
+                double fx = qg[0] * L, fy = qg[1] * L, fz = qg[2] * L;
+                F[0] += fx; F[1] += fy; F[2] += fz;
+                M[0] += (ym * fz - zm * fy);
+                M[1] += (zm * fx - xm * fz);
+                M[2] += (xm * fy - ym * fx);
+            }
+        }
+    }
+
+    outReactions.F[0] = -F[0];
+    outReactions.F[1] = -F[1];
+    outReactions.F[2] = -F[2];
+    outReactions.M_origin[0] = -M[0];
+    outReactions.M_origin[1] = -M[1];
+    outReactions.M_origin[2] = -M[2];
+
+    std::string json = "{\"nodes\":[";
+    for (size_t i = 0; i < model.nodes.size(); ++i) {
+        if (i > 0) json += ",";
+        json += "{\"id\":" + std::to_string(model.nodes[i].id) +
+                ",\"x\":" + std::to_string(model.nodes[i].x) +
+                ",\"y\":" + std::to_string(model.nodes[i].y) +
+                ",\"z\":" + std::to_string(model.nodes[i].z) + "}";
+    }
+    json += "],\"members\":[";
+    for (size_t i = 0; i < model.members.size(); ++i) {
+        if (i > 0) json += ",";
+        json += "{\"id\":" + std::to_string(model.members[i].id) +
+                ",\"node_i\":" + std::to_string(model.members[i].nodeI) +
+                ",\"node_j\":" + std::to_string(model.members[i].nodeJ) +
+                ",\"section_rotation_deg\":" + std::to_string(model.members[i].sectionRotationDeg) + "}";
+    }
+    json += "],\"nodal_loads\":[";
+    for (size_t i = 0; i < model.nodalLoads.size(); ++i) {
+        if (i > 0) json += ",";
+        json += "{\"node_id\":" + std::to_string(model.nodalLoads[i].nodeId) + ",\"values\":[";
+        for (int k = 0; k < 6; ++k) {
+            if (k > 0) json += ",";
+            json += std::to_string(model.nodalLoads[i].values[k]);
+        }
+        json += "]}";
+    }
+    json += "],\"member_loads\":[";
+    for (size_t i = 0; i < model.memberLoads.size(); ++i) {
+        if (i > 0) json += ",";
+        // sempre enviado em GLOBAL (coord_system 1): a conversao local->global ja foi feita acima
+        std::array<double, 3> qg{{model.memberLoads[i].qx, model.memberLoads[i].qy, model.memberLoads[i].qz}};
+        for (const auto &m : model.members) {
+            if (m.id == model.memberLoads[i].memberId) {
+                auto ci = nodeCoords.find(m.nodeI), cj = nodeCoords.find(m.nodeJ);
+                if (ci != nodeCoords.end() && cj != nodeCoords.end()) {
+                    qg = memberLoadToGlobal(model.memberLoads[i], ci->second, cj->second, m.sectionRotationDeg);
+                }
+                break;
+            }
+        }
+        json += "{\"member_id\":" + std::to_string(model.memberLoads[i].memberId) +
+                ",\"coord_system\":1" +
+                ",\"q\":[" + std::to_string(qg[0]) + "," + std::to_string(qg[1]) + "," + std::to_string(qg[2]) + "]}";
+    }
+    json += "],\"member_moments\":[],\"member_actions\":[]}";
+
+    return json;
+}
+
 } // namespace
 
 SolverBridge::SolverBridge(QString libraryPath)
@@ -191,7 +356,7 @@ SolverBridge::SolverBridge(QString libraryPath)
 {
 }
 
-SolverBridge::Result SolverBridge::solve(const ModelData &input) const
+SolverBridge::Result SolverBridge::solve(const ModelData &input, bool isPreview) const
 {
     // giro da secao: o solver gira os eixos locais, o programa nao (ver toSolverFrame)
     bool anyRotation = false;
@@ -207,33 +372,134 @@ SolverBridge::Result SolverBridge::solve(const ModelData &input) const
         converted = toSolverFrame(input);
     }
     const ModelData &model = anyRotation ? converted : input;
-    QLibrary solverLibrary;
-    if (!m_libraryPath.isEmpty()) {
-        solverLibrary.setFileName(m_libraryPath);
-    } else {
-        // Base name lets Qt resolve rds.dll on Windows and librds.so on Linux.
-        solverLibrary.setFileName(QStringLiteral("rds"));
-    }
+    // Marco M5: Carga segura da DLL cifrada em repouso (decrypt-to-temp + LoadLibrary + wipe)
+    auto resolveSolverPath = [](const std::string &pathOrName) -> std::string {
+        if (pathOrName.empty()) {
+            return pathOrName;
+        }
+        std::filesystem::path p = std::filesystem::u8path(pathOrName);
+        if (std::filesystem::exists(p)) {
+            return pathOrName;
+        }
+        std::filesystem::path appDir = std::filesystem::u8path(structura_license::GetAppInstallDir());
+        std::filesystem::path candidate = appDir / p.filename();
+        if (std::filesystem::exists(candidate)) {
+            return candidate.u8string();
+        }
+        return pathOrName;
+    };
 
-    if (!solverLibrary.load()) {
-        throw SolverBridgeError(errorFromLibrary(solverLibrary));
+    const auto session = structura_license::GetActiveClientSession();
+    std::string encName = "rds.enc";
+    if (!m_libraryPath.isEmpty()) {
+        std::filesystem::path p = std::filesystem::u8path(m_libraryPath.toUtf8().toStdString());
+        if (p.extension() == ".dll") {
+            p.replace_extension(".enc");
+        }
+        encName = p.u8string();
+    }
+    const std::string encPath = resolveSolverPath(encName);
+    const std::string plainPath = resolveSolverPath("rds.dll");
+#if defined(STRUCTURA_DEV_BUILD)
+    structura_license::ScopedDecryptedDll solverDll = structura_license::LoadEncryptedDllWithFallback(
+        encPath, plainPath, session);
+#else
+    // Build de Release: Fail-closed estrito sem fallback para texto claro
+    structura_license::ScopedDecryptedDll solverDll = structura_license::LoadEncryptedDll(
+        encPath, session);
+#endif
+
+    if (!solverDll.ok) {
+        throw SolverBridgeError("Nao foi possivel carregar a biblioteca do solver (rds): " + solverDll.errorMessage);
     }
 
     using GatekeeperFn = int (*)(std::uint64_t, std::uint64_t, std::uint64_t *, std::uint32_t);
     const std::string gateName = OBF_STR("_z8r4q");
-    auto gatekeeper = reinterpret_cast<GatekeeperFn>(solverLibrary.resolve(gateName.c_str()));
+    auto gatekeeper = reinterpret_cast<GatekeeperFn>(solverDll.resolve(gateName.c_str()));
     if (!gatekeeper) {
         throw SolverBridgeError("Failed to authenticate solver shared library (rds).");
     }
-    const std::uint64_t nonce = solver_sec::generateNonce(&solverLibrary);
+    const std::uint64_t nonce = solver_sec::generateNonce(solverDll.handle);
     const std::uint64_t authTag = solver_sec::computeAuthTag(nonce, solver_sec::kDomainRds);
     const std::uint64_t sessionKey = solver_sec::deriveSessionKey(nonce, authTag, solver_sec::kDomainRds);
     std::array<std::uint64_t, solver_sec::Rds_SlotCount> sealedTable {};
     if (gatekeeper(nonce, authTag, sealedTable.data(), solver_sec::Rds_SlotCount) != 0) {
         throw SolverBridgeError("Solver library authentication handshake rejected (rds).");
     }
+
+    auto unlockFn = reinterpret_cast<structura_license::GatekeeperUnlockFn>(solverDll.resolve("_z8r4q_unlock"));
+    auto lockFn = reinterpret_cast<structura_license::GatekeeperLockFn>(solverDll.resolve("_z8r4q_lock"));
+
+    uint64_t s_mask = 0;
+
+    // Marco M4/M6/Licenciamento: Validação de Keystone obrigatória para cálculo oficial (não preview)
+    if (!isPreview) {
+        structura_license::ReactionTotals reactions;
+        std::string modelJson = buildModelJsonAndReactions(model, reactions);
+
+        structura_license::Sha256 hashModel;
+        hashModel.Update(modelJson.data(), modelJson.size());
+        std::string modelHash = hashModel.FinalHex();
+
+        char nonceBuf[32];
+        snprintf(nonceBuf, sizeof(nonceBuf), "%016llx", static_cast<unsigned long long>(nonce));
+        structura_license::Sha256 hashDigest;
+        std::string digestContext = modelHash + ":" + nonceBuf;
+        hashDigest.Update(digestContext.data(), digestContext.size());
+        std::string resultDigest = hashDigest.FinalHex();
+
+        structura_license::RegisterActiveGatekeeperTable(nonce, sealedTable.data(), solver_sec::Rds_SlotCount, unlockFn, lockFn);
+
+        structura_license::KeystoneArtifact keystone;
+        std::string keystoneError;
+        bool keystoneOk = structura_license::RequestComputeKeystone(
+            structura_license::GetLicenseServerUrl(),
+            session,
+            modelHash,
+            modelJson,
+            reactions,
+            resultDigest,
+            structura_license::GetAppInstallDir(),
+            structura_license::GetReleasePublicKey(),
+            structura_license::GetServerPublicKey(),
+            keystone,
+            keystoneError
+        );
+
+#if !defined(STRUCTURA_DEV_BUILD)
+        if (!keystoneOk) {
+            const char* testEnvKey = std::getenv("STRUCTURA_TEST_DLL_KEY");
+            if (session.licenseToken.empty() && testEnvKey && std::strlen(testEnvKey) == 64) {
+                // Modo teste unitário numérico offline (sem sessão)
+            } else {
+                throw SolverBridgeError("Cálculo bloqueado: falha na validação do Keystone com o servidor de licenças (" + keystoneError + ").");
+            }
+        }
+#endif
+        if (keystoneOk) {
+            std::memcpy(&s_mask, keystone.sessionSecretS.data(), sizeof(s_mask));
+            structura_license::GatekeeperUnlock(nonce, s_mask, sealedTable.data(), solver_sec::Rds_SlotCount, unlockFn);
+            structura_license::GetGlobalExportGatekeeper().Unlock(nonce, s_mask);
+        } else if (std::getenv("STRUCTURA_TEST_DLL_KEY")) {
+            s_mask = 0x5A5A5A5A5A5A5A5AULL;
+            if (unlockFn) {
+                unlockFn(nonce, s_mask, sealedTable.data(), solver_sec::Rds_SlotCount);
+            }
+        }
+    }
+
     auto resolveSlot = [&](solver_sec::RdsSlot slot) -> QFunctionPointer {
-        return solver_sec::unsealPointer<QFunctionPointer>(sealedTable[static_cast<std::size_t>(slot)], nonce, static_cast<std::uint32_t>(slot), solver_sec::kDomainRds);
+        if (solver_sec::isRdsExportSlot(static_cast<uint32_t>(slot)) && s_mask == 0) {
+            return nullptr;
+        }
+        const uint64_t domain = (s_mask != 0 && solver_sec::isRdsExportSlot(static_cast<uint32_t>(slot)))
+            ? (solver_sec::kDomainRds ^ s_mask)
+            : solver_sec::kDomainRds;
+        return solver_sec::unsealPointer<QFunctionPointer>(
+            sealedTable[static_cast<std::size_t>(slot)],
+            nonce,
+            static_cast<std::uint32_t>(slot),
+            domain);
     };
 
     auto *rawSymbolV4 = resolveSlot(solver_sec::Rds_SolveV4);

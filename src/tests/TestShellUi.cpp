@@ -219,9 +219,9 @@ private slots:
 #ifndef STRUCTURA_EDITION_DEMO   // usa a aba de verificacao (dimensionamento) das cascas
     void tankAnalysisAndDesignThroughTheDialog()
     {
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/mefs.dll");
-        if (!QFile::exists(dll)) {
-            QSKIP("mefs.dll nao encontrada na raiz do repositorio.");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/mefs.enc");
+        if (!QFile::exists(dll) && !QFile::exists(QStringLiteral(STRUCTURA_SOURCE_DIR "/mefs.dll"))) {
+            QSKIP("mefs.enc nao encontrada na raiz do repositorio.");
         }
         Model model;
         Object tank;

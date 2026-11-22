@@ -5,6 +5,7 @@
 #include "design/Nbr14762.h"
 #include "design/Nbr8800.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -68,6 +69,8 @@ struct BarDesignInput {
     double fatigueCycles {0.0};             ///< N; 0 = vida infinita (limite sigma_TH)
     double openingDiameter {0.0};           ///< NBR 8800 Anexo F: D da abertura circular na alma (mm); 0 = nao ha
     double openingPosition {0.0};           ///< centro da abertura ate o apoio esquerdo (mm)
+    uint64_t s_mask {0};                    ///< Keystone session secret mask (Nível A)
+    const uint8_t *secretS {nullptr};       ///< Keystone session secret bytes (Nível A)
     double openingOffset {0.0};             ///< excentricidade em relacao a meia altura (mm)
     double openingNeighbourD {0.0};         ///< abertura adjacente: diametro (mm)
     double openingSpacing {0.0};            ///< distancia entre centros (mm)

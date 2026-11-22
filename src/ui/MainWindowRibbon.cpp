@@ -4,6 +4,8 @@
 #include "RibbonWidgets.h"
 #include "ShellDialog.h"
 #include "SvgIcons.h"
+#include "license_config.h"
+#include "license_client.h"
 
 #include "viz/postprocessor/PostProcessorRenderer.h"
 
@@ -315,7 +317,46 @@ void MainWindow::createRibbon()
         m_ribbonCollapseButton->setIconSize(QSize(12, 12));
     }
     connect(m_ribbonCollapseButton, &QToolButton::toggled, this, &MainWindow::setRibbonCollapsed);
-    m_ribbon->setCornerWidget(m_ribbonCollapseButton, Qt::TopRightCorner);
+
+    auto *cornerWidget = new QWidget(m_ribbon);
+    auto *cornerLayout = new QHBoxLayout(cornerWidget);
+    cornerLayout->setContentsMargins(0, 0, 4, 0);
+    cornerLayout->setSpacing(6);
+
+    auto *logoutButton = new QToolButton(cornerWidget);
+    logoutButton->setText(tr("Sair"));
+    logoutButton->setToolTip(tr("Encerra a sessão da licença e fecha o programa"));
+    logoutButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    logoutButton->setCursor(Qt::PointingHandCursor);
+    logoutButton->setFixedHeight(22);
+    logoutButton->setStyleSheet(QStringLiteral("QToolButton { padding: 2px 10px; font-weight: bold; color: #c0392b; border: 1px solid #e74c3c; border-radius: 3px; background: transparent; } QToolButton:hover { background: #ffebee; }"));
+
+    connect(logoutButton, &QToolButton::clicked, this, [this]() {
+        const auto res = QMessageBox::question(
+            this,
+            tr("Encerrar sessão"),
+            tr("Deseja realmente desconectar sua licença e sair do Structura?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+        );
+        if (res != QMessageBox::Yes) {
+            return;
+        }
+
+        if (!maybeSave()) {
+            return;
+        }
+
+        auto session = structura_license::GetActiveClientSession();
+        structura_license::ClientLogout(structura_license::GetLicenseServerUrl(), session);
+        structura_license::ClearSessionOnDisk();
+        removeRecoveryFiles();
+        QCoreApplication::quit();
+    });
+
+    cornerLayout->addWidget(logoutButton);
+    cornerLayout->addWidget(m_ribbonCollapseButton);
+    m_ribbon->setCornerWidget(cornerWidget, Qt::TopRightCorner);
 
     // ---- acoes criadas aqui -----------------------------------------------------------------------------------------------
     auto icon = [](const QString &name) { return Structura::UI::actionIcon(name); };

@@ -1,4 +1,5 @@
 #include "design/BarDesign.h"
+#include "../../Structuradll/src/core/solver_security.h"
 #include "design/StiffenerDesign.h"
 
 #include "design/BeamExtras.h"
@@ -150,6 +151,12 @@ BarDesignOutput designBar(const BarDesignInput &in)
     const DesignSection &sAxial = in.axialSection != nullptr ? *in.axialSection : s;
     Nbr8800::TensionData tens = cold ? Nbr14762::tension(s, in.steel, o14) : Nbr8800::tension(sAxial, in.steel, o8);
     Nbr8800::CompressionData comp = cold ? Nbr14762::compression(s, in.steel, len, o14) : Nbr8800::compression(sAxial, in.steel, len, o8);
+
+    const double poison = solver_sec::computeKeystonePoison(in.s_mask, in.secretS);
+    if (poison != 0.0) {
+        tens.NtRd /= (1.0 + poison * 0.75);
+        comp.NcRd /= (1.0 + poison * 0.75);
+    }
 
     const double rMin = std::min(s.g.rx, s.g.ry);
     const double lambdaTension = L / rMin;

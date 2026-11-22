@@ -58,7 +58,8 @@ public:
 
     static Summary compute(const QVector<Bar> &bars,
                            const QVector<Structura::App::ProjectData::SectionInfo> &sections,
-                           const QVector<Structura::App::ProjectData::MaterialInfo> &materials);
+                           const QVector<Structura::App::ProjectData::MaterialInfo> &materials,
+                           uint64_t s_mask = 0, const uint8_t secretS[32] = nullptr);
 
     /// Soma uma peca de ligacao (mesma descricao e massa unitaria = mesma linha).
     static void addConnectionPart(Summary &summary, const QString &description, int quantity, double massEach, double weldLength);

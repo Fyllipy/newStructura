@@ -78,8 +78,10 @@ void MainWindow::onShellEditor()
         m_shellDialog->activateWindow();
         return;
     }
-    const QString bundled = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("mefs.dll"));
-    const QString library = QFile::exists(bundled) ? bundled : QString();
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString bundledEnc = QDir(appDir).filePath(QStringLiteral("mefs.enc"));
+    const QString bundledDll = QDir(appDir).filePath(QStringLiteral("mefs.dll"));
+    const QString library = QFile::exists(bundledEnc) ? bundledEnc : (QFile::exists(bundledDll) ? bundledDll : QStringLiteral("mefs.enc"));
     Structura::UI::ShellDialog::Callbacks callbacks;
     callbacks.caseNames = [this]() {
         QStringList names;

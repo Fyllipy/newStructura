@@ -1416,9 +1416,9 @@ private slots:
         using namespace Structura::App;
         using Services::DesignService;
         using Structura::App::Services::SectionPropertiesService;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
-        if (!QFile::exists(dll)) {
-            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.enc");
+        if (!QFile::exists(dll) && !QFile::exists(QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll"))) {
+            QSKIP("rds.enc nao encontrada na raiz do repositorio.");
         }
         ProjectData::SectionInfo section;
         section.family = "W Laminado";
@@ -1483,9 +1483,9 @@ private slots:
         using namespace Structura::App;
         using Structura::App::Services::DesignService;
         using Structura::App::Services::SectionPropertiesService;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
-        if (!QFile::exists(dll)) {
-            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.enc");
+        if (!QFile::exists(dll) && !QFile::exists(QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll"))) {
+            QSKIP("rds.enc nao encontrada na raiz do repositorio.");
         }
         // Balanco em I sob torque T na ponta (unidades do modelo: kN e m). O bimomento no engaste e T tanh(kL)/k (em modulo) e, no engaste, todo o torque
         // e resistido por empenamento (psi = 0 => T_sv = 0); na ponta livre B = 0 e T_w = T - T_sv.
@@ -1908,9 +1908,9 @@ private slots:
         using namespace Structura::App;
         using Services::DesignService;
         using Structura::App::Services::SectionPropertiesService;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
-        if (!QFile::exists(dll)) {
-            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.enc");
+        if (!QFile::exists(dll) && !QFile::exists(QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll"))) {
+            QSKIP("rds.enc nao encontrada na raiz do repositorio.");
         }
         ProjectData::SectionInfo section;
         section.name = "W teste";
@@ -2066,9 +2066,9 @@ private slots:
     void deflectionMatchesClosedForm()
     {
         using namespace Structura::App;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
-        if (!QFile::exists(dll)) {
-            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.enc");
+        if (!QFile::exists(dll) && !QFile::exists(QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll"))) {
+            QSKIP("rds.enc nao encontrada na raiz do repositorio.");
         }
         const double E = 2.0e8, I = 2.0e-4, L = 6.0, q = 10.0;
         auto run = [&](bool cantilever) {
@@ -2225,9 +2225,9 @@ private slots:
     void beamSupportingColumnUsesTableB1Limit()
     {
         using namespace Structura::App;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
-        if (!QFile::exists(dll)) {
-            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.enc");
+        if (!QFile::exists(dll) && !QFile::exists(QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll"))) {
+            QSKIP("rds.enc nao encontrada na raiz do repositorio.");
         }
         // viga de 6 m com um pilar que nasce no meio do vao (viga de transicao): limite L/500 (Tabela B.1)
         SolverBridge::ModelData model;
@@ -2273,9 +2273,9 @@ private slots:
     void b2FromStoryDrift()
     {
         using namespace Structura::App;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
-        if (!QFile::exists(dll)) {
-            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.enc");
+        if (!QFile::exists(dll) && !QFile::exists(QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll"))) {
+            QSKIP("rds.enc nao encontrada na raiz do repositorio.");
         }
         const double E = 2.0e8, I = 2.0e-4, L = 5.0, P = 300.0, H = 20.0;
         SolverBridge::ModelData model;
@@ -2556,9 +2556,9 @@ private slots:
     void swayClassificationAndReducedStiffnessB2()
     {
         using namespace Structura::App;
-        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
-        if (!QFile::exists(dll)) {
-            QSKIP("rds.dll nao encontrada na raiz do repositorio.");
+        const QString dll = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.enc");
+        if (!QFile::exists(dll) && !QFile::exists(QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll"))) {
+            QSKIP("rds.enc nao encontrada na raiz do repositorio.");
         }
         const double E = 2.0e8, I = 2.0e-4, L = 5.0, H = 20.0;
         auto run = [&](double P) {

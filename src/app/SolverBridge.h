@@ -378,7 +378,7 @@ public:
 
     explicit SolverBridge(QString libraryPath = QString());
 
-    [[nodiscard]] Result solve(const ModelData &model) const;
+    [[nodiscard]] Result solve(const ModelData &model, bool isPreview = false) const;
 
 private:
     QString m_libraryPath;

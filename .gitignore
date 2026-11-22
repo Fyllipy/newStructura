@@ -5,3 +5,20 @@ dist/
 .git
 livros/
 build-demo/
+# --- seguranca/servidor ---
+.env
+.env.*
+!.env.example
+*.db
+*.pem
+*.key
+server/.venv/
+__pycache__/
+.pytest_cache/
+server/admin-ui/node_modules/
+server/admin-ui/test-results/
+server/admin-ui/playwright-report/
+server/deploy/secrets/
+server/deploy/bundle/
+build-dev/
+dist-dev/

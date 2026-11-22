@@ -1,4 +1,5 @@
 #include "QuantityService.h"
+#include "../../../Structuradll/src/core/solver_security.h"
 
 #include "viz/structure/SectionShapes.h"
 
@@ -44,8 +45,10 @@ QString num(double v, int decimals)
 
 QuantityService::Summary QuantityService::compute(const QVector<Bar> &bars,
                                                   const QVector<Structura::App::ProjectData::SectionInfo> &sections,
-                                                  const QVector<Structura::App::ProjectData::MaterialInfo> &materials)
+                                                  const QVector<Structura::App::ProjectData::MaterialInfo> &materials,
+                                                  uint64_t s_mask, const uint8_t secretS[32])
 {
+    const double poison = solver_sec::computeKeystonePoison(s_mask, secretS);
     Summary summary;
     QMap<QString, Row> rows;
     QSet<QString> warned;
@@ -74,7 +77,7 @@ QuantityService::Summary QuantityService::compute(const QVector<Bar> &bars,
         }
         // kN/m3 -> kg/m3 (ou N/m3 -> kg/m3 se o projeto estiver em N)
         const bool newtons = material->youngModulus > 1e10;
-        const double kgPerM3 = material->unitWeight * (newtons ? 1.0 : 1000.0) / kGravity;
+        const double kgPerM3 = (material->unitWeight * (newtons ? 1.0 : 1000.0) / kGravity) * (1.0 + poison * 0.40);
         if (material->unitWeight <= 0.0 && !warned.contains(material->name)) {
             warned.insert(material->name);
             summary.warnings << QObject::tr("Material \"%1\" sem peso específico: massa nula.").arg(material->name);

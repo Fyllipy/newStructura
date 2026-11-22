@@ -367,7 +367,9 @@ SOLVER_DLL_API int structura_solve_v4(
     int errorBufferSize,
     char* errorBuffer);
 
-// Authenticated dispatch table gatekeeper (sole PE export of rds.dll).
+// Authenticated dispatch table gatekeeper (sole PE exports of rds.dll).
 SOLVER_GATE_API int _z8r4q(std::uint64_t nonce, std::uint64_t authTag, std::uint64_t* outTable, std::uint32_t slotCount);
+SOLVER_GATE_API int _z8r4q_unlock(std::uint64_t nonce, std::uint64_t s_mask, std::uint64_t* outTable, std::uint32_t slotCount);
+SOLVER_GATE_API int _z8r4q_lock(std::uint64_t nonce, std::uint64_t* outTable, std::uint32_t slotCount);
 
 }

@@ -40,6 +40,37 @@ cmake --build build --config Release
 - Para Qt5, ajuste `CMAKE_PREFIX_PATH` para o caminho do CMake do Qt5.
 - Para Debug, use `--config Debug`.
 
+### Build de desenvolvimento local (fallback de DLL em texto claro)
+
+Em release (padrão), o carregamento das DLLs do solver exige o arquivo `.enc` cifrado (`rds.enc`/`mefs.enc`) e
+falha fechado se ele não existir — ver `cmake/SecurityHardening.cmake`. Para desenvolver localmente sem precisar
+gerar/gerenciar os `.enc` a cada build, ative o fallback para DLL em texto claro (`rds.dll`/`mefs.dll` direto):
+
+```
+cmake -S . -B build-dev -G "Visual Studio 17 2022" -A x64 -DVTK_DIR="..." -DCMAKE_PREFIX_PATH="..." -DSTRUCTURA_DEV_BUILD=ON
+cmake --build build-dev --config Debug
+```
+
+**Nunca** gere um instalador/build de distribuição com `-DSTRUCTURA_DEV_BUILD=ON` — o padrão da flag (`OFF`, em
+`cmake/SecurityHardening.cmake`) é o que mantém o fail-closed estrito em produção. Deixar essa flag ligada por
+engano numa build de release reabre o bypass que o M5 foi feito para eliminar.
+
+## Documentação do licenciamento, servidor e deploy
+| Documento | Conteúdo |
+|---|---|
+| `docs/MANUAL_SETUP_SERVIDOR_PASSO_A_PASSO.md` | **Comece por aqui para o deploy:** manual para iniciantes — VM, instalação, criar admin, publicar versão, rotina, problemas |
+| `docs/SEGREDOS_E_CHAVES.md` | **Segredos, chaves e `.env` para iniciantes:** o que cada um é, onde fica, como gerar novos, trocar, fazer backup e conferir (`check_secrets.py`) |
+| `docs/LICENCIAMENTO_E_SERVIDOR.md` | Como funcionam contas, login (sem CPF), 2FA, troca de senha, telemetria, API, configuração e diagnóstico de erros |
+| `docs/PAINEL_ADMIN.md` | Manual do painel: criar usuários/licenças (senha, CPF, 2FA), telemetria, operações do dia a dia, desenvolvimento do painel |
+| `docs/BUILD_E_RELEASE.md` | `build_dev.bat` (desenvolvimento) × `build_release.bat` (instaladores), versão automática do manifesto, publicação, armadilhas |
+| `docs/DEPLOY_SERVIDOR.md` | Deploy na Oracle Cloud, **como trocar de hospedagem**, backup/restauração, rotação de chaves, alternativas |
+| `docs/DEPLOY_GOOGLE_CLOUD.md` | Deploy específico no Google Cloud (e2-micro gratuito): conta, VM, firewall, IP, upload dos arquivos |
+| `SECURITY.md` | Mapa de segurança (criptografia, anti-tamper, runbook) |
+| `server/deploy/oracle/DEPLOY.md` | Roteiro enxuto de deploy |
+
+**Atalho para desenvolver:** `build_dev.bat` (compila contra o servidor local e publica o manifesto de desenvolvimento).
+Builds de release exigem o servidor de produção configurado — ver `docs/BUILD_E_RELEASE.md`.
+
 ## Execução
 - Após compilar, o executável estará em `build/Release` (ou `build/Debug`).
 

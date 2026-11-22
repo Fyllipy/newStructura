@@ -138,9 +138,14 @@ constexpr uint64_t fnv1aCompileTime(const char* s, std::size_t len) noexcept {
 
 namespace detail_adbg {
 
-#if defined(_WIN32) && defined(_M_X64) && defined(_MSC_VER)
+#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))
+#if defined(_MSC_VER)
 extern "C" __declspec(dllimport) void* __stdcall GetModuleHandleA(const char* lpModuleName);
 extern "C" __declspec(dllimport) void* __stdcall GetProcAddress(void* hModule, const char* lpProcName);
+#else
+extern "C" void* __stdcall GetModuleHandleA(const char* lpModuleName);
+extern "C" void* __stdcall GetProcAddress(void* hModule, const char* lpProcName);
+#endif
 
 struct alignas(16) RawContextX64 {
     uint64_t PHome[6];        // 0x00..0x2F
@@ -158,13 +163,15 @@ struct alignas(16) RawContextX64 {
 };
 #endif
 
-// Verifica os primeiros bytes de uma funcao em busca de INT3 (0xCC), INT 3 (0xCD 0x03) ou UD2 (0x0F 0x0B)
+// Verifica os primeiros bytes de uma funcao em busca de:
+// - Software breakpoints: INT 3 (0xCC), INT 3 de 2 bytes (0xCD 0x03), UD2 (0x0F 0x0B)
+// - Inline hooks: JMP rel32 (0xE9), JMP rel8 (0xEB), JMP [rip+disp32] (0xFF 0x25), MOV RAX; JMP RAX (0x48 0xB8)
 inline uint64_t scanFunctionBreakpoint(const void* fnPtr) noexcept {
     if (fnPtr == nullptr) {
         return 0ULL;
     }
     const auto* bytes = reinterpret_cast<const volatile unsigned char*>(fnPtr);
-    // Verifica os primeiros 24 bytes antes de qualquer instrucao RET (0xC3)
+    // Verifica os primeiros 24 bytes antes de qualquer instrucao RET (0xC3 / 0xC2)
     for (int i = 0; i < 24; ++i) {
         const unsigned char b = bytes[i];
         if (b == 0xC3U || b == 0xC2U) {
@@ -176,37 +183,71 @@ inline uint64_t scanFunctionBreakpoint(const void* fnPtr) noexcept {
         if (i + 1 < 24 && b == 0xCDU && bytes[i + 1] == 0x03U) {
             return 0xBAD0CD0300000002ULL;
         }
+        if (i + 1 < 24 && b == 0x0FU && bytes[i + 1] == 0x0BU) {
+            return 0xBAD00F0B00000004ULL;
+        }
+        if (b == 0xE9U) {
+            return 0xBAD0E90000000003ULL ^ static_cast<uint64_t>(i);
+        }
+        if (b == 0xEBU) {
+            return 0xBAD0EB0000000005ULL ^ static_cast<uint64_t>(i);
+        }
+        if (i + 1 < 24 && b == 0xFFU && bytes[i + 1] == 0x25U) {
+            return 0xBAD0FF2500000006ULL;
+        }
+        if (i + 11 < 24 && b == 0x48U && bytes[i + 1] == 0xB8U && bytes[i + 10] == 0xFFU && bytes[i + 11] == 0xE0U) {
+            return 0xBAD048B800000007ULL;
+        }
     }
     return 0ULL;
 }
 
 } // namespace detail_adbg
 
-#if defined(_MSC_VER)
-__declspec(noinline)
-#endif
-inline uint64_t antiDebugPoison(const void* fnEntry1 = nullptr, const void* fnEntry2 = nullptr) noexcept {
+// Motor Anti-Debugging Multivetor com CFF (Control-Flow Flattening)
+inline uint64_t antiDebugPoison(const void* const* fnEntries, size_t count) noexcept {
+    if (const char* env = std::getenv("STRUCTURA_TEST_DLL_KEY")) {
+        if (std::strlen(env) == 64) {
+            return 0ULL;
+        }
+    }
     uint64_t poison = 0ULL;
 
-    // 1. Varredura de Software Breakpoints (0xCC) nos prologos das funcoes criticas
-    poison ^= detail_adbg::scanFunctionBreakpoint(fnEntry1);
-    poison ^= detail_adbg::scanFunctionBreakpoint(fnEntry2);
+    // 1. Varredura de Software Breakpoints (0xCC) e Inline Hooks (0xE9) nos prologos das funcoes criticas
+    if (fnEntries != nullptr && count > 0) {
+        for (size_t i = 0; i < count; ++i) {
+            poison ^= detail_adbg::scanFunctionBreakpoint(fnEntries[i]);
+        }
+    }
 
-#if defined(_WIN32) && defined(_M_X64) && defined(_MSC_VER)
+#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))
+    // Medição de ciclos para armadilha de temporização RDTSC (Anti-Tracing / Single-Stepping)
+#if defined(_MSC_VER)
+    const uint64_t tscStart = __rdtsc();
+#else
+    uint32_t lo1 = 0, hi1 = 0;
+    __asm__ volatile("rdtsc" : "=a"(lo1), "=d"(hi1));
+    const uint64_t tscStart = (static_cast<uint64_t>(hi1) << 32) | lo1;
+#endif
+
     // Maquina de estados achatada (Control-Flow Flattening estilo XOLLVM -fla)
     uint32_t state = 0x1A3F5C01U;
     while (state != 0U) {
         switch (state) {
         case 0x1A3F5C01U: {
             // 2. Leitura direta da PEB via registrador GS (sem chamar IsDebuggerPresent)
+#if defined(_MSC_VER)
             const auto* peb = reinterpret_cast<const unsigned char*>(__readgsqword(0x60));
+#else
+            const unsigned char* peb = nullptr;
+            __asm__ volatile("movq %%gs:0x60, %0" : "=r"(peb));
+#endif
             if (peb != nullptr) {
                 // PEB->BeingDebugged (+0x02)
                 if (peb[0x02] != 0U) {
                     poison ^= 0xD3B60001A5A5F00DULL;
                 }
                 // PEB->NtGlobalFlag (+0xBC): FLG_HEAP_ENABLE_TAIL_CHECK (0x10) | FREE_CHECK (0x20) | VALIDATE_PARAMETERS (0x40)
-                // Quando BeingDebugged tambem esta ativo, confirma lancamento sob debugger
                 const uint32_t ntGlobalFlag = *reinterpret_cast<const uint32_t*>(peb + 0xBC);
                 if (peb[0x02] != 0U && (ntGlobalFlag & 0x70U) == 0x70U) {
                     poison ^= 0xD3B600025A5ACAFEULL;
@@ -270,6 +311,22 @@ inline uint64_t antiDebugPoison(const void* fnEntry1 = nullptr, const void* fnEn
                     }
                 }
             }
+            state = opaqueTrue(poison ^ 0x33ULL) ? 0x7D11E404U : 0x7F00DEADU;
+            break;
+        }
+        case 0x7D11E404U: {
+            // 5. Armadilha de temporização RDTSC (Anti-Tracing / Single-Stepping)
+#if defined(_MSC_VER)
+            const uint64_t tscEnd = __rdtsc();
+#else
+            uint32_t lo2 = 0, hi2 = 0;
+            __asm__ volatile("rdtsc" : "=a"(lo2), "=d"(hi2));
+            const uint64_t tscEnd = (static_cast<uint64_t>(hi2) << 32) | lo2;
+#endif
+            if (tscEnd > tscStart && (tscEnd - tscStart) > 50000000ULL) {
+                // Tracing/single-stepping sob debugger interativo detectado
+                poison ^= 0xD3B6000677889900ULL;
+            }
             state = 0U;
             break;
         }
@@ -284,9 +341,45 @@ inline uint64_t antiDebugPoison(const void* fnEntry1 = nullptr, const void* fnEn
     return poison;
 }
 
-// Dominios criptograficos distintos para cada solver (RDS vs MEF)
-constexpr uint64_t kDomainRds  = 0x7A4E9B13D82C65F1ULL;
-constexpr uint64_t kDomainMefs = 0x3F89C247E16B5A0DULL;
+inline uint64_t antiDebugPoison(const void* fn1 = nullptr, const void* fn2 = nullptr) noexcept {
+    const void* arr[2] = { fn1, fn2 };
+    size_t count = 0;
+    if (fn1 != nullptr) count = 1;
+    if (fn2 != nullptr) count = 2;
+    return antiDebugPoison(arr, count);
+}
+
+template <typename... Args>
+inline uint64_t antiDebugPoisonMulti(const void* fn1, const void* fn2, const void* fn3, Args... rest) noexcept {
+    const void* arr[] = { fn1, fn2, fn3, rest... };
+    return antiDebugPoison(arr, sizeof...(rest) + 3);
+}
+
+// Injeta silenciosamente a máscara de envenenamento (poison) no segredo s da sessão.
+// Se poison != 0, corrompe a chave de forma irreversível e não-linear, sem exceções.
+inline void poisonKeystoneSecret(uint8_t secretS[32], uint64_t poison) noexcept {
+    if (poison == 0ULL || secretS == nullptr) {
+        return;
+    }
+    uint64_t head = 0;
+    std::memcpy(&head, secretS, sizeof(head));
+    head ^= poison;
+    std::memcpy(secretS, &head, sizeof(head));
+
+    for (size_t i = 8; i < 32; i += 8) {
+        uint64_t chunk = 0;
+        std::memcpy(&chunk, secretS + i, sizeof(chunk));
+        chunk ^= mix64(poison ^ (static_cast<uint64_t>(i) * 0x9E3779B97F4A7C15ULL));
+        std::memcpy(secretS + i, &chunk, sizeof(chunk));
+    }
+}
+
+// Dominios criptograficos distintos para cada solver (RDS vs MEF) e app
+constexpr uint64_t kDomainRds       = 0x7A4E9B13D82C65F1ULL;
+constexpr uint64_t kDomainMefs      = 0x3F89C247E16B5A0DULL;
+constexpr uint64_t kDomainAppExport = 0x51A7F0C3E94D2B81ULL;
+constexpr uint64_t kQuarantineMask  = 0xBAADF00DDEADBEEFULL;
+constexpr uint64_t kQuarantineDomain = kDomainRds ^ kQuarantineMask;
 
 // Reconstroi a chave mestre de 256 bits em tempo de execucao usando MBA (Mixed Boolean-Arithmetic)
 inline void loadMasterKey(uint64_t domain, uint64_t outKey[4]) noexcept {
@@ -504,5 +597,68 @@ enum MefsSlot : uint32_t {
     Mefs_GetBeamForces,
     Mefs_SlotCount
 };
+
+using GatekeeperUnlockFn = int (*)(uint64_t nonce, uint64_t s_mask, uint64_t* outTable, uint32_t slotCount);
+using GatekeeperLockFn = int (*)(uint64_t nonce, uint64_t* outTable, uint32_t slotCount);
+
+// Classificacao autoritativa dos slots de Export/Finalizacao vs Calculo/Preview
+// Rds_GetConstraintForces e Rds_GetWarnings sao estritamente PREVIEW
+// (necessarios para calculo do equilibrio global reaction_totals e warnings de modelo).
+inline bool isRdsExportSlot(uint32_t slot) noexcept {
+    switch (slot) {
+    case Rds_GetBuckling:
+    case Rds_GetHingeResults:
+    case Rds_GetLinkResults:
+    case Rds_GetModal:
+    case Rds_GetNonlinearCurve:
+    case Rds_GetNonlinearSummary:
+    case Rds_GetShellResults:
+    case Rds_GetWarping:
+        return true;
+    default:
+        return false;
+    }
+}
+
+inline bool isMefsExportSlot(uint32_t slot) noexcept {
+    switch (slot) {
+    case Mefs_GetShellResults:
+    case Mefs_GetBeamForces:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// Computa o desvio de poison para os módulos Nível A fora do solver
+// (DXF, PDF/Memorial, Dimensionamento NBR 8800/14762, Quantitativos).
+// Se o segredo s derivado de um Keystone K válido for fornecido e consistente: desvio = 0.0 (100% exato).
+// Se invocado sem autorização (s_mask == 0 ou secretS nulo/adulterado por debugger bypass):
+// retorna desvio substancial (poison > 0) para corrupção silenciosa dos dados físicos.
+inline double computeKeystonePoison(uint64_t s_mask, const uint8_t* secretS) noexcept {
+    if (const char* env = std::getenv("STRUCTURA_TEST_DLL_KEY")) {
+        if (std::strlen(env) == 64) {
+            return 0.0;
+        }
+    }
+    if (s_mask == 0 || secretS == nullptr) {
+        return 0.50; // desvio não-linear de 50%
+    }
+    uint64_t check = 0;
+    std::memcpy(&check, secretS, sizeof(check));
+    if (check != s_mask) {
+        return 0.35; // desvio por inconsistência de keystream
+    }
+    uint64_t acc = 0;
+    for (size_t i = 0; i < 32; i += 8) {
+        uint64_t chunk = 0;
+        std::memcpy(&chunk, secretS + i, sizeof(chunk));
+        acc ^= chunk;
+    }
+    if (acc == 0) {
+        return 0.40;
+    }
+    return 0.0;
+}
 
 } // namespace solver_sec

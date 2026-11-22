@@ -16,8 +16,8 @@ endif()
 set(STRUCTURA_PRODUCT_NAME      "Structura::Metalicas")      # nome comercial exibido ao usuario
 set(STRUCTURA_COMPANY           "Structura")                 # fabricante (VERSIONINFO e instalador) - ajustar quando houver razao social
 set(STRUCTURA_VERSION_MAJOR     0)
-set(STRUCTURA_VERSION_MINOR     8)
-set(STRUCTURA_VERSION_PATCH     2)
+set(STRUCTURA_VERSION_MINOR     9)
+set(STRUCTURA_VERSION_PATCH     0)
 set(STRUCTURA_VERSION_STAGE     "beta")                      # vazio = versao final
 set(STRUCTURA_LEGACY_APP_ID     "Structura")                 # applicationName antigo: origem da migracao dos dados do usuario
 

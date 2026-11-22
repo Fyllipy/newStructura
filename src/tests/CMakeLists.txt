@@ -38,10 +38,27 @@ function(add_structura_test TARGET_NAME SOURCE_FILE)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}/platforms/qoffscreen.dll"
                     $<TARGET_FILE_DIR:${TARGET_NAME}>/platforms/qoffscreen.dll
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}/platforms/qwindows.dll"
+                    $<TARGET_FILE_DIR:${TARGET_NAME}>/platforms/qwindows.dll
         )
+        # Fornece os solvers cifrados para os testes unitarios
+        if (EXISTS "${CMAKE_SOURCE_DIR}/rds.enc")
+            add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${CMAKE_SOURCE_DIR}/rds.enc" $<TARGET_FILE_DIR:${TARGET_NAME}>/rds.enc
+            )
+        endif()
+        if (EXISTS "${CMAKE_SOURCE_DIR}/mefs.enc")
+            add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${CMAKE_SOURCE_DIR}/mefs.enc" $<TARGET_FILE_DIR:${TARGET_NAME}>/mefs.enc
+            )
+        endif()
     endif()
 
     add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME})
+    set_tests_properties(${TARGET_NAME} PROPERTIES ENVIRONMENT "STRUCTURA_TEST_DLL_KEY=689e4efd8e345fb49aeeae4ab42d29689d2eba244eedfcebc3900bdf92066d10;QT_QPA_PLATFORM=offscreen")
 endfunction()
 
 add_structura_test(TestCoreModels TestCoreModels.cpp)
@@ -55,6 +72,7 @@ add_dependencies(TestEditionBoundaries StructuraRibbon3D)
 add_structura_test(TestSectionShapes TestSectionShapes.cpp)
 add_structura_test(TestProjectIoAndSolver TestProjectIoAndSolver.cpp)
 add_structura_test(TestProfileUi TestProfileUi.cpp)
+add_structura_test(TestUiLicenseIntegration TestUiLicenseIntegration.cpp)
 
 add_structura_test(TestAppearanceRender TestAppearanceRender.cpp)
 vtk_module_autoinit(TARGETS TestAppearanceRender MODULES ${VTK_LIBRARIES})

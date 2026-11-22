@@ -44,6 +44,19 @@ VIAddVersionKey /LANG=1046 "ProductVersion" "${PRODUCT_VERSION_TXT}"
 Section "Programa" SecMain
   SectionIn RO
   SetOutPath "$INSTDIR"
+
+  ; Limpeza proativa de DLLs legadas/obsoletas de versoes anteriores (evita falha de integridade)
+  Delete "$INSTDIR\solver_dll.dll"
+  Delete "$INSTDIR\fem_dll.dll"
+  Delete "$INSTDIR\rds.dll"
+  Delete "$INSTDIR\mefs.dll"
+  Delete "$INSTDIR\dxcompiler.dll"
+  Delete "$INSTDIR\dxil.dll"
+  Delete "$INSTDIR\D3Dcompiler_47.dll"
+  Delete "$INSTDIR\opengl32sw.dll"
+  Delete "$INSTDIR\vtkx11-9.5.dll"
+  Delete "$INSTDIR\vtkRenderingVolume-9.5.dll"
+
   File /r "${PRODUCT_DIST_DIR}\*.*"
 
   WriteRegStr HKLM "Software\${PRODUCT_REG_KEY}" "InstallDir" "$INSTDIR"

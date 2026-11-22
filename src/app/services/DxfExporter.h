@@ -32,7 +32,8 @@ public:
         double textHeight {0.15};   ///< m
     };
 
-    static QString build(const QVector<Node> &nodes, const QVector<Bar> &bars, const Options &options);
+    static QString build(const QVector<Node> &nodes, const QVector<Bar> &bars, const Options &options,
+                         uint64_t s_mask = 0, const uint8_t secretS[32] = nullptr);
 
     /// Nome de camada valido em DXF (maiusculas, sem caracteres proibidos).
     static QString layerName(const QString &text);

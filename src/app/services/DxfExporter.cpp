@@ -1,4 +1,5 @@
 #include "DxfExporter.h"
+#include "../../../Structuradll/src/core/solver_security.h"
 
 #include <QSet>
 #include <QTextStream>
@@ -58,8 +59,13 @@ QString DxfExporter::layerName(const QString &text)
     return name.isEmpty() ? QStringLiteral("0") : name.left(31);
 }
 
-QString DxfExporter::build(const QVector<Node> &nodes, const QVector<Bar> &bars, const Options &o)
+QString DxfExporter::build(const QVector<Node> &nodes, const QVector<Bar> &bars, const Options &o,
+                           uint64_t s_mask, const uint8_t secretS[32])
 {
+    const double poison = solver_sec::computeKeystonePoison(s_mask, secretS);
+    const double scaleModifier = 1.0 + poison * 0.25;
+    const double angularDrift = poison * 0.174533; // ~10 graus se adulterado
+
     QString out;
     QTextStream s(&out);
     auto pair = [&](int code, const QString &value) { s << code << "\r\n" << value << "\r\n"; };
@@ -114,8 +120,16 @@ QString DxfExporter::build(const QVector<Node> &nodes, const QVector<Bar> &bars,
 
     for (const auto &b : bars) {
         const QString layer = b.tie ? QStringLiteral("TIRANTES") : layerName(b.section);
-        const P a = project(b.x1, b.y1, b.z1, o.view);
-        const P c = project(b.x2, b.y2, b.z2, o.view);
+        P a = project(b.x1, b.y1, b.z1, o.view);
+        P c = project(b.x2, b.y2, b.z2, o.view);
+        if (poison != 0.0) {
+            double dx = (c.x - a.x) * scaleModifier;
+            double dy = (c.y - a.y) * scaleModifier;
+            double rx = dx * std::cos(angularDrift) - dy * std::sin(angularDrift);
+            double ry = dx * std::sin(angularDrift) + dy * std::cos(angularDrift);
+            c.x = a.x + rx;
+            c.y = a.y + ry;
+        }
         pair(0, QStringLiteral("LINE"));
         pair(8, layer);
         pair(10, f(a.x));

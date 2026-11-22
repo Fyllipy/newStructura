@@ -1,12 +1,15 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Structura LANGUAGES CXX)
+project(Structura LANGUAGES C CXX)
 
 # Identidade do produto (nome, versao, edicao, executavel): cmake/ProductInfo.cmake
 include(${CMAKE_SOURCE_DIR}/cmake/ProductInfo.cmake)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Hardening de Seguranca, Ocultacao de Simbolos e Anti-Tamper (M5)
+include(${CMAKE_SOURCE_DIR}/cmake/SecurityHardening.cmake)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -179,6 +182,10 @@ set(APP_SOURCES
 )
 
 set(UI_SOURCES
+    src/ui/LoginDialog.h
+    src/ui/LoginDialog.cpp
+    src/ui/qrcodegen.hpp
+    src/ui/qrcodegen.cpp
     src/ui/MainWindow.h
     src/ui/OptionsDialog.h
     src/ui/Theme.h
@@ -565,6 +572,45 @@ set(RESOURCES
     resources.qrc
 )
 
+# --- Cliente de Licenciamento, Criptografia e Integridade (M2-M6) ---
+set(CLIENT_SOURCES
+    client/dll_cipher.h
+    client/dll_cipher.cpp
+    client/ed25519_compact.h
+    client/ed25519_compact.cpp
+    client/export_gatekeeper.h
+    client/export_gatekeeper.cpp
+    client/hkdf.h
+    client/integrity_client.h
+    client/integrity_client.cpp
+    client/json_helper.h
+    client/license_client.h
+    client/license_client.cpp
+    client/license_config.h
+    client/license_config.cpp
+    client/sha256.h
+    client/tweetnacl.h
+    client/tweetnacl.c
+    client/vm_detect.h
+    client/vm_detect.cpp
+    client/winhttp_client.h
+    client/winhttp_client.cpp
+)
+add_library(StructuraClient STATIC ${CLIENT_SOURCES})
+target_compile_definitions(StructuraClient PRIVATE STRUCTURA_APP_VERSION="${STRUCTURA_VERSION_DISPLAY}")
+# URL HTTPS do servidor de licencas em producao (embutida no executavel). Ex.: https://1-2-3-4.sslip.io
+set(STRUCTURA_PRODUCTION_SERVER_URL "" CACHE STRING "URL HTTPS do servidor de licencas de producao")
+if (STRUCTURA_PRODUCTION_SERVER_URL)
+    target_compile_definitions(StructuraClient PRIVATE STRUCTURA_PRODUCTION_SERVER_URL="${STRUCTURA_PRODUCTION_SERVER_URL}")
+endif()
+target_include_directories(StructuraClient PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/client
+    ${CMAKE_CURRENT_SOURCE_DIR}/Structuradll/src/core
+)
+if (WIN32)
+    target_link_libraries(StructuraClient PUBLIC winhttp bcrypt crypt32)
+endif()
+
 # --- Library ---
 
 # StructuraCore: tudo o que as duas edicoes compartilham (modelo, analise, visualizacao, interface, importacao/exportacao).
@@ -581,6 +627,7 @@ target_compile_definitions(StructuraCore PUBLIC STRUCTURA_EDITION_${STRUCTURA_ED
 
 target_link_libraries(StructuraCore
     PUBLIC
+        StructuraClient
         Qt${QT_VERSION_MAJOR}::Widgets
         Qt${QT_VERSION_MAJOR}::Svg
         $<$<STREQUAL:${QT_VERSION_MAJOR},6>:Qt6::OpenGLWidgets>
@@ -642,60 +689,41 @@ target_link_libraries(StructuraRibbon3D
 # nome do executavel vem de cmake/ProductInfo.cmake (o alvo CMake mantem o nome interno)
 set_target_properties(StructuraRibbon3D PROPERTIES OUTPUT_NAME ${STRUCTURA_EXE_NAME})
 
-set(STRUCTURA_SOLVER_HINT_DIR "" CACHE PATH "Optional path containing rds shared library")
-
-if (WIN32)
-    find_library(STRUCTURA_SOLVER_LIBRARY
-        NAMES rds
-        HINTS ${STRUCTURA_SOLVER_HINT_DIR}
-        PATH_SUFFIXES . bin lib
+# Marco M5: Os solvers rds e mefs sao carregados exclusivamente cifrados em repouso (.enc)
+# via ScopedDecryptedDll em memoria, sem dependencia de PE import estatico.
+if (EXISTS "${CMAKE_SOURCE_DIR}/rds.enc")
+    add_custom_command(TARGET StructuraRibbon3D POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/rds.enc" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
+        VERBATIM
     )
-else()
-    find_library(STRUCTURA_SOLVER_LIBRARY
-        NAMES rds librds
-        HINTS ${STRUCTURA_SOLVER_HINT_DIR}
-        PATH_SUFFIXES . bin lib
-    )
+    message(STATUS "Using encrypted solver (rds.enc) from repository root")
 endif()
 
-if (STRUCTURA_SOLVER_LIBRARY)
-    add_library(structura_solver_dll SHARED IMPORTED GLOBAL)
-    set_target_properties(structura_solver_dll PROPERTIES
-        IMPORTED_LOCATION "${STRUCTURA_SOLVER_LIBRARY}"
-    )
-
-    target_link_libraries(StructuraRibbon3D PRIVATE structura_solver_dll)
-
-    add_custom_command(TARGET StructuraRibbon3D POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "Copying solver shared library to output dir"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${STRUCTURA_SOLVER_LIBRARY}" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
-        VERBATIM
-    )
-
-    message(STATUS "Using solver shared library: ${STRUCTURA_SOLVER_LIBRARY}")
-elseif (EXISTS "${CMAKE_SOURCE_DIR}/rds.dll")
-    # O solver e carregado em tempo de execucao (QLibrary): basta copiar a DLL da raiz.
+if (EXISTS "${CMAKE_SOURCE_DIR}/mefs.enc")
     add_custom_command(TARGET StructuraRibbon3D POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CMAKE_SOURCE_DIR}/rds.dll" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
+                "${CMAKE_SOURCE_DIR}/mefs.enc" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
         VERBATIM
     )
-    message(STATUS "Using solver DLL from repository root")
-else()
-    message(WARNING "rds shared library not found. Set STRUCTURA_SOLVER_HINT_DIR to the folder containing the DLL/.so.")
+    message(STATUS "Using encrypted FEM shell (mefs.enc) from repository root")
 endif()
 
-# O MEF de cascas (mefs) e carregado em tempo de execucao (QLibrary): copia a DLL da raiz.
-if (EXISTS "${CMAKE_SOURCE_DIR}/mefs.dll")
-    add_custom_command(TARGET StructuraRibbon3D POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CMAKE_SOURCE_DIR}/mefs.dll" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
-        VERBATIM
-    )
-    message(STATUS "Using FEM shell DLL from repository root")
-else()
-    message(WARNING "mefs.dll not found in the repository root: shell analysis will be unavailable (build Femdll/ and copy mefs.dll).")
+if (STRUCTURA_DEV_BUILD)
+    if (EXISTS "${CMAKE_SOURCE_DIR}/rds.dll")
+        add_custom_command(TARGET StructuraRibbon3D POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${CMAKE_SOURCE_DIR}/rds.dll" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
+            VERBATIM
+        )
+    endif()
+    if (EXISTS "${CMAKE_SOURCE_DIR}/mefs.dll")
+        add_custom_command(TARGET StructuraRibbon3D POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${CMAKE_SOURCE_DIR}/mefs.dll" "$<TARGET_FILE_DIR:StructuraRibbon3D>"
+            VERBATIM
+        )
+    endif()
 endif()
 
 # --- Enable Testing ---
@@ -739,12 +767,30 @@ if (MSVC)
         if (WINDEPLOYQT_EXECUTABLE)
             add_custom_command(TARGET StructuraRibbon3D POST_BUILD
                 COMMAND "${WINDEPLOYQT_EXECUTABLE}" --release --no-compiler-runtime
+                        --no-system-dxc-compiler --no-system-d3d-compiler --no-opengl-sw
+                        --translations pt_BR,en
                         --dir "$<TARGET_FILE_DIR:StructuraRibbon3D>"
                         "$<TARGET_FILE:StructuraRibbon3D>"
                 VERBATIM
             )
         endif()
     endif()
+
+    add_custom_command(TARGET StructuraRibbon3D POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -f
+                "$<TARGET_FILE_DIR:StructuraRibbon3D>/rds.dll"
+                "$<TARGET_FILE_DIR:StructuraRibbon3D>/mefs.dll"
+                "$<TARGET_FILE_DIR:StructuraRibbon3D>/solver_dll.dll"
+                "$<TARGET_FILE_DIR:StructuraRibbon3D>/fem_dll.dll"
+                "$<TARGET_FILE_DIR:StructuraRibbon3D>/vtkx11-9.5.dll"
+                "$<TARGET_FILE_DIR:StructuraRibbon3D>/vtkRenderingVolume-9.5.dll"
+                "$<TARGET_FILE_DIR:StructuraRibbon3D>/dxcompiler.dll"
+                "$<TARGET_FILE_DIR:StructuraRibbon3D>/dxil.dll"
+                "$<TARGET_FILE_DIR:StructuraRibbon3D>/D3Dcompiler_47.dll"
+                "$<TARGET_FILE_DIR:StructuraRibbon3D>/opengl32sw.dll"
+        COMMENT "Removendo DLLs nao utilizadas e solvers desprotegidos da pasta de build"
+        VERBATIM
+    )
 endif()
 
 # --- Distribuicao ---

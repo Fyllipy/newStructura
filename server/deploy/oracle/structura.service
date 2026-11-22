@@ -1,0 +1,30 @@
+[Unit]
+Description=Structura - servidor de licenciamento
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=structura
+Group=structura
+WorkingDirectory=/opt/structura/server
+# Escuta SO em loopback: quem expoe a internet e o Caddy (HTTPS). Cabecalhos de proxy confiados apenas do Caddy.
+ExecStart=/opt/structura/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-server-header
+Restart=always
+RestartSec=3
+
+# Hardening do processo
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/structura/data
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

@@ -20,7 +20,8 @@ namespace Structura::UI {
 /// Utilidades compartilhadas pelos dialogos: mostra o relatorio no QTextBrowser e exporta para .docx.
 void showReport(QTextBrowser *browser, const Structura::Report::ReportDocument &document, bool includeCover);
 bool exportDocx(QWidget *parent, const Structura::Report::ReportDocument &document, const QString &suggestedName);
-bool exportPdf(QWidget *parent, const Structura::Report::ReportDocument &document, const QString &suggestedName);
+bool exportPdf(QWidget *parent, const Structura::Report::ReportDocument &document, const QString &suggestedName,
+               uint64_t s_mask = 0, const uint8_t secretS[32] = nullptr);
 
 /// Memorial / relatorio geral do projeto: escolha do conteudo, previa e exportacao para .docx.
 class ReportDialog final : public QDialog

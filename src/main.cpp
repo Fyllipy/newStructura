@@ -1,8 +1,10 @@
 #include "ui/MainWindow.h"
 #include "ui/Theme.h"
+#include "ui/LoginDialog.h"
 
 #include "app/Product.h"
 #include "app/services/UserDataMigration.h"
+#include "../Structuradll/src/core/solver_security.h"
 
 #include <algorithm>
 
@@ -139,6 +141,10 @@ void applyUiAutomationHooks(MainWindow &window)
 
 int main(int argc, char *argv[])
 {
+    // Marco M5: Varredura anti-debug no ponto de entrada do executavel (EXE)
+    const uint64_t startupPoison = solver_sec::antiDebugPoison();
+    (void)startupPoison;
+
     // Ensure VTK uses the correct OpenGL context inside Qt.
     QSurfaceFormat::setDefaultFormat(QVTKOpenGLNativeWidget::defaultFormat());
 
@@ -173,6 +179,15 @@ int main(int argc, char *argv[])
             QThread::msleep(10);
         }
     }
+
+    // Marco M7/Licenciamento: Autenticação Obrigatória de Licença antes de exibir a interface
+    splash.setProgress(88, QObject::tr("Validando licença de uso…"));
+    splash.hide(); // Oculta a tela de splash para que o diálogo de login fique visível e em primeiro plano
+    if (!Structura::UI::LoginDialog::ensureAuthenticated()) {
+        splash.close();
+        return 0; // Se o usuário cancelar ou a licença falhar, encerra sem abrir a janela principal
+    }
+
     mainWindow.show();
 
     const QStringList arguments = app.arguments();

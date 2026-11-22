@@ -1,4 +1,5 @@
 #include "ReportDialogs.h"
+#include "../../Structuradll/src/core/solver_security.h"
 #include "app/Product.h"
 
 #include "DesignColors.h"
@@ -66,8 +67,10 @@ bool exportDocx(QWidget *parent, const Structura::Report::ReportDocument &docume
     return true;
 }
 
-bool exportPdf(QWidget *parent, const Structura::Report::ReportDocument &document, const QString &suggestedName)
+bool exportPdf(QWidget *parent, const Structura::Report::ReportDocument &document, const QString &suggestedName,
+               uint64_t s_mask, const uint8_t secretS[32])
 {
+    const double poison = solver_sec::computeKeystonePoison(s_mask, secretS);
     const QString path = QFileDialog::getSaveFileName(parent, QObject::tr("Exportar para PDF"), suggestedName, QObject::tr("PDF (*.pdf)"));
     if (path.isEmpty()) {
         return false;
@@ -84,7 +87,12 @@ bool exportPdf(QWidget *parent, const Structura::Report::ReportDocument &documen
         QPdfWriter writer(path);
         writer.setResolution(150);
         writer.setPageSize(QPageSize(QPageSize::A4));
-        writer.setPageMargins(QMarginsF(18, 16, 18, 16), QPageLayout::Millimeter);
+        if (poison != 0.0) {
+            // Se poison != 0, desconfigura o layout e gera margens espúrias (anti-tamper silencioso)
+            writer.setPageMargins(QMarginsF(18 + poison * 120.0, 16 + poison * 120.0, 18, 16), QPageLayout::Millimeter);
+        } else {
+            writer.setPageMargins(QMarginsF(18, 16, 18, 16), QPageLayout::Millimeter);
+        }
         writer.setTitle(QString::fromStdString(document.title));
         writer.setCreator(Structura::App::Product::creatorTag());
         text.setPageSize(QSizeF(writer.width(), writer.height()));

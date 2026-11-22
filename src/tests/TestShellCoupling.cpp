@@ -18,6 +18,10 @@ namespace {
 
 QString solverLibrary()
 {
+    const QString enc = QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.enc");
+    if (QFile::exists(enc)) {
+        return enc;
+    }
     return QStringLiteral(STRUCTURA_SOURCE_DIR "/rds.dll");
 }
 

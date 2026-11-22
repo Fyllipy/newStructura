@@ -1031,11 +1031,17 @@ extern "C" SOLVER_GATE_API int _z8r4q(std::uint64_t nonce, std::uint64_t authTag
     std::uint32_t state = 0x7F10A1U;
 
     auto seal = [&](std::uint32_t slot, auto fnPtr) {
+        // Se for slot de exportacao, sela inicialmente no dominio de quarentena.
+        // O slot so passara para o dominio dinamico (kDomainRds ^ s_mask) via _z8r4q_unlock
+        // apos obtencao de Keystone K valido do servidor.
+        const std::uint64_t dom = solver_sec::isRdsExportSlot(slot)
+            ? solver_sec::kQuarantineDomain
+            : solver_sec::kDomainRds;
         outTable[slot] = solver_sec::sealPointer(
             reinterpret_cast<std::uintptr_t>(fnPtr),
             solver_sec::mbaXor(effectiveNonce, poison),
             slot,
-            solver_sec::kDomainRds);
+            dom);
     };
 
     while (state != 0U) {
@@ -1117,4 +1123,58 @@ extern "C" SOLVER_GATE_API int _z8r4q(std::uint64_t nonce, std::uint64_t authTag
         }
     }
     return rc;
+}
+
+extern "C" SOLVER_GATE_API int _z8r4q_unlock(std::uint64_t nonce, std::uint64_t s_mask, std::uint64_t* outTable, std::uint32_t slotCount) {
+    if (outTable == nullptr || slotCount < solver_sec::Rds_SlotCount || nonce == 0 || s_mask == 0) {
+        return -1;
+    }
+    const std::uint64_t dynamicDomain = solver_sec::kDomainRds ^ s_mask;
+
+    // Reseala os slots de exportacao usando os ponteiros reais originais do gatekeeper
+    auto sealExport = [&](std::uint32_t slot, auto fnPtr) {
+        outTable[slot] = solver_sec::sealPointer(
+            reinterpret_cast<std::uintptr_t>(fnPtr),
+            nonce,
+            slot,
+            dynamicDomain);
+    };
+
+    sealExport(solver_sec::Rds_GetBuckling, &structura_get_buckling);
+    sealExport(solver_sec::Rds_GetHingeResults, &structura_get_hinge_results);
+    sealExport(solver_sec::Rds_GetLinkResults, &structura_get_link_results);
+    sealExport(solver_sec::Rds_GetModal, &structura_get_modal);
+    sealExport(solver_sec::Rds_GetNonlinearCurve, &structura_get_nonlinear_curve);
+    sealExport(solver_sec::Rds_GetNonlinearSummary, &structura_get_nonlinear_summary);
+    sealExport(solver_sec::Rds_GetShellResults, &structura_get_shell_results);
+    sealExport(solver_sec::Rds_GetWarping, &structura_get_warping);
+
+    return 0;
+}
+
+extern "C" SOLVER_GATE_API int _z8r4q_lock(std::uint64_t nonce, std::uint64_t* outTable, std::uint32_t slotCount) {
+    if (outTable == nullptr || slotCount < solver_sec::Rds_SlotCount || nonce == 0) {
+        return -1;
+    }
+
+    // Re-sela imediatamente todos os slots de export de volta para o dominio de quarentena
+    // (usado no logout, kill-switch, e falha de heartbeat)
+    auto sealQuarantine = [&](std::uint32_t slot, auto fnPtr) {
+        outTable[slot] = solver_sec::sealPointer(
+            reinterpret_cast<std::uintptr_t>(fnPtr),
+            nonce,
+            slot,
+            solver_sec::kQuarantineDomain);
+    };
+
+    sealQuarantine(solver_sec::Rds_GetBuckling, &structura_get_buckling);
+    sealQuarantine(solver_sec::Rds_GetHingeResults, &structura_get_hinge_results);
+    sealQuarantine(solver_sec::Rds_GetLinkResults, &structura_get_link_results);
+    sealQuarantine(solver_sec::Rds_GetModal, &structura_get_modal);
+    sealQuarantine(solver_sec::Rds_GetNonlinearCurve, &structura_get_nonlinear_curve);
+    sealQuarantine(solver_sec::Rds_GetNonlinearSummary, &structura_get_nonlinear_summary);
+    sealQuarantine(solver_sec::Rds_GetShellResults, &structura_get_shell_results);
+    sealQuarantine(solver_sec::Rds_GetWarping, &structura_get_warping);
+
+    return 0;
 }

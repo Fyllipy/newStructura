@@ -2,11 +2,15 @@
 
 #include "app/Edition.h"
 #include "../../Structuradll/src/core/solver_security.h"
+#include "../../client/dll_cipher.h"
+#include "../../client/license_client.h"
+#include "../../client/license_config.h"
 
 #include <QCoreApplication>
 #include <QLibrary>
 
 #include <array>
+#include <filesystem>
 #include <vector>
 
 namespace Structura::App {
@@ -72,7 +76,7 @@ void configure(QLibrary &library, const QString &path)
     }
 }
 
-Api resolve(QLibrary &library)
+Api resolve(structura_license::ScopedDecryptedDll &library)
 {
     Api api;
     using GatekeeperFn = int (*)(std::uint64_t, std::uint64_t, std::uint64_t *, std::uint32_t);
@@ -81,7 +85,7 @@ Api resolve(QLibrary &library)
     if (!gatekeeper) {
         return api;
     }
-    const std::uint64_t nonce = solver_sec::generateNonce(&library);
+    const std::uint64_t nonce = solver_sec::generateNonce(library.handle);
     const std::uint64_t authTag = solver_sec::computeAuthTag(nonce, solver_sec::kDomainMefs);
     std::array<std::uint64_t, solver_sec::Mefs_SlotCount> sealedTable {};
     if (gatekeeper(nonce, authTag, sealedTable.data(), solver_sec::Mefs_SlotCount) != 0) {
@@ -123,13 +127,48 @@ ShellSolverBridge::ShellSolverBridge(QString libraryPath)
 {
 }
 
+static std::string resolveShellSolverPath(const std::string &pathOrName) {
+    if (pathOrName.empty()) {
+        return pathOrName;
+    }
+    std::filesystem::path p = std::filesystem::u8path(pathOrName);
+    if (std::filesystem::exists(p)) {
+        return pathOrName;
+    }
+    std::filesystem::path appDir = std::filesystem::u8path(structura_license::GetAppInstallDir());
+    std::filesystem::path candidate = appDir / p.filename();
+    if (std::filesystem::exists(candidate)) {
+        return candidate.u8string();
+    }
+    return pathOrName;
+}
+
 bool ShellSolverBridge::available(QString *reason) const
 {
-    QLibrary library;
-    configure(library, m_libraryPath);
-    if (!library.load()) {
+    // Marco M5: Carga segura da DLL cifrada em repouso (decrypt-to-temp + LoadLibrary)
+    const auto session = structura_license::GetActiveClientSession();
+    std::string encName = "mefs.enc";
+    if (!m_libraryPath.isEmpty()) {
+        std::filesystem::path p = std::filesystem::u8path(m_libraryPath.toUtf8().toStdString());
+        if (p.extension() == ".dll") {
+            p.replace_extension(".enc");
+        }
+        encName = p.u8string();
+    }
+    const std::string encPath = resolveShellSolverPath(encName);
+    const std::string plainPath = resolveShellSolverPath("mefs.dll");
+#if defined(STRUCTURA_DEV_BUILD)
+    structura_license::ScopedDecryptedDll library = structura_license::LoadEncryptedDllWithFallback(
+        encPath, plainPath, session);
+#else
+    // Build de Release: Fail-closed estrito sem fallback para texto claro
+    structura_license::ScopedDecryptedDll library = structura_license::LoadEncryptedDll(
+        encPath, session);
+#endif
+
+    if (!library.ok) {
         if (reason) {
-            *reason = QObject::tr("Nao foi possivel carregar a biblioteca do solver de cascas (mefs): %1").arg(library.errorString());
+            *reason = QObject::tr("Nao foi possivel carregar a biblioteca do solver de cascas (mefs): %1").arg(QString::fromStdString(library.errorMessage));
         }
         return false;
     }
@@ -147,10 +186,29 @@ Structura::Shell::Results ShellSolverBridge::solve(const Structura::Shell::Model
 {
     using namespace Structura::Shell;
     Results results;
-    QLibrary library;
-    configure(library, m_libraryPath);
-    if (!library.load()) {
-        results.error = QObject::tr("Nao foi possivel carregar a biblioteca do solver de cascas (mefs): %1").arg(library.errorString()).toStdString();
+    // Marco M5: Carga segura da DLL cifrada em repouso (decrypt-to-temp + LoadLibrary)
+    const auto session = structura_license::GetActiveClientSession();
+    std::string encName = "mefs.enc";
+    if (!m_libraryPath.isEmpty()) {
+        std::filesystem::path p = std::filesystem::u8path(m_libraryPath.toUtf8().toStdString());
+        if (p.extension() == ".dll") {
+            p.replace_extension(".enc");
+        }
+        encName = p.u8string();
+    }
+    const std::string encPath = resolveShellSolverPath(encName);
+    const std::string plainPath = resolveShellSolverPath("mefs.dll");
+#if defined(STRUCTURA_DEV_BUILD)
+    structura_license::ScopedDecryptedDll library = structura_license::LoadEncryptedDllWithFallback(
+        encPath, plainPath, session);
+#else
+    // Build de Release: Fail-closed estrito sem fallback para texto claro
+    structura_license::ScopedDecryptedDll library = structura_license::LoadEncryptedDll(
+        encPath, session);
+#endif
+
+    if (!library.ok) {
+        results.error = QObject::tr("Nao foi possivel carregar a biblioteca do solver de cascas (mefs): %1").arg(QString::fromStdString(library.errorMessage)).toStdString();
         return results;
     }
     const Api api = resolve(library);
