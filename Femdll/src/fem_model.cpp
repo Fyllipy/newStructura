@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
+#include <string>
 
 namespace fem {
 
@@ -323,9 +325,14 @@ bool Model::solve(const SolveOptions &options, std::string &error)
     const int caseCount = static_cast<int>(cases.size());
     results.assign(caseCount, CaseResult {});
 
-    // ---- molas (com iteracao para apoios que so comprimem) -------------------------------------------------------------
-    std::vector<char> active(springs.size(), 1);
-    auto springMatrix = [&]() {
+    // ---- molas -------------------------------------------------------------------------------------------------------------
+    // D2: apoios que so comprimem tem conjunto ativo PROPRIO de cada caso de carga (resposta de um caso nao depende dos outros casos nem da ordem),
+    // com criterios explicitos de convergencia; resultado nao convergido e erro, nunca sucesso silencioso.
+    bool hasCompression = false;
+    for (const Spring &sp : springs) {
+        hasCompression = hasCompression || (sp.compressionOnly && checkIndex(sp.node, nn));
+    }
+    auto springMatrix = [&](const std::vector<char> &active) {
         std::vector<Triplet> st;
         for (std::size_t i = 0; i < springs.size(); ++i) {
             const Spring &sp = springs[i];
@@ -355,11 +362,13 @@ bool Model::solve(const SolveOptions &options, std::string &error)
     };
 
     std::vector<Eigen::VectorXd> displacements(caseCount);
-    Eigen::SparseMatrix<double> kSpring;
-    for (int iteration = 0; iteration < std::max(1, options.maxSpringIterations); ++iteration) {
-        springIterations = iteration + 1;
-        kSpring = springMatrix();
-        const Eigen::SparseMatrix<double> kTotal = kStruct + kSpring;
+    std::vector<Eigen::SparseMatrix<double>> kSpringCase(caseCount);
+    std::vector<int> caseIterations(caseCount, 0);
+
+    // fatora K_struct + K_mola(active) e resolve os casos pedidos; devolve false e preenche `error` (mecanismo, falha numerica, residuo)
+    auto solveCases = [&](const std::vector<char> &active, const std::vector<int> &caseList, Eigen::SparseMatrix<double> &kSpringOut) -> bool {
+        kSpringOut = springMatrix(active);
+        const Eigen::SparseMatrix<double> kTotal = kStruct + kSpringOut;
         std::vector<Triplet> reduced;
         reduced.reserve(kTotal.nonZeros());
         for (int c = 0; c < kTotal.outerSize(); ++c) {
@@ -382,7 +391,6 @@ bool Model::solve(const SolveOptions &options, std::string &error)
         }
         {
             // mecanismo: pivo que perde ~12 digitos em relacao a diagonal do proprio grau de liberdade (dependencia linear).
-            // A fatoracao "tem sucesso" em aritmetica de ponto flutuante e devolve deslocamentos sem sentido, entao e erro.
             const auto pivots = solver.vectorD();
             const auto &permutation = solver.permutationP().indices();
             std::vector<int> nodalDof(freeCount, 0);
@@ -401,7 +409,7 @@ bool Model::solve(const SolveOptions &options, std::string &error)
                 }
             }
         }
-        for (int cidx = 0; cidx < caseCount; ++cidx) {
+        for (const int cidx : caseList) {
             Eigen::VectorXd fr(freeCount);
             for (int d = 0; d < nd; ++d) {
                 if (freeIndex[d] >= 0) {
@@ -413,6 +421,13 @@ bool Model::solve(const SolveOptions &options, std::string &error)
                 error = OBF_STR("Falha na solucao do sistema (matriz singular).");
                 return false;
             }
+            // erro inverso normwise do sistema linear: ||K u - f|| / (||K||_F ||u|| + ||f||); um LDL^T estavel fica em ~1e-16..1e-13
+            const Eigen::VectorXd ku = kff * uf;
+            const double scale = kff.norm() * uf.norm() + fr.norm();
+            if (scale > 0.0 && (ku - fr).norm() > 1e-9 * scale) {
+                error = OBF_STR("Residuo do sistema linear acima da tolerancia (matriz mal condicionada); resultado rejeitado.");
+                return false;
+            }
             Eigen::VectorXd u = Eigen::VectorXd::Zero(nd);
             for (int d = 0; d < nd; ++d) {
                 if (freeIndex[d] >= 0) {
@@ -421,43 +436,142 @@ bool Model::solve(const SolveOptions &options, std::string &error)
             }
             displacements[cidx] = u;
         }
-        // molas que so comprimem: desativa as tracionadas e reativa as que voltam a comprimir (pelo pior caso de cada uma)
-        bool changed = false;
-        for (std::size_t i = 0; i < springs.size(); ++i) {
-            const Spring &sp = springs[i];
-            if (!sp.compressionOnly || !checkIndex(sp.node, nn)) {
-                continue;
+        return true;
+    };
+
+    if (!hasCompression) {
+        // sem apoios unilaterais: uma unica fatoracao para todos os casos (igual ao comportamento anterior)
+        const std::vector<char> all(springs.size(), 1);
+        std::vector<int> every(caseCount);
+        for (int c = 0; c < caseCount; ++c) {
+            every[c] = c;
+        }
+        Eigen::SparseMatrix<double> kS;
+        if (!solveCases(all, every, kS)) {
+            return false;
+        }
+        for (int c = 0; c < caseCount; ++c) {
+            kSpringCase[c] = kS;
+            caseIterations[c] = 1;
+        }
+        springIterations = 1;
+    } else {
+        const int maxIterations = std::max(1, options.maxSpringIterations);
+        for (int cidx = 0; cidx < caseCount; ++cidx) {
+            std::vector<char> active(springs.size(), 1);
+            std::set<std::string> visited;
+            bool converged = false;
+            for (int iteration = 0; iteration < maxIterations; ++iteration) {
+                std::string key(active.begin(), active.end());
+                visited.insert(key);
+                if (!solveCases(active, {cidx}, kSpringCase[cidx])) {
+                    if (iteration > 0) {
+                        error = OBF_STR("Caso ") + std::to_string(cidx + 1) + OBF_STR(": depois de desativar as molas que so comprimem e tracionavam, a estrutura ficou instavel (")
+                                + error + OBF_STR("). Nao ha equilibrio possivel com apoios que so comprimem: o carregamento levanta a estrutura.");
+                    } else if (caseCount > 1) {
+                        error = OBF_STR("Caso ") + std::to_string(cidx + 1) + OBF_STR(": ") + error;
+                    }
+                    return false;
+                }
+                const Eigen::VectorXd &u = displacements[cidx];
+                double uscale = 0.0;
+                for (int n = 0; n < nn; ++n) {
+                    uscale = std::max(uscale, u.segment<3>(6 * n).cwiseAbs().maxCoeff());
+                }
+                const double tol = 1e-12 * uscale;
+                // atualizacao com histerese: ativa continua ativa enquanto u.n <= +tol; inativa so volta se u.n < -tol (evita chattering em contato nulo)
+                std::vector<char> next = active;
+                bool changed = false;
+                for (std::size_t i = 0; i < springs.size(); ++i) {
+                    const Spring &sp = springs[i];
+                    if (!sp.compressionOnly || !checkIndex(sp.node, nn)) {
+                        continue;
+                    }
+                    const double un = u.segment<3>(6 * sp.node).dot(sp.normal.normalized());
+                    const bool want = active[i] ? (un <= tol) : (un < -tol);
+                    if (static_cast<bool>(active[i]) != want) {
+                        next[i] = want ? 1 : 0;
+                        changed = true;
+                    }
+                }
+                caseIterations[cidx] = iteration + 1;
+                if (!changed) {
+                    converged = true;
+                    break;
+                }
+                if (visited.count(std::string(next.begin(), next.end())) != 0) {
+                    error = OBF_STR("Caso ") + std::to_string(cidx + 1) + OBF_STR(": as molas que so comprimem entraram em ciclo de ativacao/desativacao (sem convergencia); resultado rejeitado.");
+                    return false;
+                }
+                active = next;
             }
-            const Vec3 n = sp.normal.normalized();
-            bool wantActive = false;
-            for (int cidx = 0; cidx < caseCount; ++cidx) {
-                const Vec3 u = displacements[cidx].segment<3>(6 * sp.node);
-                if (u.dot(n) <= 0.0) {
-                    wantActive = true;
+            if (!converged) {
+                error = OBF_STR("Caso ") + std::to_string(cidx + 1) + OBF_STR(": as molas que so comprimem nao convergiram em ") + std::to_string(maxIterations)
+                        + OBF_STR(" iteracoes; resultado rejeitado (aumente o limite ou revise o modelo).");
+                return false;
+            }
+            // verificacao a posteriori da consistencia de contato: mola ativa nao pode tracionar; mola inativa nao pode penetrar
+            {
+                const Eigen::VectorXd &u = displacements[cidx];
+                double uscale = 0.0;
+                for (int n = 0; n < nn; ++n) {
+                    uscale = std::max(uscale, u.segment<3>(6 * n).cwiseAbs().maxCoeff());
+                }
+                const double tol = 1e-9 * std::max(uscale, 1e-300);
+                for (std::size_t i = 0; i < springs.size(); ++i) {
+                    const Spring &sp = springs[i];
+                    if (!sp.compressionOnly || !checkIndex(sp.node, nn)) {
+                        continue;
+                    }
+                    const double un = u.segment<3>(6 * sp.node).dot(sp.normal.normalized());
+                    if ((active[i] && un > tol) || (!active[i] && un < -tol)) {
+                        error = OBF_STR("Caso ") + std::to_string(cidx + 1) + OBF_STR(": configuracao de contato inconsistente com os deslocamentos (mola ativa tracionada ou inativa penetrando); resultado rejeitado.");
+                        return false;
+                    }
                 }
             }
-            // com varios casos a mola e a mesma para todos (aproximacao): ativa se algum caso comprime
-            if (static_cast<bool>(active[i]) != wantActive) {
-                active[i] = wantActive ? 1 : 0;
-                changed = true;
-            }
         }
-        if (!changed) {
-            break;
+        springIterations = 0;
+        for (int c = 0; c < caseCount; ++c) {
+            springIterations = std::max(springIterations, caseIterations[c]);
         }
     }
 
     // ---- resultados -----------------------------------------------------------------------------------------------------
-    const Eigen::SparseMatrix<double> kTotalFinal = kStruct + kSpring;
     for (int cidx = 0; cidx < caseCount; ++cidx) {
+        const Eigen::SparseMatrix<double> kTotalFinal = kStruct + kSpringCase[cidx];
         CaseResult &r = results[cidx];
         const Eigen::VectorXd &u = displacements[cidx];
         r.displacements.assign(u.data(), u.data() + nd);
         const Eigen::VectorXd force = kTotalFinal * u - rhs[cidx];
-        const Eigen::VectorXd springForce = kSpring * u;
+        const Eigen::VectorXd springForce = kSpringCase[cidx] * u;
         r.reactions.assign(nd, 0.0);
         for (int d = 0; d < nd; ++d) {
             r.reactions[d] = (freeIndex[d] < 0) ? force(d) : -springForce(d);
+        }
+        {
+            // equilibrio global de forcas (translacoes): soma das reacoes + soma das cargas deve se anular. So se verifica quando ha forca translacional
+            // significativa (cargas so de momento produzem reacoes de ruido). Limite 1e-4: ~3x o pior desbalanco medido com a penalidade padrao 1e7
+            // (3,1e-5 em placa fina, Etapa 2/WP3); com penalidade >= 1e8 o desbalanco chega a 4e-3 a 1e-1 e o resultado e rejeitado.
+            double sumR[3] = {0, 0, 0}, sumF[3] = {0, 0, 0}, mag = 0.0, totalMag = 0.0;
+            for (int n = 0; n < nn; ++n) {
+                for (int c = 0; c < 3; ++c) {
+                    sumR[c] += r.reactions[6 * n + c];
+                    sumF[c] += rhs[cidx](6 * n + c);
+                    mag += std::abs(r.reactions[6 * n + c]) + std::abs(rhs[cidx](6 * n + c));
+                }
+            }
+            for (int d = 0; d < nd; ++d) {
+                totalMag += std::abs(rhs[cidx](d));
+            }
+            double worst = 0.0;
+            for (int c = 0; c < 3; ++c) {
+                worst = std::max(worst, std::abs(sumR[c] + sumF[c]));
+            }
+            if (mag > 1e-6 * totalMag && worst > 1e-4 * mag) {
+                error = OBF_STR("Caso ") + std::to_string(cidx + 1) + OBF_STR(": equilibrio global de forcas violado (soma das reacoes e das cargas); resultado rejeitado.");
+                return false;
+            }
         }
         // temperatura por casca (para as resultantes)
         std::vector<double> tu(shells.size(), 0.0), tg(shells.size(), 0.0);

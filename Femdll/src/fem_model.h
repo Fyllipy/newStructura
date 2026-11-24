@@ -7,7 +7,7 @@
 namespace fem {
 
 struct SolveOptions {
-    int maxSpringIterations {30};
+    int maxSpringIterations {100};   // D2: ao atingir o limite o solve FALHA (antes: sucesso silencioso com resultado nao convergido)
 };
 
 class Model {

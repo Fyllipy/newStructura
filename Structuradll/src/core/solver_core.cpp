@@ -1085,6 +1085,8 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         Eigen::SparseMatrix<double> kShell, kTie, kSpring;
         assembleShellStiffness(shellAssembly, totalDof, kShell);
         fullStiffness += kShell;
+        // D1: diagonal da rigidez FISICA (barras + cascas), guardada antes das penalidades dos ties e dos vinculos
+        const Eigen::VectorXd physicalDiagonalBase = Eigen::VectorXd(fullStiffness.diagonal());
         assembleTies(input, nodeIndexById, fullStiffness, totalDof, kTie);
         assembleSprings(input, nodeIndexById, inactiveSprings, totalDof, kSpring);
         fullStiffness += kTie + kSpring;
@@ -1104,6 +1106,11 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             kLinks.setFromTriplets(linkTriplets.begin(), linkTriplets.end());
         }
         const Eigen::SparseMatrix<double> kExtra = kLinear + kLinks;
+        // D1: maior rigidez diagonal FISICA (sem penalidades): referencia dos limiares de GDL sem rigidez e do diagnostico de mecanismo
+        double physicalMaxDiagonal = 0.0;
+        for (int i = 0; i < totalDof; ++i) {
+            physicalMaxDiagonal = std::max(physicalMaxDiagonal, std::abs(physicalDiagonalBase(i) + kSpring.coeff(i, i) + kLinks.coeff(i, i)));
+        }
         fullStiffness += kCon + kLinks;
 
         bool anyHinge = false;
@@ -1126,10 +1133,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
             for (const int dof : restrainedDof) {
                 alreadyRestrained[static_cast<size_t>(dof)] = true;
             }
-            double maxDiagonal = 0.0;
-            for (int i = 0; i < totalDof; ++i) {
-                maxDiagonal = std::max(maxDiagonal, std::abs(stiffnessForSolve.coeff(i, i)));
-            }
+            double maxDiagonal = physicalMaxDiagonal;   // D1: referencia FISICA (sem penalidades)
             const double threshold = std::max(maxDiagonal * 1e-12, 1e-30);
             for (int i = 0; i < totalDof; ++i) {
                 if (alreadyRestrained[static_cast<size_t>(i)] || std::abs(stiffnessForSolve.coeff(i, i)) > threshold) {
@@ -1169,10 +1173,7 @@ bool SolverCore::runPass(const SolverInput& input, const std::unordered_set<int>
         linearSolver.compute(stiffnessForSolve);
         if (linearSolver.info() != Eigen::Success) {
             // pivo nulo: localiza os graus de liberdade sem restricao com a matriz regularizada (K + eps I), cujos pivos de mecanismo ficam ~eps
-            double maxDiagonal = 0.0;
-            for (int i = 0; i < totalDof; ++i) {
-                maxDiagonal = std::max(maxDiagonal, std::abs(stiffnessForSolve.coeff(i, i)));
-            }
+            double maxDiagonal = physicalMaxDiagonal;   // D1: referencia FISICA (sem penalidades)
             Eigen::SparseMatrix<double> regularized = stiffnessForSolve;
             for (int i = 0; i < totalDof; ++i) {
                 regularized.coeffRef(i, i) += 1e-9 * maxDiagonal;

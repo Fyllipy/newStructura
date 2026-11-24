@@ -32,12 +32,17 @@ void SecureWipe(void* ptr, size_t len) noexcept {
 bool DeriveDllSessionKey(const ClientSession& session, uint8_t outKey[32]) {
     std::string keyHex = session.dllKey;
     if (!session.online) {
+#if defined(STRUCTURA_DEV_BUILD)
+        // Somente desenvolvimento/teste: chave de teste por variavel de ambiente. Ausente em builds comerciais.
         const char* testEnvKey = std::getenv("STRUCTURA_TEST_DLL_KEY");
         if (testEnvKey && std::strlen(testEnvKey) == 64) {
             keyHex = testEnvKey;
         } else {
             return false;
         }
+#else
+        return false;
+#endif
     }
 
     // Caso 1: DLL_RELEASE_KEY entregue autoritativamente pelo servidor no login (M5) ou ambiente de testes
@@ -177,10 +182,16 @@ bool DecryptDllFileInMemory(const std::string& encFilePath,
                             const ClientSession& session,
                             std::vector<uint8_t>& outDecryptedDll) {
     outDecryptedDll.clear();
+#if defined(STRUCTURA_DEV_BUILD)
     const char* testEnvKey = std::getenv("STRUCTURA_TEST_DLL_KEY");
     if (!session.online && (!testEnvKey || std::strlen(testEnvKey) != 64)) {
         return false;
     }
+#else
+    if (!session.online) {
+        return false;
+    }
+#endif
 
     std::filesystem::path fsPath = std::filesystem::u8path(encFilePath);
     std::ifstream file(fsPath, std::ios::binary | std::ios::ate);
@@ -402,24 +413,26 @@ ScopedDecryptedDll LoadEncryptedDll(const std::string& encFilePath,
 ScopedDecryptedDll LoadEncryptedDllWithFallback(const std::string& encFilePath,
                                                const std::string& fallbackPlainDllPath,
                                                const ClientSession& session) {
-    // Se o arquivo cifrado existe em disco, prioriza carga cifrada com autenticação
-    std::ifstream checkEnc(encFilePath, std::ios::binary);
-    if (checkEnc.good()) {
-        checkEnc.close();
-        return LoadEncryptedDll(encFilePath, session);
-    }
-    checkEnc.close();
-
-    // Caso contrário, carrega DLL em texto claro (modo fallback de desenvolvimento)
+    // Desenvolvimento: a DLL em claro tem prioridade (nao depende de sessao/servidor para obter a chave).
+    // Se ela nao existe ou nao carrega, cai na DLL cifrada (que exige sessao ou a chave de teste).
     ScopedDecryptedDll res;
 #if defined(_WIN32)
-    HMODULE hMod = LoadLibraryA(fallbackPlainDllPath.c_str());
+    // Caminho em UTF-8 (pastas com acento, ex.: "Joao"): LoadLibraryA usaria a pagina de codigo ANSI e falharia
+    const std::wstring widePath = std::filesystem::u8path(fallbackPlainDllPath).wstring();
+    HMODULE hMod = LoadLibraryW(widePath.c_str());
     if (hMod != nullptr) {
         res.ok = true;
         res.handle = static_cast<void*>(hMod);
     } else {
+        const unsigned long plainError = GetLastError();
+        // caminho em UTF-8 (pastas com acento, ex.: "Joao"): o ifstream com string estreita usaria a pagina de codigo ANSI e nao acharia o arquivo
+        std::ifstream checkEnc(std::filesystem::u8path(encFilePath), std::ios::binary);
+        if (checkEnc.good()) {
+            checkEnc.close();
+            return LoadEncryptedDll(encFilePath, session);
+        }
         res.ok = false;
-        res.errorMessage = "FALLBACK_LOAD_FAILED_" + std::to_string(GetLastError());
+        res.errorMessage = "FALLBACK_LOAD_FAILED_" + std::to_string(plainError);
     }
 #else
     res.ok = false;

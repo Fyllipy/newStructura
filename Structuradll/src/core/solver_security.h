@@ -206,11 +206,14 @@ inline uint64_t scanFunctionBreakpoint(const void* fnPtr) noexcept {
 
 // Motor Anti-Debugging Multivetor com CFF (Control-Flow Flattening)
 inline uint64_t antiDebugPoison(const void* const* fnEntries, size_t count) noexcept {
+#if defined(STRUCTURA_DEV_BUILD)
+    // Somente variante de desenvolvimento/teste. A DLL comercial nao contem este caminho.
     if (const char* env = std::getenv("STRUCTURA_TEST_DLL_KEY")) {
         if (std::strlen(env) == 64) {
             return 0ULL;
         }
     }
+#endif
     uint64_t poison = 0ULL;
 
     // 1. Varredura de Software Breakpoints (0xCC) e Inline Hooks (0xE9) nos prologos das funcoes criticas
@@ -636,11 +639,14 @@ inline bool isMefsExportSlot(uint32_t slot) noexcept {
 // Se invocado sem autorização (s_mask == 0 ou secretS nulo/adulterado por debugger bypass):
 // retorna desvio substancial (poison > 0) para corrupção silenciosa dos dados físicos.
 inline double computeKeystonePoison(uint64_t s_mask, const uint8_t* secretS) noexcept {
+#if defined(STRUCTURA_DEV_BUILD)
+    // Somente variante de desenvolvimento/teste. A DLL comercial nao contem este caminho.
     if (const char* env = std::getenv("STRUCTURA_TEST_DLL_KEY")) {
         if (std::strlen(env) == 64) {
             return 0.0;
         }
     }
+#endif
     if (s_mask == 0 || secretS == nullptr) {
         return 0.50; // desvio não-linear de 50%
     }
