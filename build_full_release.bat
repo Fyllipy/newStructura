@@ -31,7 +31,7 @@ for %%F in (rds.dll mefs.dll rds.enc mefs.enc) do (
 )
 echo.
 echo Instaladores finais gerados:
-for %%F in (dist\installers\*-0.9.0beta.exe) do (
+for %%F in (dist\installers\*-0.9.1beta.exe) do (
     if exist "%%F" echo   %%~fF  [%%~zF bytes]
 )
 echo =======================================================================

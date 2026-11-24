@@ -44,6 +44,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dist", default=str(ROOT / "dist" / "Structura-Metalicas"))
     ap.add_argument("--enc-dir", default=str(ROOT), help="pasta com rds.enc e mefs.enc (padrao: raiz do repo)")
+    ap.add_argument("--out", default=str(HERE / "bundle"), help="pasta de saida (padrao: server/deploy/bundle; a edicao Demo usa bundle/demo)")
     a = ap.parse_args()
     dist = Path(a.dist)
     text = (dist / "manifest.txt").read_text(encoding="utf-8")
@@ -70,8 +71,8 @@ def main() -> int:
                       file=sys.stderr)
                 return 1
 
-    out = HERE / "bundle"
-    out.mkdir(exist_ok=True)
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
     (out / "manifest.txt").write_text(text, encoding="utf-8", newline="\n")
     (out / "manifest.sig").write_text(sig + "\n", encoding="ascii")
     fd = os.open(out / "dll_key.txt", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

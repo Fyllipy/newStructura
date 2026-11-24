@@ -46,6 +46,11 @@ atualização, revogue as antigas no servidor:
 `python -m app.manifest_cli set-status --version N --status revoked` (o app antigo passa a receber `CLIENT_OUTDATED`).
 Nunca republique a mesma versão com arquivos diferentes (as instalações dessa versão passam a dar `INTEGRITY_FAIL`).
 
+### Demo: manifesto próprio
+A Demo tem arquivos e `.exe` diferentes da Comercial, e o servidor valida raiz de arquivos + hash do exe contra o manifesto **da versão informada**.
+Por isso `build_release.bat` usa **N** para a Comercial (`server\deploy\bundle\`) e **N+1** para a Demo (`server\deploy\bundle\demo\`), e os dois são
+publicados no servidor com `server\deploy\oracle\publish_releases.sh`. Roteiro completo de um release: `docs/RELEASE_0.9.1.md`.
+
 ### Chave das DLLs dos solvers (`dll_key.txt`) — não é a versão do manifesto
 `rds.enc`/`mefs.enc` são cifrados **uma vez** (`build_solvers.bat` → `encrypt_dll.py --version 2`) e reaproveitados em vários releases.
 A chave que o servidor entrega ao app no login tem que ser **a mesma** com que eles foram cifrados. Ela vem da versão registrada em

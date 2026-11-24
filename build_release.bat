@@ -123,11 +123,27 @@ for %%D in (rds.dll mefs.dll solver_dll.dll fem_dll.dll dxcompiler.dll dxil.dll 
 copy /Y "rds.enc" "dist\Structura-Metalicas-Demo\rds.enc" >nul
 copy /Y "mefs.enc" "dist\Structura-Metalicas-Demo\mefs.enc" >nul
 
-python server\tools\make_manifest.py --dir dist\Structura-Metalicas-Demo --version !MANIFEST_VERSION! --exe StructuraDemo.exe --key-file server\release.key
+rem A Demo tem arquivos/exe proprios: o servidor compara a raiz de arquivos e o hash do exe com o manifesto da versao informada,
+rem entao ela precisa de uma versao de manifesto PROPRIA (Comercial = N, Demo = N+1), publicada tambem no servidor.
+set /a DEMO_MANIFEST_VERSION=MANIFEST_VERSION+1
+echo Versao do manifesto da Demo: !DEMO_MANIFEST_VERSION!
+python server\tools\make_manifest.py --dir dist\Structura-Metalicas-Demo --version !DEMO_MANIFEST_VERSION! --exe StructuraDemo.exe --key-file server\release.key
 if errorlevel 1 (
     echo [ERRO] Falha na geracao do manifesto assinado para edicao Demonstrativa.
     exit /b 1
 )
+
+python -m app.manifest_cli publish --text dist\Structura-Metalicas-Demo\manifest.txt --sig dist\Structura-Metalicas-Demo\manifest.sig --status current --overwrite
+if errorlevel 1 (
+    echo [ERRO] Falha ao publicar o manifesto da Demo no banco de dados do servidor.
+    exit /b 1
+)
+python server\deploy\export_bundle.py --dist dist\Structura-Metalicas-Demo --out server\deploy\bundle\demo
+if errorlevel 1 (
+    echo [ERRO] Falha ao exportar o pacote da Demo para o servidor de producao.
+    exit /b 1
+)
+> "server\deploy\manifest_version.txt" echo !DEMO_MANIFEST_VERSION!
 
 "%MAKENSIS%" /V2 "/DPRODUCT_NSH=%CD%\build-demo\generated\product.nsh" installer\structura.nsi
 if errorlevel 1 (
