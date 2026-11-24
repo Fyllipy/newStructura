@@ -1,0 +1,14 @@
+== LV1_laje_4vigas_4pilares
+   20 barras, carga distribuida por barra: erro max 5.19e-08 do pico (10000.0 N/m); total aplicado 120000.0 N (analitico 120000.0 N)
+== LV2_duas_baias_viga_central
+   28 barras, carga distribuida por barra: erro max 7.27e-08 do pico (10000.0 N/m); total aplicado 160000.0 N (analitico 160000.0 N)
+== LV3_laje_unidirecional_2vigas
+   12 barras, carga distribuida por barra: erro max 0.00e+00 do pico (10000.0 N/m); total aplicado 120000.0 N (analitico 120000.0 N)
+== LV5_carga_por_clique
+   forcas nodais por clique: soma 120000.0 N (carga total 120000.0 N)
+      viga y=0: forca nas barras 40833.3 N, analitica 40000.0 N (2.1%)
+      viga x=6: forca nas barras 21666.7 N, analitica 20000.0 N (8.3%)
+      viga y=4: forca nas barras 40833.3 N, analitica 40000.0 N (2.1%)
+      viga x=0: forca nas barras 21666.7 N, analitica 20000.0 N (8.3%)
+== LV6_vigas_sem_dividir
+   4 barras, carga distribuida por barra: erro max 1.28e-07 do pico (6666.7 N/m); total aplicado 120000.0 N (analitico 120000.0 N)

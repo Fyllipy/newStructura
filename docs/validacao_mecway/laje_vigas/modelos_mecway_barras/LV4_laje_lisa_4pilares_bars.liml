@@ -1,0 +1,35 @@
+<liml version="27">
+  <analysis type="S30" />
+  <incompatiblehex8>true</incompatiblehex8>
+  <node nid="1" x="1.5" y="1.5" z="0.0" />
+  <node nid="2" x="1.5" y="1.5" z="3.0" />
+  <node nid="3" x="4.5" y="1.5" z="0.0" />
+  <node nid="4" x="4.5" y="1.5" z="3.0" />
+  <node nid="5" x="4.5" y="4.5" z="0.0" />
+  <node nid="6" x="4.5" y="4.5" z="3.0" />
+  <node nid="7" x="1.5" y="4.5" z="0.0" />
+  <node nid="8" x="1.5" y="4.5" z="3.0" />
+  <elset name="B1" colorrgb="FFB75B" material="M1">
+    <elem eid="1" shape="line2" nodes="1 2" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B2" colorrgb="FFB75B" material="M2">
+    <elem eid="2" shape="line2" nodes="3 4" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B3" colorrgb="FFB75B" material="M3">
+    <elem eid="3" shape="line2" nodes="5 6" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B4" colorrgb="FFB75B" material="M4">
+    <elem eid="4" shape="line2" nodes="7 8" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <fixed selection="faces_fixed" />
+  <gravity><x>0 m/s&#178;</x><y>0 m/s&#178;</y><z>-9.81 m/s&#178;</z></gravity>
+  <mat name="M1"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M2"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M3"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M4"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <faceselection name="faces_fixed" direct="true"><face eid="1" faceid="2" /><face eid="2" faceid="2" /><face eid="3" faceid="2" /><face eid="4" faceid="2" /></faceselection>
+  <fieldvariable name="displacement" />
+  <fieldvariable name="rotation" />
+  <fieldvariable name="reaction force" />
+  <fieldvariable name="reaction moment" />
+</liml>

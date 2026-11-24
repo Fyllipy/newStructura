@@ -1,0 +1,8 @@
+classico=12709778.19
+fator1=13585511.02
+fator2=13588423.92
+fator3=13643027.16
+fator4=13643820.96
+fator5=13645680.93
+fator6=13648214.81
+aviso=Buckling analysis: subspace iteration did not fully converge; the highest modes may be inaccurate

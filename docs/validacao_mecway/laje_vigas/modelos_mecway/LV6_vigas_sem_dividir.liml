@@ -1,0 +1,89 @@
+<liml version="27">
+  <analysis type="S30" />
+  <incompatiblehex8>true</incompatiblehex8>
+  <node nid="1" x="0.0" y="0.0" z="3.0" />
+  <node nid="2" x="1.0" y="0.0" z="3.0" />
+  <node nid="3" x="2.0" y="0.0" z="3.0" />
+  <node nid="4" x="3.0" y="0.0" z="3.0" />
+  <node nid="5" x="4.0" y="0.0" z="3.0" />
+  <node nid="6" x="5.0" y="0.0" z="3.0" />
+  <node nid="7" x="6.0" y="0.0" z="3.0" />
+  <node nid="8" x="0.0" y="1.0" z="3.0" />
+  <node nid="9" x="1.0" y="1.0" z="3.0" />
+  <node nid="10" x="2.0" y="1.0" z="3.0" />
+  <node nid="11" x="3.0" y="1.0" z="3.0" />
+  <node nid="12" x="4.0" y="1.0" z="3.0" />
+  <node nid="13" x="5.0" y="1.0" z="3.0" />
+  <node nid="14" x="6.0" y="1.0" z="3.0" />
+  <node nid="15" x="0.0" y="2.0" z="3.0" />
+  <node nid="16" x="1.0" y="2.0" z="3.0" />
+  <node nid="17" x="2.0" y="2.0" z="3.0" />
+  <node nid="18" x="3.0" y="2.0" z="3.0" />
+  <node nid="19" x="4.0" y="2.0" z="3.0" />
+  <node nid="20" x="5.0" y="2.0" z="3.0" />
+  <node nid="21" x="6.0" y="2.0" z="3.0" />
+  <node nid="22" x="0.0" y="3.0" z="3.0" />
+  <node nid="23" x="1.0" y="3.0" z="3.0" />
+  <node nid="24" x="2.0" y="3.0" z="3.0" />
+  <node nid="25" x="3.0" y="3.0" z="3.0" />
+  <node nid="26" x="4.0" y="3.0" z="3.0" />
+  <node nid="27" x="5.0" y="3.0" z="3.0" />
+  <node nid="28" x="6.0" y="3.0" z="3.0" />
+  <node nid="29" x="0.0" y="4.0" z="3.0" />
+  <node nid="30" x="1.0" y="4.0" z="3.0" />
+  <node nid="31" x="2.0" y="4.0" z="3.0" />
+  <node nid="32" x="3.0" y="4.0" z="3.0" />
+  <node nid="33" x="4.0" y="4.0" z="3.0" />
+  <node nid="34" x="5.0" y="4.0" z="3.0" />
+  <node nid="35" x="6.0" y="4.0" z="3.0" />
+  <node nid="36" x="0.0" y="0.0" z="0.0" />
+  <node nid="37" x="6.0" y="0.0" z="0.0" />
+  <node nid="38" x="6.0" y="4.0" z="0.0" />
+  <node nid="39" x="0.0" y="4.0" z="0.0" />
+  <elset name="Laje" colorrgb="DADADA" expanded="true" material="Laje">
+    <elem eid="1" shape="quad4" nodes="1 2 9 8" />
+    <elem eid="2" shape="quad4" nodes="2 3 10 9" />
+    <elem eid="3" shape="quad4" nodes="3 4 11 10" />
+    <elem eid="4" shape="quad4" nodes="4 5 12 11" />
+    <elem eid="5" shape="quad4" nodes="5 6 13 12" />
+    <elem eid="6" shape="quad4" nodes="6 7 14 13" />
+    <elem eid="7" shape="quad4" nodes="8 9 16 15" />
+    <elem eid="8" shape="quad4" nodes="9 10 17 16" />
+    <elem eid="9" shape="quad4" nodes="10 11 18 17" />
+    <elem eid="10" shape="quad4" nodes="11 12 19 18" />
+    <elem eid="11" shape="quad4" nodes="12 13 20 19" />
+    <elem eid="12" shape="quad4" nodes="13 14 21 20" />
+    <elem eid="13" shape="quad4" nodes="15 16 23 22" />
+    <elem eid="14" shape="quad4" nodes="16 17 24 23" />
+    <elem eid="15" shape="quad4" nodes="17 18 25 24" />
+    <elem eid="16" shape="quad4" nodes="18 19 26 25" />
+    <elem eid="17" shape="quad4" nodes="19 20 27 26" />
+    <elem eid="18" shape="quad4" nodes="20 21 28 27" />
+    <elem eid="19" shape="quad4" nodes="22 23 30 29" />
+    <elem eid="20" shape="quad4" nodes="23 24 31 30" />
+    <elem eid="21" shape="quad4" nodes="24 25 32 31" />
+    <elem eid="22" shape="quad4" nodes="25 26 33 32" />
+    <elem eid="23" shape="quad4" nodes="26 27 34 33" />
+    <elem eid="24" shape="quad4" nodes="27 28 35 34" />
+  </elset>
+  <elset name="Barra" colorrgb="FFB75B" expanded="true" material="Barra">
+    <elem eid="25" shape="line2" nodes="1 7" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+    <elem eid="26" shape="line2" nodes="7 35" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+    <elem eid="27" shape="line2" nodes="35 29" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+    <elem eid="28" shape="line2" nodes="29 1" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+    <elem eid="29" shape="line2" nodes="36 1" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+    <elem eid="30" shape="line2" nodes="37 7" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+    <elem eid="31" shape="line2" nodes="38 35" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+    <elem eid="32" shape="line2" nodes="39 29" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <fixed selection="faces_fixed" />
+  <surfacepressure selection="faces_pressure"><normal>-5000.0 Pa</normal></surfacepressure>
+  <mat name="Laje"><geometric type="Plate" thickness="0.15 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /></mat>
+  <mat name="Barra"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /></mat>
+  <faceselection name="faces_fixed" direct="true"><face eid="29" faceid="2" /><face eid="30" faceid="2" /><face eid="31" faceid="2" /><face eid="32" faceid="2" /></faceselection>
+  <faceselection name="faces_pressure" direct="true"><face eid="1" faceid="6" /><face eid="2" faceid="6" /><face eid="3" faceid="6" /><face eid="4" faceid="6" /><face eid="5" faceid="6" /><face eid="6" faceid="6" /><face eid="7" faceid="6" /><face eid="8" faceid="6" /><face eid="9" faceid="6" /><face eid="10" faceid="6" /><face eid="11" faceid="6" /><face eid="12" faceid="6" /><face eid="13" faceid="6" /><face eid="14" faceid="6" /><face eid="15" faceid="6" /><face eid="16" faceid="6" /><face eid="17" faceid="6" /><face eid="18" faceid="6" /><face eid="19" faceid="6" /><face eid="20" faceid="6" /><face eid="21" faceid="6" /><face eid="22" faceid="6" /><face eid="23" faceid="6" /><face eid="24" faceid="6" /></faceselection>
+  <fieldvariable name="displacement" />
+  <fieldvariable name="rotation" />
+  <fieldvariable name="reaction force" />
+  <fieldvariable name="reaction moment" />
+</liml>

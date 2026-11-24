@@ -1,0 +1,45 @@
+== LV1_laje_4vigas_4pilares
+   nos: cortes esperados 16 / servico 16 (IGUAIS); nos de malha sobre barras 20, todos com no de barra: True
+   modo A: nos fundidos 20, nos de casca sobre barra sem divisao 0, ligacoes (translacao, mesmo ponto) 20 de 20
+   modo M: nos fundidos 20, nos de casca sobre barra sem divisao 0, ligacoes (translacao, mesmo ponto) 0 de 0
+   esforcos (modo M): 20 elementos; erro max do momento medio: forcas Structura vs Mecway 7.55e-05, rotacoes Structura vs Mecway 7.55e-05 (rel. ao maior M = 12258.4 N.m)
+      viga y=0, barra do meio 4: M Structura 12258.8  Mecway 12258.4 N.m
+      viga x=6, barra do meio 9: M Structura 6257.3  Mecway 6257.8 N.m
+      viga y=4, barra do meio 13: M Structura 12258.8  Mecway 12258.4 N.m
+      viga x=0, barra do meio 18: M Structura 6257.3  Mecway 6257.8 N.m
+== LV2_duas_baias_viga_central
+   nos: cortes esperados 23 / servico 23 (IGUAIS); nos de malha sobre barras 27, todos com no de barra: True
+   modo A: nos fundidos 27, nos de casca sobre barra sem divisao 0, ligacoes (translacao, mesmo ponto) 27 de 27
+   modo M: nos fundidos 27, nos de casca sobre barra sem divisao 0, ligacoes (translacao, mesmo ponto) 0 de 0
+   esforcos (modo M): 28 elementos; erro max do momento medio: forcas Structura vs Mecway 8.17e-05, rotacoes Structura vs Mecway 8.17e-05 (rel. ao maior M = 8758.9 N.m)
+      viga y=0, barra do meio 5: M Structura 3631.2  Mecway 3631.4 N.m
+      viga x=8, barra do meio 11: M Structura 5201.7  Mecway 5202.0 N.m
+      viga y=4, barra do meio 16: M Structura 3631.2  Mecway 3631.4 N.m
+      viga x=0, barra do meio 22: M Structura 5201.7  Mecway 5202.0 N.m
+      viga x=4, barra do meio 27: M Structura 8759.6  Mecway 8758.9 N.m
+== LV3_laje_unidirecional_2vigas
+   nos: cortes esperados 10 / servico 10 (IGUAIS); nos de malha sobre barras 14, todos com no de barra: True
+   modo A: nos fundidos 14, nos de casca sobre barra sem divisao 0, ligacoes (translacao, mesmo ponto) 14 de 14
+   modo M: nos fundidos 14, nos de casca sobre barra sem divisao 0, ligacoes (translacao, mesmo ponto) 0 de 0
+   esforcos (modo M): 12 elementos; erro max do momento medio: forcas Structura vs Mecway 2.10e-05, rotacoes Structura vs Mecway 2.10e-05 (rel. ao maior M = 12537.6 N.m)
+      viga y=0, barra do meio 4: M Structura 12537.7  Mecway 12537.6 N.m
+      viga y=4, barra do meio 10: M Structura 12537.7  Mecway 12537.6 N.m
+== LV4_laje_lisa_4pilares (sem vigas)
+== LV5_carga_por_clique
+   nos: cortes esperados 16 / servico 16 (IGUAIS); nos de malha sobre barras 20, todos com no de barra: True
+   modo A: nos fundidos 20, nos de casca sobre barra sem divisao 0, ligacoes (translacao, mesmo ponto) 20 de 20
+   modo M: nos fundidos 20, nos de casca sobre barra sem divisao 0, ligacoes (translacao, mesmo ponto) 0 de 0
+   esforcos (modo M): 20 elementos; erro max do momento medio: forcas Structura vs Mecway 7.55e-05, rotacoes Structura vs Mecway 7.55e-05 (rel. ao maior M = 12258.4 N.m)
+      viga y=0, barra do meio 4: M Structura 12258.8  Mecway 12258.4 N.m
+      viga x=6, barra do meio 9: M Structura 6257.3  Mecway 6257.8 N.m
+      viga y=4, barra do meio 13: M Structura 12258.8  Mecway 12258.4 N.m
+      viga x=0, barra do meio 18: M Structura 6257.3  Mecway 6257.8 N.m
+== LV6_vigas_sem_dividir
+   nos: cortes esperados 16 / servico 16 (IGUAIS); nos de malha sobre barras 20, todos com no de barra: False
+   modo A: nos fundidos 4, nos de casca sobre barra sem divisao 16, ligacoes (translacao, mesmo ponto) 4 de 4
+   modo M: nos fundidos 4, nos de casca sobre barra sem divisao 16, ligacoes (translacao, mesmo ponto) 0 de 0
+   esforcos (modo M): 4 elementos; erro max do momento medio: forcas Structura vs Mecway 6.11e-05, rotacoes Structura vs Mecway 6.11e-05 (rel. ao maior M = 3623.3 N.m)
+      viga y=0, barra do meio 1: M Structura 3623.5  Mecway 3623.3 N.m
+      viga x=6, barra do meio 2: M Structura 2269.6  Mecway 2269.5 N.m
+      viga y=4, barra do meio 3: M Structura 3623.5  Mecway 3623.3 N.m
+      viga x=0, barra do meio 4: M Structura 2269.6  Mecway 2269.5 N.m

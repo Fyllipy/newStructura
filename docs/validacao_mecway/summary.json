@@ -1,0 +1,1146 @@
+[
+ {
+  "case": "cantilever_plate",
+  "solver": "cantilever_plate",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 50000.0,
+  "t": 0.1,
+  "nodes_structura": 85,
+  "nodes_mecway": 85,
+  "area": 4.0,
+  "disp": {
+   "ux": {
+    "max_ref": 2.8559074859921477e-18,
+    "max_abs_diff": 2.8559074859921477e-18,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 85
+   },
+   "uy": {
+    "max_ref": 1.5344730075699628e-17,
+    "max_abs_diff": 1.5344730075699628e-17,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 85
+   },
+   "uz": {
+    "max_ref": 0.09330825269145812,
+    "max_abs_diff": 7.043435279463495e-12,
+    "rel_max": 7.548566258928867e-11,
+    "rel_l2": 7.490037300394248e-11,
+    "rel_median": 7.43218391423563e-11,
+    "n": 85
+   },
+   "rx": {
+    "max_ref": 0.0019737622660995326,
+    "max_abs_diff": 1.5518315799045723e-13,
+    "rel_max": 7.862302398612766e-11,
+    "rel_l2": 8.434577512971332e-11,
+    "rel_median": 8.06971033028472e-11,
+    "n": 85
+   },
+   "ry": {
+    "max_ref": 0.03136504059477082,
+    "max_abs_diff": 2.3888599431920454e-12,
+    "rel_max": 7.616313889261524e-11,
+    "rel_l2": 7.561639531654144e-11,
+    "rel_median": 7.577223623546839e-11,
+    "n": 85
+   },
+   "rz": {
+    "max_ref": 5.7622535840043935e-18,
+    "max_abs_diff": 5.7622535840043935e-18,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 85
+   }
+  },
+  "max_translation": {
+   "structura": 0.09330825268443455,
+   "mecway": 0.09330825269145812
+  },
+  "uz_extreme": {
+   "structura": 0.09330825268443455,
+   "mecway": 0.09330825269145812
+  },
+  "reaction": {
+   "applied_Fz": 200000.0,
+   "structura_sum": [
+    0.0,
+    0.0,
+    -199999.99999452592
+   ],
+   "mecway_sum": [
+    1.8968305223358375e-10,
+    -1.4958071804025471e-09,
+    -200000.00000467768
+   ]
+  },
+  "vonmises_bottom_corner": {
+   "max_ref": 221409896.0793507,
+   "max_abs_diff": 1321034.3166139722,
+   "rel_max": 0.005966464643208762,
+   "rel_l2": 0.0018261081011046768,
+   "rel_median": 0.0002591228198691291,
+   "n": 256
+  },
+  "moment_principal_max": {
+   "max_ref": 124482.91203719983,
+   "max_abs_diff": 8.767703548073769e-06,
+   "rel_max": 7.04329887900893e-11,
+   "rel_l2": 7.047885597650181e-11,
+   "rel_median": 7.18184552620177e-11,
+   "n": 256
+  },
+  "moment_principal_min": {
+   "max_ref": 414943.04012399947,
+   "max_abs_diff": 2.9225600883364677e-05,
+   "rel_max": 7.043280175185261e-11,
+   "rel_l2": 7.454221083751894e-11,
+   "rel_median": 7.852447802051155e-11,
+   "n": 256
+  },
+  "moment_sign_ratio_structura_over_mecway": 0.9999999999295798,
+  "vonmises_bottom_center": {
+   "max_ref": 215599743.52122334,
+   "max_abs_diff": 3063842.3091361225,
+   "rel_max": 0.01421078828340314,
+   "rel_l2": 0.0054233279009236616,
+   "rel_median": 0.001588245434652354,
+   "n": 64
+  },
+  "reference": {
+   "uz_tip_euler_bernoulli": 0.09599999999999997,
+   "uz_tip_with_shear": 0.09606239999999998
+  }
+ },
+ {
+  "case": "cantilever_plate",
+  "solver": "cantilever_plate_ccx",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 50000.0,
+  "t": 0.1,
+  "nodes_structura": 85,
+  "nodes_mecway": 85,
+  "area": 4.0,
+  "disp": {
+   "ux": {
+    "max_ref": 1.5500000000005527e-07,
+    "max_abs_diff": 1.5500000000005527e-07,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 85
+   },
+   "uy": {
+    "max_ref": 1.9200000000001442e-08,
+    "max_abs_diff": 1.9200000000001442e-08,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 85
+   },
+   "uz": {
+    "max_ref": 0.0930613,
+    "max_abs_diff": 0.0002481146068252088,
+    "rel_max": 0.002666141638094555,
+    "rel_l2": 0.0028955104440130607,
+    "rel_median": 0.003178960720889945,
+    "n": 85
+   },
+   "rx": null,
+   "ry": null,
+   "rz": null
+  },
+  "max_translation": {
+   "structura": 0.09330825268443455,
+   "mecway": 0.09306130000012908
+  },
+  "uz_extreme": {
+   "structura": 0.09330825268443455,
+   "mecway": 0.0930613
+  },
+  "reaction": {
+   "applied_Fz": 200000.0,
+   "structura_sum": [
+    0.0,
+    0.0,
+    -199999.99999452592
+   ],
+   "mecway_sum": [
+    0,
+    0,
+    0
+   ]
+  },
+  "vonmises_bottom_corner": null,
+  "moment_principal_max": null,
+  "moment_principal_min": null,
+  "moment_sign_ratio_structura_over_mecway": NaN,
+  "vonmises_bottom_center": null,
+  "reference": {
+   "uz_tip_euler_bernoulli": 0.09599999999999997,
+   "uz_tip_with_shear": 0.09606239999999998
+  }
+ },
+ {
+  "case": "clamped_plate",
+  "solver": "clamped_plate",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 1000.0,
+  "t": 0.01,
+  "nodes_structura": 81,
+  "nodes_mecway": 81,
+  "area": 1.0,
+  "disp": {
+   "ux": {
+    "max_ref": 1.5490369532830323e-23,
+    "max_abs_diff": 1.5490369532830323e-23,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 81
+   },
+   "uy": {
+    "max_ref": 1.6558488407724137e-23,
+    "max_abs_diff": 1.6558488407724137e-23,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 81
+   },
+   "uz": {
+    "max_ref": 6.84221731169724e-05,
+    "max_abs_diff": 1.1180834903756764e-17,
+    "rel_max": 1.6340952639201273e-13,
+    "rel_l2": 1.1879017790302685e-13,
+    "rel_median": 8.556391650349713e-14,
+    "n": 81
+   },
+   "rx": {
+    "max_ref": 0.00021281168246384038,
+    "max_abs_diff": 4.0007060164715114e-17,
+    "rel_max": 1.8799278170037897e-13,
+    "rel_l2": 1.57583806715493e-13,
+    "rel_median": 1.4303244840753787e-13,
+    "n": 81
+   },
+   "ry": {
+    "max_ref": 0.00021281168246384656,
+    "max_abs_diff": 5.0198560586078855e-17,
+    "rel_max": 2.3588254180832776e-13,
+    "rel_l2": 1.752752198656185e-13,
+    "rel_median": 1.2638288752348015e-13,
+    "n": 81
+   },
+   "rz": {
+    "max_ref": 4.810681765089604e-23,
+    "max_abs_diff": 4.810681765089604e-23,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 81
+   }
+  },
+  "max_translation": {
+   "structura": 6.842217311698057e-05,
+   "mecway": 6.84221731169724e-05
+  },
+  "uz_extreme": {
+   "structura": 6.842217311698057e-05,
+   "mecway": 6.84221731169724e-05
+  },
+  "reaction": {
+   "applied_Fz": 1000.0,
+   "structura_sum": [
+    0.0,
+    0.0,
+    -999.9999999996927
+   ],
+   "mecway_sum": [
+    3.5362016984222094e-15,
+    8.489180783245233e-14,
+    -999.9999999997905
+   ]
+  },
+  "vonmises_bottom_corner": {
+   "max_ref": 1651952.2071816197,
+   "max_abs_diff": 3314.7154079950124,
+   "rel_max": 0.0020065443743376918,
+   "rel_l2": 0.0008860244146153687,
+   "rel_median": 0.0006096846811795101,
+   "n": 256
+  },
+  "moment_principal_max": {
+   "max_ref": 23.309675875958046,
+   "max_abs_diff": 1.0118128557223827e-11,
+   "rel_max": 4.340741849465105e-13,
+   "rel_l2": 2.2286239350249232e-13,
+   "rel_median": 1.3093955592732597e-13,
+   "n": 256
+  },
+  "moment_principal_min": {
+   "max_ref": 30.92507356520652,
+   "max_abs_diff": 1.3109513474773848e-11,
+   "rel_max": 4.2391211930772014e-13,
+   "rel_l2": 1.8596609729229796e-13,
+   "rel_median": 1.3002614237037848e-13,
+   "n": 256
+  },
+  "moment_sign_ratio_structura_over_mecway": 1.0000000000000977,
+  "vonmises_bottom_center": {
+   "max_ref": 1568522.1267698973,
+   "max_abs_diff": 41874.462796915206,
+   "rel_max": 0.02669676256537642,
+   "rel_l2": 0.02121575502702192,
+   "rel_median": 0.015615109394209419,
+   "n": 64
+  },
+  "reference": {
+   "uz_center_timoshenko": 6.879599999999998e-05
+  }
+ },
+ {
+  "case": "clamped_plate",
+  "solver": "clamped_plate_ccx",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 1000.0,
+  "t": 0.01,
+  "nodes_structura": 81,
+  "nodes_mecway": 81,
+  "area": 1.0,
+  "disp": {
+   "ux": {
+    "max_ref": 3.041999999999991e-20,
+    "max_abs_diff": 3.041999999999991e-20,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 81
+   },
+   "uy": {
+    "max_ref": 2.756999999999977e-20,
+    "max_abs_diff": 2.756999999999977e-20,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 81
+   },
+   "uz": {
+    "max_ref": 4.08608e-05,
+    "max_abs_diff": 2.7561373116980566e-05,
+    "rel_max": 0.6745186858059696,
+    "rel_l2": 0.66857208159056,
+    "rel_median": 0.6607821866495206,
+    "n": 81
+   },
+   "rx": null,
+   "ry": null,
+   "rz": null
+  },
+  "max_translation": {
+   "structura": 6.842217311698057e-05,
+   "mecway": 4.08608e-05
+  },
+  "uz_extreme": {
+   "structura": 6.842217311698057e-05,
+   "mecway": 4.08608e-05
+  },
+  "reaction": {
+   "applied_Fz": 1000.0,
+   "structura_sum": [
+    0.0,
+    0.0,
+    -999.9999999996927
+   ],
+   "mecway_sum": [
+    0,
+    0,
+    0
+   ]
+  },
+  "vonmises_bottom_corner": null,
+  "moment_principal_max": null,
+  "moment_principal_min": null,
+  "moment_sign_ratio_structura_over_mecway": NaN,
+  "vonmises_bottom_center": null,
+  "reference": {
+   "uz_center_timoshenko": 6.879599999999998e-05
+  }
+ },
+ {
+  "case": "cylinder_pressure",
+  "solver": "cylinder_pressure",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 100000.0,
+  "t": 0.01,
+  "nodes_structura": 352,
+  "nodes_mecway": 352,
+  "area": 12.54619396218382,
+  "disp": {
+   "ux": {
+    "max_ref": 5.9319454603792475e-05,
+    "max_abs_diff": 1.2031143172402259e-06,
+    "rel_max": 0.020281951769045885,
+    "rel_l2": 0.012226062649214754,
+    "rel_median": 0.006220583506311713,
+    "n": 352
+   },
+   "uy": {
+    "max_ref": 5.931945460379299e-05,
+    "max_abs_diff": 1.2031143172331853e-06,
+    "rel_max": 0.020281951768927022,
+    "rel_l2": 0.012226062649213271,
+    "rel_median": 0.0062205835062734095,
+    "n": 352
+   },
+   "uz": {
+    "max_ref": 2.8305023049991892e-05,
+    "max_abs_diff": 2.9298770468718032e-08,
+    "rel_max": 0.0010351085182644438,
+    "rel_l2": 0.0008305045113402738,
+    "rel_median": 0.00023410323088022975,
+    "n": 352
+   },
+   "rx": {
+    "max_ref": 0.00041918883368190256,
+    "max_abs_diff": 4.198145470366098e-05,
+    "rel_max": 0.10014926765801735,
+    "rel_l2": 0.12969644353497395,
+    "rel_median": 0.13536922606882434,
+    "n": 352
+   },
+   "ry": {
+    "max_ref": 0.0004191888336818938,
+    "max_abs_diff": 4.198145470366655e-05,
+    "rel_max": 0.10014926765803274,
+    "rel_l2": 0.12969644353488466,
+    "rel_median": 0.13536922606877602,
+    "n": 352
+   },
+   "rz": {
+    "max_ref": 1.0945116628283221e-16,
+    "max_abs_diff": 2.7131786318333245e-16,
+    "rel_max": 2.478894217373813,
+    "rel_l2": 2.349018563108854,
+    "rel_median": 1.8201017387723395,
+    "n": 352
+   }
+  },
+  "max_translation": {
+   "structura": 6.0676601476934265e-05,
+   "mecway": 5.947824212960506e-05
+  },
+  "uz_extreme": {
+   "structura": -2.8309699559918155e-05,
+   "mecway": -2.8305023049991892e-05
+  },
+  "reaction": {
+   "applied_Fz": 1254619.396218382,
+   "structura_sum": [
+    7.26092887299472e-10,
+    -1.1389548669676265e-09,
+    1.2478636167517567e-09
+   ],
+   "mecway_sum": [
+    -4.050804136568331e-10,
+    3.140935496701538e-10,
+    8.921049983915381e-10
+   ]
+  },
+  "vonmises_bottom_corner": {
+   "max_ref": 12819185.425187258,
+   "max_abs_diff": 953348.025894146,
+   "rel_max": 0.07436884593470336,
+   "rel_l2": 0.03326257498483547,
+   "rel_median": 0.010329688336797361,
+   "n": 1280
+  },
+  "moment_principal_max": {
+   "max_ref": 60.82991125446989,
+   "max_abs_diff": 6.564779186749317,
+   "rel_max": 0.10792024928800016,
+   "rel_l2": 0.12952049287932293,
+   "rel_median": 0.2160392808553204,
+   "n": 1280
+  },
+  "moment_principal_min": {
+   "max_ref": 38.20241070254374,
+   "max_abs_diff": 6.889010692220719,
+   "rel_max": 0.18032921392999968,
+   "rel_l2": 0.15792216484001867,
+   "rel_median": 0.21603928085647264,
+   "n": 1280
+  },
+  "moment_sign_ratio_structura_over_mecway": 0.9118000876270379,
+  "vonmises_bottom_center": {
+   "max_ref": 11472550.303139303,
+   "max_abs_diff": 1716607.5211545452,
+   "rel_max": 0.1496273693116708,
+   "rel_l2": 0.05601621668589193,
+   "rel_median": 0.0025382384414164008,
+   "n": 320
+  },
+  "reference": {
+   "ur_membrane": 5e-05,
+   "ur_upper_structura_mean": 4.975326593079403e-05,
+   "ur_upper_mecway_mean": 4.9758600829903354e-05,
+   "M_base_analytic": 302.61376633440125,
+   "M_base_structura_max": 37.11338722027286,
+   "M_base_mecway_max": 38.20241070254374
+  }
+ },
+ {
+  "case": "cylinder_pressure",
+  "solver": "cylinder_pressure_ccx",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 100000.0,
+  "t": 0.01,
+  "nodes_structura": 352,
+  "nodes_mecway": 352,
+  "area": 12.54619396218382,
+  "disp": {
+   "ux": {
+    "max_ref": 6.056685e-05,
+    "max_abs_diff": 2.489640880507527e-06,
+    "rel_max": 0.04110566886849038,
+    "rel_l2": 0.018641121845435777,
+    "rel_median": 0.0035539790069727285,
+    "n": 352
+   },
+   "uy": {
+    "max_ref": 6.056685e-05,
+    "max_abs_diff": 2.4896408805106845e-06,
+    "rel_max": 0.04110566886854252,
+    "rel_l2": 0.01864112184543479,
+    "rel_median": 0.003553979006762118,
+    "n": 352
+   },
+   "uz": {
+    "max_ref": 2.826455e-05,
+    "max_abs_diff": 1.1392038520097595e-07,
+    "rel_max": 0.00403050411915194,
+    "rel_l2": 0.0029493982228019923,
+    "rel_median": 0.0015973917828482984,
+    "n": 352
+   },
+   "rx": null,
+   "ry": null,
+   "rz": null
+  },
+  "max_translation": {
+   "structura": 6.0676601476934265e-05,
+   "mecway": 6.072903427401592e-05
+  },
+  "uz_extreme": {
+   "structura": -2.8309699559918155e-05,
+   "mecway": -2.826455e-05
+  },
+  "reaction": {
+   "applied_Fz": 1254619.396218382,
+   "structura_sum": [
+    7.26092887299472e-10,
+    -1.1389548669676265e-09,
+    1.2478636167517567e-09
+   ],
+   "mecway_sum": [
+    0,
+    0,
+    0
+   ]
+  },
+  "vonmises_bottom_corner": null,
+  "moment_principal_max": null,
+  "moment_principal_min": null,
+  "moment_sign_ratio_structura_over_mecway": NaN,
+  "vonmises_bottom_center": null,
+  "reference": {
+   "ur_membrane": 5e-05,
+   "ur_upper_structura_mean": 4.975326593079403e-05,
+   "ur_upper_mecway_mean": 4.980542145311399e-05,
+   "M_base_analytic": 302.61376633440125,
+   "M_base_structura_max": 37.11338722027286,
+   "M_base_mecway_max": 0.0
+  }
+ },
+ {
+  "case": "cylinder_pressure_fine",
+  "solver": "cylinder_pressure_fine",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 100000.0,
+  "t": 0.01,
+  "nodes_structura": 2760,
+  "nodes_mecway": 2760,
+  "area": 12.563928548436786,
+  "disp": {
+   "ux": {
+    "max_ref": 5.284558414254954e-05,
+    "max_abs_diff": 2.529161214558944e-07,
+    "rel_max": 0.004785946178088599,
+    "rel_l2": 0.001338832492980574,
+    "rel_median": 5.537857087083343e-07,
+    "n": 2760
+   },
+   "uy": {
+    "max_ref": 5.284558414255919e-05,
+    "max_abs_diff": 2.529161214369615e-07,
+    "rel_max": 0.004785946177729455,
+    "rel_l2": 0.0013388324929843331,
+    "rel_median": 5.537852100898838e-07,
+    "n": 2760
+   },
+   "uz": {
+    "max_ref": 2.8769818598046653e-05,
+    "max_abs_diff": 1.3370539147148803e-08,
+    "rel_max": 0.00046474186486725384,
+    "rel_l2": 0.0007071924903815467,
+    "rel_median": 0.000803671104821269,
+    "n": 2760
+   },
+   "rx": {
+    "max_ref": 0.0004855044999730994,
+    "max_abs_diff": 2.5553059928436444e-06,
+    "rel_max": 0.005263197340056019,
+    "rel_l2": 0.0072437400082518985,
+    "rel_median": 0.010067743014151398,
+    "n": 2760
+   },
+   "ry": {
+    "max_ref": 0.00048550449997307,
+    "max_abs_diff": 2.55530599296269e-06,
+    "rel_max": 0.005263197340301538,
+    "rel_l2": 0.007243740008261029,
+    "rel_median": 0.010067743014333433,
+    "n": 2760
+   },
+   "rz": {
+    "max_ref": 7.970585811680452e-16,
+    "max_abs_diff": 1.7669180820377972e-15,
+    "rel_max": 2.2167982677615448,
+    "rel_l2": 3.1075045850266263,
+    "rel_median": 2.7834037424781624,
+    "n": 2760
+   }
+  },
+  "max_translation": {
+   "structura": 5.766712667483457e-05,
+   "mecway": 5.76609783509816e-05
+  },
+  "uz_extreme": {
+   "structura": -2.8782139184490376e-05,
+   "mecway": -2.8769818598046653e-05
+  },
+  "reaction": {
+   "applied_Fz": 1256392.8548436787,
+   "structura_sum": [
+    -4.510118017298674e-09,
+    3.1739033110684978e-09,
+    5.624986531896531e-09
+   ],
+   "mecway_sum": [
+    -5.915978817938594e-10,
+    2.5500568281450917e-09,
+    -2.6510499393067366e-09
+   ]
+  },
+  "vonmises_bottom_corner": {
+   "max_ref": 11523715.596677821,
+   "max_abs_diff": 840444.4485951057,
+   "rel_max": 0.0729317242814807,
+   "rel_l2": 0.014965554080404894,
+   "rel_median": 1.6182645403553027e-06,
+   "n": 10672
+  },
+  "moment_principal_max": {
+   "max_ref": 61.49439969248014,
+   "max_abs_diff": 0.879701709761342,
+   "rel_max": 0.014305395518299801,
+   "rel_l2": 0.010982896410713944,
+   "rel_median": 0.01521690290188444,
+   "n": 10672
+  },
+  "moment_principal_min": {
+   "max_ref": 128.8591793914622,
+   "max_abs_diff": 0.33647746857593575,
+   "rel_max": 0.002611202943903193,
+   "rel_l2": 0.004703374691734292,
+   "rel_median": 0.0055571535522429575,
+   "n": 10672
+  },
+  "moment_sign_ratio_structura_over_mecway": 1.0046004937893287,
+  "vonmises_bottom_center": {
+   "max_ref": 10815905.475412361,
+   "max_abs_diff": 381963.71244592965,
+   "rel_max": 0.03531500097835009,
+   "rel_l2": 0.009387469501938629,
+   "rel_median": 1.8088395589841893e-06,
+   "n": 2668
+  },
+  "reference": {
+   "ur_membrane": 5e-05,
+   "ur_upper_structura_mean": 4.9970850693541534e-05,
+   "ur_upper_mecway_mean": 4.9970850764508495e-05,
+   "M_base_analytic": 302.61376633440125,
+   "M_base_structura_max": 129.19565685999183,
+   "M_base_mecway_max": 128.8591793914622
+  }
+ },
+ {
+  "case": "cylinder_pressure_fine",
+  "solver": "cylinder_pressure_fine_ccx",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 100000.0,
+  "t": 0.01,
+  "nodes_structura": 2760,
+  "nodes_mecway": 2760,
+  "area": 12.563928548436786,
+  "disp": {
+   "ux": {
+    "max_ref": 5.295625e-05,
+    "max_abs_diff": 1.988511323993829e-07,
+    "rel_max": 0.0037550078111532235,
+    "rel_l2": 0.002880762210186218,
+    "rel_median": 0.0029499380950231344,
+    "n": 2760
+   },
+   "uy": {
+    "max_ref": 5.295625e-05,
+    "max_abs_diff": 1.9885113239558142e-07,
+    "rel_max": 0.003755007811081438,
+    "rel_l2": 0.0028807622104480217,
+    "rel_median": 0.0029499380957975557,
+    "n": 2760
+   },
+   "uz": {
+    "max_ref": 2.85086e-05,
+    "max_abs_diff": 2.73539184490376e-07,
+    "rel_max": 0.009594970797947848,
+    "rel_l2": 0.009645133850408194,
+    "rel_median": 0.009687730170934303,
+    "n": 2760
+   },
+   "rx": null,
+   "ry": null,
+   "rz": null
+  },
+  "max_translation": {
+   "structura": 5.766712667483457e-05,
+   "mecway": 5.735849456575721e-05
+  },
+  "uz_extreme": {
+   "structura": -2.8782139184490376e-05,
+   "mecway": -2.85086e-05
+  },
+  "reaction": {
+   "applied_Fz": 1256392.8548436787,
+   "structura_sum": [
+    -4.510118017298674e-09,
+    3.1739033110684978e-09,
+    5.624986531896531e-09
+   ],
+   "mecway_sum": [
+    0,
+    0,
+    0
+   ]
+  },
+  "vonmises_bottom_corner": null,
+  "moment_principal_max": null,
+  "moment_principal_min": null,
+  "moment_sign_ratio_structura_over_mecway": NaN,
+  "vonmises_bottom_center": null,
+  "reference": {
+   "ur_membrane": 5e-05,
+   "ur_upper_structura_mean": 4.9970850693541534e-05,
+   "ur_upper_mecway_mean": 4.982097082704869e-05,
+   "M_base_analytic": 302.61376633440125,
+   "M_base_structura_max": 129.19565685999183,
+   "M_base_mecway_max": 0.0
+  }
+ },
+ {
+  "case": "ss_plate",
+  "solver": "ss_plate",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 1000.0,
+  "t": 0.01,
+  "nodes_structura": 81,
+  "nodes_mecway": 81,
+  "area": 1.0,
+  "disp": {
+   "ux": {
+    "max_ref": 1.9149680112979585e-21,
+    "max_abs_diff": 1.9149680112979585e-21,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 81
+   },
+   "uy": {
+    "max_ref": 9.941454393212721e-22,
+    "max_abs_diff": 9.941454393212721e-22,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 81
+   },
+   "uz": {
+    "max_ref": 0.0002209421224687177,
+    "max_abs_diff": 5.751692525035601e-17,
+    "rel_max": 2.603257568438522e-13,
+    "rel_l2": 1.7325767606221606e-13,
+    "rel_median": 1.1183986762195708e-13,
+    "n": 81
+   },
+   "rx": {
+    "max_ref": 0.0007355337757398813,
+    "max_abs_diff": 3.966011546951975e-16,
+    "rel_max": 5.392018256350664e-13,
+    "rel_l2": 2.986067141780914e-13,
+    "rel_median": 1.5156186614307344e-13,
+    "n": 81
+   },
+   "ry": {
+    "max_ref": 0.0007355337757398188,
+    "max_abs_diff": 2.8828935766389563e-16,
+    "rel_max": 3.919457775734728e-13,
+    "rel_l2": 2.9472724145186004e-13,
+    "rel_median": 1.7522069278693264e-13,
+    "n": 81
+   },
+   "rz": {
+    "max_ref": 3.4440629575136825e-21,
+    "max_abs_diff": 3.4440629575136825e-21,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 81
+   }
+  },
+  "max_translation": {
+   "structura": 0.00022094212246871295,
+   "mecway": 0.0002209421224687177
+  },
+  "uz_extreme": {
+   "structura": 0.00022094212246871295,
+   "mecway": 0.0002209421224687177
+  },
+  "reaction": {
+   "applied_Fz": 1000.0,
+   "structura_sum": [
+    0.0,
+    0.0,
+    -999.9999999992048
+   ],
+   "mecway_sum": [
+    -3.558634778058814e-13,
+    2.095487711552462e-13,
+    -999.9999999992215
+   ]
+  },
+  "vonmises_bottom_corner": {
+   "max_ref": 3154991.81686454,
+   "max_abs_diff": 6418.455007376615,
+   "rel_max": 0.0020343808732142246,
+   "rel_l2": 0.0007325077123716853,
+   "rel_median": 0.00019536984622958871,
+   "n": 256
+  },
+  "moment_principal_max": {
+   "max_ref": 47.93304888956568,
+   "max_abs_diff": 4.8252957185468404e-11,
+   "rel_max": 1.006674065249631e-12,
+   "rel_l2": 4.3923911802480964e-13,
+   "rel_median": 2.6183597270944436e-13,
+   "n": 256
+  },
+  "moment_principal_min": {
+   "max_ref": 47.93304888956082,
+   "max_abs_diff": 5.334044317351072e-11,
+   "rel_max": 1.1128113985907447e-12,
+   "rel_l2": 6.37359304064558e-13,
+   "rel_median": 3.9051989631504485e-13,
+   "n": 256
+  },
+  "moment_sign_ratio_structura_over_mecway": 1.0000000000000864,
+  "vonmises_bottom_center": {
+   "max_ref": 2992236.7557754577,
+   "max_abs_diff": 92128.5443138053,
+   "rel_max": 0.03078918943696004,
+   "rel_l2": 0.019276865067070346,
+   "rel_median": 0.016595710086123528,
+   "n": 64
+  },
+  "reference": {
+   "uz_center_navier": 0.00022180445520165304,
+   "sigma_max_navier_note": "sigma = 6 M/t^2 com M_max = 0,0479 q a^2 (Timoshenko, nu=0,3)",
+   "vonmises_center_expected": 2873999.9999999995
+  }
+ },
+ {
+  "case": "ss_plate",
+  "solver": "ss_plate_ccx",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 1000.0,
+  "t": 0.01,
+  "nodes_structura": 81,
+  "nodes_mecway": 81,
+  "area": 1.0,
+  "disp": {
+   "ux": {
+    "max_ref": 7.500000000001622e-10,
+    "max_abs_diff": 7.500000000001622e-10,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 81
+   },
+   "uy": {
+    "max_ref": 7.500000000001622e-10,
+    "max_abs_diff": 7.500000000001622e-10,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 81
+   },
+   "uz": {
+    "max_ref": 0.000163264,
+    "max_abs_diff": 5.767812246871296e-05,
+    "rel_max": 0.35328132637147786,
+    "rel_l2": 0.35723275012675537,
+    "rel_median": 0.35838438652958793,
+    "n": 81
+   },
+   "rx": null,
+   "ry": null,
+   "rz": null
+  },
+  "max_translation": {
+   "structura": 0.00022094212246871295,
+   "mecway": 0.00016326400000086133
+  },
+  "uz_extreme": {
+   "structura": 0.00022094212246871295,
+   "mecway": 0.000163264
+  },
+  "reaction": {
+   "applied_Fz": 1000.0,
+   "structura_sum": [
+    0.0,
+    0.0,
+    -999.9999999992048
+   ],
+   "mecway_sum": [
+    0,
+    0,
+    0
+   ]
+  },
+  "vonmises_bottom_corner": null,
+  "moment_principal_max": null,
+  "moment_principal_min": null,
+  "moment_sign_ratio_structura_over_mecway": NaN,
+  "vonmises_bottom_center": null,
+  "reference": {
+   "uz_center_navier": 0.00022180445520165304,
+   "sigma_max_navier_note": "sigma = 6 M/t^2 com M_max = 0,0479 q a^2 (Timoshenko, nu=0,3)",
+   "vonmises_center_expected": 2873999.9999999995
+  }
+ },
+ {
+  "case": "trapezoid_plate",
+  "solver": "trapezoid_plate",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 5000.0,
+  "t": 0.02,
+  "nodes_structura": 187,
+  "nodes_mecway": 187,
+  "area": 1.7000000000000048,
+  "disp": {
+   "ux": {
+    "max_ref": 1.6483584476956278e-20,
+    "max_abs_diff": 1.6483584476956278e-20,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 187
+   },
+   "uy": {
+    "max_ref": 2.2110819392293686e-20,
+    "max_abs_diff": 2.2110819392293686e-20,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 187
+   },
+   "uz": {
+    "max_ref": 0.0002900312832318843,
+    "max_abs_diff": 1.2598429244281562e-16,
+    "rel_max": 4.343817364766452e-13,
+    "rel_l2": 3.882257198297373e-13,
+    "rel_median": 3.5197189570955856e-13,
+    "n": 187
+   },
+   "rx": {
+    "max_ref": 0.0009449820809663615,
+    "max_abs_diff": 4.956972332603726e-16,
+    "rel_max": 5.245572834073856e-13,
+    "rel_l2": 4.0894756723428407e-13,
+    "rel_median": 3.6402612507861977e-13,
+    "n": 187
+   },
+   "ry": {
+    "max_ref": 0.0006416163200209013,
+    "max_abs_diff": 2.1369624819689292e-16,
+    "rel_max": 3.330592466693047e-13,
+    "rel_l2": 4.096036013181972e-13,
+    "rel_median": 4.291538746770881e-13,
+    "n": 187
+   },
+   "rz": {
+    "max_ref": 8.407493271700607e-20,
+    "max_abs_diff": 8.407493271700607e-20,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 187
+   }
+  },
+  "max_translation": {
+   "structura": 0.00029003128323176004,
+   "mecway": 0.0002900312832318843
+  },
+  "uz_extreme": {
+   "structura": 0.00029003128323176004,
+   "mecway": 0.0002900312832318843
+  },
+  "reaction": {
+   "applied_Fz": 8500.000000000024,
+   "structura_sum": [
+    0.0,
+    0.0,
+    -8499.999999999669
+   ],
+   "mecway_sum": [
+    2.1443635426624293e-12,
+    1.2759276926140879e-11,
+    -8500.00000000146
+   ]
+  },
+  "vonmises_bottom_corner": {
+   "max_ref": 12363251.158012038,
+   "max_abs_diff": 346503.42586080544,
+   "rel_max": 0.028026885600900615,
+   "rel_l2": 0.006199100708996254,
+   "rel_median": 0.00046578097910933555,
+   "n": 640
+  },
+  "moment_principal_max": {
+   "max_ref": 440.8477094771676,
+   "max_abs_diff": 1.1656278939370566,
+   "rel_max": 0.0026440602250592544,
+   "rel_l2": 0.0005503195062564719,
+   "rel_median": 0.00020367444763928067,
+   "n": 640
+  },
+  "moment_principal_min": {
+   "max_ref": 679.6936149394032,
+   "max_abs_diff": 2.7590614025842797,
+   "rel_max": 0.004059272210215272,
+   "rel_l2": 0.002235750114671217,
+   "rel_median": 0.001193177001829315,
+   "n": 640
+  },
+  "moment_sign_ratio_structura_over_mecway": 0.9999460234819326,
+  "vonmises_bottom_center": {
+   "max_ref": 8852661.81915253,
+   "max_abs_diff": 658924.2335535856,
+   "rel_max": 0.07443232860516802,
+   "rel_l2": 0.023454271756549454,
+   "rel_median": 0.005383951290629128,
+   "n": 160
+  },
+  "reference": {}
+ },
+ {
+  "case": "trapezoid_plate",
+  "solver": "trapezoid_plate_ccx",
+  "E": 200000000000.0,
+  "nu": 0.3,
+  "p": 5000.0,
+  "t": 0.02,
+  "nodes_structura": 187,
+  "nodes_mecway": 187,
+  "area": 1.7000000000000048,
+  "disp": {
+   "ux": {
+    "max_ref": 7.499999999999994e-09,
+    "max_abs_diff": 7.499999999999994e-09,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 187
+   },
+   "uy": {
+    "max_ref": 3.750000000000599e-09,
+    "max_abs_diff": 3.750000000000599e-09,
+    "rel_max": 1.0,
+    "rel_l2": 1.0,
+    "rel_median": 1.0,
+    "n": 187
+   },
+   "uz": {
+    "max_ref": 0.000282023,
+    "max_abs_diff": 8.142270379360656e-06,
+    "rel_max": 0.02887094449516761,
+    "rel_l2": 0.03005742440166198,
+    "rel_median": 0.02872638294703433,
+    "n": 187
+   },
+   "rx": null,
+   "ry": null,
+   "rz": null
+  },
+  "max_translation": {
+   "structura": 0.00029003128323176004,
+   "mecway": 0.00028202300002424586
+  },
+  "uz_extreme": {
+   "structura": 0.00029003128323176004,
+   "mecway": 0.000282023
+  },
+  "reaction": {
+   "applied_Fz": 8500.000000000024,
+   "structura_sum": [
+    0.0,
+    0.0,
+    -8499.999999999669
+   ],
+   "mecway_sum": [
+    0,
+    0,
+    0
+   ]
+  },
+  "vonmises_bottom_corner": null,
+  "moment_principal_max": null,
+  "moment_principal_min": null,
+  "moment_sign_ratio_structura_over_mecway": NaN,
+  "vonmises_bottom_center": null,
+  "reference": {}
+ }
+]

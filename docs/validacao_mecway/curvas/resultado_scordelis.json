@@ -1,0 +1,57 @@
+{
+ "scordelis_4": {
+  "nodes": 25,
+  "uz_structura": 0.39536524997429795,
+  "uz_mecway": 0.357078868981034,
+  "dif_structura_mecway_rel": 0.10722107724413532,
+  "erro_vs_referencia": 0.30742476843352495,
+  "max_dif_nodal_rel_ux_uy_uz": [
+   0.23839906981593637,
+   0.09698938983969853,
+   0.10722107724413532
+  ]
+ },
+ "scordelis_8": {
+  "nodes": 63,
+  "uz_structura": 0.326192804172595,
+  "uz_mecway": 0.3069605056424682,
+  "dif_structura_mecway_rel": 0.06265398374254572,
+  "erro_vs_referencia": 0.07867990797815805,
+  "max_dif_nodal_rel_ux_uy_uz": [
+   0.0937605343990031,
+   0.05882768407556436,
+   0.0626539837425267
+  ],
+  "razao_ao_nivel_anterior": 0.06917244580170295
+ },
+ "scordelis_16": {
+  "nodes": 221,
+  "uz_structura": 0.30417427885774356,
+  "uz_mecway": 0.2979886843540433,
+  "dif_structura_mecway_rel": 0.02075781675102501,
+  "erro_vs_referencia": 0.005867324265025003,
+  "max_dif_nodal_rel_ux_uy_uz": [
+   0.029206154288796332,
+   0.019758729040479112,
+   0.02075781675092955
+  ],
+  "razao_ao_nivel_anterior": 0.022018525314851434
+ },
+ "scordelis_32": {
+  "nodes": 825,
+  "uz_structura": 0.30153318790759304,
+  "uz_mecway": 0.302814446177775,
+  "dif_structura_mecway_rel": 0.004231166268169862,
+  "erro_vs_referencia": -0.0028664421045203887,
+  "max_dif_nodal_rel_ux_uy_uz": [
+   0.0045725847207237925,
+   0.005682931399615304,
+   0.004231166268169862
+  ],
+  "razao_ao_nivel_anterior": 0.0026410909501505264
+ },
+ "richardson": {
+  "taxa_observada": 3.059511959041214,
+  "valor_extrapolado": 0.30117321448305784
+ }
+}

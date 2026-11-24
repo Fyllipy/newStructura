@@ -1,0 +1,4 @@
+linear_w_sobre_L=-0.333304692
+linear_u_sobre_L=0
+segunda_ordem_w_sobre_L=-0.333304692
+segunda_ordem_u_sobre_L=0

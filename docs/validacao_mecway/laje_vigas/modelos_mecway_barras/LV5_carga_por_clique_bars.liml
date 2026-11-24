@@ -1,0 +1,171 @@
+<liml version="27">
+  <analysis type="S30" />
+  <incompatiblehex8>true</incompatiblehex8>
+  <node nid="1" x="0.0" y="0.0" z="3.0" />
+  <node nid="2" x="1.0" y="0.0" z="3.0" />
+  <node nid="3" x="2.0" y="0.0" z="3.0" />
+  <node nid="4" x="3.0" y="0.0" z="3.0" />
+  <node nid="5" x="4.0" y="0.0" z="3.0" />
+  <node nid="6" x="5.0" y="0.0" z="3.0" />
+  <node nid="7" x="6.0" y="0.0" z="3.0" />
+  <node nid="8" x="6.0" y="1.0" z="3.0" />
+  <node nid="9" x="6.0" y="2.0" z="3.0" />
+  <node nid="10" x="6.0" y="3.0" z="3.0" />
+  <node nid="11" x="6.0" y="4.0" z="3.0" />
+  <node nid="12" x="5.0" y="4.0" z="3.0" />
+  <node nid="13" x="4.0" y="4.0" z="3.0" />
+  <node nid="14" x="3.0" y="4.0" z="3.0" />
+  <node nid="15" x="2.0" y="4.0" z="3.0" />
+  <node nid="16" x="1.0" y="4.0" z="3.0" />
+  <node nid="17" x="0.0" y="4.0" z="3.0" />
+  <node nid="18" x="0.0" y="3.0" z="3.0" />
+  <node nid="19" x="0.0" y="2.0" z="3.0" />
+  <node nid="20" x="0.0" y="1.0" z="3.0" />
+  <node nid="21" x="0.0" y="0.0" z="0.0" />
+  <node nid="22" x="6.0" y="0.0" z="0.0" />
+  <node nid="23" x="6.0" y="4.0" z="0.0" />
+  <node nid="24" x="0.0" y="4.0" z="0.0" />
+  <elset name="B1" colorrgb="FFB75B" material="M1">
+    <elem eid="1" shape="line2" nodes="1 2" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B2" colorrgb="FFB75B" material="M2">
+    <elem eid="2" shape="line2" nodes="2 3" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B3" colorrgb="FFB75B" material="M3">
+    <elem eid="3" shape="line2" nodes="3 4" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B4" colorrgb="FFB75B" material="M4">
+    <elem eid="4" shape="line2" nodes="4 5" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B5" colorrgb="FFB75B" material="M5">
+    <elem eid="5" shape="line2" nodes="5 6" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B6" colorrgb="FFB75B" material="M6">
+    <elem eid="6" shape="line2" nodes="6 7" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B7" colorrgb="FFB75B" material="M7">
+    <elem eid="7" shape="line2" nodes="7 8" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B8" colorrgb="FFB75B" material="M8">
+    <elem eid="8" shape="line2" nodes="8 9" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B9" colorrgb="FFB75B" material="M9">
+    <elem eid="9" shape="line2" nodes="9 10" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B10" colorrgb="FFB75B" material="M10">
+    <elem eid="10" shape="line2" nodes="10 11" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B11" colorrgb="FFB75B" material="M11">
+    <elem eid="11" shape="line2" nodes="11 12" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B12" colorrgb="FFB75B" material="M12">
+    <elem eid="12" shape="line2" nodes="12 13" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B13" colorrgb="FFB75B" material="M13">
+    <elem eid="13" shape="line2" nodes="13 14" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B14" colorrgb="FFB75B" material="M14">
+    <elem eid="14" shape="line2" nodes="14 15" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B15" colorrgb="FFB75B" material="M15">
+    <elem eid="15" shape="line2" nodes="15 16" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B16" colorrgb="FFB75B" material="M16">
+    <elem eid="16" shape="line2" nodes="16 17" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B17" colorrgb="FFB75B" material="M17">
+    <elem eid="17" shape="line2" nodes="17 18" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B18" colorrgb="FFB75B" material="M18">
+    <elem eid="18" shape="line2" nodes="18 19" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B19" colorrgb="FFB75B" material="M19">
+    <elem eid="19" shape="line2" nodes="19 20" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B20" colorrgb="FFB75B" material="M20">
+    <elem eid="20" shape="line2" nodes="20 1" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B21" colorrgb="FFB75B" material="M21">
+    <elem eid="21" shape="line2" nodes="21 1" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B22" colorrgb="FFB75B" material="M22">
+    <elem eid="22" shape="line2" nodes="22 7" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B23" colorrgb="FFB75B" material="M23">
+    <elem eid="23" shape="line2" nodes="23 11" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <elset name="B24" colorrgb="FFB75B" material="M24">
+    <elem eid="24" shape="line2" nodes="24 17" orientationvy="1" orientationvz="1" angle="0 &#176;" />
+  </elset>
+  <fixed selection="faces_fixed" />
+  <gravity><x>0 m/s&#178;</x><y>0 m/s&#178;</y><z>-9.81 m/s&#178;</z></gravity>
+  <force selection="fn1"><x>0.0 N</x><y>0.0 N</y><z>-1250.0 N</z></force>
+  <force selection="fn2"><x>0.0 N</x><y>0.0 N</y><z>-5000.0 N</z></force>
+  <force selection="fn3"><x>0.0 N</x><y>0.0 N</y><z>-9166.666666666668 N</z></force>
+  <force selection="fn4"><x>0.0 N</x><y>0.0 N</y><z>-10000.0 N</z></force>
+  <force selection="fn5"><x>0.0 N</x><y>0.0 N</y><z>-9166.666666666668 N</z></force>
+  <force selection="fn6"><x>0.0 N</x><y>0.0 N</y><z>-5000.0 N</z></force>
+  <force selection="fn7"><x>0.0 N</x><y>0.0 N</y><z>-1250.0 N</z></force>
+  <force selection="fn8"><x>0.0 N</x><y>0.0 N</y><z>-5000.0 N</z></force>
+  <force selection="fn9"><x>0.0 N</x><y>0.0 N</y><z>-9166.666666666664 N</z></force>
+  <force selection="fn10"><x>0.0 N</x><y>0.0 N</y><z>-5000.0 N</z></force>
+  <force selection="fn11"><x>0.0 N</x><y>0.0 N</y><z>-1250.0 N</z></force>
+  <force selection="fn12"><x>0.0 N</x><y>0.0 N</y><z>-5000.0 N</z></force>
+  <force selection="fn13"><x>0.0 N</x><y>0.0 N</y><z>-9166.666666666668 N</z></force>
+  <force selection="fn14"><x>0.0 N</x><y>0.0 N</y><z>-10000.0 N</z></force>
+  <force selection="fn15"><x>0.0 N</x><y>0.0 N</y><z>-9166.666666666668 N</z></force>
+  <force selection="fn16"><x>0.0 N</x><y>0.0 N</y><z>-5000.0 N</z></force>
+  <force selection="fn17"><x>0.0 N</x><y>0.0 N</y><z>-1250.0 N</z></force>
+  <force selection="fn18"><x>0.0 N</x><y>0.0 N</y><z>-5000.0 N</z></force>
+  <force selection="fn19"><x>0.0 N</x><y>0.0 N</y><z>-9166.666666666668 N</z></force>
+  <force selection="fn20"><x>0.0 N</x><y>0.0 N</y><z>-5000.0 N</z></force>
+  <mat name="M1"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M2"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M3"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M4"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M5"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M6"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M7"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M8"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M9"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M10"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M11"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M12"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M13"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M14"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M15"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M16"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M17"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M18"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M19"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M20"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M21"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M22"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M23"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <mat name="M24"><geometric type="RectBar" recta="0.3 m" rectb="0.3 m" /><mechanical type="Isotropic" youngsmodulus="30000000000.0 Pa" poissonratio="0.2" /><density type="Simple" density="1e-12 kg/m&#179;" /></mat>
+  <faceselection name="faces_fixed" direct="true"><face eid="21" faceid="2" /><face eid="22" faceid="2" /><face eid="23" faceid="2" /><face eid="24" faceid="2" /></faceselection>
+  <nodeselection name="fn1" direct="true"><node nid="1" /></nodeselection>
+  <nodeselection name="fn2" direct="true"><node nid="2" /></nodeselection>
+  <nodeselection name="fn3" direct="true"><node nid="3" /></nodeselection>
+  <nodeselection name="fn4" direct="true"><node nid="4" /></nodeselection>
+  <nodeselection name="fn5" direct="true"><node nid="5" /></nodeselection>
+  <nodeselection name="fn6" direct="true"><node nid="6" /></nodeselection>
+  <nodeselection name="fn7" direct="true"><node nid="7" /></nodeselection>
+  <nodeselection name="fn8" direct="true"><node nid="8" /></nodeselection>
+  <nodeselection name="fn9" direct="true"><node nid="9" /></nodeselection>
+  <nodeselection name="fn10" direct="true"><node nid="10" /></nodeselection>
+  <nodeselection name="fn11" direct="true"><node nid="11" /></nodeselection>
+  <nodeselection name="fn12" direct="true"><node nid="12" /></nodeselection>
+  <nodeselection name="fn13" direct="true"><node nid="13" /></nodeselection>
+  <nodeselection name="fn14" direct="true"><node nid="14" /></nodeselection>
+  <nodeselection name="fn15" direct="true"><node nid="15" /></nodeselection>
+  <nodeselection name="fn16" direct="true"><node nid="16" /></nodeselection>
+  <nodeselection name="fn17" direct="true"><node nid="17" /></nodeselection>
+  <nodeselection name="fn18" direct="true"><node nid="18" /></nodeselection>
+  <nodeselection name="fn19" direct="true"><node nid="19" /></nodeselection>
+  <nodeselection name="fn20" direct="true"><node nid="20" /></nodeselection>
+  <fieldvariable name="displacement" />
+  <fieldvariable name="rotation" />
+  <fieldvariable name="reaction force" />
+  <fieldvariable name="reaction moment" />
+</liml>

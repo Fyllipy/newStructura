@@ -1,0 +1,1179 @@
+{
+ "LV1_laje_4vigas_4pilares": {
+  "nos_e_apoios": {
+   "cuts_expected": 16,
+   "cuts_service": 16,
+   "cuts_equal": true,
+   "mesh_nodes_on_bars": 20,
+   "all_have_bar_node": true,
+   "modo_A": {
+    "merged": 20,
+    "interior_shell_nodes": 0,
+    "ties_translation_only_same_point": 20,
+    "ties_total": 20
+   },
+   "modo_M": {
+    "merged": 20,
+    "interior_shell_nodes": 0,
+    "ties_translation_only_same_point": 0,
+    "ties_total": 0
+   }
+  },
+  "beam_elements": 20,
+  "max_M": 12258.3542458416,
+  "max_err_forces_vs_mecway": 7.553208080106485e-05,
+  "max_err_rot_vs_mecway": 7.553208080143582e-05,
+  "midspan": [
+   {
+    "line": {
+     "along_x": true,
+     "coord": 0.0
+    },
+    "bar": 4,
+    "M_structura": 12258.766807233838,
+    "M_mecway": 12258.3542458416
+   },
+   {
+    "line": {
+     "along_x": false,
+     "coord": 6.0
+    },
+    "bar": 9,
+    "M_structura": 6257.271675609147,
+    "M_mecway": 6257.755950201841
+   },
+   {
+    "line": {
+     "along_x": true,
+     "coord": 4.0
+    },
+    "bar": 13,
+    "M_structura": 12258.766807235037,
+    "M_mecway": 12258.354245840528
+   },
+   {
+    "line": {
+     "along_x": false,
+     "coord": 0.0
+    },
+    "bar": 18,
+    "M_structura": 6257.271675609397,
+    "M_mecway": 6257.755950202188
+   }
+  ],
+  "rows": [
+   {
+    "bar": 1,
+    "x0": 0.0,
+    "y0": 0.0,
+    "x1": 1.0,
+    "y1": 0.0,
+    "M_structura_forcas": 5083.926726000333,
+    "M_structura_rot": 5083.926726000337,
+    "M_mecway": 5083.000826998289
+   },
+   {
+    "bar": 2,
+    "x0": 1.0,
+    "y0": 0.0,
+    "x1": 2.0,
+    "y1": 0.0,
+    "M_structura_forcas": 6800.10204202661,
+    "M_structura_rot": 6800.102042026613,
+    "M_mecway": 6799.963677120341
+   },
+   {
+    "bar": 3,
+    "x0": 2.0,
+    "y0": 0.0,
+    "x1": 3.0,
+    "y1": 0.0,
+    "M_structura_forcas": 12258.766807234064,
+    "M_structura_rot": 12258.766807234055,
+    "M_mecway": 12258.354245841518
+   },
+   {
+    "bar": 4,
+    "x0": 3.0,
+    "y0": 0.0,
+    "x1": 4.0,
+    "y1": 0.0,
+    "M_structura_forcas": 12258.766807233838,
+    "M_structura_rot": 12258.766807233853,
+    "M_mecway": 12258.3542458416
+   },
+   {
+    "bar": 5,
+    "x0": 4.0,
+    "y0": 0.0,
+    "x1": 5.0,
+    "y1": 0.0,
+    "M_structura_forcas": 6800.102042026199,
+    "M_structura_rot": 6800.102042026203,
+    "M_mecway": 6799.963677120225
+   },
+   {
+    "bar": 6,
+    "x0": 5.0,
+    "y0": 0.0,
+    "x1": 6.0,
+    "y1": 0.0,
+    "M_structura_forcas": 5083.926726000618,
+    "M_structura_rot": 5083.926726000618,
+    "M_mecway": 5083.000826998465
+   },
+   {
+    "bar": 7,
+    "x0": 6.0,
+    "y0": 0.0,
+    "x1": 6.0,
+    "y1": 1.0,
+    "M_structura_forcas": 77.5743068966649,
+    "M_structura_rot": 77.5743068966666,
+    "M_mecway": 77.16908976565027
+   },
+   {
+    "bar": 8,
+    "x0": 6.0,
+    "y0": 1.0,
+    "x1": 6.0,
+    "y1": 2.0,
+    "M_structura_forcas": 6257.271675609132,
+    "M_structura_rot": 6257.271675609136,
+    "M_mecway": 6257.755950201937
+   },
+   {
+    "bar": 9,
+    "x0": 6.0,
+    "y0": 2.0,
+    "x1": 6.0,
+    "y1": 3.0,
+    "M_structura_forcas": 6257.271675609147,
+    "M_structura_rot": 6257.271675609149,
+    "M_mecway": 6257.755950201841
+   },
+   {
+    "bar": 10,
+    "x0": 6.0,
+    "y0": 3.0,
+    "x1": 6.0,
+    "y1": 4.0,
+    "M_structura_forcas": 77.57430689670491,
+    "M_structura_rot": 77.57430689670501,
+    "M_mecway": 77.16908976571723
+   },
+   {
+    "bar": 11,
+    "x0": 6.0,
+    "y0": 4.0,
+    "x1": 5.0,
+    "y1": 4.0,
+    "M_structura_forcas": 5083.92672600126,
+    "M_structura_rot": 5083.926726001257,
+    "M_mecway": 5083.000826998008
+   },
+   {
+    "bar": 12,
+    "x0": 5.0,
+    "y0": 4.0,
+    "x1": 4.0,
+    "y1": 4.0,
+    "M_structura_forcas": 6800.102042026609,
+    "M_structura_rot": 6800.102042026596,
+    "M_mecway": 6799.96367711982
+   },
+   {
+    "bar": 13,
+    "x0": 4.0,
+    "y0": 4.0,
+    "x1": 3.0,
+    "y1": 4.0,
+    "M_structura_forcas": 12258.766807235037,
+    "M_structura_rot": 12258.766807235032,
+    "M_mecway": 12258.354245840528
+   },
+   {
+    "bar": 14,
+    "x0": 3.0,
+    "y0": 4.0,
+    "x1": 2.0,
+    "y1": 4.0,
+    "M_structura_forcas": 12258.766807235424,
+    "M_structura_rot": 12258.766807235424,
+    "M_mecway": 12258.354245840756
+   },
+   {
+    "bar": 15,
+    "x0": 2.0,
+    "y0": 4.0,
+    "x1": 1.0,
+    "y1": 4.0,
+    "M_structura_forcas": 6800.102042027418,
+    "M_structura_rot": 6800.102042027408,
+    "M_mecway": 6799.963677120297
+   },
+   {
+    "bar": 16,
+    "x0": 1.0,
+    "y0": 4.0,
+    "x1": 0.0,
+    "y1": 4.0,
+    "M_structura_forcas": 5083.926726001162,
+    "M_structura_rot": 5083.926726001167,
+    "M_mecway": 5083.000826997777
+   },
+   {
+    "bar": 17,
+    "x0": 0.0,
+    "y0": 4.0,
+    "x1": 0.0,
+    "y1": 3.0,
+    "M_structura_forcas": 77.57430689669673,
+    "M_structura_rot": 77.57430689669734,
+    "M_mecway": 77.16908976562502
+   },
+   {
+    "bar": 18,
+    "x0": 0.0,
+    "y0": 3.0,
+    "x1": 0.0,
+    "y1": 2.0,
+    "M_structura_forcas": 6257.271675609397,
+    "M_structura_rot": 6257.271675609401,
+    "M_mecway": 6257.755950202188
+   },
+   {
+    "bar": 19,
+    "x0": 0.0,
+    "y0": 2.0,
+    "x1": 0.0,
+    "y1": 1.0,
+    "M_structura_forcas": 6257.271675609375,
+    "M_structura_rot": 6257.271675609377,
+    "M_mecway": 6257.755950202097
+   },
+   {
+    "bar": 20,
+    "x0": 0.0,
+    "y0": 1.0,
+    "x1": 0.0,
+    "y1": 0.0,
+    "M_structura_forcas": 77.57430689666216,
+    "M_structura_rot": 77.57430689666221,
+    "M_mecway": 77.1690897657381
+   }
+  ]
+ },
+ "LV2_duas_baias_viga_central": {
+  "nos_e_apoios": {
+   "cuts_expected": 23,
+   "cuts_service": 23,
+   "cuts_equal": true,
+   "mesh_nodes_on_bars": 27,
+   "all_have_bar_node": true,
+   "modo_A": {
+    "merged": 27,
+    "interior_shell_nodes": 0,
+    "ties_translation_only_same_point": 27,
+    "ties_total": 27
+   },
+   "modo_M": {
+    "merged": 27,
+    "interior_shell_nodes": 0,
+    "ties_translation_only_same_point": 0,
+    "ties_total": 0
+   }
+  },
+  "beam_elements": 28,
+  "max_M": 8758.868375478665,
+  "max_err_forces_vs_mecway": 8.169903266870846e-05,
+  "max_err_rot_vs_mecway": 8.169903266912381e-05,
+  "midspan": [
+   {
+    "line": {
+     "along_x": true,
+     "coord": 0.0
+    },
+    "bar": 5,
+    "M_structura": 3631.196098722006,
+    "M_mecway": 3631.404572188449
+   },
+   {
+    "line": {
+     "along_x": false,
+     "coord": 8.0
+    },
+    "bar": 11,
+    "M_structura": 5201.7110361088735,
+    "M_mecway": 5202.000264955625
+   },
+   {
+    "line": {
+     "along_x": true,
+     "coord": 4.0
+    },
+    "bar": 16,
+    "M_structura": 3631.1960987221028,
+    "M_mecway": 3631.4045721884086
+   },
+   {
+    "line": {
+     "along_x": false,
+     "coord": 0.0
+    },
+    "bar": 22,
+    "M_structura": 5201.711036108973,
+    "M_mecway": 5202.000264955617
+   },
+   {
+    "line": {
+     "along_x": false,
+     "coord": 4.0
+    },
+    "bar": 27,
+    "M_structura": 8759.583966551967,
+    "M_mecway": 8758.868375478418
+   }
+  ],
+  "rows": [
+   {
+    "bar": 1,
+    "x0": 0.0,
+    "y0": 0.0,
+    "x1": 1.0,
+    "y1": 0.0,
+    "M_structura_forcas": 297.7607396805088,
+    "M_structura_rot": 297.7607396805095,
+    "M_mecway": 298.08642178074945
+   },
+   {
+    "bar": 2,
+    "x0": 1.0,
+    "y0": 0.0,
+    "x1": 2.0,
+    "y1": 0.0,
+    "M_structura_forcas": 4156.425689469831,
+    "M_structura_rot": 4156.425689469833,
+    "M_mecway": 4156.522272200426
+   },
+   {
+    "bar": 3,
+    "x0": 2.0,
+    "y0": 0.0,
+    "x1": 3.0,
+    "y1": 0.0,
+    "M_structura_forcas": 2859.5367405469924,
+    "M_structura_rot": 2859.536740546994,
+    "M_mecway": 2859.7149133030953
+   },
+   {
+    "bar": 4,
+    "x0": 3.0,
+    "y0": 0.0,
+    "x1": 4.0,
+    "y1": 0.0,
+    "M_structura_forcas": 3631.196098722059,
+    "M_structura_rot": 3631.19609872206,
+    "M_mecway": 3631.404572188444
+   },
+   {
+    "bar": 5,
+    "x0": 4.0,
+    "y0": 0.0,
+    "x1": 5.0,
+    "y1": 0.0,
+    "M_structura_forcas": 3631.196098722006,
+    "M_structura_rot": 3631.196098722007,
+    "M_mecway": 3631.404572188449
+   },
+   {
+    "bar": 6,
+    "x0": 5.0,
+    "y0": 0.0,
+    "x1": 6.0,
+    "y1": 0.0,
+    "M_structura_forcas": 2859.5367405470706,
+    "M_structura_rot": 2859.5367405470715,
+    "M_mecway": 2859.714913303391
+   },
+   {
+    "bar": 7,
+    "x0": 6.0,
+    "y0": 0.0,
+    "x1": 7.0,
+    "y1": 0.0,
+    "M_structura_forcas": 4156.425689469757,
+    "M_structura_rot": 4156.425689469757,
+    "M_mecway": 4156.522272200684
+   },
+   {
+    "bar": 8,
+    "x0": 7.0,
+    "y0": 0.0,
+    "x1": 8.0,
+    "y1": 0.0,
+    "M_structura_forcas": 297.7607396804183,
+    "M_structura_rot": 297.7607396804178,
+    "M_mecway": 298.086421780728
+   },
+   {
+    "bar": 9,
+    "x0": 8.0,
+    "y0": 0.0,
+    "x1": 8.0,
+    "y1": 1.0,
+    "M_structura_forcas": 111.65524596989599,
+    "M_structura_rot": 111.65524596989613,
+    "M_mecway": 111.1845316919389
+   },
+   {
+    "bar": 10,
+    "x0": 8.0,
+    "y0": 1.0,
+    "x1": 8.0,
+    "y1": 2.0,
+    "M_structura_forcas": 5201.71103610884,
+    "M_structura_rot": 5201.7110361088435,
+    "M_mecway": 5202.000264955628
+   },
+   {
+    "bar": 11,
+    "x0": 8.0,
+    "y0": 2.0,
+    "x1": 8.0,
+    "y1": 3.0,
+    "M_structura_forcas": 5201.7110361088735,
+    "M_structura_rot": 5201.711036108873,
+    "M_mecway": 5202.000264955625
+   },
+   {
+    "bar": 12,
+    "x0": 8.0,
+    "y0": 3.0,
+    "x1": 8.0,
+    "y1": 4.0,
+    "M_structura_forcas": 111.65524596988689,
+    "M_structura_rot": 111.65524596988844,
+    "M_mecway": 111.18453169190487
+   },
+   {
+    "bar": 13,
+    "x0": 8.0,
+    "y0": 4.0,
+    "x1": 7.0,
+    "y1": 4.0,
+    "M_structura_forcas": 297.7607396804556,
+    "M_structura_rot": 297.76073968045625,
+    "M_mecway": 298.08642178076315
+   },
+   {
+    "bar": 14,
+    "x0": 7.0,
+    "y0": 4.0,
+    "x1": 6.0,
+    "y1": 4.0,
+    "M_structura_forcas": 4156.425689469649,
+    "M_structura_rot": 4156.42568946965,
+    "M_mecway": 4156.522272200652
+   },
+   {
+    "bar": 15,
+    "x0": 6.0,
+    "y0": 4.0,
+    "x1": 5.0,
+    "y1": 4.0,
+    "M_structura_forcas": 2859.536740546905,
+    "M_structura_rot": 2859.5367405469065,
+    "M_mecway": 2859.7149133033163
+   },
+   {
+    "bar": 16,
+    "x0": 5.0,
+    "y0": 4.0,
+    "x1": 4.0,
+    "y1": 4.0,
+    "M_structura_forcas": 3631.1960987221028,
+    "M_structura_rot": 3631.196098722103,
+    "M_mecway": 3631.4045721884086
+   },
+   {
+    "bar": 17,
+    "x0": 4.0,
+    "y0": 4.0,
+    "x1": 3.0,
+    "y1": 4.0,
+    "M_structura_forcas": 3631.196098722041,
+    "M_structura_rot": 3631.196098722041,
+    "M_mecway": 3631.4045721884227
+   },
+   {
+    "bar": 18,
+    "x0": 3.0,
+    "y0": 4.0,
+    "x1": 2.0,
+    "y1": 4.0,
+    "M_structura_forcas": 2859.536740547246,
+    "M_structura_rot": 2859.536740547247,
+    "M_mecway": 2859.714913303097
+   },
+   {
+    "bar": 19,
+    "x0": 2.0,
+    "y0": 4.0,
+    "x1": 1.0,
+    "y1": 4.0,
+    "M_structura_forcas": 4156.425689470004,
+    "M_structura_rot": 4156.425689470003,
+    "M_mecway": 4156.522272200424
+   },
+   {
+    "bar": 20,
+    "x0": 1.0,
+    "y0": 4.0,
+    "x1": 0.0,
+    "y1": 4.0,
+    "M_structura_forcas": 297.7607396804233,
+    "M_structura_rot": 297.7607396804244,
+    "M_mecway": 298.0864217807544
+   },
+   {
+    "bar": 21,
+    "x0": 0.0,
+    "y0": 4.0,
+    "x1": 0.0,
+    "y1": 3.0,
+    "M_structura_forcas": 111.65524596989417,
+    "M_structura_rot": 111.65524596989394,
+    "M_mecway": 111.18453169193012
+   },
+   {
+    "bar": 22,
+    "x0": 0.0,
+    "y0": 3.0,
+    "x1": 0.0,
+    "y1": 2.0,
+    "M_structura_forcas": 5201.711036108973,
+    "M_structura_rot": 5201.711036108974,
+    "M_mecway": 5202.000264955617
+   },
+   {
+    "bar": 23,
+    "x0": 0.0,
+    "y0": 2.0,
+    "x1": 0.0,
+    "y1": 1.0,
+    "M_structura_forcas": 5201.711036108961,
+    "M_structura_rot": 5201.711036108961,
+    "M_mecway": 5202.0002649556245
+   },
+   {
+    "bar": 24,
+    "x0": 0.0,
+    "y0": 1.0,
+    "x1": 0.0,
+    "y1": 0.0,
+    "M_structura_forcas": 111.65524596988143,
+    "M_structura_rot": 111.65524596988186,
+    "M_mecway": 111.18453169190158
+   },
+   {
+    "bar": 25,
+    "x0": 4.0,
+    "y0": 0.0,
+    "x1": 4.0,
+    "y1": 1.0,
+    "M_structura_forcas": 56.431921609208075,
+    "M_structura_rot": 56.43192160920787,
+    "M_mecway": 56.218813999299115
+   },
+   {
+    "bar": 26,
+    "x0": 4.0,
+    "y0": 1.0,
+    "x1": 4.0,
+    "y1": 2.0,
+    "M_structura_forcas": 8759.583966551996,
+    "M_structura_rot": 8759.583966551996,
+    "M_mecway": 8758.868375478665
+   },
+   {
+    "bar": 27,
+    "x0": 4.0,
+    "y0": 2.0,
+    "x1": 4.0,
+    "y1": 3.0,
+    "M_structura_forcas": 8759.583966551967,
+    "M_structura_rot": 8759.58396655197,
+    "M_mecway": 8758.868375478418
+   },
+   {
+    "bar": 28,
+    "x0": 4.0,
+    "y0": 3.0,
+    "x1": 4.0,
+    "y1": 4.0,
+    "M_structura_forcas": 56.43192160919352,
+    "M_structura_rot": 56.4319216091936,
+    "M_mecway": 56.21881399935949
+   }
+  ]
+ },
+ "LV3_laje_unidirecional_2vigas": {
+  "nos_e_apoios": {
+   "cuts_expected": 10,
+   "cuts_service": 10,
+   "cuts_equal": true,
+   "mesh_nodes_on_bars": 14,
+   "all_have_bar_node": true,
+   "modo_A": {
+    "merged": 14,
+    "interior_shell_nodes": 0,
+    "ties_translation_only_same_point": 14,
+    "ties_total": 14
+   },
+   "modo_M": {
+    "merged": 14,
+    "interior_shell_nodes": 0,
+    "ties_translation_only_same_point": 0,
+    "ties_total": 0
+   }
+  },
+  "beam_elements": 12,
+  "max_M": 12537.5582263251,
+  "max_err_forces_vs_mecway": 2.1010157197635423e-05,
+  "max_err_rot_vs_mecway": 2.101015719705509e-05,
+  "midspan": [
+   {
+    "line": {
+     "along_x": true,
+     "coord": 0.0
+    },
+    "bar": 4,
+    "M_structura": 12537.721269976148,
+    "M_mecway": 12537.558226324943
+   },
+   {
+    "line": {
+     "along_x": true,
+     "coord": 4.0
+    },
+    "bar": 10,
+    "M_structura": 12537.721269974876,
+    "M_mecway": 12537.558226324474
+   }
+  ],
+  "rows": [
+   {
+    "bar": 1,
+    "x0": 0.0,
+    "y0": 0.0,
+    "x1": 1.0,
+    "y1": 0.0,
+    "M_structura_forcas": 6042.829284993451,
+    "M_structura_rot": 6042.829284993452,
+    "M_mecway": 6042.736668098525
+   },
+   {
+    "bar": 2,
+    "x0": 1.0,
+    "y0": 0.0,
+    "x1": 2.0,
+    "y1": 0.0,
+    "M_structura_forcas": 7324.548601620225,
+    "M_structura_rot": 7324.548601620224,
+    "M_mecway": 7324.812017687979
+   },
+   {
+    "bar": 3,
+    "x0": 2.0,
+    "y0": 0.0,
+    "x1": 3.0,
+    "y1": 0.0,
+    "M_structura_forcas": 12537.721269976199,
+    "M_structura_rot": 12537.72126997621,
+    "M_mecway": 12537.5582263251
+   },
+   {
+    "bar": 4,
+    "x0": 3.0,
+    "y0": 0.0,
+    "x1": 4.0,
+    "y1": 0.0,
+    "M_structura_forcas": 12537.721269976148,
+    "M_structura_rot": 12537.72126997614,
+    "M_mecway": 12537.558226324943
+   },
+   {
+    "bar": 5,
+    "x0": 4.0,
+    "y0": 0.0,
+    "x1": 5.0,
+    "y1": 0.0,
+    "M_structura_forcas": 7324.548601620692,
+    "M_structura_rot": 7324.548601620704,
+    "M_mecway": 7324.812017687867
+   },
+   {
+    "bar": 6,
+    "x0": 5.0,
+    "y0": 0.0,
+    "x1": 6.0,
+    "y1": 0.0,
+    "M_structura_forcas": 6042.829284993033,
+    "M_structura_rot": 6042.829284993033,
+    "M_mecway": 6042.73666809855
+   },
+   {
+    "bar": 7,
+    "x0": 0.0,
+    "y0": 4.0,
+    "x1": 1.0,
+    "y1": 4.0,
+    "M_structura_forcas": 6042.829284992327,
+    "M_structura_rot": 6042.829284992331,
+    "M_mecway": 6042.736668098233
+   },
+   {
+    "bar": 8,
+    "x0": 1.0,
+    "y0": 4.0,
+    "x1": 2.0,
+    "y1": 4.0,
+    "M_structura_forcas": 7324.548601618664,
+    "M_structura_rot": 7324.5486016186715,
+    "M_mecway": 7324.812017687874
+   },
+   {
+    "bar": 9,
+    "x0": 2.0,
+    "y0": 4.0,
+    "x1": 3.0,
+    "y1": 4.0,
+    "M_structura_forcas": 12537.721269974025,
+    "M_structura_rot": 12537.721269974027,
+    "M_mecway": 12537.558226324536
+   },
+   {
+    "bar": 10,
+    "x0": 3.0,
+    "y0": 4.0,
+    "x1": 4.0,
+    "y1": 4.0,
+    "M_structura_forcas": 12537.721269974876,
+    "M_structura_rot": 12537.721269974887,
+    "M_mecway": 12537.558226324474
+   },
+   {
+    "bar": 11,
+    "x0": 4.0,
+    "y0": 4.0,
+    "x1": 5.0,
+    "y1": 4.0,
+    "M_structura_forcas": 7324.548601620092,
+    "M_structura_rot": 7324.548601620094,
+    "M_mecway": 7324.812017687744
+   },
+   {
+    "bar": 12,
+    "x0": 5.0,
+    "y0": 4.0,
+    "x1": 6.0,
+    "y1": 4.0,
+    "M_structura_forcas": 6042.8292849921945,
+    "M_structura_rot": 6042.829284992201,
+    "M_mecway": 6042.736668098299
+   }
+  ]
+ },
+ "LV4_laje_lisa_4pilares": {
+  "nos_e_apoios": {
+   "cuts_expected": 0,
+   "cuts_service": 0,
+   "cuts_equal": true,
+   "mesh_nodes_on_bars": 0,
+   "all_have_bar_node": true,
+   "modo_A": {
+    "merged": 4,
+    "interior_shell_nodes": 0,
+    "ties_translation_only_same_point": 4,
+    "ties_total": 4
+   },
+   "modo_M": {
+    "merged": 4,
+    "interior_shell_nodes": 0,
+    "ties_translation_only_same_point": 0,
+    "ties_total": 0
+   }
+  }
+ },
+ "LV5_carga_por_clique": {
+  "nos_e_apoios": {
+   "cuts_expected": 16,
+   "cuts_service": 16,
+   "cuts_equal": true,
+   "mesh_nodes_on_bars": 20,
+   "all_have_bar_node": true,
+   "modo_A": {
+    "merged": 20,
+    "interior_shell_nodes": 0,
+    "ties_translation_only_same_point": 20,
+    "ties_total": 20
+   },
+   "modo_M": {
+    "merged": 20,
+    "interior_shell_nodes": 0,
+    "ties_translation_only_same_point": 0,
+    "ties_total": 0
+   }
+  },
+  "beam_elements": 20,
+  "max_M": 12258.354245841601,
+  "max_err_forces_vs_mecway": 7.55320808016584e-05,
+  "max_err_rot_vs_mecway": 7.553208080180678e-05,
+  "midspan": [
+   {
+    "line": {
+     "along_x": true,
+     "coord": 0.0
+    },
+    "bar": 4,
+    "M_structura": 12258.766807233858,
+    "M_mecway": 12258.354245841601
+   },
+   {
+    "line": {
+     "along_x": false,
+     "coord": 6.0
+    },
+    "bar": 9,
+    "M_structura": 6257.271675609144,
+    "M_mecway": 6257.755950201845
+   },
+   {
+    "line": {
+     "along_x": true,
+     "coord": 4.0
+    },
+    "bar": 13,
+    "M_structura": 12258.766807235028,
+    "M_mecway": 12258.354245840528
+   },
+   {
+    "line": {
+     "along_x": false,
+     "coord": 0.0
+    },
+    "bar": 18,
+    "M_structura": 6257.271675609397,
+    "M_mecway": 6257.755950202187
+   }
+  ],
+  "rows": [
+   {
+    "bar": 1,
+    "x0": 0.0,
+    "y0": 0.0,
+    "x1": 1.0,
+    "y1": 0.0,
+    "M_structura_forcas": 5083.9267260003435,
+    "M_structura_rot": 5083.926726000348,
+    "M_mecway": 5083.000826998286
+   },
+   {
+    "bar": 2,
+    "x0": 1.0,
+    "y0": 0.0,
+    "x1": 2.0,
+    "y1": 0.0,
+    "M_structura_forcas": 6800.10204202661,
+    "M_structura_rot": 6800.102042026609,
+    "M_mecway": 6799.963677120341
+   },
+   {
+    "bar": 3,
+    "x0": 2.0,
+    "y0": 0.0,
+    "x1": 3.0,
+    "y1": 0.0,
+    "M_structura_forcas": 12258.766807234073,
+    "M_structura_rot": 12258.766807234064,
+    "M_mecway": 12258.354245841518
+   },
+   {
+    "bar": 4,
+    "x0": 3.0,
+    "y0": 0.0,
+    "x1": 4.0,
+    "y1": 0.0,
+    "M_structura_forcas": 12258.766807233858,
+    "M_structura_rot": 12258.766807233864,
+    "M_mecway": 12258.354245841601
+   },
+   {
+    "bar": 5,
+    "x0": 4.0,
+    "y0": 0.0,
+    "x1": 5.0,
+    "y1": 0.0,
+    "M_structura_forcas": 6800.10204202621,
+    "M_structura_rot": 6800.102042026212,
+    "M_mecway": 6799.963677120222
+   },
+   {
+    "bar": 6,
+    "x0": 5.0,
+    "y0": 0.0,
+    "x1": 6.0,
+    "y1": 0.0,
+    "M_structura_forcas": 5083.926726000629,
+    "M_structura_rot": 5083.926726000635,
+    "M_mecway": 5083.000826998466
+   },
+   {
+    "bar": 7,
+    "x0": 6.0,
+    "y0": 0.0,
+    "x1": 6.0,
+    "y1": 1.0,
+    "M_structura_forcas": 77.5743068966749,
+    "M_structura_rot": 77.57430689667427,
+    "M_mecway": 77.16908976565027
+   },
+   {
+    "bar": 8,
+    "x0": 6.0,
+    "y0": 1.0,
+    "x1": 6.0,
+    "y1": 2.0,
+    "M_structura_forcas": 6257.271675609134,
+    "M_structura_rot": 6257.27167560913,
+    "M_mecway": 6257.755950201943
+   },
+   {
+    "bar": 9,
+    "x0": 6.0,
+    "y0": 2.0,
+    "x1": 6.0,
+    "y1": 3.0,
+    "M_structura_forcas": 6257.271675609144,
+    "M_structura_rot": 6257.271675609147,
+    "M_mecway": 6257.755950201845
+   },
+   {
+    "bar": 10,
+    "x0": 6.0,
+    "y0": 3.0,
+    "x1": 6.0,
+    "y1": 4.0,
+    "M_structura_forcas": 77.57430689670582,
+    "M_structura_rot": 77.57430689670392,
+    "M_mecway": 77.16908976572492
+   },
+   {
+    "bar": 11,
+    "x0": 6.0,
+    "y0": 4.0,
+    "x1": 5.0,
+    "y1": 4.0,
+    "M_structura_forcas": 5083.926726001242,
+    "M_structura_rot": 5083.926726001244,
+    "M_mecway": 5083.000826998001
+   },
+   {
+    "bar": 12,
+    "x0": 5.0,
+    "y0": 4.0,
+    "x1": 4.0,
+    "y1": 4.0,
+    "M_structura_forcas": 6800.10204202657,
+    "M_structura_rot": 6800.102042026579,
+    "M_mecway": 6799.963677119818
+   },
+   {
+    "bar": 13,
+    "x0": 4.0,
+    "y0": 4.0,
+    "x1": 3.0,
+    "y1": 4.0,
+    "M_structura_forcas": 12258.766807235028,
+    "M_structura_rot": 12258.766807235032,
+    "M_mecway": 12258.354245840528
+   },
+   {
+    "bar": 14,
+    "x0": 3.0,
+    "y0": 4.0,
+    "x1": 2.0,
+    "y1": 4.0,
+    "M_structura_forcas": 12258.766807235443,
+    "M_structura_rot": 12258.766807235435,
+    "M_mecway": 12258.354245840761
+   },
+   {
+    "bar": 15,
+    "x0": 2.0,
+    "y0": 4.0,
+    "x1": 1.0,
+    "y1": 4.0,
+    "M_structura_forcas": 6800.102042027407,
+    "M_structura_rot": 6800.102042027411,
+    "M_mecway": 6799.963677120289
+   },
+   {
+    "bar": 16,
+    "x0": 1.0,
+    "y0": 4.0,
+    "x1": 0.0,
+    "y1": 4.0,
+    "M_structura_forcas": 5083.926726001169,
+    "M_structura_rot": 5083.926726001171,
+    "M_mecway": 5083.000826997777
+   },
+   {
+    "bar": 17,
+    "x0": 0.0,
+    "y0": 4.0,
+    "x1": 0.0,
+    "y1": 3.0,
+    "M_structura_forcas": 77.57430689669127,
+    "M_structura_rot": 77.57430689669184,
+    "M_mecway": 77.16908976562063
+   },
+   {
+    "bar": 18,
+    "x0": 0.0,
+    "y0": 3.0,
+    "x1": 0.0,
+    "y1": 2.0,
+    "M_structura_forcas": 6257.271675609397,
+    "M_structura_rot": 6257.271675609398,
+    "M_mecway": 6257.755950202187
+   },
+   {
+    "bar": 19,
+    "x0": 0.0,
+    "y0": 2.0,
+    "x1": 0.0,
+    "y1": 1.0,
+    "M_structura_forcas": 6257.271675609367,
+    "M_structura_rot": 6257.27167560937,
+    "M_mecway": 6257.755950202101
+   },
+   {
+    "bar": 20,
+    "x0": 0.0,
+    "y0": 1.0,
+    "x1": 0.0,
+    "y1": 0.0,
+    "M_structura_forcas": 77.57430689665944,
+    "M_structura_rot": 77.57430689665891,
+    "M_mecway": 77.16908976574906
+   }
+  ]
+ },
+ "LV6_vigas_sem_dividir": {
+  "nos_e_apoios": {
+   "cuts_expected": 16,
+   "cuts_service": 16,
+   "cuts_equal": true,
+   "mesh_nodes_on_bars": 20,
+   "all_have_bar_node": false,
+   "modo_A": {
+    "merged": 4,
+    "interior_shell_nodes": 16,
+    "ties_translation_only_same_point": 4,
+    "ties_total": 4
+   },
+   "modo_M": {
+    "merged": 4,
+    "interior_shell_nodes": 16,
+    "ties_translation_only_same_point": 0,
+    "ties_total": 0
+   }
+  },
+  "beam_elements": 4,
+  "max_M": 3623.2683142423316,
+  "max_err_forces_vs_mecway": 6.107781815548292e-05,
+  "max_err_rot_vs_mecway": 6.107781815560843e-05,
+  "midspan": [
+   {
+    "line": {
+     "along_x": true,
+     "coord": 0.0
+    },
+    "bar": 1,
+    "M_structura": 3623.489615565276,
+    "M_mecway": 3623.26831424205
+   },
+   {
+    "line": {
+     "along_x": false,
+     "coord": 6.0
+    },
+    "bar": 2,
+    "M_structura": 2269.5899409557815,
+    "M_mecway": 2269.4899884770675
+   },
+   {
+    "line": {
+     "along_x": true,
+     "coord": 4.0
+    },
+    "bar": 3,
+    "M_structura": 3623.489615565224,
+    "M_mecway": 3623.2683142423316
+   },
+   {
+    "line": {
+     "along_x": false,
+     "coord": 0.0
+    },
+    "bar": 4,
+    "M_structura": 2269.5899409558256,
+    "M_mecway": 2269.4899884771216
+   }
+  ],
+  "rows": [
+   {
+    "bar": 1,
+    "x0": 0.0,
+    "y0": 0.0,
+    "x1": 6.0,
+    "y1": 0.0,
+    "M_structura_forcas": 3623.489615565276,
+    "M_structura_rot": 3623.4896155652764,
+    "M_mecway": 3623.26831424205
+   },
+   {
+    "bar": 2,
+    "x0": 6.0,
+    "y0": 0.0,
+    "x1": 6.0,
+    "y1": 4.0,
+    "M_structura_forcas": 2269.5899409557815,
+    "M_structura_rot": 2269.5899409557815,
+    "M_mecway": 2269.4899884770675
+   },
+   {
+    "bar": 3,
+    "x0": 6.0,
+    "y0": 4.0,
+    "x1": 0.0,
+    "y1": 4.0,
+    "M_structura_forcas": 3623.489615565224,
+    "M_structura_rot": 3623.4896155652236,
+    "M_mecway": 3623.2683142423316
+   },
+   {
+    "bar": 4,
+    "x0": 0.0,
+    "y0": 4.0,
+    "x1": 0.0,
+    "y1": 0.0,
+    "M_structura_forcas": 2269.5899409558256,
+    "M_structura_rot": 2269.5899409558265,
+    "M_mecway": 2269.4899884771216
+   }
+  ]
+ }
+}

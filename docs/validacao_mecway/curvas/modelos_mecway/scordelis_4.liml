@@ -1,0 +1,57 @@
+<liml version="27">
+  <analysis type="S30" />
+  <incompatiblehex8>true</incompatiblehex8>
+  <node nid="1" x="0" y="16.069690242163485" z="19.151111077974452" />
+  <node nid="2" x="0" y="8.5505035831417224" z="23.492315519647711" />
+  <node nid="3" x="0" y="3.5527136788005009e-15" z="25" />
+  <node nid="4" x="0" y="-8.5505035831417153" z="23.492315519647711" />
+  <node nid="5" x="0" y="-16.069690242163478" z="19.151111077974452" />
+  <node nid="6" x="12.5" y="16.069690242163485" z="19.151111077974452" />
+  <node nid="7" x="12.5" y="8.5505035831417224" z="23.492315519647711" />
+  <node nid="8" x="12.5" y="3.5527136788005009e-15" z="25" />
+  <node nid="9" x="12.5" y="-8.5505035831417153" z="23.492315519647711" />
+  <node nid="10" x="12.5" y="-16.069690242163478" z="19.151111077974452" />
+  <node nid="11" x="25" y="16.069690242163485" z="19.151111077974452" />
+  <node nid="12" x="25" y="8.5505035831417224" z="23.492315519647711" />
+  <node nid="13" x="25" y="3.5527136788005009e-15" z="25" />
+  <node nid="14" x="25" y="-8.5505035831417153" z="23.492315519647711" />
+  <node nid="15" x="25" y="-16.069690242163478" z="19.151111077974452" />
+  <node nid="16" x="37.5" y="16.069690242163485" z="19.151111077974452" />
+  <node nid="17" x="37.5" y="8.5505035831417224" z="23.492315519647711" />
+  <node nid="18" x="37.5" y="3.5527136788005009e-15" z="25" />
+  <node nid="19" x="37.5" y="-8.5505035831417153" z="23.492315519647711" />
+  <node nid="20" x="37.5" y="-16.069690242163478" z="19.151111077974452" />
+  <node nid="21" x="50" y="16.069690242163485" z="19.151111077974452" />
+  <node nid="22" x="50" y="8.5505035831417224" z="23.492315519647711" />
+  <node nid="23" x="50" y="3.5527136788005009e-15" z="25" />
+  <node nid="24" x="50" y="-8.5505035831417153" z="23.492315519647711" />
+  <node nid="25" x="50" y="-16.069690242163478" z="19.151111077974452" />
+  <elset name="Default" colorrgb="DADADA" expanded="true" material="Material">
+    <elem eid="1" shape="quad4" nodes="1 2 7 6" />
+    <elem eid="2" shape="quad4" nodes="2 3 8 7" />
+    <elem eid="3" shape="quad4" nodes="3 4 9 8" />
+    <elem eid="4" shape="quad4" nodes="4 5 10 9" />
+    <elem eid="5" shape="quad4" nodes="6 7 12 11" />
+    <elem eid="6" shape="quad4" nodes="7 8 13 12" />
+    <elem eid="7" shape="quad4" nodes="8 9 14 13" />
+    <elem eid="8" shape="quad4" nodes="9 10 15 14" />
+    <elem eid="9" shape="quad4" nodes="11 12 17 16" />
+    <elem eid="10" shape="quad4" nodes="12 13 18 17" />
+    <elem eid="11" shape="quad4" nodes="13 14 19 18" />
+    <elem eid="12" shape="quad4" nodes="14 15 20 19" />
+    <elem eid="13" shape="quad4" nodes="16 17 22 21" />
+    <elem eid="14" shape="quad4" nodes="17 18 23 22" />
+    <elem eid="15" shape="quad4" nodes="18 19 24 23" />
+    <elem eid="16" shape="quad4" nodes="19 20 25 24" />
+  </elset>
+  <displacement selection="nodes_ux"><value>0 m</value><x>1</x><y>0</y><z>0</z></displacement>
+  <displacement selection="nodes_uy"><value>0 m</value><x>0</x><y>1</y><z>0</z></displacement>
+  <displacement selection="nodes_uz"><value>0 m</value><x>0</x><y>0</y><z>1</z></displacement>
+  <gravity><x>0 m/s&#178;</x><y>0 m/s&#178;</y><z>-9.81 m/s&#178;</z></gravity>
+  <mat name="Material"><geometric type="Plate" thickness="0.25 m" /><mechanical type="Isotropic" youngsmodulus="432000000.0 Pa" poissonratio="0.0" /><density type="Simple" density="36.69724770642202 kg/m&#179;" /></mat>
+  <nodeselection name="nodes_ux" direct="true"><node nid="3" /></nodeselection>
+  <nodeselection name="nodes_uy" direct="true"><node nid="1" /><node nid="2" /><node nid="3" /><node nid="4" /><node nid="5" /><node nid="21" /><node nid="22" /><node nid="23" /><node nid="24" /><node nid="25" /></nodeselection>
+  <nodeselection name="nodes_uz" direct="true"><node nid="1" /><node nid="2" /><node nid="3" /><node nid="4" /><node nid="5" /><node nid="21" /><node nid="22" /><node nid="23" /><node nid="24" /><node nid="25" /></nodeselection>
+  <fieldvariable name="displacement" />
+  <fieldvariable name="rotation" />
+</liml>

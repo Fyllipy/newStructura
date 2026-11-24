@@ -1,0 +1,51 @@
+== LV1_laje_4vigas_4pilares
+  modo T  Rz pilares [kN]: 30.00 30.00 30.00 30.00  soma=120.000
+          uz pontos [mm]: nan -2.5520 -0.4634 nan nan
+  modo A  Rz pilares [kN]: 30.00 30.00 30.00 30.00  soma=120.000
+          uz pontos [mm]: -2.9067 -2.0919 -0.4949 -1.4817 -1.4817
+           solver_warning=Ill-conditioned stiffness matrix (pivot ratio 4.3e+16): check very different stiffnesses, very short members, near-rigid links or almost-mechanisms
+  modo M  Rz pilares [kN]: 30.00 30.00 30.00 30.00  soma=120.000
+          uz pontos [mm]: -2.6106 -1.9668 -0.5136 -1.3023 -1.3023
+== LV2_duas_baias_viga_central
+  modo T  Rz pilares [kN]: 19.77 19.77 19.77 19.77 40.47 40.47  soma=160.000
+          uz pontos [mm]: nan nan -0.0769 -0.4069 -0.0689
+  modo A  Rz pilares [kN]: 17.38 17.38 17.38 17.38 45.24 45.24  soma=160.000
+          uz pontos [mm]: -0.9641 -0.9641 -0.7948 -0.2773 -0.5612
+           solver_warning=Ill-conditioned stiffness matrix (pivot ratio 8.7e+16): check very different stiffnesses, very short members, near-rigid links or almost-mechanisms
+  modo M  Rz pilares [kN]: 17.60 17.60 17.60 17.60 44.80 44.80  soma=160.000
+          uz pontos [mm]: -0.8498 -0.8498 -0.7169 -0.2695 -0.4972
+== LV3_laje_unidirecional_2vigas
+  modo T  Rz pilares [kN]: 29.99 29.81 29.81 29.99  soma=119.600
+          uz pontos [mm]: nan -3.0382 nan nan nan
+  modo A  Rz pilares [kN]: 30.00 30.00 30.00 30.00  soma=120.000
+          uz pontos [mm]: -3.4857 -2.1749 -2.0692 -2.0692 -2.2108
+           solver_warning=Ill-conditioned stiffness matrix (pivot ratio 4.3e+16): check very different stiffnesses, very short members, near-rigid links or almost-mechanisms
+  modo M  Rz pilares [kN]: 30.00 30.00 30.00 30.00  soma=120.000
+          uz pontos [mm]: -2.8268 -2.0231 -0.9701 -0.9701 -1.5309
+== LV4_laje_lisa_4pilares
+  modo T  Rz pilares [kN]: 0.00 0.00 0.00 0.00  soma=0.000
+          uz pontos [mm]: nan nan nan nan nan
+           warning=Laje: nenhuma barra sobre as arestas da chapa (a carga nao chega a barras).
+  modo A  Rz pilares [kN]: 45.00 45.00 45.00 45.00  soma=180.000
+          uz pontos [mm]: 0.2071 -1.5793 -0.6908 -0.0003 -0.0003
+           solver_warning=Ill-conditioned stiffness matrix (pivot ratio 8.7e+16): check very different stiffnesses, very short members, near-rigid links or almost-mechanisms
+  modo M  Rz pilares [kN]: 45.00 45.00 45.00 45.00  soma=180.000
+          uz pontos [mm]: -0.0109 -1.1706 -0.5846 -0.1117 -0.1117
+== LV5_carga_por_clique
+  modo T  Rz pilares [kN]: 0.00 0.00 0.00 0.00  soma=0.000
+          uz pontos [mm]: nan 0.0000 0.0000 nan nan
+  modo A  Rz pilares [kN]: 30.00 30.00 30.00 30.00  soma=120.000
+          uz pontos [mm]: -2.9067 -2.0919 -0.4949 -1.4817 -1.4817
+           solver_warning=Ill-conditioned stiffness matrix (pivot ratio 4.3e+16): check very different stiffnesses, very short members, near-rigid links or almost-mechanisms
+  modo M  Rz pilares [kN]: 30.00 30.00 30.00 30.00  soma=120.000
+          uz pontos [mm]: -2.6106 -1.9668 -0.5136 -1.3023 -1.3023
+== LV6_vigas_sem_dividir
+  modo T  Rz pilares [kN]: 30.00 30.00 30.00 30.00  soma=120.000
+          uz pontos [mm]: nan nan nan nan nan
+  modo A  Rz pilares [kN]: 30.00 30.00 30.00 30.00  soma=120.000
+          uz pontos [mm]: -10.8512 -10.6553 -2.8873 -6.3611 -6.3611
+           warning=16 no(s) de casca caem sobre o eixo de barras sem ser extremidade delas: as barras nao estao ligadas as cascas nesses pontos (use "Dividir barras nos nos das cascas").
+           solver_warning=Ill-conditioned stiffness matrix (pivot ratio 2.2e+16): check very different stiffnesses, very short members, near-rigid links or almost-mechanisms
+  modo M  Rz pilares [kN]: 30.00 30.00 30.00 30.00  soma=120.000
+          uz pontos [mm]: -5.0927 -4.7555 -1.1052 -2.6763 -2.6763
+           warning=16 no(s) de casca caem sobre o eixo de barras sem ser extremidade delas: as barras nao estao ligadas as cascas nesses pontos (use "Dividir barras nos nos das cascas").
