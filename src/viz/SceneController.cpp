@@ -896,6 +896,66 @@ int SceneController::pickShellQuad(int displayX, int displayY) const
     return m_shellRenderer ? m_shellRenderer->pickQuad(displayX, displayY) : -1;
 }
 
+Structura::Visualization::ShellRenderer::PickResult SceneController::pickShellPoint(int displayX, int displayY) const
+{
+    return m_shellRenderer ? m_shellRenderer->pickPoint(displayX, displayY) : Structura::Visualization::ShellRenderer::PickResult {};
+}
+
+void SceneController::setShellSelectedNodes(const std::vector<std::array<float, 3>> &points)
+{
+    if (!m_shellRenderer) {
+        if (points.empty()) {
+            return;
+        }
+        m_shellRenderer = std::make_unique<Structura::Visualization::ShellRenderer>();
+        m_shellRenderer->attach(m_renderer);
+    }
+    m_shellRenderer->setSelectedNodes(points);
+    requestRender();
+}
+
+void SceneController::setShellSupports(const std::vector<Structura::Visualization::ShellRenderer::SupportGlyph> &glyphs, float size)
+{
+    if (!m_shellRenderer) {
+        if (glyphs.empty()) {
+            return;
+        }
+        m_shellRenderer = std::make_unique<Structura::Visualization::ShellRenderer>();
+        m_shellRenderer->attach(m_renderer);
+    }
+    m_shellRenderer->setSupports(glyphs, size);
+    requestRender();
+}
+
+void SceneController::setShellSupportsVisible(bool visible)
+{
+    if (m_shellRenderer) {
+        m_shellRenderer->setSupportsVisible(visible);
+        requestRender();
+    }
+}
+
+void SceneController::setShellLoadArrows(const std::vector<Structura::Visualization::ShellRenderer::LoadArrowGlyph> &arrows)
+{
+    if (!m_shellRenderer) {
+        if (arrows.empty()) {
+            return;
+        }
+        m_shellRenderer = std::make_unique<Structura::Visualization::ShellRenderer>();
+        m_shellRenderer->attach(m_renderer);
+    }
+    m_shellRenderer->setLoadArrows(arrows);
+    requestRender();
+}
+
+void SceneController::setShellLoadArrowsVisible(bool visible)
+{
+    if (m_shellRenderer) {
+        m_shellRenderer->setLoadArrowsVisible(visible);
+        requestRender();
+    }
+}
+
 void SceneController::setExtraSnapPoints(std::vector<std::array<double, 3>> points)
 {
     m_extraSnapPoints = std::move(points);
@@ -908,7 +968,37 @@ void SceneController::setShellVisible(bool visible)
         m_shellRenderer = std::make_unique<Structura::Visualization::ShellRenderer>();
         m_shellRenderer->attach(m_renderer);
     }
-    m_shellRenderer->setVisible(visible);
+    m_shellVisibleRequested = visible;
+    m_shellRenderer->setVisible(visible && !(m_shellModeRenderer && m_shellModeRenderer->visible()));
+    requestRender();
+}
+
+void SceneController::setShellModeMesh(const Structura::Shell::RenderMesh &mesh)
+{
+    if (!m_shellModeRenderer) {
+        m_shellModeRenderer = std::make_unique<Structura::Visualization::ShellRenderer>();
+        m_shellModeRenderer->attach(m_renderer);
+    }
+    if (mesh.points.empty()) {
+        clearShellModeMesh();
+        return;
+    }
+    m_shellModeRenderer->setMesh(mesh);
+    m_shellModeRenderer->setVisible(true);
+    if (m_shellRenderer) {
+        m_shellRenderer->setVisible(false);   // a malha original sai da vista enquanto a forma modal esta ativa
+    }
+    requestRender();
+}
+
+void SceneController::clearShellModeMesh()
+{
+    if (m_shellModeRenderer) {
+        m_shellModeRenderer->setVisible(false);
+    }
+    if (m_shellRenderer) {
+        m_shellRenderer->setVisible(m_shellVisibleRequested);
+    }
     requestRender();
 }
 

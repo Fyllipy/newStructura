@@ -5,6 +5,7 @@
 #include "PlacementController.h"
 #include "SelectionModel.h"
 #include "SplitBarDialog.h"
+#include "StairDialog.h"
 #include "TrussDialog.h"
 #include "app/UndoRedoService.h"
 #include "app/services/CadImport.h"
@@ -20,6 +21,8 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QHash>
+#include <QInputDialog>
 #include <QLabel>
 #include <QMessageBox>
 #include <QVTKOpenGLNativeWidget.h>
@@ -64,6 +67,47 @@ template <typename Container, typename Predicate>
 void eraseWhere(Container &container, Predicate predicate)
 {
     container.erase(std::remove_if(container.begin(), container.end(), predicate), container.end());
+}
+
+/// Remove do estado do projeto tudo o que cita os nos e barras (ids externos) excluidos.
+template <typename State>
+void purgeElements(State &state, const QSet<int> &nodeExt, const QSet<int> &barExt)
+{
+    eraseWhere(state.supports, [&](const auto &s) { return nodeExt.contains(s.nodeId); });
+    eraseWhere(state.nodalLoads, [&](const auto &l) { return nodeExt.contains(l.nodeId); });
+    eraseWhere(state.memberLoads, [&](const auto &l) { return barExt.contains(l.memberId); });
+    auto &extras = state.extras;
+    eraseWhere(extras.memberMoments, [&](const auto &m) { return barExt.contains(m.memberId); });
+    eraseWhere(extras.memberActions, [&](const auto &a) { return barExt.contains(a.memberId); });
+    eraseWhere(extras.memberConnections, [&](const auto &c) { return barExt.contains(c.memberId); });
+    // vinculos e ligacoes entre nos que citam nos excluidos
+    for (auto &diaphragm : extras.diaphragms) {
+        eraseWhere(diaphragm.slaveNodes, [&](int id) { return nodeExt.contains(id); });
+    }
+    eraseWhere(extras.diaphragms, [&](const auto &d) { return nodeExt.contains(d.masterNode) || d.slaveNodes.isEmpty(); });
+    eraseWhere(extras.rigidLinks, [&](const auto &l) { return nodeExt.contains(l.masterNode) || nodeExt.contains(l.slaveNode); });
+    eraseWhere(extras.inclinedSupports, [&](const auto &s) { return nodeExt.contains(s.nodeId); });
+    eraseWhere(extras.links, [&](const auto &l) { return nodeExt.contains(l.nodeI) || nodeExt.contains(l.nodeJ); });
+    eraseWhere(extras.constraints, [&](const auto &c) {
+        return std::any_of(c.nodes.begin(), c.nodes.end(), [&](int id) { return nodeExt.contains(id); });
+    });
+    eraseWhere(extras.placements, [&](const auto &p) { return barExt.contains(p.memberId); });
+    eraseWhere(extras.design.members, [&](const auto &p) { return barExt.contains(p.memberId); });
+    eraseWhere(extras.connections, [&](const auto &c) { return nodeExt.contains(c.nodeId) || barExt.contains(c.memberId); });
+    for (auto &group : extras.groups) {
+        eraseWhere(group.members, [&](int id) { return barExt.contains(id); });
+    }
+    eraseWhere(extras.groups, [](const auto &g) { return g.members.isEmpty(); });
+    // escadas parametricas deixam de citar elementos excluidos (os ids externos podem ser reaproveitados depois)
+    for (auto &stair : extras.stairs) {
+        eraseWhere(stair.bars, [&](int id) { return barExt.contains(id); });
+        eraseWhere(stair.nodes, [&](int id) { return nodeExt.contains(id); });
+    }
+    eraseWhere(extras.stairs, [](const auto &s) { return s.bars.isEmpty(); });
+    for (auto &panel : extras.areaLoads) {
+        eraseWhere(panel.members, [&](int id) { return barExt.contains(id); });
+    }
+    eraseWhere(extras.areaLoads, [](const auto &a) { return a.members.isEmpty(); });
 }
 
 } // namespace
@@ -147,35 +191,7 @@ void MainWindow::onDeleteSelected()
 
     // dados do projeto que dependem dos elementos excluidos
     ModelState state = stateBefore;
-    eraseWhere(state.supports, [&](const auto &s) { return nodeExt.contains(s.nodeId); });
-    eraseWhere(state.nodalLoads, [&](const auto &l) { return nodeExt.contains(l.nodeId); });
-    eraseWhere(state.memberLoads, [&](const auto &l) { return barExt.contains(l.memberId); });
-    auto &extras = state.extras;
-    eraseWhere(extras.memberMoments, [&](const auto &m) { return barExt.contains(m.memberId); });
-    eraseWhere(extras.memberActions, [&](const auto &a) { return barExt.contains(a.memberId); });
-    eraseWhere(extras.memberConnections, [&](const auto &c) { return barExt.contains(c.memberId); });
-    // vinculos e ligacoes entre nos que citam nos excluidos
-    for (auto &diaphragm : extras.diaphragms) {
-        eraseWhere(diaphragm.slaveNodes, [&](int id) { return nodeExt.contains(id); });
-    }
-    eraseWhere(extras.diaphragms, [&](const auto &d) { return nodeExt.contains(d.masterNode) || d.slaveNodes.isEmpty(); });
-    eraseWhere(extras.rigidLinks, [&](const auto &l) { return nodeExt.contains(l.masterNode) || nodeExt.contains(l.slaveNode); });
-    eraseWhere(extras.inclinedSupports, [&](const auto &s) { return nodeExt.contains(s.nodeId); });
-    eraseWhere(extras.links, [&](const auto &l) { return nodeExt.contains(l.nodeI) || nodeExt.contains(l.nodeJ); });
-    eraseWhere(extras.constraints, [&](const auto &c) {
-        return std::any_of(c.nodes.begin(), c.nodes.end(), [&](int id) { return nodeExt.contains(id); });
-    });
-    eraseWhere(extras.placements, [&](const auto &p) { return barExt.contains(p.memberId); });
-    eraseWhere(extras.design.members, [&](const auto &p) { return barExt.contains(p.memberId); });
-    eraseWhere(extras.connections, [&](const auto &c) { return nodeExt.contains(c.nodeId) || barExt.contains(c.memberId); });
-    for (auto &group : extras.groups) {
-        eraseWhere(group.members, [&](int id) { return barExt.contains(id); });
-    }
-    eraseWhere(extras.groups, [](const auto &g) { return g.members.isEmpty(); });
-    for (auto &panel : extras.areaLoads) {
-        eraseWhere(panel.members, [&](int id) { return barExt.contains(id); });
-    }
-    eraseWhere(extras.areaLoads, [](const auto &a) { return a.members.isEmpty(); });
+    purgeElements(state, nodeExt, barExt);
 
     applyTopology(after, state);
     if (m_undoService) {
@@ -936,6 +952,287 @@ void MainWindow::onGenerateTruss()
     }
     m_sceneController->zoomExtents();
     showStatusMessage(tr("Treliça gerada: %1 nós e %2 barras (%3 painéis). Ctrl+Z desfaz.").arg(shape.nodes.size()).arg(shape.bars.size()).arg(shape.panels), 6000);
+}
+
+void MainWindow::onGenerateStair()
+{
+    runStairDialog(-1);
+}
+
+void MainWindow::onEditStair()
+{
+    if (!m_sceneController || m_command != Command::None) {
+        return;
+    }
+    if (m_extras.stairs.isEmpty()) {
+        QMessageBox::information(this, tr("Editar escada"), tr("Este projeto ainda não tem escadas geradas."));
+        return;
+    }
+    int index = -1;
+    if (m_selectionModel && !m_selectionModel->selectedBars().isEmpty()) {
+        const QSet<QUuid> selected = m_selectionModel->selectedBars();
+        QSet<int> selectedExt;
+        for (const auto &bar : m_sceneController->captureGeometry().bars) {
+            if (selected.contains(bar.id)) {
+                selectedExt.insert(bar.externalId);
+            }
+        }
+        for (int i = 0; i < m_extras.stairs.size() && index < 0; ++i) {
+            for (const int id : m_extras.stairs[i].bars) {
+                if (selectedExt.contains(id)) {
+                    index = i;
+                    break;
+                }
+            }
+        }
+    }
+    if (index < 0 && m_extras.stairs.size() == 1) {
+        index = 0;
+    }
+    if (index < 0) {
+        QStringList names;
+        for (const auto &stair : m_extras.stairs) {
+            names << tr("%1 - %2").arg(stair.id).arg(stair.name);
+        }
+        bool ok = false;
+        const QString chosen = QInputDialog::getItem(this, tr("Editar escada"), tr("Escada:"), names, 0, false, &ok);
+        if (!ok) {
+            return;
+        }
+        index = std::max(0, static_cast<int>(names.indexOf(chosen)));
+    }
+    runStairDialog(index);
+}
+
+void MainWindow::runStairDialog(int editIndex)
+{
+    using Structura::App::Services::StairGenerator;
+    namespace PD = Structura::App::ProjectData;
+    if (!m_sceneController || m_command != Command::None) {
+        return;
+    }
+    if (m_sections.isEmpty() || m_materials.isEmpty()) {
+        QMessageBox::information(this, tr("Gerar escada"), tr("Crie ao menos um material e um perfil antes de gerar a escada."));
+        return;
+    }
+    QStringList sectionNames, materialNames, caseNames;
+    for (const auto &s : m_sections) {
+        sectionNames << s.name;
+    }
+    for (const auto &m : m_materials) {
+        materialNames << m.name;
+    }
+    for (const auto &c : m_extras.loadCases) {
+        caseNames << c.name;
+    }
+    QVector<Structura::UI::StairLevel> levels;
+    for (const auto &level : m_extras.axes.levels) {
+        levels.append({level.name.isEmpty() ? tr("Nível") : level.name, level.elevation});
+    }
+
+    PD::StairObject previous;
+    Structura::UI::StairRequest initial;
+    const bool editing = editIndex >= 0 && editIndex < m_extras.stairs.size();
+    if (editing) {
+        previous = m_extras.stairs[editIndex];
+        initial.name = previous.name;
+        initial.params = previous.params;
+        initial.stringerSection = std::max(0, static_cast<int>(sectionNames.indexOf(previous.stringerSection)));
+        initial.treadSection = std::max(0, static_cast<int>(sectionNames.indexOf(previous.treadSection)));
+        initial.landingSection = std::max(0, static_cast<int>(sectionNames.indexOf(previous.landingSection)));
+        initial.material = std::max(0, static_cast<int>(materialNames.indexOf(previous.material)));
+    }
+    Structura::UI::StairDialog dialog(sectionNames, materialNames, caseNames, levels, editing ? &initial : nullptr, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    const auto request = dialog.request();
+    const auto shape = StairGenerator::generate(request.params);
+    if (shape.nodes.empty() || shape.bars.empty()) {
+        QMessageBox::warning(this, tr("Gerar escada"), tr("Os parâmetros informados não geram uma escada válida (confira níveis, altura e profundidade dos degraus)."));
+        return;
+    }
+    if (editing) {
+        const auto answer = QMessageBox::question(this, tr("Editar escada"),
+                                                  tr("A escada será regenerada: alterações feitas à mão nas suas barras e nós (perfis, cargas, apoios) serão substituídas. Continuar?"));
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
+    }
+
+    const Geometry before = m_sceneController->captureGeometry();
+    const ModelState stateBefore = captureState();
+    Geometry after = before;
+    ModelState state = stateBefore;
+
+    // regeneracao: sai o que a escada criou antes (nos que outras barras passaram a usar ficam)
+    if (editing) {
+        const QSet<int> oldBars(previous.bars.begin(), previous.bars.end());
+        QSet<int> oldNodes(previous.nodes.begin(), previous.nodes.end());
+        QHash<QUuid, int> nodeExtOf;
+        for (const auto &n : before.nodes) {
+            nodeExtOf.insert(n.id, n.externalId);
+        }
+        for (const auto &b : before.bars) {
+            if (!oldBars.contains(b.externalId)) {
+                oldNodes.remove(nodeExtOf.value(b.start));
+                oldNodes.remove(nodeExtOf.value(b.end));
+            }
+        }
+        eraseWhere(after.bars, [&](const auto &b) { return oldBars.contains(b.externalId); });
+        eraseWhere(after.nodes, [&](const auto &n) { return oldNodes.contains(n.externalId); });
+        purgeElements(state, oldNodes, oldBars);
+    }
+
+    auto sectionAt = [this](int i) { return m_sections.at(std::clamp(i, 0, static_cast<int>(m_sections.size()) - 1)); };
+    const auto &material = m_materials.at(std::clamp(request.material, 0, static_cast<int>(m_materials.size()) - 1));
+    int nextNode = 0, nextBar = 0;
+    for (const auto &n : after.nodes) {
+        nextNode = std::max(nextNode, n.externalId);
+    }
+    for (const auto &b : after.bars) {
+        nextBar = std::max(nextBar, b.externalId);
+    }
+    QSet<int> supported;
+    for (const auto &s : state.supports) {
+        supported.insert(s.nodeId);
+    }
+
+    // nos: os que coincidem com nos existentes sao reaproveitados (ligacao com o portico); os demais sao criados
+    const std::size_t existingCount = after.nodes.size();
+    std::vector<QUuid> nodeIds(shape.nodes.size());
+    std::vector<int> nodeExt(shape.nodes.size());
+    std::vector<bool> created(shape.nodes.size(), false);
+    PD::StairObject object;
+    constexpr double kSnap = 1e-4;
+    for (std::size_t i = 0; i < shape.nodes.size(); ++i) {
+        const auto &p = shape.nodes[i];
+        bool found = false;
+        for (std::size_t k = 0; k < existingCount; ++k) {
+            const auto &e = after.nodes[k];
+            if (std::abs(e.x - p.x) < kSnap && std::abs(e.y - p.y) < kSnap && std::abs(e.z - p.z) < kSnap) {
+                nodeIds[i] = e.id;
+                nodeExt[i] = e.externalId;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            Geometry::N node;
+            node.id = QUuid::createUuid();
+            node.externalId = ++nextNode;
+            node.x = p.x;
+            node.y = p.y;
+            node.z = p.z;
+            after.nodes.push_back(node);
+            nodeIds[i] = node.id;
+            nodeExt[i] = node.externalId;
+            created[i] = true;
+            object.nodes.append(node.externalId);
+        }
+    }
+
+    std::vector<int> barExt(shape.bars.size());
+    for (std::size_t i = 0; i < shape.bars.size(); ++i) {
+        const auto &b = shape.bars[i];
+        Geometry::B bar;
+        bar.id = QUuid::createUuid();
+        bar.externalId = ++nextBar;
+        bar.start = nodeIds[static_cast<std::size_t>(b.a)];
+        bar.end = nodeIds[static_cast<std::size_t>(b.b)];
+        bar.material = material.uuid;
+        const int sectionIndex = b.role == StairGenerator::Role::Stringer ? request.stringerSection
+                               : b.role == StairGenerator::Role::Tread     ? request.treadSection
+                                                                           : request.landingSection;
+        bar.section = sectionAt(sectionIndex).uuid;
+        after.bars.push_back(bar);
+        barExt[i] = bar.externalId;
+        object.bars.append(bar.externalId);
+    }
+
+    // apoios no inicio e no fim (so em nos criados e ainda sem apoio)
+    const bool centre = request.params.layout == StairGenerator::Layout::Center;
+    auto addSupports = [&](const std::vector<int> &ids, StairGenerator::SupportKind kind) {
+        if (kind == StairGenerator::SupportKind::None) {
+            return;
+        }
+        for (const int id : ids) {
+            const auto index = static_cast<std::size_t>(id);
+            if (!created[index] || supported.contains(nodeExt[index])) {
+                continue;
+            }
+            PD::NodeSupport support;
+            support.nodeId = nodeExt[index];
+            for (int dof = 0; dof < 3; ++dof) {
+                support.restraints[dof] = true;
+            }
+            if (kind == StairGenerator::SupportKind::Fixed || centre) {
+                for (int dof = 3; dof < 6; ++dof) {
+                    support.restraints[dof] = true;
+                }
+            }
+            state.supports.append(support);
+            supported.insert(support.nodeId);
+        }
+    };
+    addSupports(shape.baseNodes, request.params.baseSupport);
+    addSupports(shape.topNodes, request.params.topSupport);
+
+    // carregamentos associados a casos de carga
+    QSet<QString> knownCases;
+    for (const auto &c : state.extras.loadCases) {
+        knownCases.insert(c.name);
+    }
+    for (const auto &spec : StairGenerator::memberLoads(request.params, shape)) {
+        PD::MemberLoad load;
+        load.memberId = barExt[static_cast<std::size_t>(spec.bar)];
+        load.system = QStringLiteral("GLOBAL");
+        load.qz = spec.qz;
+        load.loadCase = QString::fromStdString(spec.loadCase);
+        state.memberLoads.append(load);
+        if (!state.extras.loadCases.isEmpty() && !knownCases.contains(load.loadCase)) {
+            state.extras.loadCases.append({load.loadCase, load.loadCase.left(4), false});
+            knownCases.insert(load.loadCase);
+        }
+    }
+
+    object.name = request.name;
+    object.params = request.params;
+    object.stringerSection = sectionAt(request.stringerSection).name;
+    object.treadSection = sectionAt(request.treadSection).name;
+    object.landingSection = sectionAt(request.landingSection).name;
+    object.material = material.name;
+    if (editing) {
+        object.id = previous.id;
+        state.extras.stairs.insert(std::min(editIndex, static_cast<int>(state.extras.stairs.size())), object);
+    } else {
+        int nextId = 0;
+        for (const auto &s : state.extras.stairs) {
+            nextId = std::max(nextId, s.id);
+        }
+        object.id = nextId + 1;
+        state.extras.stairs.append(object);
+    }
+
+    applyTopology(after, state);
+    if (m_undoService) {
+        m_undoService->stack()->push(new TopologyCommand(
+            editing ? tr("Editar escada") : tr("Gerar escada"),
+            [this, before, stateBefore]() { applyTopology(before, stateBefore); },
+            [this, after, state]() { applyTopology(after, state); }));
+    }
+    if (!editing) {
+        m_sceneController->zoomExtents();
+    }
+    QString message = tr("Escada %1: %2 degraus, %3 nós novos e %4 barras. Ctrl+Z desfaz.")
+                          .arg(editing ? tr("regenerada") : tr("gerada"))
+                          .arg(shape.risers)
+                          .arg(object.nodes.size())
+                          .arg(shape.bars.size());
+    if (!shape.warnings.empty()) {
+        message += QStringLiteral(" ") + tr("Aviso: %1").arg(QString::fromStdString(shape.warnings.front()));
+    }
+    showStatusMessage(message, 9000);
 }
 
 void MainWindow::onImportCad()

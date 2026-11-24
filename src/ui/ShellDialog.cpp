@@ -4,6 +4,7 @@
 #include "app/ShellSolverBridge.h"
 #include "shell/ShellJob.h"
 #include "shell/ShellMesh.h"
+#include "shell/ShellMeshQuality.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -98,6 +99,9 @@ std::vector<Param> paramsOf(const Object &object)
         return {{"t", "Espessura", 1, 3000, 10, 1, " mm", 1000.0}, {"angle", "Angulo de revolucao", 1, 360, 360, 1, " graus", 1.0}, {"ax", "Eixo: ponto X", -1e4, 1e4, 0, 3, " m", 1.0},
                 {"ay", "Eixo: ponto Y", -1e4, 1e4, 0, 3, " m", 1.0}, {"az", "Eixo: ponto Z", -1e4, 1e4, 0, 3, " m", 1.0}, {"dx", "Eixo: direcao X", -1, 1, 0, 3, "", 1.0},
                 {"dy", "Eixo: direcao Y", -1, 1, 0, 3, "", 1.0}, {"dz", "Eixo: direcao Z", -1, 1, 1, 3, "", 1.0}};
+    case Kind::Sweep:
+        return {{"t", "Espessura", 1, 3000, 10, 1, " mm", 1000.0}, {"twist", "Torcao total ao longo do caminho (caminho fechado: ajustada ao fechamento)", -3600, 3600, 0, 1, " graus", 1.0},
+                {"closed", "Perfil fechado (0/1)", 0, 1, 0, 0, "", 1.0}, {"pathClosed", "Caminho fechado (0/1)", 0, 1, 0, 0, "", 1.0}};
     case Kind::Vessel:
         return {{"r", "Raio medio", 0.1, 50, 1, 3, " m", 1.0}, {"length", "Comprimento do cilindro", 0.1, 200, 3, 2, " m", 1.0}, {"t", "Espessura do casco", 1, 300, 12, 1, " mm", 1000.0},
                 {"head", "Tampos (0 hemisferico, 1 elipsoidal 2:1, 2 plano)", 0, 2, 1, 0, "", 1.0}, {"tHead", "Espessura dos tampos", 1, 300, 12, 1, " mm", 1000.0},
@@ -118,6 +122,7 @@ QString kindName(Kind k)
     case Kind::Disk: return QObject::tr("Disco / anel");
     case Kind::Extrusion: return QObject::tr("Extrusão / cilindro");
     case Kind::Revolution: return QObject::tr("Superfície de revolução");
+    case Kind::Sweep: return QObject::tr("Varredura (perfil ao longo de um caminho)");
     }
     return {};
 }
@@ -130,6 +135,9 @@ QString loadTypeName(Load::Type t)
     case Load::Hydrostatic: return QObject::tr("Líquido (hidrostática)");
     case Load::Thermal: return QObject::tr("Temperatura");
     case Load::Area: return QObject::tr("Carga de área (global)");
+    case Load::NodalPoints: return QObject::tr("Força em nós (por clique)");
+    case Load::LinePoints: return QObject::tr("Carga linear em arestas (por clique)");
+    case Load::RegionPoints: return QObject::tr("Carga de superfície em elementos (por clique)");
     }
     return {};
 }
@@ -141,6 +149,9 @@ double loadScale(Load::Type t, int index)
     case Load::Pressure: return index == 0 ? 1e-3 : 1.0;           // kPa
     case Load::Hydrostatic: return index == 0 ? 1e-3 : (index == 2 ? 1e-3 : 1.0);   // kN/m3, m, kPa
     case Load::Area: return index < 3 ? 1e-3 : 1.0;                // kN/m2
+    case Load::NodalPoints: return index < 3 ? 1e-3 : 1.0;         // kN por no
+    case Load::LinePoints: return index < 3 ? 1e-3 : 1.0;          // kN/m
+    case Load::RegionPoints: return index < 3 ? 1e-3 : 1.0;        // kN/m2 (modo 2: V1 em kPa pelo mesmo fator)
     default: return 1.0;
     }
 }
@@ -153,6 +164,9 @@ QString loadHelp(Load::Type t)
     case Load::Hydrostatic: return QObject::tr("V1 = peso específico do líquido (kN/m³); V2 = cota da superfície livre (m, global); V3 = pressão do gás sobre o líquido (kPa).");
     case Load::Thermal: return QObject::tr("V1 = variação uniforme de temperatura (°C); V2 = gradiente na espessura (T da face + menos T da face −, °C).");
     case Load::Area: return QObject::tr("V1, V2, V3 = força por área nas direções X, Y, Z (kN/m²), distribuída nos nós; V4 ≠ 0: por área projetada em planta.");
+    case Load::NodalPoints: return QObject::tr("V1, V2, V3 = força (kN, direções globais X, Y, Z) aplicada em CADA nó selecionado por clique (os nós ficam gravados por coordenadas).");
+    case Load::LinePoints: return QObject::tr("V1, V2, V3 = força por comprimento (kN/m, global) sobre as arestas cujos dois nós foram selecionados por clique.");
+    case Load::RegionPoints: return QObject::tr("Elementos com os quatro nós selecionados. V4 = 0: força por área global V1..V3 (kN/m²); 1: idem por área projetada em planta; 2: pressão normal V1 (kPa, + no sentido da normal).");
     }
     return {};
 }
@@ -440,7 +454,52 @@ void ShellDialog::rebuildGeometryForm()
             });
         }
     }
-    if (o.kind == Kind::Plate || o.kind == Kind::Extrusion || o.kind == Kind::Revolution || o.kind == Kind::Disk) {
+    // espessura por segmento do perfil / linha: tSeg<n> (vazio = a espessura geral); extrusao de circulo nao tem segmentos
+    if ((o.kind == Kind::Extrusion && o.param("circle") == 0.0) || o.kind == Kind::Revolution || o.kind == Kind::Sweep) {
+        const bool closedLine = o.param("closed", 0.0) != 0.0 && o.polygon.size() >= 3;
+        const int segments = static_cast<int>(closedLine ? o.polygon.size() : (o.polygon.size() > 0 ? o.polygon.size() - 1 : 0));
+        for (int s = 1; s <= segments; ++s) {
+            const std::string key = "tSeg" + std::to_string(s);
+            auto *spin = makeSpin(0.0, 3000.0, o.param(key, o.param("t", 0.01)) * 1000.0, 1, 0.5, tr(" mm"));
+            m_geometryForm->addRow(tr("Espessura do segmento %1 do perfil").arg(s), spin);
+            connect(spin, &QDoubleSpinBox::valueChanged, this, [this, key](double v) {
+                if (m_building || m_current < 0) {
+                    return;
+                }
+                if (v <= 0.0) {
+                    m_model.objects[static_cast<std::size_t>(m_current)].p.erase(key);   // 0 = volta a espessura geral
+                } else {
+                    m_model.objects[static_cast<std::size_t>(m_current)].p[key] = v / 1000.0;
+                }
+                notifyChanged();
+            });
+        }
+    }
+    if (o.kind == Kind::Sweep) {
+        auto *pathTable = new QTableWidget(static_cast<int>(o.path.size()), 3);
+        pathTable->setHorizontalHeaderLabels({tr("X (m)"), tr("Y (m)"), tr("Z (m)")});
+        pathTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        pathTable->setMinimumHeight(140);
+        for (int r = 0; r < pathTable->rowCount(); ++r) {
+            for (int c = 0; c < 3; ++c) {
+                pathTable->setItem(r, c, new QTableWidgetItem(QString::number(o.path[static_cast<std::size_t>(r)][static_cast<std::size_t>(c)], 'g', 8)));
+            }
+        }
+        m_geometryForm->addRow(tr("Caminho da varredura (m)"), pathTable);
+        connect(pathTable, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
+            if (m_building || m_current < 0) {
+                return;
+            }
+            bool ok = false;
+            const double v = item->text().toDouble(&ok);
+            if (!ok) {
+                return;
+            }
+            m_model.objects[static_cast<std::size_t>(m_current)].path[static_cast<std::size_t>(item->row())][static_cast<std::size_t>(item->column())] = v;
+            notifyChanged();
+        });
+    }
+    if (o.kind == Kind::Plate || o.kind == Kind::Extrusion || o.kind == Kind::Revolution || o.kind == Kind::Disk || o.kind == Kind::Sweep) {
         auto *table = new QTableWidget(static_cast<int>(o.polygon.size()), 3);
         table->setHorizontalHeaderLabels({tr("X (m)"), tr("Y (m)"), tr("Z (m)")});
         table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
@@ -949,7 +1008,7 @@ void ShellDialog::refreshLoadTable()
             notifyChanged();
         });
         auto *typeBox = new QComboBox;
-        for (const Load::Type t : {Load::SelfWeight, Load::Pressure, Load::Hydrostatic, Load::Thermal, Load::Area}) {
+        for (const Load::Type t : {Load::SelfWeight, Load::Pressure, Load::Hydrostatic, Load::Thermal, Load::Area, Load::NodalPoints, Load::LinePoints, Load::RegionPoints}) {
             typeBox->addItem(loadTypeName(t), static_cast<int>(t));
         }
         typeBox->setCurrentIndex(static_cast<int>(l.type));
@@ -1103,7 +1162,7 @@ void ShellDialog::refreshSupportTable()
         m_supports->setCellWidget(r, 0, objectBox);
         connect(objectBox, &QComboBox::currentIndexChanged, this, [edit, objectBox](int) { edit([objectBox](Support &x) { x.object = objectBox->currentData().toInt(); }); });
         auto *selector = new QComboBox;
-        selector->addItems({tr("Plano"), tr("Borda livre"), tr("Ponto")});
+        selector->addItems({tr("Plano"), tr("Borda livre"), tr("Ponto"), tr("Nós (%1 por clique)").arg(s.points.size())});
         selector->setCurrentIndex(static_cast<int>(s.selector));
         m_supports->setCellWidget(r, 1, selector);
         connect(selector, &QComboBox::currentIndexChanged, this, [edit](int i) { edit([i](Support &x) { x.selector = static_cast<Support::Selector>(i); }); });
@@ -1287,6 +1346,21 @@ void ShellDialog::analyze()
         m_tabs->setCurrentIndex(3);
         return;
     }
+    // qualidade da malha ANTES de resolver: elemento invertido/degenerado ou normais opostas produzem resultado estruturalmente incorreto sem nenhum erro numerico
+    QString qualityNotes;
+    {
+        const Mesh qualityMesh = Structura::Shell::generateMesh(m_model);
+        const Structura::Shell::MeshQualityReport quality = Structura::Shell::analyzeMeshQuality(qualityMesh, m_model);
+        for (const std::string &line : quality.messages) {
+            qualityNotes += QStringLiteral("• %1\n").arg(QString::fromStdString(line));
+        }
+        if (quality.hasErrors()) {
+            m_status->setText(qualityNotes.trimmed());
+            QMessageBox::warning(this, tr("Cascas"),
+                                 tr("A malha tem elementos inválidos e a análise não foi executada:\n\n%1\nCorrija a geometria, a ordem dos vértices ou o tamanho da malha.").arg(qualityNotes));
+            return;
+        }
+    }
     const bool coupled = m_model.coupled && m_callbacks.coupledResults;
     Job job;
     if (coupled) {
@@ -1311,7 +1385,7 @@ void ShellDialog::analyze()
         m_results = bridge.solve(m_model, m_mesh, job);
         QApplication::restoreOverrideCursor();
     }
-    QString messages;
+    QString messages = qualityNotes;
     if (coupled && m_results.ok()) {
         messages += tr("• Resultados da análise acoplada às barras (cascas e barras resolvidas juntas).\n");
     }
@@ -1344,6 +1418,13 @@ void ShellDialog::analyze()
     // combinacoes do projeto que envolvem casos das cascas
     m_combined.clear();
     const auto combos = m_callbacks.combinations ? m_callbacks.combinations() : QVector<Structura::App::ProjectData::LoadCombination>();
+    // D2: com apoios que so comprimem a resposta e nao linear: a superposicao linear dos casos NAO e valida. Cada combinacao e resolvida como analise
+    // independente (modelo sem acoplamento) ou, no modelo acoplado as barras, nao e apresentada como se fosse valida.
+    bool unilateral = !m_results.superposable;
+    for (const auto &s : m_model.supports) {
+        unilateral = unilateral || s.compressionOnly;
+    }
+    QString comboNotes;
     for (const auto &combo : combos) {
         std::vector<std::pair<std::string, double>> factors;
         bool any = false;
@@ -1351,9 +1432,29 @@ void ShellDialog::analyze()
             factors.emplace_back(caseName.toStdString(), factor);
             any = any || cases.contains(caseName);
         }
-        if (any) {
-            m_combined.push_back(combine(m_results, factors, combo.name.toStdString()));
+        if (!any) {
+            continue;
         }
+        if (!unilateral) {
+            m_combined.push_back(combine(m_results, factors, combo.name.toStdString()));
+        } else if (!coupled) {
+            const Structura::App::ShellSolverBridge comboBridge(m_femLibrary);
+            Results single = comboBridge.solveCombination(m_model, m_mesh, job, factors, combo.name.toStdString());
+            if (single.ok()) {
+                m_combined.push_back(std::move(single.cases.front()));
+            } else {
+                comboNotes += tr("• Combinação \"%1\" não resolvida: %2\n").arg(combo.name, QString::fromStdString(single.error));
+            }
+        } else {
+            comboNotes += tr("• Combinação \"%1\" não apresentada: há apoios que só comprimem (resposta não linear) e a superposição dos casos não é válida; "
+                             "resolva a combinação como análise do projeto.\n").arg(combo.name);
+        }
+    }
+    if (unilateral) {
+        comboNotes = tr("• Apoios só-compressão: as combinações são resolvidas como análises independentes (a superposição linear de casos não vale).\n") + comboNotes;
+    }
+    if (!comboNotes.isEmpty()) {
+        m_status->setText((m_status->text() + QLatin1Char('\n') + comboNotes).trimmed());
     }
     refreshResultSelector();
     m_resultCase->setCurrentIndex(m_results.cases.empty() ? 0 : 1);
@@ -1432,7 +1533,7 @@ void ShellDialog::updateLegend(const RenderMesh &mesh, const QString &title, con
     QPixmap pix(m_legend->width(), m_legend->height());
     QPainter painter(&pix);
     for (int x = 0; x < pix.width(); ++x) {
-        const auto c = rainbow(static_cast<double>(x) / std::max(1, pix.width() - 1));
+        const auto c = bandColor(static_cast<double>(x) / std::max(1, pix.width() - 1));
         painter.setPen(QColor(c[0], c[1], c[2]));
         painter.drawLine(x, 0, x, pix.height());
     }
@@ -1481,6 +1582,9 @@ void ShellDialog::refreshView()
         if (!scalars.empty()) {
             opt.elementScalars = &scalars;
             opt.smooth = false;
+            opt.overrideLabels = true;   // a legenda da vista principal usa o titulo e a unidade da verificacao
+            opt.title = title.toStdString();
+            opt.unit = unit.toStdString();
         }
     }
     const RenderMesh mesh = buildRenderMesh(m_mesh, m_model, result, opt);

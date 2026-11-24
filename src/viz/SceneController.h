@@ -232,8 +232,22 @@ public:
     /// Malha de cascas e chapas (resultados coloridos) em coordenadas do modelo.
     void setShellMesh(const Structura::Shell::RenderMesh &mesh);
     void setShellVisible(bool visible);
+    /// Forma modal/de flambagem das cascas (malha deformada): substitui a malha das cascas na vista ate `clearShellModeMesh`.
+    void setShellModeMesh(const Structura::Shell::RenderMesh &mesh);
+    void clearShellModeMesh();
     /// Quadrilatero de casca sob o pixel de exibicao; -1 se nenhum.
     [[nodiscard]] int pickShellQuad(int displayX, int displayY) const;
+    /// Quadrilatero e ponto da cena sob o pixel (probe de resultados); quad = -1 se nenhum.
+    [[nodiscard]] Structura::Visualization::ShellRenderer::PickResult pickShellPoint(int displayX, int displayY) const;
+    [[nodiscard]] const Structura::Visualization::ShellRenderer *shellRenderer() const { return m_shellRenderer.get(); }
+    /// Destaca os nos de casca selecionados (pontos da cena); lista vazia remove o destaque.
+    void setShellSelectedNodes(const std::vector<std::array<float, 3>> &points);
+    /// Glifos dos apoios de casca (lista vazia remove) e sua visibilidade.
+    void setShellSupports(const std::vector<Structura::Visualization::ShellRenderer::SupportGlyph> &glyphs, float size);
+    void setShellSupportsVisible(bool visible);
+    /// Setas das cargas de casca dadas por clique (lista vazia remove) e sua visibilidade.
+    void setShellLoadArrows(const std::vector<Structura::Visualization::ShellRenderer::LoadArrowGlyph> &arrows);
+    void setShellLoadArrowsVisible(bool visible);
     /// Pontos extras de snap (vertices das cascas), em coordenadas do modelo.
     void setExtraSnapPoints(std::vector<std::array<double, 3>> points);
     /// Marca um no (esfera translucida) para o usuario identificar de qual no se trata; sem posicao, remove a marca.
@@ -332,6 +346,8 @@ private:
     std::unique_ptr<Structura::Visualization::SolidMemberRenderer> m_solidRenderer;
     std::unique_ptr<Structura::Visualization::ConnectionRenderer> m_connectionRenderer;
     std::unique_ptr<Structura::Visualization::ShellRenderer> m_shellRenderer;
+    std::unique_ptr<Structura::Visualization::ShellRenderer> m_shellModeRenderer;
+    bool m_shellVisibleRequested {true};
     std::vector<std::array<double, 3>> m_extraSnapPoints;
     vtkSmartPointer<vtkActor> m_nodeHighlight;
     struct LoadVisibility {

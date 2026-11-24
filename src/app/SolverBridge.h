@@ -272,12 +272,20 @@ public:
         std::vector<LinearConstraintData> constraints;
         std::vector<LinkData> links;
         NonlinearOptions nonlinear;
-        /// Verdadeiro se o modelo tem elementos que tornam a resposta nao linear (rotulas plasticas, ligacoes com leis nao lineares, pedido explicito):
+        /// Verdadeiro se o modelo tem elementos que tornam a resposta nao linear (rotulas plasticas, ligacoes com leis nao lineares, apoios de casca so-compressao, pedido explicito):
         /// a superposicao de casos deixa de valer e cada combinacao deve ser resolvida com suas cargas ponderadas.
         [[nodiscard]] bool hasNonlinearElements() const
         {
             if (nonlinear.force || !plasticHinges.empty()) {
                 return true;
+            }
+            // D2: apoios de casca que so comprimem (fundacao so-compressao) sao nao lineares: o conjunto de molas ativas muda com o carregamento
+            if (shell) {
+                for (const auto &spring : shell->springs) {
+                    if (spring.compressionOnly) {
+                        return true;
+                    }
+                }
             }
             for (const auto &link : links) {
                 for (const auto &law : link.laws) {
@@ -368,6 +376,9 @@ public:
         /// Fatores criticos de carga (crescentes) e formas modais (6 valores por no, na ordem de ModelData::nodes).
         std::vector<double> bucklingFactors;
         std::vector<std::vector<double>> bucklingModes;
+        /// Formas de flambagem e modais dos NOS DE CASCA acoplados (6 valores por no, na ordem de ModelData::shell->nodes); vazias sem cascas.
+        std::vector<std::vector<double>> bucklingShellShapes;
+        std::vector<std::vector<double>> modalShellShapes;
         /// Modal: frequencias circulares (rad/s), fracao de massa efetiva (X,Y,Z) e formas modais (6 por no).
         std::vector<double> modalOmega;
         std::vector<std::array<double, 3>> modalMassRatio;

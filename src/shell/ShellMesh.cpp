@@ -582,6 +582,12 @@ void disk(Builder &b, const Object &o, int index)
     revolve(b, {p}, arcDivisions(R, 2.0 * kPi, o.meshSize), index, o.material, frame, 2.0 * kPi, orient);
 }
 
+/// Espessura (m) do segmento `segment` (0-based) do perfil/linha de um objeto: tSeg<n+1> se informada, senao t.
+double segmentThickness(const Object &o, std::size_t segment)
+{
+    return o.param("tSeg" + std::to_string(segment + 1), o.param("t", 0.01));
+}
+
 void extrusion(Builder &b, const Object &o, int index)
 {
     const Vec3 v {o.param("vx"), o.param("vy"), o.param("vz", 1.0)};
@@ -608,6 +614,7 @@ void extrusion(Builder &b, const Object &o, int index)
     // pontos ao longo da linha base, subdivididos
     std::vector<Vec3> pts;
     std::vector<Vec3> dirs;   // direcao do segmento que parte de cada ponto
+    std::vector<std::size_t> segOf;   // segmento do polilinha de cada ponto (espessura por segmento)
     const std::size_t segments = closed ? o.polygon.size() : o.polygon.size() - 1;
     for (std::size_t s = 0; s < segments; ++s) {
         const Vec3 &a = o.polygon[s], &c = o.polygon[(s + 1) % o.polygon.size()];
@@ -619,11 +626,13 @@ void extrusion(Builder &b, const Object &o, int index)
         for (int k = 0; k < parts; ++k) {
             pts.push_back(a + (c - a) * (static_cast<double>(k) / parts));
             dirs.push_back(normalized(c - a));
+            segOf.push_back(s);
         }
     }
     if (!closed) {
         pts.push_back(o.polygon.back());
         dirs.push_back(dirs.empty() ? Vec3 {1.0, 0.0, 0.0} : dirs.back());
+        segOf.push_back(segOf.empty() ? 0 : segOf.back());
     }
     const int rows = std::max(1, static_cast<int>(std::ceil(len / h - 1e-9)));
     const int zone = b.zone(o.name);
@@ -636,7 +645,7 @@ void extrusion(Builder &b, const Object &o, int index)
     for (int i = 0; i < count; ++i) {
         for (int j = 0; j < rows; ++j) {
             const Vec3 expected = cross(dirs[static_cast<std::size_t>(i)], normalized(v)) * orient;
-            b.quad({id(i, j), id(i + 1, j), id(i + 1, j + 1), id(i, j + 1)}, index, zone, t, o.material, expected);
+            b.quad({id(i, j), id(i + 1, j), id(i + 1, j + 1), id(i, j + 1)}, index, zone, segmentThickness(o, segOf[static_cast<std::size_t>(i)]), o.material, expected);
         }
     }
 }
@@ -669,9 +678,9 @@ void revolution(Builder &b, const Object &o, int index, std::vector<std::string>
         return;
     }
     const Frame frame = generalFrame(axisPoint, axis, radial);
-    Profile prof;
-    prof.thickness = o.param("t", 0.01);
-    prof.zone = b.zone(o.name);
+    // um perfil por segmento (cada um com a sua espessura: tSeg<n> ou t); os nos das juntas coincidem e sao fundidos
+    std::vector<Profile> profiles;
+    const int objectZone = b.zone(o.name);
     double rMax = 0.0;
     for (std::size_t i = 0; i + 1 < o.polygon.size(); ++i) {
         auto toRZ = [&](const Vec3 &p) {
@@ -684,11 +693,173 @@ void revolution(Builder &b, const Object &o, int index, std::vector<std::string>
         };
         const auto a = toRZ(o.polygon[i]), c = toRZ(o.polygon[i + 1]);
         rMax = std::max({rMax, a[0], c[0]});
+        Profile prof;
+        prof.thickness = segmentThickness(o, i);
+        prof.zone = objectZone;
         line(prof, a[0], a[1], c[0], c[1], o.meshSize);
+        profiles.push_back(std::move(prof));
     }
     const double angle = std::clamp(o.param("angle", 360.0), 1.0, 360.0) * kPi / 180.0;
     const double orient = o.param("flip", 0.0) != 0.0 ? -1.0 : 1.0;
-    revolve(b, {prof}, arcDivisions(std::max(rMax, o.meshSize), angle, o.meshSize), index, o.material, frame, angle, orient);
+    revolve(b, profiles, arcDivisions(std::max(rMax, o.meshSize), angle, o.meshSize), index, o.material, frame, angle, orient);
+}
+
+// ---- varredura de perfil por caminho -----------------------------------------------------------------------------------------
+
+Vec3 rotateAbout(const Vec3 &v, const Vec3 &unitAxis, double angle)
+{
+    const double c = std::cos(angle), s = std::sin(angle);
+    return v * c + cross(unitAxis, v) * s + unitAxis * (dot(unitAxis, v) * (1.0 - c));
+}
+
+/// Perfil (polilinha 3D posicionada no inicio do caminho) varrido ao longo de um caminho (polilinha 3D): referencial de transporte paralelo
+/// (sem torcao propria), vertices do caminho com junta em meia-esquadria, torcao opcional distribuida linearmente (em caminho fechado ela e
+/// ajustada para o referencial voltar ao inicio) e espessura por segmento do perfil. A malha e de quadrilateros; o empenamento dos elementos
+/// (curvas fortes, torcao) e avaliado pela verificacao de qualidade da malha.
+void sweep(Builder &b, const Object &o, int index, std::vector<std::string> &warnings)
+{
+    const bool profileClosed = o.param("closed", 0.0) != 0.0 && o.polygon.size() >= 3;
+    const bool pathClosed = o.param("pathClosed", 0.0) != 0.0 && o.path.size() >= 3;
+    if (o.polygon.size() < 2 || o.path.size() < 2) {
+        warnings.push_back(o.name + ": a varredura precisa de um perfil e de um caminho com ao menos 2 pontos.");
+        return;
+    }
+    const double h = o.meshSize;
+    const double orient = o.param("flip", 0.0) != 0.0 ? -1.0 : 1.0;
+    // ---- estacoes do caminho (subdivididas) e direcoes dos segmentos que chegam e saem
+    std::vector<Vec3> st, segDir;
+    const std::size_t pathSegments = pathClosed ? o.path.size() : o.path.size() - 1;
+    for (std::size_t s = 0; s < pathSegments; ++s) {
+        const Vec3 &a = o.path[s], &c = o.path[(s + 1) % o.path.size()];
+        const double l = length(c - a);
+        if (l < 1e-9) {
+            continue;
+        }
+        const int parts = std::max(1, static_cast<int>(std::ceil(l / h - 1e-9)));
+        for (int k = 0; k < parts; ++k) {
+            st.push_back(a + (c - a) * (static_cast<double>(k) / parts));
+            segDir.push_back(normalized(c - a));
+        }
+    }
+    if (!pathClosed) {
+        st.push_back(o.path.back());
+        segDir.push_back(segDir.empty() ? Vec3 {1.0, 0.0, 0.0} : segDir.back());
+    }
+    const std::size_t ns = st.size();
+    if (ns < 2) {
+        warnings.push_back(o.name + ": caminho da varredura sem comprimento.");
+        return;
+    }
+    auto prev = [&](std::size_t i) { return segDir[pathClosed ? (i + ns - 1) % ns : (i == 0 ? 0 : i - 1)]; };
+    auto next = [&](std::size_t i) { return segDir[i]; };
+    std::vector<Vec3> tangent(ns);
+    std::vector<double> miter(ns, 1.0);
+    for (std::size_t i = 0; i < ns; ++i) {
+        const Vec3 in = prev(i), out = next(i);
+        const Vec3 sum = in + out;
+        if (length(sum) < 1e-9) {
+            warnings.push_back(o.name + ": o caminho da varredura reverte a direcao (curva de 180 graus): varredura cancelada.");
+            return;
+        }
+        tangent[i] = normalized(sum);
+        const double cosHalf = dot(tangent[i], in);
+        miter[i] = 1.0 / std::max(cosHalf, 0.2);
+        if (cosHalf < 0.5) {
+            warnings.push_back(o.name + ": curva muito fechada no caminho (> 120 graus entre segmentos): a junta em meia-esquadria deforma o perfil.");
+        }
+    }
+    // ---- referencial inicial e coordenadas do perfil nele
+    const Vec3 t0 = tangent[0];
+    const Vec3 reference = std::abs(t0[2]) < 0.9 ? Vec3 {0.0, 0.0, 1.0} : Vec3 {1.0, 0.0, 0.0};
+    const Vec3 n0 = normalized(reference - t0 * dot(reference, t0));
+    // transporte paralelo
+    std::vector<Vec3> normal(ns);
+    normal[0] = n0;
+    for (std::size_t i = 1; i < ns; ++i) {
+        const Vec3 axis = cross(tangent[i - 1], tangent[i]);
+        const double sinA = length(axis), cosA = std::clamp(dot(tangent[i - 1], tangent[i]), -1.0, 1.0);
+        normal[i] = sinA < 1e-12 ? normal[i - 1] : rotateAbout(normal[i - 1], axis * (1.0 / sinA), std::atan2(sinA, cosA));
+        normal[i] = normalized(normal[i] - tangent[i] * dot(normal[i], tangent[i]));
+    }
+    // torcao total: a pedida (graus) ou, em caminho fechado, a que faz o referencial voltar ao inicio
+    double totalTwist = o.param("twist", 0.0) * kPi / 180.0;
+    if (pathClosed) {
+        const Vec3 axis = cross(tangent[ns - 1], tangent[0]);
+        const double sinA = length(axis), cosA = std::clamp(dot(tangent[ns - 1], tangent[0]), -1.0, 1.0);
+        Vec3 nEnd = sinA < 1e-12 ? normal[ns - 1] : rotateAbout(normal[ns - 1], axis * (1.0 / sinA), std::atan2(sinA, cosA));
+        nEnd = normalized(nEnd - t0 * dot(nEnd, t0));
+        const double holonomy = std::atan2(dot(cross(nEnd, n0), t0), dot(nEnd, n0));   // giro (em torno de t0) que leva nEnd a n0
+        const double turns = std::round((totalTwist - holonomy) / (2.0 * kPi));
+        totalTwist = holonomy + 2.0 * kPi * turns;
+    }
+    std::vector<double> arc(ns, 0.0);
+    for (std::size_t i = 1; i < ns; ++i) {
+        arc[i] = arc[i - 1] + length(st[i] - st[i - 1]);
+    }
+    const double total = arc[ns - 1] + (pathClosed ? length(st[0] - st[ns - 1]) : 0.0);
+    std::vector<Vec3> binormal(ns);
+    for (std::size_t i = 0; i < ns; ++i) {
+        const double twist = total > 0.0 ? totalTwist * arc[i] / total : 0.0;
+        normal[i] = rotateAbout(normal[i], tangent[i], twist);
+        binormal[i] = cross(tangent[i], normal[i]);
+    }
+    const Vec3 b0 = cross(t0, n0);
+    // coordenadas do perfil (a ao longo da tangente, b na normal, c na binormal) e subdivisao dos segmentos
+    struct ProfilePoint {
+        double a, b, c;
+        std::size_t segment;
+    };
+    std::vector<ProfilePoint> prof;
+    const std::size_t profSegments = profileClosed ? o.polygon.size() : o.polygon.size() - 1;
+    for (std::size_t s = 0; s < profSegments; ++s) {
+        const Vec3 &p0 = o.polygon[s], &p1 = o.polygon[(s + 1) % o.polygon.size()];
+        const double l = length(p1 - p0);
+        if (l < 1e-9) {
+            continue;
+        }
+        const int parts = std::max(1, static_cast<int>(std::ceil(l / h - 1e-9)));
+        for (int k = 0; k < parts; ++k) {
+            const Vec3 d = p0 + (p1 - p0) * (static_cast<double>(k) / parts) - o.path[0];
+            prof.push_back({dot(d, t0), dot(d, n0), dot(d, b0), s});
+        }
+    }
+    if (!profileClosed) {
+        const Vec3 d = o.polygon.back() - o.path[0];
+        prof.push_back({dot(d, t0), dot(d, n0), dot(d, b0), prof.empty() ? 0 : prof.back().segment});
+    }
+    const std::size_t np = prof.size();
+    if (np < 2) {
+        warnings.push_back(o.name + ": perfil da varredura sem comprimento.");
+        return;
+    }
+    // ---- vertices (com junta em meia-esquadria) e quadrilateros
+    auto position = [&](std::size_t i, std::size_t k) {
+        const ProfilePoint &q = prof[k];
+        Vec3 v = normal[i] * q.b + binormal[i] * q.c;
+        if (miter[i] > 1.0 + 1e-12) {
+            const Vec3 m = normalized(next(i) - prev(i));
+            v = v + m * (dot(v, m) * (miter[i] - 1.0));
+        }
+        return st[i] + tangent[i] * q.a + v;
+    };
+    std::vector<int> ids(ns * np);
+    for (std::size_t i = 0; i < ns; ++i) {
+        for (std::size_t k = 0; k < np; ++k) {
+            ids[i * np + k] = b.node(position(i, k));
+        }
+    }
+    const int zone = b.zone(o.name);
+    const std::size_t rows = pathClosed ? ns : ns - 1, cols = profileClosed ? np : np - 1;
+    for (std::size_t i = 0; i < rows; ++i) {
+        for (std::size_t k = 0; k < cols; ++k) {
+            const std::size_t i1 = (i + 1) % ns, k1 = (k + 1) % np;
+            // sentido previsto: (direcao do perfil no referencial da estacao) x (tangente), como na extrusao
+            const ProfilePoint &p0 = prof[k], &p1 = prof[k1];
+            const Vec3 along = tangent[i] * (p1.a - p0.a) + normal[i] * (p1.b - p0.b) + binormal[i] * (p1.c - p0.c);
+            const Vec3 expected = cross(along, tangent[i]) * orient;
+            b.quad({ids[i * np + k], ids[i * np + k1], ids[i1 * np + k1], ids[i1 * np + k]}, index, zone, segmentThickness(o, p0.segment), o.material, expected);
+        }
+    }
 }
 
 } // namespace
@@ -740,6 +911,7 @@ Mesh generateMesh(const Model &model)
         case Kind::Disk: disk(builder, o, index); break;
         case Kind::Extrusion: extrusion(builder, o, index); break;
         case Kind::Revolution: revolution(builder, o, index, mesh.warnings); break;
+        case Kind::Sweep: sweep(builder, o, index, mesh.warnings); break;
         }
     }
     mesh.ties = findEdgeTies(model, mesh);
@@ -781,7 +953,7 @@ std::vector<Tie> findEdgeTies(const Model &model, const Mesh &mesh)
     }
     auto curved = [&](int object) {
         const Kind k = model.objects[static_cast<std::size_t>(object)].kind;
-        return k == Kind::CylTank || k == Kind::Vessel || k == Kind::Revolution || k == Kind::Disk || k == Kind::Extrusion;
+        return k == Kind::CylTank || k == Kind::Vessel || k == Kind::Revolution || k == Kind::Disk || k == Kind::Extrusion || k == Kind::Sweep;
     };
     struct Box {
         Vec3 lo, hi;

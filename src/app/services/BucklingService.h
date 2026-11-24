@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/SolverBridge.h"
+#include "shell/ShellVisual.h"
 
 #include <array>
 #include <vector>
@@ -26,6 +27,12 @@ public:
                                                      const std::vector<double> &shape,
                                                      double maxDisplacement,
                                                      int samplesPerBar = 12);
+
+    /// Malha das cascas (acopladas ao modelo) deformada pela forma modal/de flambagem, colorida pelo deslocamento. `barShape` e `shellShape` sao as formas
+    /// devolvidas pelo solver (6 valores por no de barra em `model.nodes` e por no de casca em `model.shell->nodes`); nos de casca fundidos com nos de barra
+    /// usam o deslocamento do no de barra. A maior translacao entre os dois conjuntos vale `maxDisplacement`. Vazia se o modelo nao tem cascas.
+    static Structura::Shell::RenderMesh shellShapeMesh(const Structura::App::SolverBridge::ModelData &model, const std::vector<double> &barShape,
+                                                       const std::vector<double> &shellShape, double maxDisplacement);
 
     /// Maior translacao nodal da forma (valores normalizados).
     static double maxTranslation(const std::vector<double> &shape);

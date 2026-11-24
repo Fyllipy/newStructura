@@ -83,6 +83,13 @@ void MainWindow::onBucklingAnalysis()
             minY = std::min(minY, n.y); maxY = std::max(maxY, n.y);
             minZ = std::min(minZ, n.z); maxZ = std::max(maxZ, n.z);
         }
+        if (shared->model.shell) {
+            for (const auto &n : shared->model.shell->nodes) {
+                minX = std::min(minX, n.x); maxX = std::max(maxX, n.x);
+                minY = std::min(minY, n.y); maxY = std::max(maxY, n.y);
+                minZ = std::min(minZ, n.z); maxZ = std::max(maxZ, n.z);
+            }
+        }
         shared->extent = std::max({maxX - minX, maxY - minY, maxZ - minZ, 1e-6});
         QVector<double> factors;
         for (const double f : shared->result.bucklingFactors) {
@@ -99,8 +106,19 @@ void MainWindow::onBucklingAnalysis()
         if (mode < 0 || mode >= static_cast<int>(shared->result.bucklingModes.size())) {
             return;
         }
-        m_sceneController->setModeShape(BucklingService::shapeLines(shared->model, shared->result.bucklingModes[static_cast<std::size_t>(mode)],
-                                                                    fraction * shared->extent));
+        // barras e cascas na mesma escala: a maior translacao entre os dois conjuntos vale fraction * extent
+        const auto &barShape = shared->result.bucklingModes[static_cast<std::size_t>(mode)];
+        const std::vector<double> noShell;
+        const auto &shellShape = static_cast<std::size_t>(mode) < shared->result.bucklingShellShapes.size() ? shared->result.bucklingShellShapes[static_cast<std::size_t>(mode)] : noShell;
+        const double barPeak = BucklingService::maxTranslation(barShape), shellPeak = BucklingService::maxTranslation(shellShape);
+        const double peak = std::max(barPeak, shellPeak);
+        const double displacement = fraction * shared->extent;
+        m_sceneController->setModeShape(BucklingService::shapeLines(shared->model, barShape, peak > 1e-12 ? displacement * barPeak / peak : 0.0));
+        if (!shellShape.empty()) {
+            m_sceneController->setShellModeMesh(BucklingService::shellShapeMesh(shared->model, barShape, shellShape, displacement));
+        } else {
+            m_sceneController->clearShellModeMesh();
+        }
     });
     connect(dialog, &Structura::UI::BucklingDialog::effectiveLengthsRequested, this, [this, shared, dialog]() {
         using Structura::App::Services::DesignService;
@@ -147,6 +165,7 @@ void MainWindow::onBucklingAnalysis()
     connect(dialog, &Structura::UI::BucklingDialog::closedByUser, this, [this]() {
         if (m_sceneController) {
             m_sceneController->setModeShape({});
+            m_sceneController->clearShellModeMesh();
         }
     });
     dialog->show();

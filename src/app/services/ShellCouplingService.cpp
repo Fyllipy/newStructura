@@ -1,5 +1,6 @@
 #include "app/services/ShellCouplingService.h"
 
+#include "shell/ShellLoads.h"
 #include "shell/ShellTributary.h"
 
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include <cstring>
 #include <map>
 #include <mutex>
+#include <set>
 #include <unordered_map>
 
 namespace Structura::App::Services {
@@ -374,6 +376,11 @@ int ShellCouplingService::attachTributary(SolverBridge::ModelData &model, const 
     if (shell.objects.empty() || model.members.empty()) {
         return 0;
     }
+    if (warnings && !shell.supports.empty()) {
+        // no modo de quinhoes a laje nao entra na rigidez: ela apoia nas vigas sob as suas arestas; os apoios das cascas so valem na analise propria
+        // do Editor de cascas ou com as cascas acopladas as barras
+        warnings->push_back("Modo de quinhoes: os apoios definidos nas cascas NAO entram na analise do projeto (a laje apoia nas vigas sob as suas arestas). Para usar apoios na casca, ligue \"Acoplar as barras\".");
+    }
     std::unordered_map<int, Vec3> position;
     for (const auto &n : model.nodes) {
         position[n.id] = {n.x, n.y, n.z};
@@ -424,7 +431,121 @@ int ShellCouplingService::attachTributary(SolverBridge::ModelData &model, const 
         load.qz = q[2];
         model.memberLoads.push_back(load);
     }
-    return static_cast<int>(total.size());
+
+    // Cargas dadas por pontos (forca em nos, linear, de regiao): viram forcas concentradas nas posicoes dos nos da malha e cada uma e
+    // descarregada na barra de aresta apoiada mais proxima, como forcas nodais nos dois nos da barra (reacao estatica de apoio simples).
+    std::set<int> loadedBars;
+    for (const auto &[barId, q] : total) {
+        loadedBars.insert(barId);
+    }
+    bool anyPointLoad = false;
+    for (const Load &load : shell.loads) {
+        anyPointLoad = anyPointLoad || (load.caseName == loadCase && isPointLoad(load.type));
+    }
+    if (anyPointLoad) {
+        const Mesh mesh = generateMesh(shell);
+        std::map<int, std::vector<std::pair<Vec3, Vec3>>> perObject;   // objeto (indice) -> (posicao, forca N)
+        for (std::size_t li = 0; li < shell.loads.size(); ++li) {
+            const Load &load = shell.loads[li];
+            if (load.caseName != loadCase || !isPointLoad(load.type)) {
+                continue;
+            }
+            const PointLoadEffect fx = pointLoadEffect(shell, mesh, li);
+            if (warnings) {
+                for (const std::string &w : fx.warnings) {
+                    warnings->push_back(w);
+                }
+            }
+            // objeto de cada no: o primeiro elemento que o usa
+            auto objectOfNode = [&](int node) {
+                for (const MeshQuad &q : mesh.quads) {
+                    if (q.n[0] == node || q.n[1] == node || q.n[2] == node || q.n[3] == node) {
+                        return q.object;
+                    }
+                }
+                return -1;
+            };
+            for (const auto &[node, f] : fx.nodalForces) {
+                const int object = objectOfNode(node);
+                if (object >= 0) {
+                    perObject[object].push_back({mesh.nodes[static_cast<std::size_t>(node)], {f[0], f[1], f[2]}});
+                }
+            }
+            for (const auto &[element, pressure] : fx.pressures) {
+                const MeshQuad &q = mesh.quads[static_cast<std::size_t>(element)];
+                const Vec3 n = quadNormal(mesh, q);
+                const double a = quadArea(mesh, q) * pressure / 4.0;
+                for (const int node : q.n) {
+                    perObject[q.object].push_back({mesh.nodes[static_cast<std::size_t>(node)], {n[0] * a, n[1] * a, n[2] * a}});
+                }
+            }
+        }
+        std::map<int, std::array<double, 6>> nodalSum;   // no de barra -> forcas
+        std::map<int, std::pair<int, int>> memberNodes;
+        for (const auto &m : model.members) {
+            memberNodes[m.id] = {m.nodeI, m.nodeJ};
+        }
+        Vec3 delivered {0.0, 0.0, 0.0}, requested {0.0, 0.0, 0.0};
+        for (const auto &[objectIndex, pts] : perObject) {
+            for (const auto &pf : pts) {
+                for (std::size_t k = 0; k < 3; ++k) {
+                    requested[k] += pf.second[k];
+                }
+            }
+            if (objectIndex < 0 || static_cast<std::size_t>(objectIndex) >= shell.objects.size()) {
+                continue;
+            }
+            const Object &plate = shell.objects[static_cast<std::size_t>(objectIndex)];
+            if (!plate.visible || plate.kind != Kind::Plate) {
+                if (warnings) {
+                    warnings->push_back(plate.name + ": cargas por pontos em objeto que nao e chapa plana nao chegam as barras no modo de quinhoes (use o acoplamento por MEF).");
+                }
+                continue;
+            }
+            for (const TributaryPoint &tp : tributaryPointForces(plate, pts, bars, kPlaneTol * 2.0, warnings)) {
+                const auto nodes = memberNodes.find(tp.barId);
+                if (nodes == memberNodes.end()) {
+                    continue;
+                }
+                auto &a = nodalSum[nodes->second.first];
+                auto &b = nodalSum[nodes->second.second];
+                for (std::size_t k = 0; k < 3; ++k) {
+                    a[k] += (1.0 - tp.t) * tp.force[k] / unit;
+                    b[k] += tp.t * tp.force[k] / unit;
+                    delivered[k] += tp.force[k];
+                }
+                loadedBars.insert(tp.barId);
+            }
+        }
+        for (const auto &[nodeId, values] : nodalSum) {
+            SolverBridge::NodalLoadData load;
+            load.nodeId = nodeId;
+            load.values = values;
+            model.nodalLoads.push_back(load);
+        }
+        const double scale = std::max({std::abs(requested[0]), std::abs(requested[1]), std::abs(requested[2]), 1e-12});
+        if (warnings && std::max({std::abs(requested[0] - delivered[0]), std::abs(requested[1] - delivered[1]), std::abs(requested[2] - delivered[2])}) > 1e-6 * scale) {
+            warnings->push_back("Parte das cargas por pontos das cascas nao chegou as barras (chapa sem barra nas arestas, ou objeto que nao e chapa plana).");
+        }
+    }
+    if (warnings) {
+        // cargas que o modo de quinhoes nao sabe levar as barras: avisa em vez de descarregar silenciosamente
+        for (const Object &plate : shell.objects) {
+            if (!plate.visible) {
+                continue;
+            }
+            for (const Load &load : shell.loads) {
+                if (load.caseName != loadCase || (load.object != 0 && load.object != plate.id) || isPointLoad(load.type)) {
+                    continue;
+                }
+                if (plate.kind != Kind::Plate || load.type == Load::Hydrostatic || load.type == Load::Thermal) {
+                    warnings->push_back(plate.name + ": carga de " + (load.type == Load::Hydrostatic ? "liquido" : load.type == Load::Thermal ? "temperatura" : "superficie")
+                                        + " nao chega as barras no modo de quinhoes (apenas chapas planas com pressao, peso proprio e carga de area): use o acoplamento por MEF.");
+                }
+            }
+        }
+    }
+    return static_cast<int>(loadedBars.size());
 }
 
 Structura::Shell::CaseResult ShellCouplingService::caseResult(const Mapping &mapping, const SolverBridge::Result &result, const std::string &name)

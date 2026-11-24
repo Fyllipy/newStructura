@@ -86,6 +86,11 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         event->accept();
         return;
     }
+    if (event->key() == Qt::Key_Escape && m_shellNodeSelectActive && !m_shellNodeSel.empty()) {
+        clearShellNodeSelection();
+        event->accept();
+        return;
+    }
     if (event->key() == Qt::Key_Escape && m_sceneController && m_sceneController->highlightedLoad().valid()) {
         clearSelectedLoad();
         event->accept();
@@ -105,6 +110,10 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
     if (obj == m_vtkWidget && event->type() == QEvent::KeyPress) {
         auto *keyEvent = static_cast<QKeyEvent *>(event);
         if (handleLoadPickKey(keyEvent)) {
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_Escape && m_shellNodeSelectActive && !m_shellNodeSel.empty()) {
+            clearShellNodeSelection();
             return true;
         }
         if (keyEvent->key() == Qt::Key_Escape && m_sceneController && m_sceneController->highlightedLoad().valid()) {
@@ -144,6 +153,8 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         positionPlaneLabel();
         positionViewCube();
         positionLegend();
+        positionShellLegend();
+        positionSupportLegend();
         m_sceneController->placeOrientationMarker(m_vtkWidget->width(), m_vtkWidget->height());
         if (m_labelOverlay) {
             m_labelOverlay->resizeToParent();

@@ -463,6 +463,7 @@ bool MainWindow::executeAnalysis(QString *reportOut)
     combinations = Structura::App::Services::NotionalLoadService::variantsFor(m_extras.design, combinations);
 
     QMap<QString, CaseRun> runs;
+    QStringList buildWarnings;   // avisos da montagem (cargas de cascas que nao chegam as barras etc.)
     try {
         // 1) montagem dos modelos (le a cena: na thread da interface)
         QVector<QPair<QString, Structura::App::SolverBridge::ModelData>> built;
@@ -481,6 +482,11 @@ bool MainWindow::executeAnalysis(QString *reportOut)
                                      tr("Nao foi possivel montar o modelo para o solver:\n%1")
                                          .arg(buildResult.errors.join(QLatin1Char('\n'))));
                 return false;
+            }
+            for (const QString &w : buildResult.warnings) {
+                if (!buildWarnings.contains(w)) {
+                    buildWarnings << w;
+                }
             }
             built.append({loadCase.name, std::move(buildResult.model)});
         }
@@ -597,7 +603,7 @@ bool MainWindow::executeAnalysis(QString *reportOut)
 
     {
         // avisos do solver (um por texto, sem repetir entre casos/combinacoes)
-        QStringList warnings;
+        QStringList warnings = buildWarnings;
         for (auto it = m_caseRuns.constBegin(); it != m_caseRuns.constEnd(); ++it) {
             for (const QString &w : it->result.warnings) {
                 const QString text = friendlySolverWarning(w);

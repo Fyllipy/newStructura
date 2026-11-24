@@ -182,11 +182,21 @@ int main(int argc, char *argv[])
 
     // Marco M7/Licenciamento: Autenticação Obrigatória de Licença antes de exibir a interface
     splash.setProgress(88, QObject::tr("Validando licença de uso…"));
+#if defined(STRUCTURA_DEV_BUILD)
+    // BUILD DE DESENVOLVIMENTO (e somente ele): sem login nem validacao no servidor de licencas.
+    // O solver carrega a DLL em claro (ou a .enc com a chave de teste) e calcula no modo offline de testes.
+    // Os builds de release (STRUCTURA_DEV_BUILD=OFF) nao compilam este trecho e mantem todas as protecoes.
+    if (qEnvironmentVariableIsEmpty("STRUCTURA_TEST_DLL_KEY")) {
+        qputenv("STRUCTURA_TEST_DLL_KEY", "689e4efd8e345fb49aeeae4ab42d29689d2eba244eedfcebc3900bdf92066d10");
+    }
+    splash.setProgress(88, QObject::tr("Build de desenvolvimento: licença dispensada."));
+#else
     splash.hide(); // Oculta a tela de splash para que o diálogo de login fique visível e em primeiro plano
     if (!Structura::UI::LoginDialog::ensureAuthenticated()) {
         splash.close();
         return 0; // Se o usuário cancelar ou a licença falhar, encerra sem abrir a janela principal
     }
+#endif
 
     mainWindow.show();
 

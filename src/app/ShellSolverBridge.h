@@ -16,6 +16,12 @@ public:
     [[nodiscard]] Structura::Shell::Results solve(const Structura::Shell::Model &model, const Structura::Shell::Mesh &mesh,
                                                   const Structura::Shell::Job &job) const;
 
+    /// Resolve UMA combinacao (soma ponderada dos casos do trabalho) como analise independente: obrigatorio com apoios que so comprimem, onde a
+    /// superposicao linear dos resultados nao vale. O resultado traz um unico caso, com o nome da combinacao.
+    [[nodiscard]] Structura::Shell::Results solveCombination(const Structura::Shell::Model &model, const Structura::Shell::Mesh &mesh,
+                                                             const Structura::Shell::Job &job,
+                                                             const std::vector<std::pair<std::string, double>> &factors, const std::string &name) const;
+
     /// A biblioteca pode ser carregada e exporta as funcoes esperadas.
     [[nodiscard]] bool available(QString *reason = nullptr) const;
 

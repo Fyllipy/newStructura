@@ -42,6 +42,14 @@ void MainWindow::createActions()
     m_generateTrussAction->setIcon(Structura::UI::actionIcon(QStringLiteral("truss.svg")));
     m_generateTrussAction->setToolTip(tr("Gera uma treliça plana (Pratt, Howe, Warren, Fink, K; banzos paralelos, duas águas, uma água, arco ou tesoura) a partir de um ponto inicial"));
     connect(m_generateTrussAction, &QAction::triggered, this, &MainWindow::onGenerateTruss);
+    m_generateStairAction = new QAction(tr("Gerar\nescada"), this);
+    m_generateStairAction->setIcon(Structura::UI::actionIcon(QStringLiteral("stair.svg")));
+    m_generateStairAction->setToolTip(tr("Gera uma escada reta, em L, em U ou em espiral, com longarinas, degraus, patamar, apoios e carregamentos associados a casos de carga"));
+    connect(m_generateStairAction, &QAction::triggered, this, &MainWindow::onGenerateStair);
+    m_editStairAction = new QAction(tr("Editar\nescada"), this);
+    m_editStairAction->setIcon(Structura::UI::actionIcon(QStringLiteral("stair.svg")));
+    m_editStairAction->setToolTip(tr("Reabre o gerador para uma escada já criada (a selecionada, ou a escolhida na lista) e a regenera"));
+    connect(m_editStairAction, &QAction::triggered, this, &MainWindow::onEditStair);
 
     m_deleteElementsAction = new QAction(tr("Excluir\nelementos"), this);
     m_deleteElementsAction->setIcon(Structura::UI::actionIcon(QStringLiteral("trash.svg")));

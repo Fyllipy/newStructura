@@ -596,7 +596,14 @@ AnalysisService::BuildResult AnalysisService::buildModel(Structura::App::ISceneM
     } else if (extras.shell.tributary && !extras.shell.objects.empty() && result.errors.isEmpty()) {
         // sem MEF acoplado: quinhoes de carga das chapas apoiadas em barras (cargas distribuidas nas barras)
         const double forceUnit = SectionPropertiesService::unitFactors(materials).first;
-        ShellCouplingService::attachTributary(model, extras.shell, (loadCase.isEmpty() ? defaultCase : loadCase).toStdString(), forceUnit);
+        std::vector<std::string> tributaryWarnings;
+        ShellCouplingService::attachTributary(model, extras.shell, (loadCase.isEmpty() ? defaultCase : loadCase).toStdString(), forceUnit, &tributaryWarnings);
+        for (const std::string &w : tributaryWarnings) {
+            const QString text = QString::fromStdString(w);
+            if (!result.warnings.contains(text)) {
+                result.warnings << text;
+            }
+        }
     }
 
     result.success = result.errors.isEmpty();

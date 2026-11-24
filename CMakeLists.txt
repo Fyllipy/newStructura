@@ -247,6 +247,10 @@ set(UI_SOURCES
     src/ui/NewProjectWizard.cpp
     src/ui/TrussDialog.h
     src/ui/TrussDialog.cpp
+    src/app/services/StairGenerator.h
+    src/app/services/StairGenerator.cpp
+    src/ui/StairDialog.h
+    src/ui/StairDialog.cpp
     src/app/services/CadImport.h
     src/app/services/CadImport.cpp
     src/viz/structure/ShellRenderer.h
@@ -315,6 +319,18 @@ set(UI_SOURCES
     src/ui/SvgIcons.cpp
     src/ui/PlacementController.h
     src/ui/PlacementController.cpp
+    src/ui/ColorLegendOverlay.h
+    src/ui/ColorLegendOverlay.cpp
+    src/ui/MainWindowShellProbe.cpp
+    src/ui/MainWindowShellSelect.cpp
+    src/ui/MainWindowShellSupports.cpp
+    src/ui/MainWindowShellLoads.cpp
+    src/ui/ShellLoadDialog.h
+    src/ui/ShellLoadDialog.cpp
+    src/ui/ShellSupportDialog.h
+    src/ui/ShellSupportDialog.cpp
+    src/ui/SupportLegendOverlay.h
+    src/ui/SupportLegendOverlay.cpp
     src/ui/PlacementOverlay.h
     src/ui/PlacementOverlay.cpp
     src/ui/MainWindowPresenter.h
@@ -390,10 +406,20 @@ set(SHELL_SOURCES
     src/shell/ShellFactory.cpp
     src/shell/ShellJob.h
     src/shell/ShellJob.cpp
+    src/shell/ShellMeshQuality.h
+    src/shell/ShellMeshQuality.cpp
     src/shell/ShellResults.h
     src/shell/ShellResults.cpp
     src/shell/ShellVisual.h
     src/shell/ShellVisual.cpp
+    src/shell/ShellProbe.h
+    src/shell/ShellProbe.cpp
+    src/shell/ShellSelection.h
+    src/shell/ShellSelection.cpp
+    src/shell/ShellSupports.h
+    src/shell/ShellSupports.cpp
+    src/shell/ShellLoads.h
+    src/shell/ShellLoads.cpp
     src/app/ShellSolverBridge.h
     src/app/ShellSolverBridge.cpp
 )
@@ -776,10 +802,17 @@ if (MSVC)
         endif()
     endif()
 
+    # Solvers em claro (rds.dll, mefs.dll): so o build de DESENVOLVIMENTO os mantem ao lado do executavel
+    # (carga sem servidor/licenca). Em release (STRUCTURA_DEV_BUILD=OFF) sao sempre removidos.
+    set(_structura_plain_solvers "")
+    if (NOT STRUCTURA_DEV_BUILD)
+        set(_structura_plain_solvers
+            "$<TARGET_FILE_DIR:StructuraRibbon3D>/rds.dll"
+            "$<TARGET_FILE_DIR:StructuraRibbon3D>/mefs.dll")
+    endif()
     add_custom_command(TARGET StructuraRibbon3D POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rm -f
-                "$<TARGET_FILE_DIR:StructuraRibbon3D>/rds.dll"
-                "$<TARGET_FILE_DIR:StructuraRibbon3D>/mefs.dll"
+                ${_structura_plain_solvers}
                 "$<TARGET_FILE_DIR:StructuraRibbon3D>/solver_dll.dll"
                 "$<TARGET_FILE_DIR:StructuraRibbon3D>/fem_dll.dll"
                 "$<TARGET_FILE_DIR:StructuraRibbon3D>/vtkx11-9.5.dll"

@@ -189,6 +189,14 @@ quint64 MainWindow::stateFingerprint() const
         }
     }
     bytes += '|';
+    for (const auto &stair : m_extras.stairs) {
+        num(stair.id);
+        text(stair.name);
+        for (const int id : stair.bars) {
+            num(id);
+        }
+    }
+    bytes += '|';
     for (const auto &a : m_extras.areaLoads) {
         num(a.id);
         text(a.loadCase);

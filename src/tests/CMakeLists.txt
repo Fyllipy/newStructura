@@ -55,6 +55,17 @@ function(add_structura_test TARGET_NAME SOURCE_FILE)
                         "${CMAKE_SOURCE_DIR}/mefs.enc" $<TARGET_FILE_DIR:${TARGET_NAME}>/mefs.enc
             )
         endif()
+        # Build de desenvolvimento: os solvers em claro (sem servidor/licenca) ao lado dos testes; em release nunca
+        if (STRUCTURA_DEV_BUILD)
+            foreach (_plain rds.dll mefs.dll)
+                if (EXISTS "${CMAKE_SOURCE_DIR}/${_plain}")
+                    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                                "${CMAKE_SOURCE_DIR}/${_plain}" $<TARGET_FILE_DIR:${TARGET_NAME}>/${_plain}
+                    )
+                endif()
+            endforeach()
+        endif()
     endif()
 
     add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME})
@@ -86,9 +97,20 @@ if (STRUCTURA_EDITION STREQUAL "COMMERCIAL")
     add_structura_test(TestKFactorDialog TestKFactorDialog.cpp)
 endif()
 add_structura_test(TestShell TestShell.cpp)
+add_structura_test(TestShellMeshQuality TestShellMeshQuality.cpp)
 add_structura_test(TestShellCoupling TestShellCoupling.cpp)
 add_structura_test(TestRibbonWidgets TestRibbonWidgets.cpp)
 add_structura_test(TestShellUi TestShellUi.cpp)
+add_structura_test(TestShellProbe TestShellProbe.cpp)
+vtk_module_autoinit(TARGETS TestShellProbe MODULES ${VTK_LIBRARIES})
+add_structura_test(TestShellSelection TestShellSelection.cpp)
+vtk_module_autoinit(TARGETS TestShellSelection MODULES ${VTK_LIBRARIES})
+add_structura_test(TestShellSupports TestShellSupports.cpp)
+vtk_module_autoinit(TARGETS TestShellSupports MODULES ${VTK_LIBRARIES})
+add_structura_test(TestShellLoads TestShellLoads.cpp)
+vtk_module_autoinit(TARGETS TestShellLoads MODULES ${VTK_LIBRARIES})
+add_structura_test(TestStairGenerator TestStairGenerator.cpp)
+add_structura_test(TestTowerModel TestTowerModel.cpp)
 vtk_module_autoinit(TARGETS TestShellUi MODULES ${VTK_LIBRARIES})
 
 # Micro-benchmarks (ferramentas de desenvolvimento; fora do build padrao): cmake --build build --target BenchDesign BenchServices

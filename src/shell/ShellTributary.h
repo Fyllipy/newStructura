@@ -28,6 +28,18 @@ struct TributaryLoad {
 std::vector<TributaryLoad> tributaryLoads(const Object &plate, const Vec3 &force, const std::vector<TributaryBar> &bars, double tol,
                                           std::vector<std::string> *warnings = nullptr);
 
+/// Forca concentrada (N, globais) que a chapa descarrega em uma barra no ponto de parametro `t` (0 = no I, 1 = no J).
+struct TributaryPoint {
+    int barId {0};
+    double t {0.0};
+    Vec3 force {};
+};
+
+/// Cargas por pontos (forcas nodais, lineares ou de regiao ja convertidas em forcas concentradas na posicao de cada no): cada forca
+/// vai para a barra de aresta apoiada mais proxima, no pe da perpendicular. Soma das forcas devolvidas = soma das forcas dadas.
+std::vector<TributaryPoint> tributaryPointForces(const Object &plate, const std::vector<std::pair<Vec3, Vec3>> &points, const std::vector<TributaryBar> &bars, double tol,
+                                                 std::vector<std::string> *warnings = nullptr);
+
 /// Forca por area (N/m2) de uma carga de casca sobre uma chapa plana; vazio se a carga nao e superficial (hidrostatica, temperatura).
 bool surfaceForce(const Model &model, const Object &plate, const Load &load, Vec3 &force);
 

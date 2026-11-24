@@ -94,17 +94,8 @@ void MainWindow::onShellEditor()
         return names;
     };
     callbacks.combinations = [this]() { return m_extras.combinations; };
-    callbacks.render = [this](const Structura::Shell::RenderMesh &mesh) {
-        if (m_sceneController) {
-            m_shellResultsShown = mesh.hasValues;
-            m_sceneController->setShellMesh(mesh);
-        }
-    };
-    callbacks.setVisible = [this](bool visible) {
-        if (m_sceneController) {
-            m_sceneController->setShellVisible(visible);
-        }
-    };
+    callbacks.render = [this](const Structura::Shell::RenderMesh &mesh) { applyShellRenderMesh(mesh); };
+    callbacks.setVisible = [this](bool visible) { setShellViewVisible(visible); };
     callbacks.unitsPerMeter = [this]() { return shellUnitsPerMeter(); };
     callbacks.modelChanged = [this](const Structura::Shell::Model &model) {
         StateGuard guard(this, tr("Editar cascas"));
@@ -223,7 +214,10 @@ void MainWindow::refreshShellVisuals(bool force)
     const auto &model = m_extras.shell;
     if (model.objects.empty()) {
         m_shellMesh = Structura::Shell::Mesh {};
-        m_sceneController->setShellVisible(false);
+        applyShellRenderMesh(Structura::Shell::RenderMesh {});
+        setShellViewVisible(false);
+        refreshShellSupports();
+        refreshShellLoads();
         m_sceneController->setExtraSnapPoints({});
         return;
     }
@@ -235,12 +229,17 @@ void MainWindow::refreshShellVisuals(bool force)
             options.highlightObject = static_cast<int>(i);
         }
     }
-    m_sceneController->setShellMesh(Structura::Shell::buildRenderMesh(m_shellMesh, model, nullptr, options));
-    m_sceneController->setShellVisible(true);
+    applyShellRenderMesh(Structura::Shell::buildRenderMesh(m_shellMesh, model, nullptr, options));
+    setShellViewVisible(true);
+    refreshShellSupports();
+    refreshShellLoads();
     // vertices definidores das cascas atraem o cursor (snap)
     const double upm = shellUnitsPerMeter();
     std::vector<ShellVec> snap;
     for (const Object &o : model.objects) {
+        for (const ShellVec &p : o.path) {
+            snap.push_back(scaled(p, upm));
+        }
         for (const ShellVec &p : o.polygon) {
             snap.push_back(scaled(p, upm));
             if (o.kind == Kind::Extrusion) {
@@ -397,6 +396,7 @@ QString MainWindow::shellKindLabel(int kind) const
     case Kind::Disk: return tr("Disco");
     case Kind::Extrusion: return tr("Extrusão");
     case Kind::Revolution: return tr("Revolução");
+    case Kind::Sweep: return tr("Varredura");
     }
     return tr("Casca");
 }
@@ -439,7 +439,8 @@ void MainWindow::restartShellStage()
     switch (m_command) {
     case Command::ShellPolygon:
     case Command::ShellExtrude:
-    case Command::ShellRevolve: m_placement->start(Mode::Polyline); break;
+    case Command::ShellRevolve:
+    case Command::ShellSweep: m_placement->start(Mode::Polyline); break;
     case Command::ShellRectangle: m_placement->start(Mode::Rectangle); break;
     case Command::ShellDisk:
     case Command::ShellCylinder: m_placement->start(Mode::Circle); break;
@@ -547,6 +548,29 @@ bool MainWindow::onShellShape(int modeValue, const std::vector<std::array<double
         m_placement->setGhostSource(ring);
         m_placement->start(Mode::Extrude);
         updateStatus();
+        return true;
+    }
+    case Command::ShellSweep: {
+        if (mode != Mode::Polyline || meters.size() < 2) {
+            showStatusMessage(m_shellDraft.stage == 0 ? tr("O perfil precisa de ao menos 2 pontos.") : tr("O caminho precisa de ao menos 2 pontos."), 3000);
+            return false;
+        }
+        if (m_shellDraft.stage == 0) {
+            // primeiro o perfil; o proximo polilinha desenhado e o caminho
+            m_shellDraft.stage = 1;
+            m_shellDraft.points = meters;
+            m_shellDraft.closed = closed;
+            m_placement->start(Mode::Polyline);
+            updateStatus();
+            return true;
+        }
+        const auto o = Structura::Shell::makeSweep(m_shellDraft.points, m_shellDraft.closed, meters, closed);
+        if (!o) {
+            showStatusMessage(tr("O caminho da varredura precisa ter comprimento."), 3000);
+            return false;
+        }
+        commitShell(*o, tr("Nova varredura"));
+        QTimer::singleShot(0, this, [this]() { restartShellStage(); });
         return true;
     }
     case Command::ShellRevolve: {

@@ -47,7 +47,23 @@ struct Job {
     std::vector<Tie> ties;   ///< nos pendentes de malhas nao conformes (Mesh::ties)
     std::vector<Case> cases;
     std::vector<std::string> warnings;
+
+    /// Ha apoios que so comprimem: a resposta e NAO linear (cada caso tem seu proprio conjunto de molas ativas) e a superposicao linear
+    /// de casos nao vale; cada caso e cada combinacao devem ser resolvidos como analises independentes.
+    [[nodiscard]] bool hasUnilateralSprings() const
+    {
+        for (const SpringDef &s : springs) {
+            if (s.compressionOnly) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
+
+/// Trabalho com UM unico caso `name` igual a soma ponderada (`factors`: nome do caso, fator) dos casos de `job` (cargas escaladas). Resolve uma combinacao
+/// como analise independente; fatores que citam casos inexistentes sao ignorados.
+Job combinationJob(const Job &job, const std::vector<std::pair<std::string, double>> &factors, const std::string &name);
 
 /// Monta o trabalho de analise: um caso por nome em `caseNames` (cargas com `caseName` igual), apoios e molas.
 Job buildJob(const Model &model, const Mesh &mesh, const std::vector<std::string> &caseNames);

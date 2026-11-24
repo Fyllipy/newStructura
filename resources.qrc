@@ -33,9 +33,18 @@
         <file alias="shell-extrude.svg">icons/svg/shell-extrude.svg</file>
         <file alias="shell-cylinder.svg">icons/svg/shell-cylinder.svg</file>
         <file alias="shell-revolve.svg">icons/svg/shell-revolve.svg</file>
+        <file alias="shell-sweep.svg">icons/svg/shell-sweep.svg</file>
         <file alias="shell-delete.svg">icons/svg/shell-delete.svg</file>
         <file alias="shell-couple.svg">icons/svg/shell-couple.svg</file>
         <file alias="shell-split.svg">icons/svg/shell-split.svg</file>
+        <file alias="shell-probe.svg">icons/svg/shell-probe.svg</file>
+        <file alias="shell-nodes.svg">icons/svg/shell-nodes.svg</file>
+        <file alias="shell-support.svg">icons/svg/shell-support.svg</file>
+        <file alias="shell-support-remove.svg">icons/svg/shell-support-remove.svg</file>
+        <file alias="shell-support-eye.svg">icons/svg/shell-support-eye.svg</file>
+        <file alias="shell-load.svg">icons/svg/shell-load.svg</file>
+        <file alias="shell-load-remove.svg">icons/svg/shell-load-remove.svg</file>
+        <file alias="shell-load-eye.svg">icons/svg/shell-load-eye.svg</file>
         <file alias="material-new.svg">icons/svg/material-new.svg</file>
         <file alias="force-point.svg">icons/svg/force-point.svg</file>
         <file alias="force-distributed.svg">icons/svg/force-distributed.svg</file>
@@ -54,6 +63,7 @@
         <file alias="hinge-both.svg">icons/svg/hinge-both.svg</file>
         <file alias="fixed-ends.svg">icons/svg/fixed-ends.svg</file>
         <file alias="truss.svg">icons/svg/truss.svg</file>
+        <file alias="stair.svg">icons/svg/stair.svg</file>
         <file alias="constraint.svg">icons/svg/constraint.svg</file>
         <file alias="labels-hide.svg">icons/svg/labels-hide.svg</file>
         <file alias="tie.svg">icons/svg/tie.svg</file>
@@ -109,6 +119,7 @@
         <file alias="snap.svg">icons/svg/snap.svg</file>
         <file alias="solids.svg">icons/svg/solids.svg</file>
         <file alias="truss.svg">icons/svg/truss.svg</file>
+        <file alias="stair.svg">icons/svg/stair.svg</file>
         <file alias="connections3d.svg">icons/svg/connections3d.svg</file>
         <file alias="supports.svg">icons/svg/supports.svg</file>
         <file alias="trash.svg">icons/svg/trash.svg</file>

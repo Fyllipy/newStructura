@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 
 #include "app/SolverBridge.h"
+#include "app/services/BucklingService.h"
 #include "app/services/CombinationService.h"
 #include "app/services/ShellCouplingService.h"
 #include "shell/ShellMesh.h"
@@ -9,6 +10,7 @@
 
 #include <cmath>
 #include <map>
+#include <stdexcept>
 
 using namespace Structura;
 using Structura::App::SolverBridge;
@@ -89,6 +91,28 @@ class TestShellCoupling : public QObject
     Q_OBJECT
 
 private slots:
+    void unilateralShellSpringsForbidSuperposition()
+    {
+        // D2 (Etapa 3): fundacao so-compressao de casca torna a resposta nao linear => o app nao pode superpor casos nem combinacoes
+        SolverBridge::ModelData model = baseModel();
+        QVERIFY(!model.hasNonlinearElements());
+        auto part = std::make_shared<SolverBridge::ShellPart>();
+        SolverBridge::ShellSpringData bilateral;
+        bilateral.node = 1;
+        bilateral.k = {0.0, 0.0, 1.0e6, 0.0, 0.0, 0.0};
+        part->springs.push_back(bilateral);
+        model.shell = part;
+        QVERIFY(!model.hasNonlinearElements());   // mola bilateral continua linear
+        auto unilateral = std::make_shared<SolverBridge::ShellPart>(*part);
+        SolverBridge::ShellSpringData compression;
+        compression.node = 2;
+        compression.k = {1.0e6, 1.0e6, 0.0, 0.0, 0.0, 0.0};
+        compression.compressionOnly = true;
+        unilateral->springs.push_back(compression);
+        model.shell = unilateral;
+        QVERIFY(model.hasNonlinearElements());
+    }
+
     void barsAloneAreUnchangedByTheShellExtension()
     {
         // balanco de barra: flecha PL^3/(3EI)
@@ -196,6 +220,223 @@ private slots:
             minW = std::min(minW, nr.displacements[2]);
         }
         QVERIFY(minW < -1e-6);
+    }
+
+    void tributaryModeConservesTheLoadAndCarriesPointLoadsToTheBars()
+    {
+        // laje 6x4 m apoiada em 2 vigas (y = 0 e y = 4) divididas a cada 1 m: a carga da laje tem que chegar INTEIRA as barras,
+        // seja superficial (Area), por pontos (Fase 4: forca em no, regiao) e nunca em silencio
+        SolverBridge::ModelData model = baseModel();
+        for (int i = 0; i <= 6; ++i) {
+            model.nodes.push_back(node(1 + i, i, 0, 0, i == 0 || i == 6));
+        }
+        for (int i = 0; i <= 6; ++i) {
+            model.nodes.push_back(node(8 + i, i, 4, 0, i == 0 || i == 6));
+        }
+        for (int i = 0; i < 6; ++i) {
+            model.members.push_back(member(1 + i, 1 + i, 2 + i));
+            model.members.push_back(member(7 + i, 8 + i, 9 + i));
+        }
+        Shell::Model shell;
+        shell.objects = {plate(1, {{0, 0, 0}, {6, 0, 0}, {6, 4, 0}, {0, 4, 0}}, 0.15, 1.0)};
+        shell.tributary = true;
+        const SolverBridge solver(solverLibrary());
+        auto totalReaction = [&](const SolverBridge::ModelData &m) {
+            double sum = 0.0;
+            for (const auto &n : solver.solve(m).nodeResults) {
+                sum += n.reactions[2];
+            }
+            return sum;
+        };
+        // 1) carga de area: soma das cargas das barras = q x area (conservacao da integral do quinhao)
+        Shell::Load area;
+        area.caseName = "Q";
+        area.type = Shell::Load::Area;
+        area.v = {0.0, 0.0, -5000.0, 0.0};
+        shell.loads = {area};
+        SolverBridge::ModelData surface = model;
+        std::vector<std::string> warnings;
+        QVERIFY(ShellCouplingService::attachTributary(surface, shell, "Q", 1.0, &warnings) > 0);
+        QVERIFY2(std::abs(totalReaction(surface) - 5000.0 * 24.0) < 1e-9 * 5000.0 * 24.0, qPrintable(QString::number(totalReaction(surface), 'g', 12)));
+        // laje apoiada so nas duas vigas (bordas livres): a carga e uniforme (q a / 2 = 10 kN/m) em TODAS as barras, inclusive as dos extremos
+        // (antes o ultimo trecho de cada viga recebia 1,7% a menos: a marcha de profundidade saia do poligono sobre o vertice)
+        QVERIFY(!surface.memberLoads.empty());
+        for (const auto &l : surface.memberLoads) {
+            QVERIFY2(std::abs(l.qz + 10000.0) < 1e-6 * 10000.0, qPrintable(QString("barra %1: qz = %2").arg(l.memberId).arg(l.qz, 0, 'g', 10)));
+        }
+        // 2) regiao por clique em todos os nos: mesma carga total (forcas nodais em cada no)
+        Shell::Load region;
+        region.caseName = "Q";
+        region.type = Shell::Load::RegionPoints;
+        region.v = {0.0, 0.0, -5000.0, 0.0};
+        for (const auto &p : Shell::generateMesh(shell).nodes) {
+            region.points.push_back(p);
+        }
+        shell.loads = {region};
+        SolverBridge::ModelData byClick = model;
+        warnings.clear();
+        QVERIFY(ShellCouplingService::attachTributary(byClick, shell, "Q", 1.0, &warnings) > 0);
+        QVERIFY2(!byClick.nodalLoads.empty(), "carga por clique nao chegou as barras no modo de quinhoes");
+        QVERIFY2(std::abs(totalReaction(byClick) - 5000.0 * 24.0) < 1e-9 * 5000.0 * 24.0, qPrintable(QString::number(totalReaction(byClick), 'g', 12)));
+        QVERIFY2(warnings.empty(), warnings.empty() ? "" : warnings.front().c_str());
+        // as duas vigas recebem metade cada (simetria)
+        double beam0 = 0.0, beam4 = 0.0;
+        for (const auto &l : byClick.nodalLoads) {
+            (l.nodeId <= 7 ? beam0 : beam4) += l.values[2];
+        }
+        QVERIFY(std::abs(beam0 - beam4) < 1e-9 * std::abs(beam0));
+        // 3) forca em um no do meio da laje: vai para a viga mais proxima, sem perder nada
+        Shell::Load nodal;
+        nodal.caseName = "Q";
+        nodal.type = Shell::Load::NodalPoints;
+        nodal.v = {0.0, 0.0, -1000.0, 0.0};
+        nodal.points = {{2.0, 1.0, 0.0}};
+        shell.loads = {nodal};
+        SolverBridge::ModelData single = model;
+        warnings.clear();
+        QVERIFY(ShellCouplingService::attachTributary(single, shell, "Q", 1.0, &warnings) > 0);
+        QVERIFY(std::abs(totalReaction(single) - 1000.0) < 1e-9 * 1000.0);
+        double onBeam0 = 0.0;
+        for (const auto &l : single.nodalLoads) {
+            onBeam0 += l.nodeId <= 7 ? l.values[2] : 0.0;
+        }
+        QVERIFY2(std::abs(onBeam0 + 1000.0) < 1e-9, "o ponto (2;1) esta mais perto da viga y=0");
+        // 4) o que o modo de quinhoes NAO sabe levar as barras avisa (temperatura / liquido)
+        Shell::Load thermal;
+        thermal.caseName = "Q";
+        thermal.type = Shell::Load::Thermal;
+        thermal.v = {10.0, 0.0, 0.0, 0.0};
+        shell.loads = {thermal};
+        SolverBridge::ModelData ignored = model;
+        warnings.clear();
+        ShellCouplingService::attachTributary(ignored, shell, "Q", 1.0, &warnings);
+        QVERIFY2(!warnings.empty(), "carga termica descartada em silencio");
+        // 5) laje lisa sem nenhuma barra nas arestas: avisa que a carga nao chega
+        SolverBridge::ModelData columnsOnly = baseModel();
+        columnsOnly.nodes = {node(1, 3, 2, -3, true), node(2, 3, 2, 0)};
+        columnsOnly.members = {member(1, 1, 2)};
+        shell.loads = {area};
+        warnings.clear();
+        ShellCouplingService::attachTributary(columnsOnly, shell, "Q", 1.0, &warnings);
+        QVERIFY2(!warnings.empty(), "laje lisa sem vigas: a perda da carga nao foi avisada");
+        // 6) apoio definido na casca no modo de quinhoes: nao entra na analise do projeto, e isso tem que ser dito
+        Shell::Support support;
+        support.selector = Shell::Support::Plane;
+        support.axis = 0;
+        support.value = 0.0;
+        shell.supports = {support};
+        SolverBridge::ModelData withSupport = model;
+        warnings.clear();
+        ShellCouplingService::attachTributary(withSupport, shell, "Q", 1.0, &warnings);
+        bool warned = false;
+        for (const std::string &w : warnings) {
+            warned = warned || w.find("apoios definidos nas cascas") != std::string::npos;
+        }
+        QVERIFY2(warned, "apoio da casca ignorado no modo de quinhoes sem aviso");
+        // e a carga das barras nao muda por causa dele
+        QVERIFY(std::abs(totalReaction(withSupport) - 5000.0 * 24.0) < 1e-9 * 5000.0 * 24.0);
+    }
+
+    void monolithicSlabOnBeamsAndColumnsMatchesMecway()
+    {
+        // Validacao externa (Mecway 28, mesmo modelo com nos compartilhados; docs/validacao_mecway/laje_vigas): laje 8x4 m, t = 15 cm, E = 30 GPa,
+        // nu = 0,2, sobre vigas 30x30 de borda e uma central (x = 4 m) divididas a cada 1 m e 6 pilares 30x30 de 3 m engastados; carga 5 kN/m2.
+        // Valores de referencia lidos do Mecway: flecha da laje, reacoes e momentos de base. Aceitacao: 5e-4 (diferenca observada ~1e-4).
+        SolverBridge::ModelData model = baseModel();
+        model.materials[0].e = 30.0e9;
+        model.materials[0].g = 30.0e9 / (2.0 * 1.2);
+        model.sections[0].area = 0.09;
+        model.sections[0].iy = model.sections[0].iz = 0.3 * 0.3 * 0.3 * 0.3 / 12.0;
+        model.sections[0].j = 0.140577 * 0.3 * 0.3 * 0.3 * 0.3;
+        std::map<std::array<long long, 3>, int> ids;
+        auto at = [&](double x, double y, double z) {
+            const std::array<long long, 3> k {std::llround(x * 1e6), std::llround(y * 1e6), std::llround(z * 1e6)};
+            const auto it = ids.find(k);
+            if (it != ids.end()) {
+                return it->second;
+            }
+            const int id = static_cast<int>(model.nodes.size()) + 1;
+            model.nodes.push_back(node(id, x, y, z));
+            ids[k] = id;
+            return id;
+        };
+        int memberId = 0;
+        auto line = [&](double x0, double y0, double z0, double x1, double y1, double z1, int parts) {
+            int prev = at(x0, y0, z0);
+            for (int i = 1; i <= parts; ++i) {
+                const double t = static_cast<double>(i) / parts;
+                const int next = at(x0 + t * (x1 - x0), y0 + t * (y1 - y0), z0 + t * (z1 - z0));
+                model.members.push_back(member(++memberId, prev, next));
+                prev = next;
+            }
+        };
+        line(0, 0, 3, 8, 0, 3, 8);
+        line(8, 0, 3, 8, 4, 3, 4);
+        line(8, 4, 3, 0, 4, 3, 8);
+        line(0, 4, 3, 0, 0, 3, 4);
+        line(4, 0, 3, 4, 4, 3, 4);
+        const std::vector<std::array<double, 2>> columns {{0, 0}, {8, 0}, {8, 4}, {0, 4}, {4, 0}, {4, 4}};
+        for (const auto &c : columns) {
+            line(c[0], c[1], 0, c[0], c[1], 3, 1);
+            model.nodes[static_cast<std::size_t>(at(c[0], c[1], 0) - 1)].restraints = {{1, 1, 1, 1, 1, 1}};
+        }
+        Shell::Model shell;
+        shell.materials[0].E = 30.0e9;
+        shell.materials[0].nu = 0.2;
+        shell.materials[0].unitWeight = 0.0;
+        shell.objects = {plate(1, {{0, 0, 3}, {8, 0, 3}, {8, 4, 3}, {0, 4, 3}}, 0.15, 1.0)};
+        Shell::Load pressure;
+        pressure.caseName = "Q";
+        pressure.type = Shell::Load::Pressure;
+        pressure.v = {-5000.0, 0, 0, 0};
+        shell.loads = {pressure};
+        shell.coupled = true;
+        shell.monolithic = true;
+        const auto mapping = ShellCouplingService::attach(model, shell, "Q", 1.0);
+        QVERIFY(mapping != nullptr);
+        SolverBridge::Result r;
+        try {
+            r = SolverBridge(solverLibrary()).solve(model);
+        } catch (const std::exception &e) {
+            QFAIL(e.what());
+        }
+        auto node_ = [&](double x, double y, double z) -> const SolverBridge::NodeResult & {
+            // nos de barras (inclusive os da malha fundidos a eles) e nos proprios da laje, por coordenada
+            int id = 0;
+            for (const auto &n : model.nodes) {
+                if (std::abs(n.x - x) < 1e-9 && std::abs(n.y - y) < 1e-9 && std::abs(n.z - z) < 1e-9) {
+                    id = n.id;
+                }
+            }
+            for (const auto &n : model.shell->nodes) {
+                if (std::abs(n.x - x) < 1e-9 && std::abs(n.y - y) < 1e-9 && std::abs(n.z - z) < 1e-9) {
+                    id = n.id;
+                }
+            }
+            for (const auto &list : {&r.nodeResults, &r.shellNodeResults}) {
+                for (const auto &n : *list) {
+                    if (n.nodeId == id) {
+                        return n;
+                    }
+                }
+            }
+            throw std::runtime_error("no nao encontrado");
+        };
+        auto near = [](double a, double ref) { return std::abs(a - ref) <= 5.0e-4 * std::abs(ref); };
+        QVERIFY2(near(node_(2, 2, 3).displacements[2], -8.497366107e-4), qPrintable(QString::number(node_(2, 2, 3).displacements[2], 'g', 10)));
+        QVERIFY2(near(node_(4, 2, 3).displacements[2], -7.168653493e-4), qPrintable(QString::number(node_(4, 2, 3).displacements[2], 'g', 10)));
+        QVERIFY2(near(node_(4, 0, 0).reactions[2], 44804.19605), qPrintable(QString::number(node_(4, 0, 0).reactions[2], 'g', 10)));
+        QVERIFY2(near(node_(0, 0, 0).reactions[2], 17597.90197), qPrintable(QString::number(node_(0, 0, 0).reactions[2], 'g', 10)));
+        QVERIFY2(near(node_(4, 0, 0).reactions[3], -5785.719707), qPrintable(QString::number(node_(4, 0, 0).reactions[3], 'g', 10)));
+        QVERIFY2(near(node_(0, 0, 0).reactions[4], 2442.769748), qPrintable(QString::number(node_(0, 0, 0).reactions[4], 'g', 10)));
+        double sum = 0.0;
+        for (const auto &n : r.nodeResults) {
+            sum += n.reactions[2];
+        }
+        for (const auto &n : r.shellNodeResults) {
+            sum += n.reactions[2];
+        }
+        QVERIFY(std::abs(sum - 5000.0 * 32.0) < 1e-6 * 5000.0 * 32.0);
     }
 
     void splittingPointsAreFoundAlongBars()
@@ -456,6 +697,28 @@ private slots:
         model.bucklingModes = 1;
         const SolverBridge::Result r = SolverBridge(solverLibrary()).solve(model);
         QVERIFY(!r.bucklingFactors.empty());
+        // a forma de flambagem dos nos de casca chega ao chamador (6 valores por no), nao so a das barras (que aqui nao existem)
+        QVERIFY(!r.bucklingShellShapes.empty());
+        QCOMPARE(r.bucklingShellShapes.front().size(), part->nodes.size() * 6U);
+        double largest = 0.0;
+        for (const double v : r.bucklingShellShapes.front()) {
+            largest = std::max(largest, std::abs(v));
+        }
+        QVERIFY2(largest > 0.0, "forma de flambagem dos nos de casca toda nula");
+        // a janela desenha o modo: malha de cascas deformada, colorida pelo deslocamento, com a maior translacao igual a pedida
+        const Structura::Shell::RenderMesh drawn = Structura::App::Services::BucklingService::shellShapeMesh(model, r.bucklingModes.empty() ? std::vector<double> {} : r.bucklingModes.front(),
+                                                                                                           r.bucklingShellShapes.front(), 0.25);
+        QVERIFY(!drawn.points.empty());
+        QVERIFY(drawn.hasValues);
+        QCOMPARE(drawn.points.size(), part->elements.size() * 4U);
+        double farthest = 0.0;
+        for (std::size_t i = 0; i < drawn.points.size(); ++i) {
+            farthest = std::max(farthest, static_cast<double>(std::abs(drawn.points[i][2])));   // a placa estava em z = 0: o deslocamento fora do plano e a flecha do modo
+        }
+        QVERIFY2(std::abs(farthest - 0.25) < 1e-4, qPrintable(QString::number(farthest)));
+        // sem cascas no modelo, nada a desenhar
+        SolverBridge::ModelData bare;
+        QVERIFY(Structura::App::Services::BucklingService::shellShapeMesh(bare, {}, {}, 1.0).points.empty());
         const double D = kE * t * t * t / (12.0 * (1.0 - kNu * kNu));
         const double critical = 4.0 * 3.14159265358979323846 * 3.14159265358979323846 * D / a;   // N (largura a)
         QVERIFY2(std::abs(r.bucklingFactors[0] * P - critical) / critical < 0.12, qPrintable(QString::number(r.bucklingFactors[0] * P) + " vs " + QString::number(critical)));

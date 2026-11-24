@@ -452,6 +452,9 @@ void MainWindow::createRibbon()
     m_shellCylinderAction = shellTool(tr("Cilindro /\ncone"), QStringLiteral("shell-cylinder.svg"), tr("Círculo (centro e raio) extrudado em um vetor; a escala da extremidade faz cone ou tronco"), Command::ShellCylinder);
     m_shellRevolveAction = shellTool(tr("Revolução"), QStringLiteral("shell-revolve.svg"),
                                      tr("Desenha um perfil e o gira em torno de um eixo (dois pontos): domos, esferas, tampos de vasos, tanques e toros"), Command::ShellRevolve);
+    m_shellSweepAction = shellTool(tr("Varredura"), QStringLiteral("shell-sweep.svg"),
+                                   tr("Desenha um perfil e depois um caminho e varre o perfil ao longo do caminho (dutos, calhas, perfis curvos, cascas de seção constante). O empenamento dos elementos em curvas fortes ou com torção é avisado na verificação da malha"),
+                                   Command::ShellSweep);
     m_shellDeleteAction = new QAction(tr("Excluir\ncasca"), this);
     m_shellDeleteAction->setIcon(Structura::UI::svgIcon(QStringLiteral("shell-delete.svg"), danger, 64, danger));
     m_shellDeleteAction->setToolTip(tr("Exclui a casca selecionada na vista 3D (clique nela para selecionar)"));
@@ -461,6 +464,46 @@ void MainWindow::createRibbon()
     m_shellCoupleAction->setIcon(icon(QStringLiteral("shell-couple.svg")));
     m_shellCoupleAction->setToolTip(tr("As cascas entram na análise das barras (mesma matriz de rigidez): nós coincidentes são os mesmos, nós de barras sobre a casca ficam ligados a ela e as cargas, apoios e resultados das cascas passam a fazer parte da análise do projeto"));
     connect(m_shellCoupleAction, &QAction::toggled, this, &MainWindow::onShellCoupleToggled);
+    m_shellProbeAction = new QAction(tr("Consultar\nresultado"), this);
+    m_shellProbeAction->setCheckable(true);
+    m_shellProbeAction->setEnabled(false);
+    m_shellProbeAction->setIcon(icon(QStringLiteral("shell-probe.svg")));
+    m_shellProbeAction->setToolTip(tr("Com os resultados das cascas na vista (analise pelo Editor de cascas), clique sobre um elemento para ler o valor da grandeza exibida no ponto, a identificação do elemento e as coordenadas. Clique de novo no botão para voltar à seleção normal"));
+    connect(m_shellProbeAction, &QAction::toggled, this, [this](bool on) { setShellProbeActive(on); });
+    m_shellNodeSelectAction = new QAction(tr("Selecionar\nnós"), this);
+    m_shellNodeSelectAction->setCheckable(true);
+    m_shellNodeSelectAction->setEnabled(false);
+    m_shellNodeSelectAction->setIcon(icon(QStringLiteral("shell-nodes.svg")));
+    m_shellNodeSelectAction->setToolTip(tr("Seleciona nós da malha das cascas na vista 3D: clique em um nó (Ctrl alterna, Shift acrescenta) ou arraste uma caixa. A seleção é temporária e acompanha os nós pelas coordenadas quando a malha é refeita. Esc limpa; clicar de novo no botão volta à seleção normal"));
+    connect(m_shellNodeSelectAction, &QAction::toggled, this, [this](bool on) { setShellNodeSelectActive(on); });
+    m_shellApplySupportAction = new QAction(tr("Aplicar\napoio"), this);
+    m_shellApplySupportAction->setIcon(icon(QStringLiteral("shell-support.svg")));
+    m_shellApplySupportAction->setToolTip(tr("Aplica engaste, articulação, apoio móvel ou mola aos nós de casca selecionados (use \"Selecionar nós\"). O apoio é gravado por coordenadas e acompanha a malha quando ela é refeita"));
+    connect(m_shellApplySupportAction, &QAction::triggered, this, [this]() { applyShellSupportToSelection(); });
+    m_shellRemoveSupportAction = new QAction(tr("Remover\napoio"), this);
+    m_shellRemoveSupportAction->setIcon(icon(QStringLiteral("shell-support-remove.svg")));
+    m_shellRemoveSupportAction->setToolTip(tr("Remove os apoios por clique dos nós de casca selecionados (apoios por plano, borda livre ou ponto são editados no Editor de cascas)"));
+    connect(m_shellRemoveSupportAction, &QAction::triggered, this, [this]() { removeShellSupportFromSelection(); });
+    m_shellShowSupportsAction = new QAction(tr("Mostrar\napoios"), this);
+    m_shellShowSupportsAction->setCheckable(true);
+    m_shellShowSupportsAction->setChecked(true);
+    m_shellShowSupportsAction->setIcon(icon(QStringLiteral("shell-support-eye.svg")));
+    m_shellShowSupportsAction->setToolTip(tr("Mostra os apoios das cascas na vista 3D (engaste, articulado, móvel, parcial, mola e só compressão) e a legenda dos tipos"));
+    connect(m_shellShowSupportsAction, &QAction::toggled, this, [this](bool on) { setShellSupportsShown(on); });
+    m_shellApplyLoadAction = new QAction(tr("Aplicar\ncarga"), this);
+    m_shellApplyLoadAction->setIcon(icon(QStringLiteral("shell-load.svg")));
+    m_shellApplyLoadAction->setToolTip(tr("Aplica aos nós de casca selecionados (use \"Selecionar nós\"): força em cada nó, carga linear sobre as arestas entre nós selecionados ou carga de superfície sobre os elementos cujos quatro nós estão selecionados. Gravada por coordenadas; acompanha a malha quando ela é refeita"));
+    connect(m_shellApplyLoadAction, &QAction::triggered, this, [this]() { applyShellLoadToSelection(); });
+    m_shellRemoveLoadAction = new QAction(tr("Remover\ncarga"), this);
+    m_shellRemoveLoadAction->setIcon(icon(QStringLiteral("shell-load-remove.svg")));
+    m_shellRemoveLoadAction->setToolTip(tr("Remove as cargas por clique dos nós de casca selecionados (peso próprio, pressão, líquido e demais cargas de objeto são editados no Editor de cascas)"));
+    connect(m_shellRemoveLoadAction, &QAction::triggered, this, [this]() { removeShellLoadFromSelection(); });
+    m_shellShowLoadsAction = new QAction(tr("Mostrar\ncargas"), this);
+    m_shellShowLoadsAction->setCheckable(true);
+    m_shellShowLoadsAction->setChecked(true);
+    m_shellShowLoadsAction->setIcon(icon(QStringLiteral("shell-load-eye.svg")));
+    m_shellShowLoadsAction->setToolTip(tr("Mostra as cargas por clique das cascas como setas na vista 3D (roxo: força nodal; laranja: carga linear; verde: carga de superfície)"));
+    connect(m_shellShowLoadsAction, &QAction::toggled, this, [this](bool on) { setShellLoadsShown(on); });
     m_shellSplitAction = new QAction(tr("Dividir barras\nnos nós"), this);
     m_shellSplitAction->setIcon(icon(QStringLiteral("shell-split.svg")));
     m_shellSplitAction->setToolTip(tr("Divide as barras nos nós da malha das cascas que caem sobre o seu eixo (vigas de borda e de apoio), para que barra e casca trabalhem juntas ao longo da linha"));
@@ -541,7 +584,8 @@ void MainWindow::createRibbon()
 
     // ---- Ferramentas ------------------------------------------------------------------------------------------------------------
     auto *tools = new RibbonPage(this);
-    tools->addGroup(tr("Geração"), {item(m_generateTrussAction, tr("Gerar treliça"), true), item(m_templateAction, tr("Gerar porticos"), true)});
+    tools->addGroup(tr("Geração"), {item(m_generateTrussAction, tr("Gerar treliça"), true), item(m_generateStairAction, tr("Gerar escada"), true),
+                                    item(m_editStairAction, tr("Editar escada"), true), item(m_templateAction, tr("Gerar porticos"), true)});
     tools->addGroup(tr("Eixos"), {item(m_axesAction, tr("Eixos de referência"), true)});
     tools->addGroup(tr("Cotas"), {item(m_dimensionAction, tr("Cota"), true), dangerItem(m_clearDimensionsAction, tr("Excluir cotas"), true, QStringLiteral("delete-loads.svg"))});
     QList<RibbonItem> modelTools = {item(m_checkModelAction, tr("Checar modelo"), true)};
@@ -595,11 +639,16 @@ void MainWindow::createRibbon()
     auto *shell = new RibbonPage(this);
     shell->addGroup(tr("Desenhar cascas"), {item(m_shellPolygonAction, tr("Chapa por contorno"), true), item(m_shellRectangleAction, tr("Chapa retangular"), true),
                                             item(m_shellDiskAction, tr("Disco / anel"), true), item(m_shellExtrudeAction, tr("Extrudar linha"), true),
-                                            item(m_shellCylinderAction, tr("Cilindro / cone"), true), item(m_shellRevolveAction, tr("Revolução"), true)});
+                                            item(m_shellCylinderAction, tr("Cilindro / cone"), true), item(m_shellRevolveAction, tr("Revolução"), true),
+                                            item(m_shellSweepAction, tr("Varredura"), true)});
     shell->addGroup(tr("Casca selecionada"), {dangerItem(m_shellDeleteAction, tr("Excluir casca"), true, QStringLiteral("shell-delete.svg"))});
     shell->addGroup(tr("Acoplamento às barras"), {item(m_shellCoupleAction, tr("Acoplar às barras"), true), item(m_shellMonolithicAction, tr("Ligação monolítica"), true),
                                                   item(m_shellSplitAction, tr("Dividir barras nos nós"), true)});
-    shell->addGroup(tr("Análise"), {item(m_shellAction, tr("Editor de cascas"), true)});
+    shell->addGroup(tr("Apoios das cascas"), {item(m_shellApplySupportAction, tr("Aplicar apoio"), true), item(m_shellRemoveSupportAction, tr("Remover apoio"), true),
+                                              item(m_shellShowSupportsAction, tr("Mostrar apoios"), true)});
+    shell->addGroup(tr("Cargas das cascas"), {item(m_shellApplyLoadAction, tr("Aplicar carga"), true), item(m_shellRemoveLoadAction, tr("Remover carga"), true),
+                                              item(m_shellShowLoadsAction, tr("Mostrar cargas"), true)});
+    shell->addGroup(tr("Análise"), {item(m_shellAction, tr("Editor de cascas"), true), item(m_shellProbeAction, tr("Consultar resultado"), true), item(m_shellNodeSelectAction, tr("Selecionar nós"), true)});
 
     m_ribbonPages = {home, tools, loads, calc, shell};
     m_ribbon->addTab(home, tr("Geometria"));

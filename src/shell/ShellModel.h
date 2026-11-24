@@ -39,7 +39,8 @@ enum class Kind {
     Vessel = 3,      ///< vaso de pressao (cilindro com tampos, vertical ou horizontal)
     Disk = 4,        ///< disco ou anel desenhado no modelo
     Extrusion = 5,   ///< extrusao de uma linha/polilinha (parede, casca cilindrica reglada) ou de um circulo (cilindro, cone, tronco)
-    Revolution = 6   ///< revolucao de um perfil em torno de um eixo (domos, esferas, tanques, toros)
+    Revolution = 6,  ///< revolucao de um perfil em torno de um eixo (domos, esferas, tanques, toros)
+    Sweep = 7        ///< varredura de um perfil (polilinha 3D) ao longo de um caminho (polilinha 3D): dutos, calhas, perfis curvos, cascas de seccao constante
 };
 
 /// Objeto parametrico. Parametros (`p`) por tipo:
@@ -50,6 +51,9 @@ enum class Kind {
 ///  Extrusion: polygon = pontos da linha base (ou {centro} se circle = 1); circle (0/1), closed (0/1), r (circulo), vx vy vz (vetor de extrusao),
 ///             endScale (escala da extremidade: 1 cilindro, 0 cone, outro tronco; so para circulo), t, flip
 ///  Revolution: polygon = pontos do perfil (no mesmo semiplano do eixo); ax ay az (ponto do eixo), dx dy dz (direcao do eixo), angle (graus, 360), t, flip
+///  Sweep:     polygon = perfil (posicionado no inicio do caminho, em coordenadas globais); path = caminho; closed (perfil fechado 0/1),
+///             pathClosed (caminho fechado 0/1), twist (graus de torcao total ao longo do caminho; em caminho fechado e ajustada ao fechamento do referencial),
+///             t, flip. Espessura por segmento: tSeg1..tSegN (m, N = segmentos do perfil; ausente = t); vale tambem para Extrusion e Revolution
 ///  Vessel:   r (raio interno medio), length (cilindro, m), t, head (0 hemisferico, 1 elipsoidal 2:1, 2 plano), tHead, horizontal (0/1),
 ///            skirt (altura da saia, m; 0 = sem), tSkirt, x0 y0 z0 (centro da base do cilindro)
 struct Object {
@@ -57,6 +61,7 @@ struct Object {
     std::string name;
     Kind kind {Kind::Plate};
     std::vector<Vec3> polygon;
+    std::vector<Vec3> path;   ///< Sweep: caminho da varredura (m)
     std::map<std::string, double> p;
     int material {0};
     double meshSize {0.5};   ///< dimensao alvo dos elementos (m)
@@ -74,19 +79,26 @@ struct Load {
         Pressure = 1,      ///< pressao uniforme v[0] (Pa), positiva no sentido da normal (para fora nos tanques e vasos)
         Hydrostatic = 2,   ///< liquido: v[0] = peso especifico (N/m3), v[1] = cota da superficie (m, global), v[2] = pressao do gas (Pa)
         Thermal = 3,       ///< v[0] = variacao uniforme de temperatura, v[1] = gradiente (face + normal menos face -)
-        Area = 4           ///< forca por area em direcao global v[0..2] (N/m2); v[3] != 0: por area projetada em planta
+        Area = 4,          ///< forca por area em direcao global v[0..2] (N/m2); v[3] != 0: por area projetada em planta
+        // ---- cargas dadas por clique em nos (Fase 4): os alvos sao encontrados pelas coordenadas de `points`, nao por indices ----
+        NodalPoints = 5,   ///< forca v[0..2] (N, global) EM CADA no de `points`
+        LinePoints = 6,    ///< forca por comprimento v[0..2] (N/m, global) sobre as arestas de elemento cujos dois nos estao em `points`
+        RegionPoints = 7   ///< sobre os elementos cujos quatro nos estao em `points`: v[3] = 0 forca por area global v[0..2] (N/m2); 1 idem por area projetada em planta; 2 pressao normal v[0] (Pa, + no sentido da normal)
     };
     std::string caseName;
     int object {0};   ///< id do objeto; 0 = todos
     Type type {SelfWeight};
     std::array<double, 4> v {{1.0, 0.0, 0.0, 0.0}};
+    /// NodalPoints, LinePoints e RegionPoints: coordenadas globais (m) dos nos selecionados. Sobrevivem a remalhar.
+    std::vector<std::array<double, 3>> points;
 };
 
 struct Support {
     enum Selector {
         Plane = 0,      ///< nos com coordenada `axis` = `value` (+- tol)
         FreeEdge = 1,   ///< nos de bordas livres (aresta com um unico elemento) do objeto
-        Point = 2       ///< no mais proximo de (value, value2, value3)
+        Point = 2,      ///< no mais proximo de (value, value2, value3)
+        Nodes = 3       ///< nos nas coordenadas de `points` (apoios dados por clique em nos); dentro de `tol`, sem nunca escolher no distante
     };
     int object {0};   ///< 0 = todos
     Selector selector {Plane};
@@ -102,6 +114,8 @@ struct Support {
     double springPerArea {0.0};       ///< > 0: apoio elastico (N/m3) em vez de fixo; usa a area tributaria
     bool compressionOnly {false};     ///< apoio elastico que so comprime (fundacao)
     std::array<double, 3> springNormal {{0.0, 0.0, 1.0}};
+    /// Nodes: coordenadas globais (m) dos nos apoiados. Sobrevivem a remalhar (os indices dos nos nao).
+    std::vector<std::array<double, 3>> points;
 };
 
 struct Model {
@@ -169,6 +183,10 @@ inline std::string fingerprint(const Model &model)
         for (const Vec3 &p : o.polygon) {
             num(p[0]); num(p[1]); num(p[2]);
         }
+        out += '#';
+        for (const Vec3 &p : o.path) {
+            num(p[0]); num(p[1]); num(p[2]);
+        }
         for (const auto &[key, value] : o.p) {
             out += key + '=';
             num(value);
@@ -182,6 +200,9 @@ inline std::string fingerprint(const Model &model)
         for (const double v : l.v) {
             num(v);
         }
+        for (const auto &p : l.points) {
+            num(p[0]); num(p[1]); num(p[2]);
+        }
     }
     out += '|';
     for (const Support &s : model.supports) {
@@ -191,6 +212,9 @@ inline std::string fingerprint(const Model &model)
             out += std::to_string(f);
         }
         out += s.compressionOnly ? 'c' : 'n';
+        for (const auto &p : s.points) {
+            num(p[0]); num(p[1]); num(p[2]);
+        }
     }
     return out;
 }

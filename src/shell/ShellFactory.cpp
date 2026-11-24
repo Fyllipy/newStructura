@@ -63,6 +63,11 @@ bool translateObject(Model &model, int objectId, const Vec3 &delta, int copyId)
                 p[k] += delta[k];
             }
         }
+        for (Vec3 &p : o.path) {
+            for (std::size_t k = 0; k < 3; ++k) {
+                p[k] += delta[k];
+            }
+        }
         static const char *const origin[3] = {"x0", "y0", "z0"};
         static const char *const axisPoint[3] = {"ax", "ay", "az"};
         const bool parametric = o.kind == Kind::RectTank || o.kind == Kind::CylTank || o.kind == Kind::Vessel;
@@ -204,6 +209,29 @@ std::optional<Object> makeCylinder(const Vec3 &center, double radius, const Vec3
     o.polygon = {center};
     o.p = {{"circle", 1.0}, {"r", radius}, {"vx", v[0]}, {"vy", v[1]}, {"vz", v[2]}, {"endScale", endScale}};
     o.meshSize = suggestedMeshSize({center}, std::max(2.0 * radius, length(v)));
+    return o;
+}
+
+std::optional<Object> makeSweep(const std::vector<Vec3> &profile, bool profileClosed, const std::vector<Vec3> &path, bool pathClosed)
+{
+    if (profile.size() < 2 || path.size() < 2) {
+        return std::nullopt;
+    }
+    double pathLength = 0.0;
+    for (std::size_t i = 0; i + 1 < path.size(); ++i) {
+        pathLength += std::sqrt(std::pow(path[i + 1][0] - path[i][0], 2) + std::pow(path[i + 1][1] - path[i][1], 2) + std::pow(path[i + 1][2] - path[i][2], 2));
+    }
+    if (pathLength < 1e-9) {
+        return std::nullopt;
+    }
+    Object o;
+    o.kind = Kind::Sweep;
+    o.polygon = profile;
+    o.path = path;
+    o.p = {{"closed", profileClosed && profile.size() >= 3 ? 1.0 : 0.0}, {"pathClosed", pathClosed && path.size() >= 3 ? 1.0 : 0.0}, {"twist", 0.0}};
+    std::vector<Vec3> all = profile;
+    all.insert(all.end(), path.begin(), path.end());
+    o.meshSize = suggestedMeshSize(all);
     return o;
 }
 

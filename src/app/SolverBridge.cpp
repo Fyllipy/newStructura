@@ -399,8 +399,16 @@ SolverBridge::Result SolverBridge::solve(const ModelData &input, bool isPreview)
         encName = p.u8string();
     }
     const std::string encPath = resolveSolverPath(encName);
-    const std::string plainPath = resolveSolverPath("rds.dll");
 #if defined(STRUCTURA_DEV_BUILD)
+    // Desenvolvimento: se o chamador informou uma .dll existente, ela e a DLL em claro (sem depender de servidor)
+    std::string plainPath = resolveSolverPath("rds.dll");
+    if (!m_libraryPath.isEmpty()) {
+        std::filesystem::path candidate = std::filesystem::u8path(m_libraryPath.toUtf8().toStdString());
+        candidate.replace_extension(".dll");   // o chamador pode informar a .dll ou a .enc: vale a .dll vizinha, se existir
+        if (std::filesystem::exists(candidate)) {
+            plainPath = candidate.u8string();
+        }
+    }
     structura_license::ScopedDecryptedDll solverDll = structura_license::LoadEncryptedDllWithFallback(
         encPath, plainPath, session);
 #else
@@ -467,25 +475,24 @@ SolverBridge::Result SolverBridge::solve(const ModelData &input, bool isPreview)
         );
 
 #if !defined(STRUCTURA_DEV_BUILD)
+        // Build comercial: sem Keystone valido o calculo e sempre bloqueado (nao existe modo de teste por ambiente).
         if (!keystoneOk) {
-            const char* testEnvKey = std::getenv("STRUCTURA_TEST_DLL_KEY");
-            if (session.licenseToken.empty() && testEnvKey && std::strlen(testEnvKey) == 64) {
-                // Modo teste unitário numérico offline (sem sessão)
-            } else {
-                throw SolverBridgeError("Cálculo bloqueado: falha na validação do Keystone com o servidor de licenças (" + keystoneError + ").");
-            }
+            throw SolverBridgeError("Cálculo bloqueado: falha na validação do Keystone com o servidor de licenças (" + keystoneError + ").");
         }
 #endif
         if (keystoneOk) {
             std::memcpy(&s_mask, keystone.sessionSecretS.data(), sizeof(s_mask));
             structura_license::GatekeeperUnlock(nonce, s_mask, sealedTable.data(), solver_sec::Rds_SlotCount, unlockFn);
             structura_license::GetGlobalExportGatekeeper().Unlock(nonce, s_mask);
-        } else if (std::getenv("STRUCTURA_TEST_DLL_KEY")) {
+        }
+#if defined(STRUCTURA_DEV_BUILD)
+        else if (std::getenv("STRUCTURA_TEST_DLL_KEY")) {
             s_mask = 0x5A5A5A5A5A5A5A5AULL;
             if (unlockFn) {
                 unlockFn(nonce, s_mask, sealedTable.data(), solver_sec::Rds_SlotCount);
             }
         }
+#endif
     }
 
     auto resolveSlot = [&](solver_sec::RdsSlot slot) -> QFunctionPointer {
@@ -1261,6 +1268,9 @@ SolverBridge::Result SolverBridge::solve(const ModelData &input, bool isPreview)
                 result.bucklingFactors.push_back(factors[static_cast<std::size_t>(m)]);
                 const auto begin = shapes.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(m) * totalNodeCount * 6U);
                 result.bucklingModes.emplace_back(begin, begin + static_cast<std::ptrdiff_t>(model.nodes.size() * 6U));
+                if (totalNodeCount > model.nodes.size()) {
+                    result.bucklingShellShapes.emplace_back(begin + static_cast<std::ptrdiff_t>(model.nodes.size() * 6U), begin + static_cast<std::ptrdiff_t>(totalNodeCount * 6U));
+                }
             }
         }
     }
@@ -1279,6 +1289,9 @@ SolverBridge::Result SolverBridge::solve(const ModelData &input, bool isPreview)
                 result.modalMassRatio.push_back({ratios[static_cast<std::size_t>(m) * 3U], ratios[static_cast<std::size_t>(m) * 3U + 1U], ratios[static_cast<std::size_t>(m) * 3U + 2U]});
                 const auto begin = shapes.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(m) * totalNodeCount * 6U);
                 result.modalShapes.emplace_back(begin, begin + static_cast<std::ptrdiff_t>(model.nodes.size() * 6U));
+                if (totalNodeCount > model.nodes.size()) {
+                    result.modalShellShapes.emplace_back(begin + static_cast<std::ptrdiff_t>(model.nodes.size() * 6U), begin + static_cast<std::ptrdiff_t>(totalNodeCount * 6U));
+                }
             }
         }
     }

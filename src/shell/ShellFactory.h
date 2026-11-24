@@ -28,6 +28,9 @@ std::optional<Object> makeExtrusion(const std::vector<Vec3> &path, bool closed, 
 /// Cilindro, cone ou tronco (escala da extremidade em `endScale`): circulo extrudado segundo o vetor `v`.
 std::optional<Object> makeCylinder(const Vec3 &center, double radius, const Vec3 &v, double endScale = 1.0);
 /// Revolucao de um perfil em torno do eixo (ponto e direcao).
+/// Varredura de um perfil (>= 2 pontos, posicionado no inicio do caminho) ao longo de um caminho (>= 2 pontos).
+std::optional<Object> makeSweep(const std::vector<Vec3> &profile, bool profileClosed, const std::vector<Vec3> &path, bool pathClosed);
+
 std::optional<Object> makeRevolution(const std::vector<Vec3> &profile, const Vec3 &axisPoint, const Vec3 &axisDirection);
 
 /// Desloca a geometria do objeto de id `objectId` e os apoios e cargas que dependem de coordenadas dele (apoios por plano/ponto, cota do

@@ -71,6 +71,10 @@ void MainWindow::setupPlacement()
         if (m_placement) {
             m_placement->scheduleRefresh();
         }
+        // o marcador e o cartao do probe acompanham o ponto consultado quando a camera muda
+        if (m_shellProbeQuad >= 0 && m_shellProbeCard) {
+            refreshShellProbeCard();
+        }
     });
     connect(m_sceneController, &SceneController::cameraChanged, this, [this]() {
         if (m_cameraSyncTimer && !m_cameraSyncTimer->isActive()) {

@@ -1,5 +1,8 @@
 #include "shell/ShellJob.h"
 
+#include "shell/ShellLoads.h"
+#include "shell/ShellSupports.h"
+
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -44,117 +47,14 @@ Job buildJob(const Model &model, const Mesh &mesh, const std::vector<std::string
     job.ties = mesh.ties;
 
     // ---- apoios -------------------------------------------------------------------------------------------------------------
-    // arestas livres: aresta usada por um unico elemento
-    std::map<std::pair<int, int>, int> edgeCount;
-    std::map<std::pair<int, int>, int> edgeObject;
-    for (const MeshQuad &q : mesh.quads) {
-        for (int i = 0; i < 4; ++i) {
-            const int a = q.n[static_cast<std::size_t>(i)], b = q.n[static_cast<std::size_t>((i + 1) % 4)];
-            const auto key = std::make_pair(std::min(a, b), std::max(a, b));
-            ++edgeCount[key];
-            edgeObject[key] = q.object;
-        }
+    // a selecao dos nos e feita por `resolveSupports` (a mesma que a vista usa para desenhar os apoios)
+    const SupportResolution resolution = resolveSupports(model, mesh);
+    for (const std::string &w : resolution.warnings) {
+        job.warnings.push_back(w);
     }
-    std::vector<std::set<int>> nodeObjects(mesh.nodes.size());
-    for (const MeshQuad &q : mesh.quads) {
-        for (const int n : q.n) {
-            nodeObjects[static_cast<std::size_t>(n)].insert(q.object);
-        }
-    }
-    for (const Support &s : model.supports) {
-        std::vector<int> selected;
-        auto belongs = [&](int node) {
-            if (s.object == 0) {
-                return true;
-            }
-            for (const int obj : nodeObjects[static_cast<std::size_t>(node)]) {
-                if (model.objects[static_cast<std::size_t>(obj)].id == s.object) {
-                    return true;
-                }
-            }
-            return false;
-        };
-        auto limited = [&](int node) {
-            if (s.limitAxis < 0 || s.limitAxis > 2) {
-                return true;
-            }
-            const double c = mesh.nodes[static_cast<std::size_t>(node)][static_cast<std::size_t>(s.limitAxis)];
-            return s.limitBelow ? c <= s.limitValue + s.tol : c >= s.limitValue - s.tol;
-        };
-        if (s.selector == Support::Plane) {
-            const std::size_t axis = static_cast<std::size_t>(std::clamp(s.axis, 0, 2));
-            for (std::size_t n = 0; n < mesh.nodes.size(); ++n) {
-                if (std::abs(mesh.nodes[n][axis] - s.value) <= s.tol && belongs(static_cast<int>(n)) && limited(static_cast<int>(n))) {
-                    selected.push_back(static_cast<int>(n));
-                }
-            }
-            if (s.legs > 0 && !selected.empty()) {
-                // centro do anel e angulos dos apoios pontuais
-                Vec3 center {0.0, 0.0, 0.0};
-                for (const int n : selected) {
-                    for (int c = 0; c < 3; ++c) {
-                        center[static_cast<std::size_t>(c)] += mesh.nodes[static_cast<std::size_t>(n)][static_cast<std::size_t>(c)] / static_cast<double>(selected.size());
-                    }
-                }
-                const std::size_t a1 = axis == 0 ? 1 : 0, a2 = axis == 2 ? 1 : 2;
-                std::vector<int> chosen;
-                for (int leg = 0; leg < s.legs; ++leg) {
-                    const double angle = (s.legStart + 360.0 * leg / s.legs) * kPi / 180.0;
-                    int best = -1;
-                    double bestDiff = 1e9;
-                    for (const int n : selected) {
-                        const Vec3 &p = mesh.nodes[static_cast<std::size_t>(n)];
-                        const double a = std::atan2(p[a2] - center[a2], p[a1] - center[a1]);
-                        double diff = std::abs(std::remainder(a - angle, 2.0 * kPi));
-                        // prefere os nos de maior raio (borda do anel)
-                        diff += 1e-6 * (1.0 - std::hypot(p[a1] - center[a1], p[a2] - center[a2]));
-                        if (diff < bestDiff) {
-                            bestDiff = diff;
-                            best = n;
-                        }
-                    }
-                    if (best >= 0) {
-                        chosen.push_back(best);
-                    }
-                }
-                selected = chosen;
-            }
-        } else if (s.selector == Support::FreeEdge) {
-            std::set<int> nodes;
-            for (const auto &[edge, count] : edgeCount) {
-                if (count != 1) {
-                    continue;
-                }
-                if (s.object != 0 && model.objects[static_cast<std::size_t>(edgeObject[edge])].id != s.object) {
-                    continue;
-                }
-                nodes.insert(edge.first);
-                nodes.insert(edge.second);
-            }
-            for (const int n : nodes) {
-                if (limited(n)) {
-                    selected.push_back(n);
-                }
-            }
-        } else {
-            int best = -1;
-            double bestDist = 1e300;
-            for (std::size_t n = 0; n < mesh.nodes.size(); ++n) {
-                const Vec3 &p = mesh.nodes[n];
-                const double d = std::hypot(std::hypot(p[0] - s.value, p[1] - s.value2), p[2] - s.value3);
-                if (d < bestDist && belongs(static_cast<int>(n))) {
-                    bestDist = d;
-                    best = static_cast<int>(n);
-                }
-            }
-            if (best >= 0) {
-                selected.push_back(best);
-            }
-        }
-        if (selected.empty()) {
-            job.warnings.push_back("Um apoio nao encontrou nos (confira a posicao ou a tolerancia).");
-            continue;
-        }
+    for (const ResolvedSupport &resolved : resolution.supports) {
+        const Support &s = model.supports[static_cast<std::size_t>(resolved.support)];
+        const std::vector<int> &selected = resolved.nodes;
         if (s.springPerArea > 0.0) {
             const std::vector<double> area = tributaryAreas(mesh, -1);
             for (const int n : selected) {
@@ -185,8 +85,26 @@ Job buildJob(const Model &model, const Mesh &mesh, const std::vector<std::string
     for (const std::string &name : caseNames) {
         Job::Case c;
         c.name = name;
-        for (const Load &load : model.loads) {
+        for (std::size_t loadIndex = 0; loadIndex < model.loads.size(); ++loadIndex) {
+            const Load &load = model.loads[loadIndex];
             if (load.caseName != name) {
+                continue;
+            }
+            if (isPointLoad(load.type)) {
+                // cargas por clique em nos: alvos pelas coordenadas, forcas nodais equivalentes (ver ShellLoads.h)
+                const PointLoadEffect fx = pointLoadEffect(model, mesh, loadIndex);
+                for (const std::string &w : fx.warnings) {
+                    job.warnings.push_back(w);
+                }
+                for (const auto &[node, f] : fx.nodalForces) {
+                    Job::NodalForce nf;
+                    nf.node = node;
+                    nf.f = {f[0], f[1], f[2], 0.0, 0.0, 0.0};
+                    c.nodal.push_back(nf);
+                }
+                for (const auto &[shell, p] : fx.pressures) {
+                    c.pressure.push_back({shell, {p, p, p, p}});
+                }
                 continue;
             }
             for (std::size_t e = 0; e < mesh.quads.size(); ++e) {
@@ -240,6 +158,47 @@ Job buildJob(const Model &model, const Mesh &mesh, const std::vector<std::string
         job.cases.push_back(std::move(c));
     }
     return job;
+}
+
+Job combinationJob(const Job &job, const std::vector<std::pair<std::string, double>> &factors, const std::string &name)
+{
+    Job out;
+    out.nodes = job.nodes;
+    out.springs = job.springs;
+    out.ties = job.ties;
+    out.warnings = job.warnings;
+    Job::Case combined;
+    combined.name = name;
+    for (const auto &[caseName, factor] : factors) {
+        for (const Job::Case &c : job.cases) {
+            if (c.name != caseName) {
+                continue;
+            }
+            for (Job::NodalForce f : c.nodal) {
+                for (double &v : f.f) {
+                    v *= factor;
+                }
+                combined.nodal.push_back(f);
+            }
+            for (Job::Pressure p : c.pressure) {
+                for (double &v : p.p) {
+                    v *= factor;
+                }
+                combined.pressure.push_back(p);
+            }
+            for (Job::Body b : c.body) {
+                b.b = {{b.b[0] * factor, b.b[1] * factor, b.b[2] * factor}};
+                combined.body.push_back(b);
+            }
+            for (Job::Thermal t : c.thermal) {
+                t.uniform *= factor;
+                t.gradient *= factor;
+                combined.thermal.push_back(t);
+            }
+        }
+    }
+    out.cases.push_back(std::move(combined));
+    return out;
 }
 
 } // namespace Structura::Shell

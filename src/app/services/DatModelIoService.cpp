@@ -160,7 +160,7 @@ bool DatModelIoService::load(const QString &filePath,
     QTextStream stream(&file);
     stream.setLocale(QLocale::c());
 
-    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, MemberActions, MaterialThermal, Diaphragms, RigidLinks, InclinedSupports, LinearConstraints, MemberConnections, Links, Nonlinear, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor, ShellModel, Dimensions, Preserved };
+    enum class Section { None, Materials, MaterialProps, Sections, Nodes, Members, NodalLoads, MemberLoads, MemberMoments, MemberActions, MaterialThermal, Diaphragms, RigidLinks, InclinedSupports, LinearConstraints, MemberConnections, Links, Nonlinear, Placements, Axes, ViewOptions, LoadCases, Combinations, SectionGeometry, DesignSettings, MemberDesign, Groups, AreaLoads, AnalysisResults, DesignResults, BucklingResults, ModalResults, Connections, TitleBlock, Views3D, SheetLayouts, CompositeFloor, ShellModel, Dimensions, Stairs, Preserved };
     Section current = Section::None;
 
     // Preservacao: o que esta edicao nao interpreta volta ao arquivo intacto (ver ProjectExtras::preserved).
@@ -247,6 +247,7 @@ bool DatModelIoService::load(const QString &filePath,
     QMap<QString, double> viewOptionsTmp;
     Structura::App::ProjectData::DesignSettings designTmp;
     QVector<Structura::App::ProjectData::BarGroup> groupsTmp;
+    QVector<Structura::App::ProjectData::StairObject> stairsTmp;
     QVector<Structura::App::ProjectData::AreaLoadPanel> areaLoadsTmp;
     Structura::App::ProjectData::StoredResults resultsTmp;
     QVector<Structura::App::ProjectData::NodeConnection> connectionsTmp;
@@ -368,6 +369,8 @@ bool DatModelIoService::load(const QString &filePath,
                 current = Section::ModalResults;
             } else if (trimmed.compare(QStringLiteral("[GROUPS]"), Qt::CaseInsensitive) == 0) {
                 current = Section::Groups;
+            } else if (trimmed.compare(QStringLiteral("[STAIRS]"), Qt::CaseInsensitive) == 0) {
+                current = Section::Stairs;
             } else if (trimmed.compare(QStringLiteral("[DESIGN_SETTINGS]"), Qt::CaseInsensitive) == 0) {
                 current = Section::DesignSettings;
             } else if (trimmed.compare(QStringLiteral("[MEMBER_DESIGN]"), Qt::CaseInsensitive) == 0) {
@@ -740,6 +743,10 @@ bool DatModelIoService::load(const QString &filePath,
                 if (auto *o = objectById(toInt(parts[1], &ok))) {
                     o->polygon.push_back({toDouble(parts[2], &ok), toDouble(parts[3], &ok), toDouble(parts[4], &ok)});
                 }
+            } else if (key == QLatin1String("PATHPT") && parts.size() >= 5) {
+                if (auto *o = objectById(toInt(parts[1], &ok))) {
+                    o->path.push_back({toDouble(parts[2], &ok), toDouble(parts[3], &ok), toDouble(parts[4], &ok)});
+                }
             } else if (key == QLatin1String("LOAD") && parts.size() >= 8) {
                 Structura::Shell::Load l;
                 l.caseName = decodeName(parts[1]).toStdString();
@@ -749,6 +756,9 @@ bool DatModelIoService::load(const QString &filePath,
                     l.v[static_cast<std::size_t>(i)] = toDouble(parts[4 + i], &ok);
                 }
                 shellTmp.loads.push_back(l);
+            } else if (key == QLatin1String("LOADNODE") && parts.size() >= 4 && !shellTmp.loads.empty()) {
+                // ponto (m) de uma carga por nos: pertence ao ultimo LOAD lido
+                shellTmp.loads.back().points.push_back({toDouble(parts[1], &ok), toDouble(parts[2], &ok), toDouble(parts[3], &ok)});
             } else if (key == QLatin1String("SUPPORT") && parts.size() >= 24) {
                 Structura::Shell::Support s;
                 s.object = toInt(parts[1], &ok);
@@ -772,9 +782,12 @@ bool DatModelIoService::load(const QString &filePath,
                     s.springNormal[static_cast<std::size_t>(i)] = toDouble(parts[21 + i], &ok);
                 }
                 shellTmp.supports.push_back(s);
+            } else if (key == QLatin1String("SUPPORTNODE") && parts.size() >= 4 && !shellTmp.supports.empty()) {
+                // ponto (m) de um apoio por nos: pertence ao ultimo SUPPORT lido
+                shellTmp.supports.back().points.push_back({toDouble(parts[1], &ok), toDouble(parts[2], &ok), toDouble(parts[3], &ok)});
             } else if (key != QLatin1String("TRIBUTARY") && key != QLatin1String("MONOLITHIC") && key != QLatin1String("COUPLED") && key != QLatin1String("MAT")
                        && key != QLatin1String("ORTHO") && key != QLatin1String("OBJ") && key != QLatin1String("PARAM") && key != QLatin1String("POLY")
-                       && key != QLatin1String("LOAD") && key != QLatin1String("SUPPORT")) {
+                       && key != QLatin1String("LOAD") && key != QLatin1String("SUPPORT") && key != QLatin1String("SUPPORTNODE") && key != QLatin1String("LOADNODE")) {
                 keepLine(QStringLiteral("[SHELL_MODEL]"), line);
             }
             break;
@@ -914,6 +927,109 @@ bool DatModelIoService::load(const QString &filePath,
                 }
             }
             groupsTmp.append(group);
+            break;
+        }
+        case Section::Stairs: {
+            using SG = Structura::App::Services::StairGenerator;
+            auto untoken = [](const QString &t) { return t == QLatin1String("-") ? QString() : QString(t).replace(QLatin1Char('_'), QLatin1Char(' ')); };
+            const QString key = parts[0].toUpper();
+            if (key == QLatin1String("STAIR")) {
+                if (parts.size() < 2) {
+                    break;
+                }
+                Structura::App::ProjectData::StairObject stair;
+                stair.id = toInt(parts[1], &ok);
+                if (!ok) {
+                    break;
+                }
+                stair.name = parts.size() > 2 ? untoken(parts[2]) : QString();
+                stairsTmp.append(stair);
+                break;
+            }
+            if (stairsTmp.isEmpty()) {
+                break;
+            }
+            auto &stair = stairsTmp.last();
+            auto &p = stair.params;
+            if (key == QLatin1String("P") && parts.size() >= 3) {
+                const QString name = parts[1].toUpper();
+                const double v = toDouble(parts[2], &ok);
+                if (!ok) {
+                    break;
+                }
+                if (name == QLatin1String("TYPE")) {
+                    p.type = static_cast<SG::Type>(std::clamp(static_cast<int>(v), 0, 3));
+                } else if (name == QLatin1String("LAYOUT")) {
+                    p.layout = static_cast<SG::Layout>(std::clamp(static_cast<int>(v), 0, 2));
+                } else if (name == QLatin1String("BASEZ")) {
+                    p.baseZ = v;
+                } else if (name == QLatin1String("TOPZ")) {
+                    p.topZ = v;
+                } else if (name == QLatin1String("RISER")) {
+                    p.riser = v;
+                } else if (name == QLatin1String("TREAD")) {
+                    p.tread = v;
+                } else if (name == QLatin1String("WIDTH")) {
+                    p.width = v;
+                } else if (name == QLatin1String("X0")) {
+                    p.x0 = v;
+                } else if (name == QLatin1String("Y0")) {
+                    p.y0 = v;
+                } else if (name == QLatin1String("AZIMUTH")) {
+                    p.azimuthDeg = v;
+                } else if (name == QLatin1String("LEFT")) {
+                    p.turnLeft = v != 0.0;
+                } else if (name == QLatin1String("ENDBYPOINT")) {
+                    p.endByPoint = v != 0.0;
+                } else if (name == QLatin1String("X1")) {
+                    p.x1 = v;
+                } else if (name == QLatin1String("Y1")) {
+                    p.y1 = v;
+                } else if (name == QLatin1String("FIRSTSTEPS")) {
+                    p.firstFlightSteps = static_cast<int>(v);
+                } else if (name == QLatin1String("LANDING")) {
+                    p.landingLength = v;
+                } else if (name == QLatin1String("GAP")) {
+                    p.gap = v;
+                } else if (name == QLatin1String("RO")) {
+                    p.outerRadius = v;
+                } else if (name == QLatin1String("RI")) {
+                    p.innerRadius = v;
+                } else if (name == QLatin1String("ANGLE")) {
+                    p.totalAngleDeg = v;
+                } else if (name == QLatin1String("BASESUP")) {
+                    p.baseSupport = static_cast<SG::SupportKind>(std::clamp(static_cast<int>(v), 0, 2));
+                } else if (name == QLatin1String("TOPSUP")) {
+                    p.topSupport = static_cast<SG::SupportKind>(std::clamp(static_cast<int>(v), 0, 2));
+                }
+            } else if (key == QLatin1String("S") && parts.size() >= 5) {
+                stair.stringerSection = untoken(parts[1]);
+                stair.treadSection = untoken(parts[2]);
+                stair.landingSection = untoken(parts[3]);
+                stair.material = untoken(parts[4]);
+            } else if (key == QLatin1String("LOAD") && parts.size() >= 4) {
+                SG::Load load;
+                load.kind = static_cast<SG::LoadKind>(std::clamp(toInt(parts[1], &ok), 0, 3));
+                load.value = toDouble(parts[2], &ok);
+                load.loadCase = untoken(parts[3]).toStdString();
+                p.loads.push_back(load);
+            } else if (key == QLatin1String("NODES")) {
+                for (int i = 1; i < parts.size(); ++i) {
+                    const int id = toInt(parts[i], &ok);
+                    if (ok) {
+                        stair.nodes.append(id);
+                    }
+                }
+            } else if (key == QLatin1String("BARS")) {
+                for (int i = 1; i < parts.size(); ++i) {
+                    const int id = toInt(parts[i], &ok);
+                    if (ok) {
+                        stair.bars.append(id);
+                    }
+                }
+            } else if (key == QLatin1String("GROUP") && parts.size() >= 2) {
+                stair.groupId = toInt(parts[1], &ok);
+            }
             break;
         }
         case Section::DesignSettings: {
@@ -1504,6 +1620,7 @@ bool DatModelIoService::load(const QString &filePath,
     extras.viewOptions = viewOptionsTmp;
     extras.design = designTmp;
     extras.groups = groupsTmp;
+    extras.stairs = stairsTmp;
     extras.areaLoads = areaLoadsTmp;
     extras.results = resultsTmp;
     extras.connections = connectionsTmp;
@@ -2091,6 +2208,55 @@ bool DatModelIoService::save(const QString &filePath,
         }
     }
 
+    if (!extras.stairs.isEmpty()) {
+        auto token = [](QString text) { return text.isEmpty() ? QStringLiteral("-") : text.replace(QLatin1Char(' '), QLatin1Char('_')); };
+        stream << "\n[STAIRS]\n";
+        stream << "# STAIR id nome | P chave valor | S longarina degrau patamar material | LOAD tipo valor caso | NODES ids | BARS ids | GROUP id\n";
+        for (const auto &stair : extras.stairs) {
+            const auto &p = stair.params;
+            stream << "STAIR " << stair.id << ' ' << token(stair.name) << "\n";
+            auto param = [&stream](const char *name, double value) { stream << "P " << name << ' ' << QString::number(value, 'g', 12) << "\n"; };
+            param("TYPE", static_cast<int>(p.type));
+            param("LAYOUT", static_cast<int>(p.layout));
+            param("BASEZ", p.baseZ);
+            param("TOPZ", p.topZ);
+            param("RISER", p.riser);
+            param("TREAD", p.tread);
+            param("WIDTH", p.width);
+            param("X0", p.x0);
+            param("Y0", p.y0);
+            param("AZIMUTH", p.azimuthDeg);
+            param("LEFT", p.turnLeft ? 1 : 0);
+            param("ENDBYPOINT", p.endByPoint ? 1 : 0);
+            param("X1", p.x1);
+            param("Y1", p.y1);
+            param("FIRSTSTEPS", p.firstFlightSteps);
+            param("LANDING", p.landingLength);
+            param("GAP", p.gap);
+            param("RO", p.outerRadius);
+            param("RI", p.innerRadius);
+            param("ANGLE", p.totalAngleDeg);
+            param("BASESUP", static_cast<int>(p.baseSupport));
+            param("TOPSUP", static_cast<int>(p.topSupport));
+            stream << "S " << token(stair.stringerSection) << ' ' << token(stair.treadSection) << ' ' << token(stair.landingSection) << ' ' << token(stair.material) << "\n";
+            for (const auto &load : p.loads) {
+                stream << "LOAD " << static_cast<int>(load.kind) << ' ' << QString::number(load.value, 'g', 12) << ' ' << token(QString::fromStdString(load.loadCase)) << "\n";
+            }
+            stream << "NODES";
+            for (const int id : stair.nodes) {
+                stream << ' ' << id;
+            }
+            stream << "\nBARS";
+            for (const int id : stair.bars) {
+                stream << ' ' << id;
+            }
+            stream << "\n";
+            if (stair.groupId > 0) {
+                stream << "GROUP " << stair.groupId << "\n";
+            }
+        }
+    }
+
     if (!extras.design.isDefault() || hasLeftover(QStringLiteral("[DESIGN_SETTINGS]"))) {
         const auto &ds = extras.design;
         auto token = [](QString text) { return text.isEmpty() ? QStringLiteral("-") : text.replace(QLatin1Char(' '), QLatin1Char('_')); };
@@ -2223,9 +2389,15 @@ bool DatModelIoService::save(const QString &filePath,
             for (const auto &p : o.polygon) {
                 stream << "POLY " << o.id << ' ' << num(p[0]) << ' ' << num(p[1]) << ' ' << num(p[2]) << "\n";
             }
+            for (const auto &p : o.path) {
+                stream << "PATHPT " << o.id << ' ' << num(p[0]) << ' ' << num(p[1]) << ' ' << num(p[2]) << "\n";
+            }
         }
         for (const auto &l : sm.loads) {
             stream << "LOAD " << enc(l.caseName) << ' ' << l.object << ' ' << static_cast<int>(l.type) << ' ' << num(l.v[0]) << ' ' << num(l.v[1]) << ' ' << num(l.v[2]) << ' ' << num(l.v[3]) << "\n";
+            for (const auto &p : l.points) {
+                stream << "LOADNODE " << num(p[0]) << ' ' << num(p[1]) << ' ' << num(p[2]) << "\n";
+            }
         }
         for (const auto &s : sm.supports) {
             stream << "SUPPORT " << s.object << ' ' << static_cast<int>(s.selector) << ' ' << s.axis << ' ' << num(s.value) << ' ' << num(s.value2) << ' ' << num(s.value3) << ' ' << num(s.tol)
@@ -2234,6 +2406,9 @@ bool DatModelIoService::save(const QString &filePath,
                 stream << ' ' << f;
             }
             stream << ' ' << num(s.springPerArea) << ' ' << (s.compressionOnly ? 1 : 0) << ' ' << num(s.springNormal[0]) << ' ' << num(s.springNormal[1]) << ' ' << num(s.springNormal[2]) << "\n";
+            for (const auto &p : s.points) {
+                stream << "SUPPORTNODE " << num(p[0]) << ' ' << num(p[1]) << ' ' << num(p[2]) << "\n";
+            }
         }
         emitLeftover(QStringLiteral("[SHELL_MODEL]"));
     }

@@ -27,6 +27,9 @@ struct Results {
     std::string error;
     int springIterations {0};
     double maxWarp {0.0};
+    /// Falso quando ha apoios que so comprimem: a resposta e nao linear, `combine` (superposicao linear) NAO e fisicamente valida e cada combinacao
+    /// deve ser resolvida como analise independente (ShellSolverBridge::solveCombination).
+    bool superposable {true};
     [[nodiscard]] bool ok() const { return error.empty() && !cases.empty(); }
 };
 

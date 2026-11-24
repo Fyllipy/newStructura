@@ -26,6 +26,87 @@ SolverBridge::Result BucklingService::run(SolverBridge::ModelData model, int mod
     return solver.solve(model);
 }
 
+Structura::Shell::RenderMesh BucklingService::shellShapeMesh(const SolverBridge::ModelData &model, const std::vector<double> &barShape, const std::vector<double> &shellShape,
+                                                             double maxDisplacement)
+{
+    namespace Sh = Structura::Shell;
+    if (!model.shell || model.shell->elements.empty()) {
+        return {};
+    }
+    const auto &part = *model.shell;
+    // nos: primeiro os de barra (que podem ser compartilhados com a casca), depois os proprios da casca
+    std::unordered_map<int, std::size_t> barIndex, shellIndex;
+    for (std::size_t i = 0; i < model.nodes.size(); ++i) {
+        barIndex[model.nodes[i].id] = i;
+    }
+    for (std::size_t i = 0; i < part.nodes.size(); ++i) {
+        shellIndex[part.nodes[i].id] = i;
+    }
+    const double peak = std::max(barShape.size() >= model.nodes.size() * 6U ? maxTranslation(barShape) : 0.0, shellShape.size() >= part.nodes.size() * 6U ? maxTranslation(shellShape) : 0.0);
+    // forma normalizada a maior translacao 1: a escala de cores e a deformada (maxDisplacement) independem da normalizacao do autovetor
+    const double inverse = peak > 1e-12 ? 1.0 / peak : 0.0;
+    const double scale = peak > 1e-12 ? maxDisplacement : 0.0;
+    Sh::Mesh mesh;
+    Sh::CaseResult result;
+    result.name = "modo";
+    std::unordered_map<int, int> meshIndex;
+    auto nodeFor = [&](int id) -> int {
+        const auto found = meshIndex.find(id);
+        if (found != meshIndex.end()) {
+            return found->second;
+        }
+        std::array<double, 3> position {0.0, 0.0, 0.0};
+        std::array<double, 6> u {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        const auto b = barIndex.find(id);
+        const auto s = shellIndex.find(id);
+        if (b != barIndex.end()) {
+            const auto &n = model.nodes[b->second];
+            position = {n.x, n.y, n.z};
+            if (barShape.size() >= model.nodes.size() * 6U) {
+                for (std::size_t k = 0; k < 6; ++k) {
+                    u[k] = barShape[b->second * 6U + k] * inverse;
+                }
+            }
+        } else if (s != shellIndex.end()) {
+            const auto &n = part.nodes[s->second];
+            position = {n.x, n.y, n.z};
+            if (shellShape.size() >= part.nodes.size() * 6U) {
+                for (std::size_t k = 0; k < 6; ++k) {
+                    u[k] = shellShape[s->second * 6U + k] * inverse;
+                }
+            }
+        }
+        const int index = static_cast<int>(mesh.nodes.size());
+        mesh.nodes.push_back(position);
+        result.displacement.push_back(u);
+        meshIndex[id] = index;
+        return index;
+    };
+    for (const auto &e : part.elements) {
+        Sh::MeshQuad quad;
+        for (std::size_t k = 0; k < 4; ++k) {
+            quad.n[k] = nodeFor(e.nodes[k]);
+        }
+        quad.thickness = e.thickness;
+        mesh.quads.push_back(quad);
+    }
+    result.elements.assign(mesh.quads.size(), Sh::ElementState {});
+    Sh::RenderOptions options;
+    options.quantity = Sh::Quantity::DisplacementMagnitude;
+    options.smooth = true;
+    options.edges = true;
+    options.deformScale = scale;
+    options.overrideLabels = true;
+    options.title = "Forma modal (normalizada)";
+    options.unit = "";
+    // modelo auxiliar: so precisa de um objeto e de um material para o indice dos elementos (nao ha geometria parametrica aqui)
+    Sh::Model host;
+    host.objects.resize(1);
+    host.objects[0].name = "Cascas";
+    mesh.zones = {"Cascas"};
+    return Sh::buildRenderMesh(mesh, host, &result, options);
+}
+
 double BucklingService::maxTranslation(const std::vector<double> &shape)
 {
     double best = 0.0;

@@ -8,6 +8,7 @@
 #include <QPoint>
 #include <QVector3D>
 #include <array>
+#include <cstdint>
 #include <QColor>
 #include <QPair>
 #include "app/SceneDataTypes.h"
@@ -24,6 +25,8 @@
 #include "app/services/ConnectionService.h"
 #include "app/services/SheetBuilder.h"
 #include "shell/ShellMesh.h"
+#include "shell/ShellSelection.h"
+#include "shell/ShellVisual.h"
 #include "shell/ShellResults.h"
 #include <optional>
 #include <memory>
@@ -72,6 +75,8 @@ class ViewOptionsBar;
 class AxesPanel;
 class SectionPlacementPanel;
 class ViewportLabelOverlay;
+class ColorLegendOverlay;
+class SupportLegendOverlay;
 }
 namespace Visualization {
 class PostProcessorRenderer;
@@ -142,6 +147,10 @@ private slots:
     void onDynamics();
     void onCompositeFloor();
     void onGenerateTruss();
+    void onGenerateStair();
+    void onEditStair();
+    /// Abre o gerador de escadas: `editIndex` < 0 cria uma nova; senao regenera m_extras.stairs[editIndex].
+    void runStairDialog(int editIndex);
     void onImportCad();
     void onShellEditor();
     bool newFromTemplateDialog();
@@ -293,6 +302,7 @@ private:
         ShellExtrude,     ///< extrusao de uma linha (parede, casca reglada)
         ShellCylinder,    ///< cilindro / cone (circulo e altura)
         ShellRevolve,     ///< revolucao de um perfil em torno de um eixo
+        ShellSweep,       ///< varredura de um perfil ao longo de um caminho
         ShellMove,
         ShellCopy
     };
@@ -308,6 +318,63 @@ private:
     Structura::Shell::Mesh m_shellMesh;
     int m_selectedShellObject {-1};
     bool m_shellResultsShown {false};
+    // ---- Legenda e probe dos resultados de cascas na vista principal (Fase 1) ----
+    std::shared_ptr<const Structura::Shell::RenderMesh> m_shellRender;   ///< malha colorida atual (so quando ha resultados)
+    Structura::UI::ColorLegendOverlay *m_shellLegend {nullptr};
+    class QLabel *m_shellProbeCard {nullptr};
+    class QLabel *m_shellProbeDot {nullptr};
+    QAction *m_shellProbeAction {nullptr};
+    bool m_shellProbeActive {false};
+    bool m_shellMeshVisible {false};
+    int m_shellProbeQuad {-1};
+    std::array<double, 3> m_shellProbePoint {{0.0, 0.0, 0.0}};   ///< ultimo ponto tocado (coordenadas da cena)
+    std::uint64_t m_shellProbeRevision {0};
+    /// Unico ponto de entrada da malha de cascas na cena: desenha, atualiza a legenda e o probe.
+    void applyShellRenderMesh(const Structura::Shell::RenderMesh &mesh);
+    void setShellViewVisible(bool visible);
+    void updateShellLegend();
+    void positionShellLegend();
+    void setShellProbeActive(bool active);
+    bool shellProbeClick(const QPoint &widgetPos);
+    void showShellProbeCard(const QPoint &widgetPos, bool announce = true);
+    void hideShellProbeCard();
+    void refreshShellProbeCard();
+    // ---- Selecao de nos de cascas (Fase 2): transitoria, guardada por coordenadas ----
+    Structura::Shell::NodeSelection m_shellNodeSel;
+    std::vector<Structura::Shell::NodeRef> m_shellSelRefs;
+    Structura::Shell::NodeTable m_shellNodeTable;
+    std::uint64_t m_shellNodeTableRevision {0};
+    QAction *m_shellNodeSelectAction {nullptr};
+    bool m_shellNodeSelectActive {false};
+    void ensureShellNodeTable();
+    [[nodiscard]] Structura::Shell::ScreenProjector shellProjector() const;
+    void setShellNodeSelectActive(bool active);
+    void clearShellNodeSelection();
+    void updateShellSelectionVisual();
+    void commitShellNodeSelection(const std::vector<int> &ids, Structura::Shell::NodeSelection::Mode mode);
+    bool shellNodeClick(const QPoint &widgetPos, Qt::KeyboardModifiers modifiers);
+    bool shellNodeRect(const QRect &rect, Qt::KeyboardModifiers modifiers);
+    void reresolveShellNodeSelection();
+    // ---- Apoios de cascas na vista (Fase 3) ----
+    QAction *m_shellApplySupportAction {nullptr};
+    QAction *m_shellRemoveSupportAction {nullptr};
+    QAction *m_shellShowSupportsAction {nullptr};
+    Structura::UI::SupportLegendOverlay *m_supportLegend {nullptr};
+    bool m_shellSupportsShown {true};
+    void refreshShellSupports();
+    void setShellSupportsShown(bool shown);
+    void positionSupportLegend();
+    void applyShellSupportToSelection();
+    void removeShellSupportFromSelection();
+    // ---- Cargas de cascas dadas por clique (Fase 4) ----
+    QAction *m_shellApplyLoadAction {nullptr};
+    QAction *m_shellRemoveLoadAction {nullptr};
+    QAction *m_shellShowLoadsAction {nullptr};
+    bool m_shellLoadsShown {true};
+    void refreshShellLoads();
+    void setShellLoadsShown(bool shown);
+    void applyShellLoadToSelection();
+    void removeShellLoadFromSelection();
     double m_lastShellThickness {200.0};
     int m_lastShellMaterial {0};
     QAction *m_shellPolygonAction {nullptr};
@@ -316,6 +383,7 @@ private:
     QAction *m_shellExtrudeAction {nullptr};
     QAction *m_shellCylinderAction {nullptr};
     QAction *m_shellRevolveAction {nullptr};
+    QAction *m_shellSweepAction {nullptr};
     QAction *m_shellDeleteAction {nullptr};
     double shellUnitsPerMeter() const;
     void refreshShellVisuals(bool force = false);
@@ -535,6 +603,8 @@ private:
     QAction *m_splitBarsAction {nullptr};
     QAction *m_copyConnectionsAction {nullptr};
     QAction *m_generateTrussAction {nullptr};
+    QAction *m_generateStairAction {nullptr};
+    QAction *m_editStairAction {nullptr};
     QAction *m_compareAction {nullptr};
     QAction *m_measureAction {nullptr};
     QAction *m_dimensionAction {nullptr};

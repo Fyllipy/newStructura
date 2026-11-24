@@ -9,6 +9,7 @@
 #include <QCoreApplication>
 #include <QLibrary>
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <vector>
@@ -156,8 +157,15 @@ bool ShellSolverBridge::available(QString *reason) const
         encName = p.u8string();
     }
     const std::string encPath = resolveShellSolverPath(encName);
-    const std::string plainPath = resolveShellSolverPath("mefs.dll");
 #if defined(STRUCTURA_DEV_BUILD)
+    std::string plainPath = resolveShellSolverPath("mefs.dll");
+    if (!m_libraryPath.isEmpty()) {
+        std::filesystem::path candidate = std::filesystem::u8path(m_libraryPath.toUtf8().toStdString());
+        candidate.replace_extension(".dll");   // o chamador pode informar a .dll ou a .enc: vale a .dll vizinha, se existir
+        if (std::filesystem::exists(candidate)) {
+            plainPath = candidate.u8string();
+        }
+    }
     structura_license::ScopedDecryptedDll library = structura_license::LoadEncryptedDllWithFallback(
         encPath, plainPath, session);
 #else
@@ -186,6 +194,30 @@ Structura::Shell::Results ShellSolverBridge::solve(const Structura::Shell::Model
 {
     using namespace Structura::Shell;
     Results results;
+    // D2: apoios que so comprimem tornam a resposta nao linear. Versoes anteriores da mefs usavam UM conjunto de molas ativas para todos os casos do
+    // modelo (a resposta de um caso mudava com a presenca de outro); por isso, com apoios unilaterais, cada caso e resolvido como analise independente.
+    // Vale tambem para a mefs corrigida (conjunto ativo por caso), a custo de repetir a montagem.
+    if (job.hasUnilateralSprings()) {
+        results.superposable = false;
+        if (job.cases.size() > 1) {
+            Results merged;
+            merged.superposable = false;
+            for (const Job::Case &c : job.cases) {
+                Job single = job;
+                single.cases = {c};
+                Results one = solve(model, mesh, single);
+                if (!one.ok()) {
+                    merged.error = (job.cases.size() > 1 ? QObject::tr("Caso \"%1\": ").arg(QString::fromStdString(c.name)).toStdString() : std::string()) + one.error;
+                    merged.cases.clear();
+                    return merged;
+                }
+                merged.springIterations = std::max(merged.springIterations, one.springIterations);
+                merged.maxWarp = std::max(merged.maxWarp, one.maxWarp);
+                merged.cases.push_back(std::move(one.cases.front()));
+            }
+            return merged;
+        }
+    }
     // Marco M5: Carga segura da DLL cifrada em repouso (decrypt-to-temp + LoadLibrary)
     const auto session = structura_license::GetActiveClientSession();
     std::string encName = "mefs.enc";
@@ -197,8 +229,15 @@ Structura::Shell::Results ShellSolverBridge::solve(const Structura::Shell::Model
         encName = p.u8string();
     }
     const std::string encPath = resolveShellSolverPath(encName);
-    const std::string plainPath = resolveShellSolverPath("mefs.dll");
 #if defined(STRUCTURA_DEV_BUILD)
+    std::string plainPath = resolveShellSolverPath("mefs.dll");
+    if (!m_libraryPath.isEmpty()) {
+        std::filesystem::path candidate = std::filesystem::u8path(m_libraryPath.toUtf8().toStdString());
+        candidate.replace_extension(".dll");   // o chamador pode informar a .dll ou a .enc: vale a .dll vizinha, se existir
+        if (std::filesystem::exists(candidate)) {
+            plainPath = candidate.u8string();
+        }
+    }
     structura_license::ScopedDecryptedDll library = structura_license::LoadEncryptedDllWithFallback(
         encPath, plainPath, session);
 #else
@@ -321,7 +360,15 @@ Structura::Shell::Results ShellSolverBridge::solve(const Structura::Shell::Model
         }
         results.cases.push_back(std::move(cr));
     }
+    results.superposable = !job.hasUnilateralSprings();
     return results;
+}
+
+Structura::Shell::Results ShellSolverBridge::solveCombination(const Structura::Shell::Model &model, const Structura::Shell::Mesh &mesh,
+                                                              const Structura::Shell::Job &job,
+                                                              const std::vector<std::pair<std::string, double>> &factors, const std::string &name) const
+{
+    return solve(model, mesh, Structura::Shell::combinationJob(job, factors, name));
 }
 
 } // namespace Structura::App

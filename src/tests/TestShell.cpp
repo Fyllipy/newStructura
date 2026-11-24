@@ -7,6 +7,7 @@
 #include "shell/ShellFactory.h"
 #include "shell/ShellJob.h"
 #include "shell/ShellMesh.h"
+#include "shell/ShellMeshQuality.h"
 #include "shell/ShellModel.h"
 #include "shell/ShellResults.h"
 
@@ -686,6 +687,189 @@ private slots:
     }
 
 #ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial
+    // ---------------------------------------------------------------- varredura de perfil por caminho (Fase B)
+    void sweepAlongAStraightPathIsAnExtrusion()
+    {
+        Model model;
+        auto sweepObject = makeSweep({{0, 0, 0}, {2, 0, 0}}, false, {{0, 0, 0}, {0, 0, 3}}, false);
+        QVERIFY(sweepObject.has_value());
+        sweepObject->id = 1;
+        sweepObject->meshSize = 0.5;
+        sweepObject->p["t"] = 0.01;
+        model.objects = {*sweepObject};
+        const Mesh mesh = generateMesh(model);
+        QVERIFY(mesh.warnings.empty());
+        double area = 0.0;
+        for (const MeshQuad &q : mesh.quads) {
+            area += quadArea(mesh, q);
+        }
+        QVERIFY2(std::abs(area - 6.0) < 1e-9, qPrintable(QString::number(area, 'g', 12)));
+        QCOMPARE(static_cast<int>(mesh.quads.size()), 4 * 6);
+        // mesma malha que a extrusao equivalente (mesmos nos e mesma normal)
+        Model other;
+        auto extrusionObject = makeExtrusion({{0, 0, 0}, {2, 0, 0}}, false, {0, 0, 3});
+        extrusionObject->id = 1;
+        extrusionObject->meshSize = 0.5;
+        extrusionObject->p["t"] = 0.01;
+        other.objects = {*extrusionObject};
+        const Mesh ref = generateMesh(other);
+        QCOMPARE(mesh.nodes.size(), ref.nodes.size());
+        QCOMPARE(mesh.quads.size(), ref.quads.size());
+        const Vec3 a = quadNormal(mesh, mesh.quads.front()), r = quadNormal(ref, ref.quads.front());
+        QVERIFY(a[0] * r[0] + a[1] * r[1] + a[2] * r[2] > 0.999);   // mesmo lado da normal positiva
+        for (const MeshQuad &q : mesh.quads) {
+            const Vec3 n = quadNormal(mesh, q);
+            QVERIFY(n[0] * a[0] + n[1] * a[1] + n[2] * a[2] > 0.999);   // normais coerentes em toda a superficie
+        }
+    }
+
+    void sweepOfACircleAlongAnArcMatchesPappus()
+    {
+        // duto: circulo de raio r varrido num arco de 90 graus de raio R: area = (2 pi r) x (R pi / 2) (teorema de Pappus-Guldin)
+        const double r = 0.5, R = 4.0;
+        std::vector<Vec3> profile, path;
+        const int nProfile = 48, nPath = 40;
+        for (int i = 0; i < nProfile; ++i) {
+            const double a = 2.0 * kPi * i / nProfile;
+            // plano do perfil perpendicular a tangente inicial (+Y), centrado no inicio do caminho (R, 0, 0)
+            profile.push_back({R + r * std::cos(a), 0.0, r * std::sin(a)});
+        }
+        for (int i = 0; i <= nPath; ++i) {
+            const double a = 0.5 * kPi * i / nPath;
+            path.push_back({R * std::cos(a), R * std::sin(a), 0.0});
+        }
+        auto sweepObject = makeSweep(profile, true, path, false);
+        QVERIFY(sweepObject.has_value());
+        sweepObject->id = 1;
+        sweepObject->meshSize = 0.25;
+        sweepObject->p["t"] = 0.01;
+        Model model;
+        model.objects = {*sweepObject};
+        const Mesh mesh = generateMesh(model);
+        QVERIFY2(mesh.warnings.empty(), mesh.warnings.empty() ? "" : mesh.warnings.front().c_str());
+        double area = 0.0;
+        for (const MeshQuad &q : mesh.quads) {
+            area += quadArea(mesh, q);
+        }
+        const double exact = 2.0 * kPi * r * R * 0.5 * kPi;
+        QVERIFY2(std::abs(area - exact) < 0.01 * exact, qPrintable(QString::number(area) + " vs " + QString::number(exact)));
+        // so as duas bocas ficam livres: 2 aneis de 48 arestas
+        QCOMPARE(freeEdgeCount(mesh), 2 * nProfile);
+        const MeshQualityReport report = analyzeMeshQuality(mesh, model);
+        QVERIFY2(!report.hasErrors(), "malha do duto com erro de qualidade");
+    }
+
+    void sweepAlongAClosedPathClosesWithoutGap()
+    {
+        // toro: perfil quadrado fechado varrido num caminho circular fechado; superficie fechada (nenhuma aresta livre) e area de Pappus
+        const double R = 3.0, a = 0.3;
+        std::vector<Vec3> path, profile = {{R - a, 0, -a}, {R + a, 0, -a}, {R + a, 0, a}, {R - a, 0, a}};
+        const int n = 48;
+        for (int i = 0; i < n; ++i) {
+            path.push_back({R * std::cos(2.0 * kPi * i / n), R * std::sin(2.0 * kPi * i / n), 0.0});
+        }
+        auto sweepObject = makeSweep(profile, true, path, true);
+        QVERIFY(sweepObject.has_value());
+        sweepObject->id = 1;
+        sweepObject->meshSize = 0.3;
+        sweepObject->p["t"] = 0.01;
+        Model model;
+        model.objects = {*sweepObject};
+        const Mesh mesh = generateMesh(model);
+        QVERIFY(mesh.warnings.empty());
+        QCOMPARE(freeEdgeCount(mesh), 0);
+        double area = 0.0;
+        for (const MeshQuad &q : mesh.quads) {
+            area += quadArea(mesh, q);
+        }
+        // perimetro do quadrado x comprimento do caminho no centroide (polilinha de 48 lados: raio efetivo ~ R cos(pi/n) nos lados)
+        const double exact = 8.0 * a * 2.0 * kPi * R;
+        QVERIFY2(std::abs(area - exact) < 0.01 * exact, qPrintable(QString::number(area) + " vs " + QString::number(exact)));
+    }
+
+    void twistedSweepIsDiagnosedAsWarpedAndImprovesWithRefinement()
+    {
+        // faixa retangular torcida 90 graus em 4 m: elementos longos giram entre as secoes e ficam empenados; o diagnostico de qualidade
+        // acusa o empenamento e a contagem cai ao refinar (o empenamento por elemento ~ torcao por elemento)
+        auto warpedCount = [&](double meshSize) {
+            auto sweepObject = makeSweep({{-0.5, 0, 0}, {0.5, 0, 0}}, false, {{0, 0, 0}, {0, 0, 4}}, false);
+            sweepObject->id = 1;
+            sweepObject->meshSize = meshSize;
+            sweepObject->p["t"] = 0.05;
+            sweepObject->p["twist"] = 90.0;
+            Model model;
+            model.objects = {*sweepObject};
+            const Mesh mesh = generateMesh(model);
+            const MeshQualityReport report = analyzeMeshQuality(mesh, model);
+            return std::pair<int, std::size_t> {report.warnings + report.errors, mesh.quads.size()};
+        };
+        const auto coarse = warpedCount(2.0), middle = warpedCount(0.25), fine = warpedCount(0.04);
+        QVERIFY2(coarse.first > 0, "faixa torcida em elementos grandes nao foi diagnosticada");
+        auto fraction = [](const std::pair<int, std::size_t> &r) { return static_cast<double>(r.first) / static_cast<double>(r.second); };
+        QVERIFY2(fraction(middle) < fraction(coarse) + 1e-12, "a fracao de elementos empenados nao deveria crescer ao refinar");
+        QVERIFY2(fraction(fine) < fraction(middle), qPrintable(QString("%1 vs %2").arg(fraction(fine)).arg(fraction(middle))));
+        QCOMPARE(fine.first, 0);   // torcao de ~1 grau por elemento: sem empenamento relevante
+        QVERIFY(fine.second > middle.second && middle.second > coarse.second);
+    }
+
+    void thicknessPerSegmentIsAppliedToRevolutionExtrusionAndSweep()
+    {
+        auto thicknesses = [](const Mesh &mesh) {
+            std::set<long long> out;
+            for (const MeshQuad &q : mesh.quads) {
+                out.insert(std::llround(q.thickness * 1e6));
+            }
+            return out;
+        };
+        // revolucao: cilindro (segmento 1, 10 mm) + tampa plana anular (segmento 2, 25 mm)
+        auto revolution = makeRevolution({{1, 0, 0}, {1, 0, 2}, {0.2, 0, 2}}, {0, 0, 0}, {0, 0, 1});
+        revolution->id = 1;
+        revolution->meshSize = 0.4;
+        revolution->p["t"] = 0.010;
+        revolution->p["tSeg2"] = 0.025;
+        Model model;
+        model.objects = {*revolution};
+        Mesh mesh = generateMesh(model);
+        QCOMPARE(thicknesses(mesh), (std::set<long long> {10000, 25000}));
+        // sem tSeg: espessura unica
+        model.objects[0].p.erase("tSeg2");
+        QCOMPARE(thicknesses(generateMesh(model)), (std::set<long long> {10000}));
+        // extrusao de polilinha: cada segmento com a sua espessura
+        auto extrusion = makeExtrusion({{0, 0, 0}, {2, 0, 0}, {2, 2, 0}}, false, {0, 0, 1});
+        extrusion->id = 1;
+        extrusion->meshSize = 0.5;
+        extrusion->p["t"] = 0.01;
+        extrusion->p["tSeg1"] = 0.02;
+        model.objects = {*extrusion};
+        QCOMPARE(thicknesses(generateMesh(model)), (std::set<long long> {20000, 10000}));
+        // varredura: perfil de 2 segmentos
+        auto sweepObject = makeSweep({{0, 0, 0}, {1, 0, 0}, {1, 1, 0}}, false, {{0, 0, 0}, {0, 0, 2}}, false);
+        sweepObject->id = 1;
+        sweepObject->meshSize = 0.5;
+        sweepObject->p["t"] = 0.01;
+        sweepObject->p["tSeg2"] = 0.03;
+        model.objects = {*sweepObject};
+        QCOMPARE(thicknesses(generateMesh(model)), (std::set<long long> {10000, 30000}));
+    }
+
+    void sweepIsTranslatedWithItsPath()
+    {
+        Model model;
+        auto sweepObject = makeSweep({{0, 0, 0}, {1, 0, 0}}, false, {{0, 0, 0}, {0, 0, 2}}, false);
+        sweepObject->id = 1;
+        model.objects = {*sweepObject};
+        QVERIFY(translateObject(model, 1, {5, 6, 7}, 2));
+        const Object &copy = model.objects.back();
+        QCOMPARE(copy.id, 2);
+        QCOMPARE(copy.path.back(), (Vec3 {5, 6, 9}));
+        QCOMPARE(copy.polygon.front(), (Vec3 {5, 6, 7}));
+        QCOMPARE(model.objects.front().path.back(), (Vec3 {0, 0, 2}));   // o original nao muda
+        QVERIFY(fingerprint(model) != std::string());
+        Model other = model;
+        other.objects.back().path.back()[2] += 0.1;
+        QVERIFY(fingerprint(model) != fingerprint(other));   // o caminho entra na impressao da geometria
+    }
+
     void concreteDesignFormulasMatchHandCalculation()
     {
         // rho_min (Tabela 17.3): C30 -> 0,150 %, C35 -> 0,164 %, interpolacao em C32,5
@@ -790,6 +974,144 @@ private slots:
         QCOMPARE(f.vonMises(), 100.0);
         QCOMPARE(f.principalMax(), 100.0);
     }
+
+    // ---- D2 (Etapa 3): apoios que so comprimem ------------------------------------------------------------------------------------------------------
+    // Placa 2 x 1 m sobre fundacao so-compressao (plano z = 0), presa no plano; pressao negativa (contra +z) empurra a placa para a fundacao.
+    static Model unilateralPlate(double pressureA, double pressureB)
+    {
+        Model model;
+        Object o;
+        o.id = 1;
+        o.name = "Laje";
+        o.kind = Kind::Plate;
+        o.polygon = {{0, 0, 0}, {2, 0, 0}, {2, 1, 0}, {0, 1, 0}};
+        o.p = {{"t", 0.1}};
+        o.meshSize = 0.25;
+        model.objects = {o};
+        Support base;
+        base.axis = 2;
+        base.value = 0.0;
+        base.fixed = {0, 0, 0, 0, 0, 0};
+        base.springPerArea = 5.0e8;
+        base.compressionOnly = true;
+        model.supports.push_back(base);
+        Support pin;
+        pin.selector = Support::Point;
+        pin.value = 0.0;
+        pin.value2 = 0.0;
+        pin.value3 = 0.0;
+        pin.fixed = {1, 1, 0, 0, 0, 1};
+        model.supports.push_back(pin);
+        Support slide;
+        slide.selector = Support::Point;
+        slide.value = 2.0;
+        slide.value2 = 0.0;
+        slide.value3 = 0.0;
+        slide.fixed = {0, 1, 0, 0, 0, 0};
+        model.supports.push_back(slide);
+        auto pressure = [](const char *name, double p) {
+            Load l;
+            l.caseName = name;
+            l.type = Load::Pressure;
+            l.v = {p, 0.0, 0.0, 0.0};
+            return l;
+        };
+        model.loads = {pressure("A", pressureA), pressure("B", pressureB)};
+        return model;
+    }
+
+    void combinationJobScalesAndMergesCases()
+    {
+        Job job;
+        job.nodes.resize(3);
+        Job::Case a, b;
+        a.name = "A";
+        a.nodal.push_back({1, {0, 0, -10.0, 0, 0, 0}});
+        a.pressure.push_back({0, {1.0, 1.0, 1.0, 1.0}});
+        b.name = "B";
+        b.nodal.push_back({2, {0, 0, 5.0, 0, 0, 0}});
+        b.thermal.push_back({0, 20.0, 4.0});
+        b.body.push_back({0, {{0.0, 0.0, -100.0}}});
+        job.cases = {a, b};
+        QVERIFY(!job.hasUnilateralSprings());
+        Job::SpringDef spring;
+        spring.node = 0;
+        spring.k = {1e6, 0, 0, 0, 0, 0};
+        spring.compressionOnly = true;
+        job.springs.push_back(spring);
+        QVERIFY(job.hasUnilateralSprings());
+        const Job c = combinationJob(job, {{"A", 1.5}, {"B", -2.0}, {"inexistente", 9.0}}, "ELU");
+        QCOMPARE(static_cast<int>(c.cases.size()), 1);
+        QCOMPARE(c.cases[0].name, std::string("ELU"));
+        QCOMPARE(static_cast<int>(c.cases[0].nodal.size()), 2);
+        QVERIFY(std::abs(c.cases[0].nodal[0].f[2] - (-15.0)) < 1e-12);
+        QVERIFY(std::abs(c.cases[0].nodal[1].f[2] - (-10.0)) < 1e-12);
+        QVERIFY(std::abs(c.cases[0].pressure[0].p[3] - 1.5) < 1e-12);
+        QVERIFY(std::abs(c.cases[0].thermal[0].uniform - (-40.0)) < 1e-12 && std::abs(c.cases[0].thermal[0].gradient - (-8.0)) < 1e-12);
+        QVERIFY(std::abs(c.cases[0].body[0].b[2] - 200.0) < 1e-12);
+        QVERIFY(c.hasUnilateralSprings());   // molas preservadas
+    }
+
+    void unilateralCasesDoNotDependOnEachOther()
+    {
+        if (Structura::App::Edition::kMaxShellNodes > 0) {
+            QSKIP("A edicao demonstrativa limita a malha a 100 nos.");
+        }
+        if (!QFile::exists(femLibrary())) {
+            QSKIP("mefs.dll ausente");
+        }
+        const Model model = unilateralPlate(-3.0e4, -9.0e4);
+        const Mesh mesh = generateMesh(model);
+        const Structura::App::ShellSolverBridge bridge(femLibrary());
+        const Results joint = bridge.solve(model, mesh, buildJob(model, mesh, {"A", "B"}));
+        const Results onlyA = bridge.solve(model, mesh, buildJob(model, mesh, {"A"}));
+        const Results onlyB = bridge.solve(model, mesh, buildJob(model, mesh, {"B"}));
+        QVERIFY2(joint.ok(), joint.error.c_str());
+        QVERIFY2(onlyA.ok(), onlyA.error.c_str());
+        QVERIFY2(onlyB.ok(), onlyB.error.c_str());
+        QVERIFY(!joint.superposable);
+        auto relativeDifference = [](const CaseResult &x, const CaseResult &y) {
+            double d = 0.0, s = 1e-30;
+            for (std::size_t n = 0; n < x.displacement.size(); ++n) {
+                for (std::size_t k = 0; k < 6; ++k) {
+                    d = std::max(d, std::abs(x.displacement[n][k] - y.displacement[n][k]));
+                    s = std::max(s, std::abs(y.displacement[n][k]));
+                }
+            }
+            return d / s;
+        };
+        QVERIFY(relativeDifference(joint.cases[0], onlyA.cases[0]) < 1e-9);   // caso A junto de B == caso A sozinho
+        QVERIFY(relativeDifference(joint.cases[1], onlyB.cases[0]) < 1e-9);
+        const Results swapped = bridge.solve(model, mesh, buildJob(model, mesh, {"B", "A"}));
+        QVERIFY2(swapped.ok(), swapped.error.c_str());
+        QVERIFY(relativeDifference(swapped.cases[1], joint.cases[0]) < 1e-9);   // a ordem dos casos nao altera cada caso
+        QVERIFY(relativeDifference(swapped.cases[0], joint.cases[1]) < 1e-9);
+    }
+
+    void unilateralCombinationIsSolvedAsIndependentAnalysis()
+    {
+        if (Structura::App::Edition::kMaxShellNodes > 0) {
+            QSKIP("A edicao demonstrativa limita a malha a 100 nos.");
+        }
+        if (!QFile::exists(femLibrary())) {
+            QSKIP("mefs.dll ausente");
+        }
+        const Model model = unilateralPlate(-3.0e4, -9.0e4);
+        const Mesh mesh = generateMesh(model);
+        const Job job = buildJob(model, mesh, {"A", "B"});
+        const Structura::App::ShellSolverBridge bridge(femLibrary());
+        const Results combo = bridge.solveCombination(model, mesh, job, {{"A", 1.0}, {"B", 1.0}}, "ELU");
+        QVERIFY2(combo.ok(), combo.error.c_str());
+        QCOMPARE(static_cast<int>(combo.cases.size()), 1);
+        QCOMPARE(combo.cases[0].name, std::string("ELU"));
+        // equilibrio vertical: soma das reacoes = (3e4 + 9e4) Pa x 2 m2
+        double reaction = 0.0;
+        for (const auto &r : combo.cases[0].reaction) {
+            reaction += r[2];
+        }
+        QVERIFY(std::abs(reaction - 1.2e5 * 2.0) < 1e-3 * 1.2e5 * 2.0);
+    }
+
 };
 
 QTEST_GUILESS_MAIN(TestShell)

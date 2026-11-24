@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/services/StairGenerator.h"
 #include "shell/ShellModel.h"
 #include <QString>
 #include <QStringList>
@@ -634,6 +635,17 @@ struct AreaLoadPanel {
     QString description;
 };
 
+/// Escada parametrica: parametros guardados para reabrir o dialogo e regenerar, mais os elementos que ela criou.
+struct StairObject {
+    int id {0};
+    QString name;
+    Structura::App::Services::StairGenerator::Params params;
+    QString stringerSection, treadSection, landingSection, material;   ///< nomes (perfis e material usados na geracao)
+    QVector<int> nodes;     ///< ids externos dos nos criados pela escada (nos reaproveitados do modelo nao entram)
+    QVector<int> bars;      ///< ids externos das barras criadas
+    int groupId {0};        ///< grupo de barras associado (0 = nenhum)
+};
+
 /// Dados do projeto que nao pertencem ao grafo de cena nem ao solver base.
 /// Resultados gravados no .dat para reabrir o projeto sem refazer a analise ([ANALYSIS_RESULTS], [DESIGN_RESULTS], ...).
 struct StoredNodeResult {
@@ -808,6 +820,7 @@ struct ProjectExtras {
     QMap<QString, double> viewOptions;
     DesignSettings design;
     QVector<BarGroup> groups;
+    QVector<StairObject> stairs;                       ///< escadas parametricas ([STAIRS])
     QVector<AreaLoadPanel> areaLoads;
     StoredResults results;
     QVector<NodeConnection> connections;

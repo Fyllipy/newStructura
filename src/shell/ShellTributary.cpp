@@ -174,6 +174,7 @@ std::vector<TributaryLoad> tributaryLoads(const Object &plate, const Vec3 &force
     std::map<int, std::pair<double, std::pair<double, double>>> barLoad;   // barra -> (soma de q*comprimento, soma comprimento) por aresta (acumulado)
     std::map<int, Vec3> perBar;
     std::map<int, double> perBarLength;
+    double meanWeightSum = 0.0;   // soma de (profundidade media x comprimento coberto): a integral do quinhao, que deve valer a area da chapa
     for (std::size_t i = 0; i < count; ++i) {
         if (!supported[i]) {
             continue;
@@ -204,7 +205,9 @@ std::vector<TributaryLoad> tributaryLoads(const Object &plate, const Vec3 &force
             return true;
         };
         for (int k = 0; k <= samples; ++k) {
-            const double s = len * k / samples;
+            // as pontas ficam um fio para dentro da aresta: sobre o vertice a marcha perpendicular sai do poligono (teste de ponto na borda
+            // depende do lado) e a profundidade da ultima amostra cairia a zero, subestimando o quinhao do ultimo trecho da barra
+            const double s = std::clamp(len * k / samples, 1e-6 * len, len * (1.0 - 1e-6));
             const Vec2 base {a[0] + dx * s, a[1] + dy * s};
             const double step = diagonal / 600.0;
             double lo = 0.0, hi = -1.0;
@@ -247,6 +250,7 @@ std::vector<TributaryLoad> tributaryLoads(const Object &plate, const Vec3 &force
                 continue;
             }
             const double mean = sum / weight;   // profundidade media (m): carga linear = forca por area x profundidade
+            meanWeightSum += mean * weight;
             Vec3 &q = perBar[c.bar];
             for (std::size_t k = 0; k < 3; ++k) {
                 q[k] += force[k] * mean * (weight);   // acumula q*L; dividido pelo comprimento total abaixo
@@ -254,14 +258,129 @@ std::vector<TributaryLoad> tributaryLoads(const Object &plate, const Vec3 &force
             perBarLength[c.bar] += weight;
         }
     }
+    // Conservacao: a profundidade do quinhao e integrada numericamente (passo de marcha e bisseccao); a soma das cargas das barras tem que
+    // ser exatamente forca por area x area da chapa. O ajuste e pequeno (fracao de 1%) e so e aplicado se a integral esta proxima da area.
+    double area = 0.0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const Vec2 &p = poly[i], &q = poly[(i + 1) % count];
+        area += p[0] * q[1] - q[0] * p[1];
+    }
+    area = std::abs(area) * 0.5;
+    const double scale = (meanWeightSum > 0.0 && std::abs(meanWeightSum / area - 1.0) < 0.05) ? area / meanWeightSum : 1.0;
     for (auto &[id, q] : perBar) {
         const double length = perBarLength[id];
         TributaryLoad load;
         load.barId = id;
         for (std::size_t k = 0; k < 3; ++k) {
-            load.q[k] = length > 0.0 ? q[k] / length : 0.0;
+            load.q[k] = length > 0.0 ? scale * q[k] / length : 0.0;
         }
         out.push_back(load);
+    }
+    return out;
+}
+
+std::vector<TributaryPoint> tributaryPointForces(const Object &plate, const std::vector<std::pair<Vec3, Vec3>> &points, const std::vector<TributaryBar> &bars, double tol,
+                                                 std::vector<std::string> *warnings)
+{
+    std::vector<TributaryPoint> out;
+    const std::size_t count = plate.polygon.size();
+    if (plate.kind != Kind::Plate || count < 3 || points.empty()) {
+        return out;
+    }
+    Vec3 normal {0.0, 0.0, 0.0};
+    for (std::size_t i = 0; i < count; ++i) {
+        const Vec3 &a = plate.polygon[i], &b = plate.polygon[(i + 1) % count];
+        normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
+        normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
+        normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    const double nlen = norm3(normal);
+    if (nlen < 1e-12) {
+        return out;
+    }
+    for (double &c : normal) {
+        c /= nlen;
+    }
+    const Vec3 origin = plate.polygon[0];
+    Vec3 e1 = sub3(plate.polygon[1], origin);
+    e1 = {e1[0] - normal[0] * dot3(e1, normal), e1[1] - normal[1] * dot3(e1, normal), e1[2] - normal[2] * dot3(e1, normal)};
+    const double l1 = norm3(e1);
+    if (l1 < 1e-12) {
+        return out;
+    }
+    for (double &c : e1) {
+        c /= l1;
+    }
+    const Vec3 e2 = cross3(normal, e1);
+    auto to2 = [&](const Vec3 &p) {
+        const Vec3 d = sub3(p, origin);
+        return Vec2 {dot3(d, e1), dot3(d, e2)};
+    };
+    std::vector<Vec2> poly;
+    for (const Vec3 &p : plate.polygon) {
+        poly.push_back(to2(p));
+    }
+    // arestas apoiadas: as que tem uma barra sobre elas (no plano da chapa)
+    struct Support {
+        std::size_t edge;
+        const TributaryBar *bar;
+    };
+    std::vector<Support> supports;
+    for (const TributaryBar &bar : bars) {
+        if (std::abs(dot3(sub3(bar.a, origin), normal)) > tol || std::abs(dot3(sub3(bar.b, origin), normal)) > tol) {
+            continue;
+        }
+        const Vec2 pa = to2(bar.a), pb = to2(bar.b);
+        for (std::size_t i = 0; i < count; ++i) {
+            const Vec2 a = poly[i], b = poly[(i + 1) % count];
+            const double len = std::hypot(b[0] - a[0], b[1] - a[1]);
+            if (len < 1e-9) {
+                continue;
+            }
+            const double dx = (b[0] - a[0]) / len, dy = (b[1] - a[1]) / len;
+            if (std::abs((pa[0] - a[0]) * dy - (pa[1] - a[1]) * dx) <= tol && std::abs((pb[0] - a[0]) * dy - (pb[1] - a[1]) * dx) <= tol) {
+                supports.push_back({i, &bar});
+            }
+        }
+    }
+    if (supports.empty()) {
+        if (warnings) {
+            warnings->push_back(plate.name + ": nenhuma barra sobre as arestas da chapa (as cargas por pontos nao chegam a barras).");
+        }
+        return out;
+    }
+    // cada ponto vai para a barra de aresta apoiada mais proxima (pe da perpendicular sobre a barra, limitado ao seu trecho)
+    for (const auto &[position, force] : points) {
+        const Vec2 p = to2(position);
+        struct Candidate {
+            const TributaryBar *bar;
+            double t, d;
+        };
+        std::vector<Candidate> candidates;
+        double best = 1e300;
+        for (const Support &s : supports) {
+            const Vec2 pa = to2(s.bar->a), pb = to2(s.bar->b);
+            const double dx = pb[0] - pa[0], dy = pb[1] - pa[1];
+            const double len2 = dx * dx + dy * dy;
+            if (len2 < 1e-18) {
+                continue;
+            }
+            const double t = std::clamp(((p[0] - pa[0]) * dx + (p[1] - pa[1]) * dy) / len2, 0.0, 1.0);
+            const double d = std::hypot(p[0] - (pa[0] + t * dx), p[1] - (pa[1] + t * dy));
+            candidates.push_back({s.bar, t, d});
+            best = std::min(best, d);
+        }
+        // empate (ponto na linha de simetria entre duas arestas apoiadas): a forca e dividida igualmente entre as barras empatadas
+        std::vector<Candidate> winners;
+        for (const Candidate &c : candidates) {
+            if (c.d <= best + 1e-7) {
+                winners.push_back(c);
+            }
+        }
+        for (const Candidate &c : winners) {
+            const double share = 1.0 / static_cast<double>(winners.size());
+            out.push_back({c.bar->id, c.t, {force[0] * share, force[1] * share, force[2] * share}});
+        }
     }
     return out;
 }

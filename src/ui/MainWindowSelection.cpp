@@ -214,6 +214,14 @@ bool MainWindow::handleDefaultViewportMouseRelease(Qt::MouseButton button, const
 
 void MainWindow::clickSelect(const QPoint &widgetPos, Qt::KeyboardModifiers modifiers)
 {
+    // selecao de nos de cascas: ferramenta dedicada, consome o clique
+    if (m_shellNodeSelectActive && shellNodeClick(widgetPos, modifiers)) {
+        return;
+    }
+    // ferramenta de consulta de resultados de cascas: o clique sobre uma casca colorida consulta; fora dela segue a selecao normal
+    if (m_shellProbeActive && shellProbeClick(widgetPos)) {
+        return;
+    }
     QUuid nodeId = pickNodeAtWidgetPos(widgetPos);
     if (!nodeId.isNull() && isNodeHidden(nodeId)) {
         nodeId = QUuid();
@@ -256,6 +264,9 @@ void MainWindow::clickSelect(const QPoint &widgetPos, Qt::KeyboardModifiers modi
 void MainWindow::selectInRect(const QRect &rect, bool crossing, Qt::KeyboardModifiers modifiers)
 {
     if (!m_sceneController || !m_vtkWidget) {
+        return;
+    }
+    if (m_shellNodeSelectActive && shellNodeRect(rect, modifiers)) {
         return;
     }
     clearSelectedLoad();

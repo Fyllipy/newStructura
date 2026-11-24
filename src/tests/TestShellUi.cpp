@@ -1,5 +1,6 @@
 #include "shell/ShellFactory.h"
 #include "shell/ShellMesh.h"
+#include "shell/ShellProbe.h"
 #include "ui/MemberActionDialog.h"
 #include "viz/BarTypeRenderer.h"
 #include "ui/MemberEndsDialog.h"
@@ -276,9 +277,37 @@ private slots:
         QVERIFY(renders >= 1);
         QVERIFY(triangles > 100);
         QVERIFY(!valued);   // so a malha
+        const std::uint64_t plainRevision = last.geometryRevision;
+        QVERIFY(plainRevision != 0);
         run->click();
         QVERIFY(valued);
         QVERIFY(renders >= 2);
+        // Fase 1: o mesmo RenderMesh que colore a vista alimenta a legenda e o probe da janela principal (resultados reais do solver)
+        QVERIFY(last.consistent());
+        QCOMPARE(last.scalars.size(), last.points.size());
+        QVERIFY(!last.title.empty() && !last.unit.empty());
+        QVERIFY(last.maxValue > last.minValue);
+        QCOMPARE(last.geometryRevision, plainRevision);   // analisar so recolore: mesma geometria
+        {
+            const int quad = static_cast<int>(last.quadCount() / 2);
+            std::array<double, 3> centre {0.0, 0.0, 0.0};
+            for (int c = 0; c < 4; ++c) {
+                for (std::size_t k = 0; k < 3; ++k) {
+                    centre[k] += last.points[static_cast<std::size_t>(quad) * 4 + static_cast<std::size_t>(c)][k] / 4.0;
+                }
+            }
+            const Structura::Shell::ProbeHit hit = Structura::Shell::probeQuad(last, quad, centre);
+            QVERIFY(hit.valid && hit.hasValue);
+            QCOMPARE(hit.element, quad);
+            QCOMPARE(hit.objectName, std::string("Tanque"));
+            QCOMPARE(hit.title, last.title);
+            double mean = 0.0;
+            for (int c = 0; c < 4; ++c) {
+                mean += last.scalars[static_cast<std::size_t>(quad) * 4 + static_cast<std::size_t>(c)] / 4.0;
+            }
+            QVERIFY(std::abs(hit.value - mean) <= 1e-6 * std::max(1.0, std::abs(mean)));
+            QVERIFY(std::abs(hit.value) <= std::max(std::abs(last.minValue), std::abs(last.maxValue)) * (1.0 + 1e-9));
+        }
         // verificacao
         auto *verify = button(&dialog, QStringLiteral("Verificar"));
         QVERIFY(verify);

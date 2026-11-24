@@ -351,6 +351,10 @@ void MainWindow::updateStatus()
         showStatusMessage(m_shellDraft.stage == 0 ? tr("Revolução: desenhe o perfil (Enter termina) | Esc sai")
                                                   : (m_placement && m_placement->hasStartPoint() ? tr("Revolução: clique no segundo ponto do eixo | Esc sai") : tr("Revolução: clique no primeiro ponto do eixo | Esc sai")));
         break;
+    case Command::ShellSweep:
+        showStatusMessage(m_shellDraft.stage == 0 ? tr("Varredura: desenhe o perfil (Enter termina; C fecha) | Esc sai")
+                                                  : tr("Varredura: desenhe o caminho (o perfil acompanha o caminho; Enter termina; C fecha) | Esc sai"));
+        break;
     case Command::ShellMove:
     case Command::ShellCopy:
         showStatusMessage(m_placement && m_placement->hasStartPoint() ? tr("Casca: clique no ponto de destino | Esc sai") : tr("Casca: clique no ponto base | Esc sai"));

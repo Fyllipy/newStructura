@@ -23,6 +23,7 @@ public:
         bool success {false};
         Structura::App::SolverBridge::ModelData model;
         QStringList errors;
+        QStringList warnings;   ///< avisos da montagem (ex.: cargas das cascas que nao chegam as barras)
     };
 
     BuildResult buildModel(Structura::App::ISceneModelGateway *sceneController,
