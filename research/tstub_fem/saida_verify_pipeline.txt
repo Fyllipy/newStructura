@@ -1,0 +1,4 @@
+V1 balanco  6x 6x2: MEF = 0.07989 mm | Euler-Bernoulli 0.08334 | Timoshenko 0.08790 | placa larga (1-nu2) 0.08040 | MEF/Timoshenko = 0.909
+V1 balanco 10x10x4: MEF = 0.08117 mm | Euler-Bernoulli 0.08334 | Timoshenko 0.08790 | placa larga (1-nu2) 0.08040 | MEF/Timoshenko = 0.923
+   Esperado: MEF entre Timoshenko (viga) e o limite de placa larga; b/t = 8.8 (efeito de largura entre 0 e ~(1-nu^2)).
+V2 equilibrio (T-stub, sem contato): ver run_study: B_q = F_q dentro de 1e-4 (aba livre, so parafuso e carga).

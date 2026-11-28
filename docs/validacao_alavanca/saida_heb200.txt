@@ -1,0 +1,14 @@
+HEB200: m=26.1 (EN, com 0,8 r)  b literal=40.5  e=55.0
+
+== Camada B (EN 1993-1-8, gM0=1,00, gM2=1,25; parafuso M20 8.8 [fub=800], Ft,Rd=0,9 fub As/gM2; ew=dw/4, dw=33 mm)
+   Ft,Rd por parafuso = 141.1 kN
+  fy=250  1 fileira: leff1=164.0 leff2=173.2  F1=463 F2=240 F3=282 -> 240 kN modo 2
+          2 fileiras (grupo, p=70): leff1=243.2 leff2=243.2 F1=686 F2=430 F3=564 -> grupo 430 kN modo 2; 2 x isolada = 479 -> governa 430 kN
+  fy=355  1 fileira: leff1=164.0 leff2=173.2  F1=657 F2=275 F3=282 -> 275 kN modo 2
+          2 fileiras (grupo, p=70): leff1=243.2 leff2=243.2 F1=974 F2=479 F3=564 -> grupo 479 kN modo 2; 2 x isolada = 549 -> governa 479 kN
+
+== Camada A (NBR 8800:2024 6.3.5; Ft,Rd=0,75 Ab fub/1,35 = 144,86 kN; gamma_a1=1,10; fu=400 MPa, tf=15; df=22)
+  b = m (0,8 r; hipotese complementar)     1 fileira: p=91.4 -> 274 kN | 2 fileiras (p_i=[80.7, 80.7]) -> 533 kN
+  b literal (face da alma)                 1 fileira: p=141.8 -> 256 kN | 2 fileiras (p_i=[105.9, 105.9]) -> 481 kN
+
+== Structura hoje (sonda anterior): 1 fileira aceita 289,7 kN; 2 fileiras 319,6 kN (5.7.2 contra T total)

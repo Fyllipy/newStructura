@@ -1,0 +1,54 @@
+[janela do nó, visita 1] ligações definidas listadas: 0; respostas mecânicas: 0
+    par 14–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–48 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 1228–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    ação create: pedido de definição (par 4, tipologia 143): enviado
+[configurador, visita 1] ligações na lista: 1
+    id 1 | tipo 143 | nó 10 | viga 1228 | extremidade fim | apoio (barra) 18 | verificada sim
+    clique em "Aplicar e fechar"
+[janela do nó, visita 2] ligações definidas listadas: 1; respostas mecânicas: 1
+    ligação 1: Viga–pilar rígida com perfis T (e tala de alma) | barra 1228 | topologia Partial | lacunas 6 | modelo: Só resistência (NBR, nível C) | M–θ: Não | fingerprint 67723ff8d656
+    resposta mecânica (1ª): Sentido POSITIVO (mesa superior tracionada): Resposta mecânica INDISPONÍVEL — Mj,Rd não determinado pelas verificações da NBR; Verificação não atendida independente do momento: Altura da tala x alma da viga entre mesas (alma) Sem números: o modelo mecânico não está disponível para este sentido.
+    níveis de momento: 0; componentes: 0
+    aviso do topo: Ligações definidas e comparação com o requerido — viga 1228: Indeterminado (+: Indeterminado; −: Indeterminado). Há resultado indeterminado: veja as lacunas na aba "Resposta mecânica".
+    quadro de comparação: Classificação normativa e comparação com o requerido — sentido POSITIVO (mesa superior tracionada)Comportamento requerido: Rígido &nbsp; (base: continuidade implícita do modelo (não declarada))Rigidez inicial / classificação: indisponíveis (ver lacunas)Resultado da comparação (este sentido): Indeterminado — a ligação definida não tem resposta M–θ calculada (Mj,Rd não determinado pelas verificações da NBR; Verificação não atendida independente do momento: Altura da tala x alma da viga entre mesas (alma)).
+    resultado global: Resultado global (dois sentidos, regra conservadora do programa): Indeterminado — Indeterminado: positivo = Indeterminado; negativo = Indeterminado. Não se declara atendimento global com um sentido indeterminado ou indisponível.Regra de combinação (decisão CONSERVADORA do programa; a NBR 8800:2024, 6.1.2 não define como reunir classes direcionais): Atende somente se os dois sentidos atendem; Não atende se algum sentido não atende; Indeterminado se nenhum não atende mas algum sentido é indeterminado ou está indisponível; Não aplicável se ambos o são. Não há média de rigidezes nem de resistências.
+    sentido 0: Positivo (mesa superior tracionada) | INDISPONÍVEL | — | — | — | — | — | Indeterminado
+    sentido 1: Negativo (mesa inferior tracionada) | INDISPONÍVEL | — | — | — | — | — | Indeterminado
+    par 14–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–48 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 1228–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: Indeterminado (+: Indeterminado; −: Indeterminado)
+    par 48–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    (modo STRUCTURA_FLOW_SET: janela fechada; os valores da ligação serão alterados e a janela reaberta)
+[valores alterados] rows = 1 (ligação 1)
+[valores alterados] lines = 1 (ligação 1)
+[janela do nó, visita 3] ligações definidas listadas: 1; respostas mecânicas: 1
+    ligação 1: Viga–pilar rígida com perfis T (e tala de alma) | barra 1228 | topologia Partial | lacunas 6 | modelo: Só resistência (NBR, nível C) | M–θ: Não | fingerprint c0ac9a91fb00
+    resposta mecânica (1ª): Sentido POSITIVO (mesa superior tracionada): Resultado parcial: SÓ a resistência Mj,Rd (NBR 8800:2024, nível C); sem rigidez e sem curva M–θ — Só a resistência: Mj,Rd pelas verificações da NBR 8800:2024 (nível C). Rigidez inicial e curva M–θ indisponíveis (método dos componentes para perfis T não implementado). Resistência Mj,Rd = 1.4574 kN·m (Apoio: flexão local da mesa) — verificações da NBR 8800:2024 da ligação (nível C), NÃO método dos componentes   |   Rigidez inicial, curva M–θ e capacidade de rotação: INDISPONÍVEIS Fingerprint da configuração: e24a7a9de224   Fingerprint da análise (deste sentido): ef5ad1d61de3
+    níveis de momento: 0; componentes: 0
+    aviso do topo: Ligações definidas e comparação com o requerido — viga 1228: Indeterminado (+: Indeterminado; −: Indeterminado). Há resultado indeterminado: veja as lacunas na aba "Resposta mecânica".
+    quadro de comparação: Classificação normativa e comparação com o requerido — sentido POSITIVO (mesa superior tracionada)Comportamento requerido: Rígido &nbsp; (base: continuidade implícita do modelo (não declarada))Rigidez inicial / classificação: indisponíveis (ver lacunas)Resultado da comparação (este sentido): Indeterminado — a resposta mecânica tem só a resistência (Mj,Rd da NBR, nível C); a classificação de rigidez exige Sj,ini (rigidez a 2/3 de Mj,Rd), que esta tipologia não calcula.
+    resultado global: Resultado global (dois sentidos, regra conservadora do programa): Indeterminado — Indeterminado: positivo = Indeterminado; negativo = Indeterminado. Não se declara atendimento global com um sentido indeterminado ou indisponível.Simetria: Simetria DEMONSTRADA pela configuração: a entrada física do sentido negativo é idêntica à do positivo (mesmas fileiras em cada lado / mesas soldadas), logo as respostas coincidem. Não é presunção: cada sentido foi calculado.Regra de combinação (decisão CONSERVADORA do programa; a NBR 8800:2024, 6.1.2 não define como reunir classes direcionais): Atende somente se os dois sentidos atendem; Não atende se algum sentido não atende; Indeterminado se nenhum não atende mas algum sentido é indeterminado ou está indisponível; Não aplicável se ambos o são. Não há média de rigidezes nem de resistências.
+    sentido 0: Positivo (mesa superior tracionada) | Parcial: SÓ resistência (NBR, nível C) | — | 1.4574 | Apoio: flexão local da mesa | mesa superior tracionada: perfil T parafusado (só resistência) | — | Indeterminado
+    sentido 1: Negativo (mesa inferior tracionada) | Parcial: SÓ resistência (NBR, nível C) | — | 1.4574 | Apoio: flexão local da mesa | mesa inferior tracionada: perfil T parafusado (só resistência) | — | Indeterminado
+    par 14–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–48 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 1228–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: Indeterminado (+: Indeterminado; −: Indeterminado)
+    par 48–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    fim do fluxo: janela fechada sem novo pedido
+[salvamento] saveToDat(C:/Users/João/Documents/Repos/newStructura/docs/architecture/joint_engine/visual/inc6_t143_projeto.dat): ok
+    seção [CONNECTIONS] no arquivo: presente
+      [CONNECTIONS]
+      # ID tipo(0=chapa de cisalhamento,1=cantoneira dupla) no viga extremidade_final(0/1) aproveitamento verificada(0/1) parafuso governante chave=valor...
+      1 143 10 1228 1 3.9246814 1 ASTM%20A325%20%2F%20F1852 Pressao%20de%20contato%20%2F%20rasgamento%20-%20alma%20da%20viga%20%28alma%29 a=60 beamBf=60 bea
+      
+      [ANALYSIS_RESULTS]
+      # FINGERPRINT: impressao digital do modelo analisado (resultados so sao restaurados se o modelo nao mudou)
+ligações no modelo ao final: 1

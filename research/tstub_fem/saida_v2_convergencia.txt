@@ -1,0 +1,7 @@
+A) CONVERGENCIA DE MALHA (modelo v2: arruela em contato + furo; espécime 7 sem filete; tw=8 mm hw=30 mm hipoteses; F_q=25 kN)
+malha       h(mm)     elem      nos |  K (kN/mm)    d (mm)  B_q (kN)  Q_q (kN)   t (s)
+h6/nz2        6.0     1209     2324 |      74.16    0.6742     29.03      4.03    10.9
+h4/nz3        4.0     2794     4719 |      72.70    0.6878     28.99      3.99    21.2  dK=-1.97%
+h3/nz4        3.0     5620     8694 |      71.57    0.6986     29.29      4.29    46.9  dK=-1.55%
+h2.5/nz5      2.5     8516    12401 |      71.36    0.7006     29.29      4.29    85.4  dK=-0.30%
+

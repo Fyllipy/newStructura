@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1020" height="330" font-family="Segoe UI, Arial, sans-serif" font-size="11">
+<rect width="100%" height="100%" fill="#fff"/>
+<text x="10" y="18" font-size="14" font-weight="600">Rigidez do T-stub (kN/mm): MEF elástico 3D x Piluso/Faella x EN (Fase B) — placa sem filete, hipóteses declaradas</text>
+<rect x="50" y="50" width="270" height="220" fill="none" stroke="#999"/>
+<polyline fill="none" stroke="#222" stroke-width="2" points="50.0,227.9 74.5,225.9 111.4,215.6 151.6,210.2 197.3,208.1 246.4,209.5 320.0,215.2"/>
+<circle cx="50.0" cy="227.9" r="3" fill="#222"/>
+<circle cx="74.5" cy="225.9" r="3" fill="#222"/>
+<circle cx="111.4" cy="215.6" r="3" fill="#222"/>
+<circle cx="151.6" cy="210.2" r="3" fill="#222"/>
+<circle cx="197.3" cy="208.1" r="3" fill="#222"/>
+<circle cx="246.4" cy="209.5" r="3" fill="#222"/>
+<circle cx="320.0" cy="215.2" r="3" fill="#222"/>
+<polyline fill="none" stroke="#1f6fb5" stroke-width="2" points="50.0,238.2 74.5,222.5 111.4,199.3 151.6,174.4 197.3,153.9 246.4,153.9 320.0,153.9"/>
+<circle cx="50.0" cy="238.2" r="3" fill="#1f6fb5"/>
+<circle cx="74.5" cy="222.5" r="3" fill="#1f6fb5"/>
+<circle cx="111.4" cy="199.3" r="3" fill="#1f6fb5"/>
+<circle cx="151.6" cy="174.4" r="3" fill="#1f6fb5"/>
+<circle cx="197.3" cy="153.9" r="3" fill="#1f6fb5"/>
+<circle cx="246.4" cy="153.9" r="3" fill="#1f6fb5"/>
+<circle cx="320.0" cy="153.9" r="3" fill="#1f6fb5"/>
+<polyline fill="none" stroke="#c0392b" stroke-width="2" points="50.0,213.4 74.5,186.1 111.4,146.2 151.6,104.0 197.3,70.0 246.4,70.0 320.0,70.0"/>
+<circle cx="50.0" cy="213.4" r="3" fill="#c0392b"/>
+<circle cx="74.5" cy="186.1" r="3" fill="#c0392b"/>
+<circle cx="111.4" cy="146.2" r="3" fill="#c0392b"/>
+<circle cx="151.6" cy="104.0" r="3" fill="#c0392b"/>
+<circle cx="197.3" cy="70.0" r="3" fill="#c0392b"/>
+<circle cx="246.4" cy="70.0" r="3" fill="#c0392b"/>
+<circle cx="320.0" cy="70.0" r="3" fill="#c0392b"/>
+<text x="165" y="300" fill="#555">b (mm)</text><text x="50" y="284" fill="#555">40</text><text x="320" y="284" fill="#555" text-anchor="end">260</text>
+<text x="46" y="58" fill="#555" text-anchor="end">267</text>
+<rect x="385" y="50" width="270" height="220" fill="none" stroke="#999"/>
+<polyline fill="none" stroke="#222" stroke-width="2" points="385.0,254.7 439.0,247.8 517.3,238.0 574.0,231.7 655.0,223.8"/>
+<circle cx="385.0" cy="254.7" r="3" fill="#222"/>
+<circle cx="439.0" cy="247.8" r="3" fill="#222"/>
+<circle cx="517.3" cy="238.0" r="3" fill="#222"/>
+<circle cx="574.0" cy="231.7" r="3" fill="#222"/>
+<circle cx="655.0" cy="223.8" r="3" fill="#222"/>
+<polyline fill="none" stroke="#1f6fb5" stroke-width="2" points="385.0,255.7 439.0,244.2 517.3,218.8 574.0,193.4 655.0,147.1"/>
+<circle cx="385.0" cy="255.7" r="3" fill="#1f6fb5"/>
+<circle cx="439.0" cy="244.2" r="3" fill="#1f6fb5"/>
+<circle cx="517.3" cy="218.8" r="3" fill="#1f6fb5"/>
+<circle cx="574.0" cy="193.4" r="3" fill="#1f6fb5"/>
+<circle cx="655.0" cy="147.1" r="3" fill="#1f6fb5"/>
+<polyline fill="none" stroke="#c0392b" stroke-width="2" points="385.0,244.5 439.0,224.2 517.3,181.0 574.0,139.9 655.0,70.0"/>
+<circle cx="385.0" cy="244.5" r="3" fill="#c0392b"/>
+<circle cx="439.0" cy="224.2" r="3" fill="#c0392b"/>
+<circle cx="517.3" cy="181.0" r="3" fill="#c0392b"/>
+<circle cx="574.0" cy="139.9" r="3" fill="#c0392b"/>
+<circle cx="655.0" cy="70.0" r="3" fill="#c0392b"/>
+<text x="500" y="300" fill="#555">tf (mm)</text><text x="385" y="284" fill="#555">9</text><text x="655" y="284" fill="#555" text-anchor="end">19</text>
+<text x="381" y="58" fill="#555" text-anchor="end">499</text>
+<rect x="720" y="50" width="270" height="220" fill="none" stroke="#999"/>
+<polyline fill="none" stroke="#222" stroke-width="2" points="720.0,237.8 774.0,244.0 841.2,250.6 909.0,255.6 990.0,259.8"/>
+<circle cx="720.0" cy="237.8" r="3" fill="#222"/>
+<circle cx="774.0" cy="244.0" r="3" fill="#222"/>
+<circle cx="841.2" cy="250.6" r="3" fill="#222"/>
+<circle cx="909.0" cy="255.6" r="3" fill="#222"/>
+<circle cx="990.0" cy="259.8" r="3" fill="#222"/>
+<polyline fill="none" stroke="#1f6fb5" stroke-width="2" points="720.0,140.2 774.0,202.3 841.2,238.9 909.0,253.5 990.0,261.1"/>
+<circle cx="720.0" cy="140.2" r="3" fill="#1f6fb5"/>
+<circle cx="774.0" cy="202.3" r="3" fill="#1f6fb5"/>
+<circle cx="841.2" cy="238.9" r="3" fill="#1f6fb5"/>
+<circle cx="909.0" cy="253.5" r="3" fill="#1f6fb5"/>
+<circle cx="990.0" cy="261.1" r="3" fill="#1f6fb5"/>
+<polyline fill="none" stroke="#c0392b" stroke-width="2" points="720.0,70.0 774.0,157.6 841.2,216.1 909.0,240.8 990.0,254.1"/>
+<circle cx="720.0" cy="70.0" r="3" fill="#c0392b"/>
+<circle cx="774.0" cy="157.6" r="3" fill="#c0392b"/>
+<circle cx="841.2" cy="216.1" r="3" fill="#c0392b"/>
+<circle cx="909.0" cy="240.8" r="3" fill="#c0392b"/>
+<circle cx="990.0" cy="254.1" r="3" fill="#c0392b"/>
+<text x="835" y="300" fill="#555">m (mm)</text><text x="720" y="284" fill="#555">30</text><text x="990" y="284" fill="#555" text-anchor="end">80</text>
+<text x="716" y="58" fill="#555" text-anchor="end">823</text>
+<line x1="50" y1="305" x2="80" y2="305" stroke="#222" stroke-width="2"/><text x="86" y="309">MEF (modelo v2: arruela em contato, furo)</text>
+<line x1="380" y1="305" x2="410" y2="305" stroke="#1f6fb5" stroke-width="2"/><text x="416" y="309">Piluso/Faella K_i (r=0)</text>
+<line x1="710" y1="305" x2="740" y2="305" stroke="#c0392b" stroke-width="2"/><text x="746" y="309">EN Fase B (l_eff = b_eff)</text>
+</svg>

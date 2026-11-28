@@ -1,0 +1,36 @@
+[janela do nó, visita 1] ligações definidas listadas: 0; respostas mecânicas: 0
+    par 14–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–48 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 1228–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    ação create: pedido de definição (par 1, tipologia 135): enviado
+[configurador, visita 1] ligações na lista: 1
+    id 1 | tipo 135 | nó 10 | viga 14 | extremidade início | apoio (barra) 48 | verificada sim
+    clique em "Aplicar e fechar"
+[janela do nó, visita 2] ligações definidas listadas: 1; respostas mecânicas: 1
+    ligação 1: Emenda de vigas I com chapa de topo | barra 14 | topologia Partial | lacunas 4 | modelo: Disponível (EnComponentMethod) | M–θ: Sim | fingerprint e4fd4cdd15f7
+    resposta mecânica (1ª): Sentido POSITIVO (mesa superior tracionada): Curva M–θ calculada (determinado, com ressalvas) Rigidez inicial Sj,ini = 9274.17 kN·m/rad   |   Resistência Mj,Rd = 6.7111 kN·m (mesa e alma da viga comprimidas (Fc,fb,Rd))   |   Em Mj,Rd: secante = 3103.3; tangente = 838.74 kN·m/rad   |   Braço de alavanca z = 143.8 mm   |   Capacidade de rotação: indisponível   |   Convergência: não aplicável (forma fechada) Flexibilidade total: fileiras tracionadas 100.0 %; maior contribuinte: fileiras tracionadas (keq) Fingerprint da configuração: 253068d3d2a6   Fingerprint da análise (deste sentido): 2f11e8050752
+    níveis de momento: 5; componentes: 6
+    aviso do topo: Ligações definidas e comparação com o requerido — viga 14: Não aplicável (+: Não aplicável; −: Não aplicável).
+    quadro de comparação: Classificação normativa e comparação com o requerido — sentido POSITIVO (mesa superior tracionada)Comportamento requerido: Indeterminado &nbsp; (base: critério não aplicável)Rigidez inicial / classificação: indisponíveis (ver lacunas)Resultado da comparação (este sentido): Não aplicável — o critério de rigidez de 6.1.2 vale somente para ligações viga–pilar (viga-viga).
+    resultado global: Resultado global (dois sentidos, regra conservadora do programa): Não aplicável — Não aplicável: o critério de rigidez de 6.1.2 não se aplica a este par em nenhum sentido.Simetria: Sentidos ASSIMÉTRICOS: as fileiras/componentes de cada sentido diferem; as respostas são independentes e não se presume simetria.Regra de combinação (decisão CONSERVADORA do programa; a NBR 8800:2024, 6.1.2 não define como reunir classes direcionais): Atende somente se os dois sentidos atendem; Não atende se algum sentido não atende; Indeterminado se nenhum não atende mas algum sentido é indeterminado ou está indisponível; Não aplicável se ambos o são. Não há média de rigidezes nem de resistências.
+    sentido 0: Positivo (mesa superior tracionada) | Calculada (determinado, com ressalvas) | 9274.17 | 6.7111 | mesa e alma da viga comprimidas (Fc,fb,Rd) | mesa superior tracionada; 2 fileira(s) tracionada(s): 1 (h = 208.0 mm) 2 (h = 138.0 mm) | — | Não aplicável
+    sentido 1: Negativo (mesa inferior tracionada) | Calculada (determinado, com ressalvas) | 8163.56 | 2.8227 | mesa e alma da viga comprimidas (Fc,fb,Rd) | mesa inferior tracionada; 1 fileira(s) tracionada(s): 1 (h = 138.0 mm) | — | Não aplicável
+    par 14–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–48 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: Não aplicável (+: Não aplicável; −: Não aplicável)
+    par 14–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 1228–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    fim do fluxo: janela fechada sem novo pedido
+[salvamento] saveToDat(C:/Users/João/Documents/Repos/newStructura/docs/architecture/joint_engine/visual/inc5_emenda_projeto.dat): ok
+    seção [CONNECTIONS] no arquivo: presente
+      [CONNECTIONS]
+      # ID tipo(0=chapa de cisalhamento,1=cantoneira dupla) no viga extremidade_final(0/1) aproveitamento verificada(0/1) parafuso governante chave=valor...
+      1 135 10 14 0 1e+09 1 ASTM%20A325%20%2F%20F1852 Dados%20de%20entrada%3A%20parafusos beamD=100 beamFu=400 beamFy=250 bfl=50 bothSides=0 cont=0 contT=9.
+      
+      [ANALYSIS_RESULTS]
+      # FINGERPRINT: impressao digital do modelo analisado (resultados so sao restaurados se o modelo nao mudou)
+ligações no modelo ao final: 1

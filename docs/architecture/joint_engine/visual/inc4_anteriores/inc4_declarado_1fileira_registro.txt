@@ -1,0 +1,29 @@
+[janela do nó, visita 1] ligações definidas listadas: 0; respostas mecânicas: 0
+    pedido de definição (par 1, chapa de extremidade): enviado
+[configurador, visita 1] ligações na lista: 1
+    id 1 | tipo 7 | nó 10 | viga 14 | extremidade início | apoio (barra) 18 | verificada sim
+    clique em "Aplicar e fechar"
+[janela do nó, visita 2] ligações definidas listadas: 1; respostas mecânicas: 1
+    ligação 1: Ligação rígida viga–pilar (chapa de extremidade) | barra 14 | topologia Partial | lacunas 4 | modelo: Disponível (EnComponentMethod) | M–θ: Sim | fingerprint e35a8b202755
+    resposta mecânica (1ª): Curva M–θ calculada (determinado, com ressalvas) — Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada. Rigidez inicial Sj,ini = 741.226 kN·m/rad   |   Resistência Mj,Rd = 2.8619 kN·m (painel de alma ao cisalhamento (Vwp,Rd/beta))   |   Em Mj,Rd: secante = 248.03; tangente = 67.035 kN·m/rad   |   Braço de alavanca z = 173.92 mm   |   Capacidade de rotação: indisponível   |   Convergência: não aplicável (forma fechada) Flexibilidade total: fileiras tracionadas 64.0 %; maior contribuinte: fileiras tracionadas (keq) Fingerprint da configuração: 562ded92e052   Fingerprint da análise: e972fde36718
+    níveis de momento: 5; componentes: 10
+    aviso do topo: Ligações definidas e comparação com o requerido — viga 14: Indeterminado. Há resultado indeterminado: veja as lacunas na aba "Resposta mecânica".
+    quadro de comparação: Classificação normativa e comparação com o requeridoComportamento requerido: Rígido &nbsp; (base: continuidade implícita do modelo (não declarada))Rigidez inicial (Sj,ini): 741.226 kN·m/rad &nbsp; | &nbsp; Si a 2/3 Mj,Rd: 741.226 kN·m/rad &nbsp; | &nbsp; η = Si/(EIv/Lv) = 26.18Critério: NBR 8800 2024, 6.1.2.1 e 6.1.2.2 — rotulada: Si ≤ 14.158; rígida: Si ≥ 707.91 kN·m/rad (EIv/Lv = 28.317; Kv/Kp = n/d)Classificação da ligação: semirrígida ou rígida (pendente de Kv/Kp)Resultado da comparação: Indeterminado — requerido rígido; ligação real semirrígida ou rígida (pendente de Kv/Kp). Si = 741.23 kN·m/rad (η = Si/(EIv/Lv) = 26.18) ≥ 25 EIv/Lv, mas Kv/Kp do andar não pôde ser verificado: a classe rígida (6.1.2.2) fica pendente.
+    (modo STRUCTURA_FLOW_SET: janela fechada; os valores da ligação serão alterados e a janela reaberta)
+[valores alterados] tRows = 1 (ligação 1)
+[janela do nó, visita 3] ligações definidas listadas: 1; respostas mecânicas: 1
+    ligação 1: Ligação rígida viga–pilar (chapa de extremidade) | barra 14 | topologia Partial | lacunas 4 | modelo: Disponível (EnComponentMethod) | M–θ: Sim | fingerprint bb2587c5c4b2
+    resposta mecânica (1ª): Curva M–θ calculada (determinado, com ressalvas) — Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada. Rigidez inicial Sj,ini = 348.977 kN·m/rad   |   Resistência Mj,Rd = 1.1415 kN·m (painel de alma ao cisalhamento (Vwp,Rd/beta))   |   Em Mj,Rd: secante = 116.78; tangente = 31.561 kN·m/rad   |   Braço de alavanca z = 138 mm   |   Capacidade de rotação: indisponível   |   Convergência: não aplicável (forma fechada) Flexibilidade total: fileiras tracionadas 78.0 %; maior contribuinte: fileiras tracionadas (keq) Fingerprint da configuração: 5ae14d9e06a0   Fingerprint da análise: 9cd2690444ac
+    níveis de momento: 5; componentes: 6
+    aviso do topo: ATENÇÃO — ligação que NÃO atende ao comportamento requerido do nó:NÃO ATENDE (viga 14): requerido rígido; ligação real semirrígida. Si = 348.98 kN·m/rad (η = Si/(EIv/Lv) = 12.32) &lt; 25 EIv/Lv: a ligação é semirrígida, mas o modelo a considera rígida (contínua) (limites: rotulada ≤ 14.158; rígida ≥ 707.91 kN·m/rad).
+    quadro de comparação: Classificação normativa e comparação com o requeridoComportamento requerido: Rígido &nbsp; (base: continuidade implícita do modelo (não declarada))Rigidez inicial (Sj,ini): 348.977 kN·m/rad &nbsp; | &nbsp; Si a 2/3 Mj,Rd: 348.977 kN·m/rad &nbsp; | &nbsp; η = Si/(EIv/Lv) = 12.32Critério: NBR 8800 2024, 6.1.2.1 e 6.1.2.2 — rotulada: Si ≤ 14.158; rígida: Si ≥ 707.91 kN·m/rad (EIv/Lv = 28.317; Kv/Kp = n/d)Classificação da ligação: semirrígidaResultado da comparação: NÃO ATENDE — requerido rígido; ligação real semirrígida. Si = 348.98 kN·m/rad (η = Si/(EIv/Lv) = 12.32) &lt; 25 EIv/Lv: a ligação é semirrígida, mas o modelo a considera rígida (contínua) (limites: rotulada ≤ 14.158; rígida ≥ 707.91 kN·m/rad).
+    fim do fluxo: janela fechada sem novo pedido
+[salvamento] saveToDat(C:/Users/João/Documents/Repos/newStructura/docs/architecture/joint_engine/visual/inc4_declarado_1fileira_projeto.dat): ok
+    seção [CONNECTIONS] no arquivo: presente
+      [CONNECTIONS]
+      # ID tipo(0=chapa de cisalhamento,1=cantoneira dupla) no viga extremidade_final(0/1) aproveitamento verificada(0/1) parafuso governante chave=valor...
+      1 7 10 14 0 1e+09 1 ASTM%20A325%20%2F%20F1852 Dados%20de%20entrada%3A%20parafusos beamD=100 beamFu=400 beamFy=250 bfl=50 bothSides=0 cont=0 contT=9.5 
+      
+      [ANALYSIS_RESULTS]
+      # FINGERPRINT: impressao digital do modelo analisado (resultados so sao restaurados se o modelo nao mudou)
+ligações no modelo ao final: 1

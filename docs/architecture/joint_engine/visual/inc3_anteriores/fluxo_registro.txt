@@ -1,0 +1,29 @@
+[janela do nó, visita 1] ligações definidas listadas: 0; respostas mecânicas: 0
+    pedido de definição (par 1, chapa de extremidade): enviado
+[configurador, visita 1] ligações na lista: 1
+    id 1 | tipo 7 | nó 10 | viga 14 | extremidade início | apoio (barra) 0 | verificada sim
+    clique em "Aplicar e fechar"
+[janela do nó, visita 2] ligações definidas listadas: 1; respostas mecânicas: 1
+    ligação 1: Ligação rígida viga–pilar (chapa de extremidade) | barra 14 | topologia Partial | lacunas 4 | modelo: Disponível (EnComponentMethod) | M–θ: Sim | fingerprint e35a8b202755
+    resposta mecânica (1ª): Curva M–θ calculada (determinado, com ressalvas) — Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada. Rigidez inicial Sj,ini = 741.226 kN·m/rad   |   Resistência Mj,Rd = 2.8619 kN·m (painel de alma ao cisalhamento (Vwp,Rd/beta))   |   Em Mj,Rd: secante = 248.03; tangente = 67.035 kN·m/rad   |   Braço de alavanca z = 173.92 mm   |   Capacidade de rotação: indisponível   |   Convergência: não aplicável (forma fechada) Flexibilidade total: fileiras tracionadas 64.0 %; maior contribuinte: fileiras tracionadas (keq) Fingerprint da configuração: 562ded92e052   Fingerprint da análise: e972fde36718
+    níveis de momento: 5; componentes: 10
+    pedido de definição (par 1, chapa de extremidade): enviado
+[pergunta] Já existe uma ligação nesse nó para essa viga. Substituir?
+    resposta: &Yes
+[configurador, visita 2] ligações na lista: 1
+    id 2 | tipo 7 | nó 10 | viga 14 | extremidade início | apoio (barra) 0 | verificada sim
+    clique em "Aplicar e fechar"
+[janela do nó, visita 3] ligações definidas listadas: 1; respostas mecânicas: 1
+    ligação 1: Ligação rígida viga–pilar (chapa de extremidade) | barra 14 | topologia Partial | lacunas 4 | modelo: Disponível (EnComponentMethod) | M–θ: Sim | fingerprint e35a8b202755
+    resposta mecânica (1ª): Curva M–θ calculada (determinado, com ressalvas) — Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada. Rigidez inicial Sj,ini = 741.226 kN·m/rad   |   Resistência Mj,Rd = 2.8619 kN·m (painel de alma ao cisalhamento (Vwp,Rd/beta))   |   Em Mj,Rd: secante = 248.03; tangente = 67.035 kN·m/rad   |   Braço de alavanca z = 173.92 mm   |   Capacidade de rotação: indisponível   |   Convergência: não aplicável (forma fechada) Flexibilidade total: fileiras tracionadas 64.0 %; maior contribuinte: fileiras tracionadas (keq) Fingerprint da configuração: 562ded92e052   Fingerprint da análise: e972fde36718
+    níveis de momento: 5; componentes: 10
+    fim do fluxo: janela fechada sem novo pedido
+[salvamento] saveToDat(C:/Users/João/Documents/Repos/newStructura/docs/architecture/joint_engine/visual/fluxo_projeto.dat): ok
+    seção [CONNECTIONS] no arquivo: presente
+      [CONNECTIONS]
+      # ID tipo(0=chapa de cisalhamento,1=cantoneira dupla) no viga extremidade_final(0/1) aproveitamento verificada(0/1) parafuso governante chave=valor...
+      2 7 10 14 0 1e+09 1 ASTM%20A325%20%2F%20F1852 Dados%20de%20entrada%3A%20parafusos beamD=100 beamFu=400 beamFy=250 bfl=50 bothSides=0 cont=0 contT=9.5 
+      
+      [ANALYSIS_RESULTS]
+      # FINGERPRINT: impressao digital do modelo analisado (resultados so sao restaurados se o modelo nao mudou)
+ligações no modelo ao final: 1

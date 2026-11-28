@@ -1,0 +1,43 @@
+=== 1) SCI P398 Exemplo C.1 - mesa do pilar (UKC 254x254x107, S275, fy,c=265, M24 8.8, gM0=1,0, gM2=1,25)
+  Ft,Rd parafuso = 203.3 kN (publicado 203)
+  fileira 1 isolada      F1=897 F2=398 F3=407 -> Ft,fc,Rd=398 kN (modo 2)  publicado: 398  diferenca 0.1%
+  fileiras 1-2           F1=1423 F2=698 F3=813 -> Ft,fc,Rd=698 kN (modo 2)  publicado: 697  diferenca 0.2%
+  fileiras 1-2-3         F1=1808 F2=991 F3=1220 -> Ft,fc,Rd=991 kN (modo 2)  publicado: 988  diferenca 0.3%
+  fileiras 2-3           F1=1381 F2=691 F3=813 -> Ft,fc,Rd=691 kN (modo 2)  publicado: 691  diferenca 0.0%
+  leff publicados: fileira isolada cp=210 nc=233; grupo 1-2: nc=332 cp=410; 1-2-3: Mpl=11,7e6
+  leff calculados: isolada cp=210 nc=233; 1-2: cp=410 nc=333
+
+=== 2) IDEA StatiCa - verificacao de T-stub (MC = metodo dos componentes; RM = MEF solido validado em ensaios)
+  Ft,Rd = 203.3 kN por parafuso M24 8.8 (EN: 0,9 fub As/gM2)
+  tf10  m=61.19  EN(Metodo 2, leff=100)= 44 kN modo 1 | MC publicado 44 | MEF solido (RM) 115 | EN/MC 1.00  EN/RM 0.38
+  tf12  m=61.19  EN(Metodo 2, leff=100)= 63 kN modo 1 | MC publicado 63 | MEF solido (RM) 144 | EN/MC 1.01  EN/RM 0.44
+  tf15  m=61.19  EN(Metodo 2, leff=100)= 99 kN modo 1 | MC publicado 98 | MEF solido (RM) 200 | EN/MC 1.01  EN/RM 0.50
+  tf20  m=61.19  EN(Metodo 2, leff=100)= 176 kN modo 1 | MC publicado 174 | MEF solido (RM) 269 | EN/MC 1.01  EN/RM 0.66
+  tf25  m=57.23  EN(Metodo 2, leff=100)= 279 kN modo 2 | MC publicado 279 | MEF solido (RM) 310 | EN/MC 1.00  EN/RM 0.90
+  tf30  m=57.23  EN(Metodo 2, leff=100)= 305 kN modo 2 | MC publicado 305 | MEF solido (RM) 329 | EN/MC 1.00  EN/RM 0.93
+  tf35  m=57.23  EN(Metodo 2, leff=100)= 335 kN modo 2 | MC publicado 335 | MEF solido (RM) 347 | EN/MC 1.00  EN/RM 0.97
+  tf40  m=57.23  EN(Metodo 2, leff=100)= 371 kN modo 2 | MC publicado 371 | MEF solido (RM) 371 | EN/MC 1.00  EN/RM 1.00
+  tf45  m=57.23  EN(Metodo 2, leff=100)= 407 kN modo 3 | MC publicado 407 | MEF solido (RM) 400 | EN/MC 1.00  EN/RM 1.02
+  tf50  m=57.23  EN(Metodo 2, leff=100)= 407 kN modo 3 | MC publicado 407 | MEF solido (RM) 407 | EN/MC 1.00  EN/RM 1.00
+
+== IDEA StatiCa (parametros restantes): CM publicado x especificacao EN (metodo 2; leff = min(b, padrao))
+  M16 8.8  EN  152 kN modo 2 | CM  152 | EN/CM 1.000 | RM -
+  M20 8.8  EN  205 kN modo 2 | CM  205 | EN/CM 1.001 | RM -
+  M24 8.8  EN  270 kN modo 2 | CM  270 | EN/CM 1.001 | RM -
+  M27 8.8  EN  281 kN modo 1 | CM  278 | EN/CM 1.011 | RM -
+  M24 4.8  EN  164 kN modo 2 | CM  164 | EN/CM 0.998 | RM -
+  M24 5.8  EN  190 kN modo 2 | CM  190 | EN/CM 1.002 | RM -
+  M24 6.8  EN  217 kN modo 2 | CM  217 | EN/CM 1.000 | RM -
+  M24 10.9 EN  275 kN modo 1 | CM  273 | EN/CM 1.009 | RM -
+  w110     EN  282 kN modo 2 | CM  282 | EN/CM 1.001 | RM 344
+  w150     EN  190 kN modo 1 | CM  188 | EN/CM 1.010 | RM 281
+  w200     EN  130 kN modo 1 | CM  129 | EN/CM 1.011 | RM 222
+  w240     EN  108 kN modo 1 | CM  107 | EN/CM 1.013 | RM 163
+  b100     EN  320 kN modo 1 | CM  314 | EN/CM 1.019 | RM 407
+  b250     EN  423 kN modo 2 | CM  423 | EN/CM 1.001 | RM 480
+  b300     EN  433 kN modo 2 | CM  433 | EN/CM 1.000 | RM 486
+  b400     EN  433 kN modo 2 | CM  433 | EN/CM 1.000 | RM 494
+  EN/CM: min 0.998 max 1.019
+
+== P398 C.1 - chapa de extremidade (linha 1, extensao): mx=30,4; e=75; ex=50; w=100; tp=25; fy=265; bp=250
+  leff,cp=191 leff,nc=125 (publicado 191 e 125) -> F1=900 F2=377 F3=407 -> 377 kN (publicado 901/377/406 -> 377)

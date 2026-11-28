@@ -1,0 +1,114 @@
+A) EXEMPLO TRABALHADO [P2] p. 702-703 (especime 7) -- valores publicados x reproduzidos
+grandeza              publicado    reproduzido   dif.rel     tol.
+eps_y (1e-3)             1.4647        1.46467  -0.0023%   0.010%  ok
+eps_m                  0.082122      0.0821224   0.0005%   0.010%  ok
+chi_y                0.00021075    0.000210743  -0.0031%   0.010%  ok
+chi_u                    0.1121       0.112058  -0.0379%   0.050%  ok
+chi_h/chi_y              8.9987        8.99863  -0.0007%   0.010%  ok
+chi_m/chi_y             56.0691         56.069  -0.0001%   0.010%  ok
+chi_u/chi_y             531.725        531.725  -0.0000%   0.010%  ok
+Mh/My                    1.4938        1.49383   0.0017%   0.010%  ok
+Mm/My                    2.1956        2.19564   0.0018%   0.010%  ok
+Mu/My                    3.7466        3.74655  -0.0013%   0.010%  ok
+beff (mm)                 122.8          122.8   0.0000%   0.000%  ok
+My (N.mm)           1.21628e+06    1.21628e+06   0.0000%   0.001%  ok
+Mu (N.mm)           4.55692e+06    4.55687e+06  -0.0012%   0.005%  ok
+beta_u (As=459, publicado com 2 digitos)           0.47       0.473204   0.6817%   1.000%  ok
+beta_u,lim                0.563       0.562991  -0.0016%   0.050%  ok
+Fy (N)                   114746         114746   0.0000%   0.001%  ok
+Fh (N)                   171413         171411  -0.0012%   0.010%  ok
+Fm (N)                   251945         251941  -0.0015%   0.010%  ok
+Fu (N)                   429922         429903  -0.0045%   0.010%  ok
+zeta                     0.7724       0.772374  -0.0034%   0.010%  ok
+m' (mm)                 53.1952        53.1959   0.0013%   0.005%  ok
+K (N/mm)                 230046         230037  -0.0039%   0.010%  ok
+delta_y (mm)             1.0285        1.02853   0.0030%   0.100%  ok
+Ki (N/mm)                111567         111563  -0.0033%   0.100%  ok
+xi2 = Mh/Mu             0.39871        0.39872   0.0025%   0.010%  ok
+xi3 = Mm/Mu               0.586       0.586042   0.0072%   0.100%  ok
+D(xi2)                0.0012586     0.00125886   0.0205%   0.100%  ok
+F(xi3)                 0.032333      0.0323371   0.0126%   0.100%  ok
+C = G(1)                 0.3172       0.317241   0.0130%   0.100%  ok
+delta_ph (mm)            0.1245       0.124573   0.0584%   0.200%  ok
+delta_pm (mm)               3.2        3.19998  -0.0007%   0.200%  ok
+delta_pu (mm)            31.393        31.3932   0.0007%   0.100%  ok
+delta_h (mm)              1.785        1.78559   0.0331%   0.200%  ok
+delta_m (mm)               8.66        8.65824  -0.0203%   0.200%  ok
+delta_u (mm)              66.64        66.6399  -0.0002%   0.100%  ok
+exemplo trabalhado: 35 grandezas, 0 fora da tolerancia
+Nota: [P2] p. 702 imprime 'My = 1,126,283' na substituicao de Fy (digitacao): com My = 1.216.283 (valor da propria pagina) obtem-se Fy = 114.746,3 N, o publicado.
+
+B) VERIFICACAO NUMERICA INDEPENDENTE das formulas fechadas D, F, G ([P1] (24), (29), (34)) por integracao direta da curvatura
+especime  7  D       xi=0.3987  fechada=1.258857e-03  integracao numerica=1.258857e-03  dif.rel=2.63e-07
+especime  7  F       xi=0.5860  fechada=3.233708e-02  integracao numerica=3.233708e-02  dif.rel=5.01e-10
+especime  7  G       xi=1.0000  fechada=3.172412e-01  integracao numerica=3.172412e-01  dif.rel=1.22e-09
+especime  7  D(0.4)  xi=0.4000  fechada=1.341341e-03  integracao numerica=1.341341e-03  dif.rel=5.64e-08
+especime  7  F(0.5)  xi=0.5000  fechada=1.490391e-02  integracao numerica=1.490391e-02  dif.rel=3.64e-09
+especime  7  G(0.8)  xi=0.8000  fechada=1.175175e-01  integracao numerica=1.175175e-01  dif.rel=3.00e-09
+especime  1  D       xi=0.4788  fechada=1.206747e-03  integracao numerica=1.206746e-03  dif.rel=3.36e-07
+especime  1  F       xi=0.7053  fechada=3.281266e-02  integracao numerica=3.281266e-02  dif.rel=-1.67e-10
+especime  1  G       xi=1.0000  fechada=1.547955e-01  integracao numerica=1.547955e-01  dif.rel=3.46e-09
+especime  1  D(0.4)  xi=0.4000  fechada=3.703476e-04  integracao numerica=3.703476e-04  dif.rel=1.76e-09
+especime  1  F(0.5)  xi=0.5000  fechada=2.762684e-03  integracao numerica=2.762684e-03  dif.rel=1.78e-08
+especime  1  G(0.8)  xi=0.8000  fechada=5.272570e-02  integracao numerica=5.272570e-02  dif.rel=3.04e-09
+especime 12  D       xi=0.5022  fechada=1.267741e-03  integracao numerica=1.267741e-03  dif.rel=5.85e-08
+especime 12  F       xi=0.6103  fechada=1.281392e-02  integracao numerica=1.281392e-02  dif.rel=4.34e-09
+especime 12  G       xi=1.0000  fechada=3.579999e-01  integracao numerica=3.579999e-01  dif.rel=1.55e-09
+especime 12  D(0.4)  xi=0.4000  fechada=3.083318e-04  integracao numerica=3.083318e-04  dif.rel=1.26e-09
+especime 12  F(0.5)  xi=0.5000  fechada=1.209550e-03  integracao numerica=1.209550e-03  dif.rel=3.82e-08
+especime 12  G(0.8)  xi=0.8000  fechada=1.045976e-01  integracao numerica=1.045976e-01  dif.rel=4.19e-09
+
+C) TABELA 3 de [P2] (colunas teoricas): publicado x reproduzido (sem ajuste de parametros)
+   Hipotese de area do parafuso na resistencia Bu = As*fub: (G) area bruta pi db^2/4; (N) area resistente ISO (M20 245, M24 353, M27 459).
+
+   --- area do parafuso: BRUTA pi db^2/4 ---
+ #  mec | bu pub  bu rep | du pub  du rep |   Fu pub   Fu rep |   Fy rep   Ki rep |  mec.pub         
+ 1    2 | 0.7133  0.7133 |    19.18    19.18 |   343.99   343.99 |   110.18 183236.8
+ 2    2 | 0.7108  0.7108 |    19.38    19.38 |   343.68   343.68 |   103.33 188392.0
+ 3    2 | 0.5967  0.5967 |    40.19    40.19 |   271.36   271.36 |    77.75 133892.6
+ 4    1 | 0.3729  0.3729 |    62.63    62.63 |   324.23   324.23 |    88.15  97047.1
+ 5    1 | 0.4615  0.4615 |    58.43    58.43 |   394.36   394.36 |   110.07 114334.7
+ 6    2 | 0.6720  0.6720 |    34.03    34.03 |   482.32   482.33 |   130.28 192888.9
+ 7    1 | 0.3794  0.3794 |    66.64    66.64 |   429.90   429.90 |   114.75 111563.3
+ 8    2 | 0.4053  0.4053 |    45.19    41.24 |   385.99   319.39 |    86.08 117416.8
+ 9    1 | 0.2839  0.2839 |    63.28    63.28 |   329.00   329.00 |    91.78  85732.3
+10    1 | 0.3942  0.3942 |    38.98    38.98 |   305.35   305.35 |    82.82 131180.1
+11    1 | 0.3651  0.3749 |    53.57    53.57 |   235.61   235.61 |    71.26  88842.0
+12    1 | 0.3405  0.3405 |    87.76    87.77 |   198.84   198.84 |    67.38  52675.9
+   desvios reproduzido/publicado - 1  (mecanismos 1 e 2):
+     beta_u       min   -0.012%  max   +2.696%  media   +0.225%  max|.|    2.696%
+     delta_u,th   min   -8.735%  max   +0.010%  media   -0.728%  max|.|    8.735%
+     Fu,th        min  -17.255%  max   +0.001%  media   -1.438%  max|.|   17.255%
+
+   --- area do parafuso: RESISTENTE ISO ---
+ #  mec | bu pub  bu rep | du pub  du rep |   Fu pub   Fu rep |   Fy rep   Ki rep |  mec.pub         
+ 1    2 | 0.7133  0.9146 |    19.18    38.81 |   343.99   287.62 |    92.13 184323.6
+ 2    2 | 0.7108  0.9115 |    19.38    38.00 |   343.68   287.32 |    86.39 189549.9
+ 3    2 | 0.5967  0.7652 |    40.19    56.91 |   271.36   233.27 |    66.84 134842.0
+ 4    1 | 0.3729  0.4778 |    62.63    62.63 |   324.23   324.23 |    88.15  97047.1
+ 5    1 | 0.4615  0.5915 |    58.43    58.43 |   394.36   394.36 |   110.07 114334.7
+ 6    2 | 0.6720  0.8612 |    34.03    61.82 |   482.32   403.21 |   108.91 193864.1
+ 7    1 | 0.3794  0.4732 |    66.64    66.64 |   429.90   429.90 |   114.75 111563.3
+ 8    2 | 0.4053  0.5195 |    45.19    51.38 |   385.99   271.80 |    73.26 118014.1
+ 9    1 | 0.2839  0.3542 |    63.28    63.28 |   329.00   329.00 |    91.78  85732.3
+10    1 | 0.3942  0.5055 |    38.98    38.98 |   305.35   305.35 |    82.82 131180.1
+11    1 | 0.3651  0.4808 |    53.57    53.57 |   235.61   235.61 |    71.26  88842.0
+12    1 | 0.3405  0.4366 |    87.76    87.77 |   198.84   198.84 |    67.38  52675.9
+   desvios reproduzido/publicado - 1  (mecanismos 1 e 2):
+     beta_u       min  +24.724%  max  +31.686%  media  +27.911%  max|.|   31.686%
+     delta_u,th   min   -0.006%  max +102.324%  media  +27.948%  max|.|  102.324%
+     Fu,th        min  -29.583%  max   +0.001%  media   -7.733%  max|.|   29.583%
+
+   Desvios dos momentos (independem da area do parafuso): Mh/My, Mm/My, Mu/My reproduzidos com |desvio| <= 0,003%% nos 12 especimes (ver saida).
+     # 1  Mh/My 1.4948 (pub 1.4948)  Mm/My 2.2019 (pub 2.2019)  Mu/My 3.1220 (pub 3.1220)
+     # 2  Mh/My 1.4938 (pub 1.4938)  Mm/My 2.3245 (pub 2.3245)  Mu/My 3.3259 (pub 3.3259)
+     # 3  Mh/My 1.4938 (pub 1.4938)  Mm/My 2.2813 (pub 2.2813)  Mu/My 3.4899 (pub 3.4899)
+     # 4  Mh/My 1.4938 (pub 1.4938)  Mm/My 2.2527 (pub 2.2527)  Mu/My 3.6781 (pub 3.6781)
+     # 5  Mh/My 1.4938 (pub 1.4938)  Mm/My 2.1514 (pub 2.1514)  Mu/My 3.5827 (pub 3.5827)
+     # 6  Mh/My 1.4938 (pub 1.4938)  Mm/My 2.3111 (pub 2.3111)  Mu/My 3.7022 (pub 3.7022)
+     # 7  Mh/My 1.4938 (pub 1.4938)  Mm/My 2.1956 (pub 2.1956)  Mu/My 3.7466 (pub 3.7466)
+     # 8  Mh/My 1.4926 (pub 1.4926)  Mm/My 2.2286 (pub 2.2286)  Mu/My 3.7101 (pub 3.7101)
+     # 9  Mh/My 1.4938 (pub 1.4938)  Mm/My 2.2669 (pub 2.2669)  Mu/My 3.5848 (pub 3.5848)
+     #10  Mh/My 1.4729 (pub 1.4729)  Mm/My 2.2345 (pub 2.2345)  Mu/My 3.6871 (pub 3.6871)
+     #11  Mh/My 1.4971 (pub 1.4971)  Mm/My 2.0704 (pub 2.0704)  Mu/My 3.3063 (pub 3.3063)
+     #12  Mh/My 1.4820 (pub 1.4820)  Mm/My 1.8010 (pub 1.8010)  Mu/My 2.9510 (pub 2.9510)

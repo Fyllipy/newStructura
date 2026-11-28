@@ -1,0 +1,661 @@
+=== S1 padrao 2 fileiras (M=30 V=40)
+VEREDITO: NÃO VERIFICÁVEL — DADOS INSUFICIENTES. A ligação NÃO está aprovada (1 ocorrência(s): passe o mouse aqui ou veja a tabela de verificações).
+  [verif] Seção do pilar utilizada | dados de entrada | - | - | INFORMAÇÃO
+  [verif] Parafusos tracionados | NBR 8800:2024, 6.3.3.1 | 25.92 kN | 144.86 kN | 0.179
+  [verif] Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade | 6.3.5.4 | 22.40 mm | 13.37 mm | 0.597
+  [verif] Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) | NBR 8800:2024, 6.3.5.4 | - | - | NÃO VERIFICÁVEL — DADOS INSUFICIENTES
+  [verif] T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) | EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar) | 103.70 kN | 486.06 kN | MÉTODO COMPLEM
+  [verif] Cisalhamento do parafuso - parafusos da zona comprimida | 6.3.3.2 | 22.50 kN | 86.92 kN | 0.259
+  [verif] Pressao de contato / rasgamento - chapa / mesa do pilar | 6.3.3.3 | 22.50 kN | 144.00 kN | 0.156
+  [verif] Espacamento minimo entre furos | 6.3.9 | 90.00 mm | 60.00 mm | 0.667
+  [verif] Espacamento maximo entre parafusos | 6.3.10 | 300.00 mm | 90.00 mm | 0.300
+  [verif] Distancia livre entre bordas dos furos | 6.3.9 | 68.00 mm | 20.00 mm | 0.294
+  [verif] Distancia minima furo-borda | 6.3.11 / Tab. 16 | 35.00 mm | 26.00 mm | 0.743
+  [verif] Distancia maxima furo-borda | 6.3.12 | 150.00 mm | 40.00 mm | 0.267
+  [verif] Metal da solda (filete) - mesa da viga | 6.2.5 | 103.70 kN | 401.74 kN | 0.258
+  [verif] Perna minima do filete - mesa | 6.2.6.2.1 / Tab. 11 | 9.00 mm | 5.00 mm | 0.556
+  [verif] Metal da solda (filete) - alma da viga | 6.2.5 | 45.00 kN | 476.58 kN | 0.094
+  [verif] Perna minima do filete - alma | 6.2.6.2.1 / Tab. 11 | 6.00 mm | 5.00 mm | 0.833
+  [verif] Largura da chapa x mesa da viga | detalhamento | 170.00 mm | 150.00 mm | 0.882
+  [verif] Gabarito dos parafusos | NBR 8800:2024, 6.3.9 | 90.00 mm | 60.00 mm | 0.667
+  [verif] Distancia do parafuso a borda lateral | NBR 8800:2024, 6.3.11 | 40.00 mm | 26.00 mm | 0.650
+  [verif] Distancia do parafuso a mesa da viga | detalhamento | 40.00 mm | 27.20 mm | 0.680
+  [verif] Apoio: flexão local da mesa | NBR 8800:2024, 5.7.2 | 103.70 kN | 441.05 kN | 0.235
+  [verif] Apoio: escoamento local da alma | NBR 8800:2024, 5.7.3 | 103.70 kN | 740.54 kN | 0.140
+  [verif] Apoio: enrugamento da alma | NBR 8800:2024, 5.7.4 | 103.70 kN | 788.23 kN | 0.132
+  [verif] Painel de alma do pilar (cisalhamento) | NBR 8800:2024, 5.7.7.1 | 103.70 kN | 338.73 kN | 0.306
+  [verif] Forca minima de calculo da ligacao | NBR 8800:2024, 6.1.5.2 | 0.00 kN | 45.00 kN | 0.000
+  [verif] 28 | 13 (início) | Ligação rígida viga–pilar (chapa de extremidade) | - | NÃO VERIFICÁVEL — dados insuficientes
+--- MEMORIAL ---
+LIGAÇÃO – Ligação rígida viga–pilar (chapa de extremidade)
+Nó 28, viga 13 (extremidade inicial)
+Chapa 22.4 × 170 mm, 6 parafusos d20 ASTM A325 / F1852, solda 9/6 mm
+Esforços de cálculo: V = 40.00 kN, N = 0.00 kN
+
+RESULTADO DA LIGAÇÃO: NÃO VERIFICÁVEL — DADOS INSUFICIENTES
+  ! Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4): ligacao com 2 fileiras tracionadas: a interacao entre fileiras ainda nao foi validada por MEF independente; a soma de larguras tributarias nao e usada para aprovar (metodologia aprovada: apenas 1 fileira)
+
+Seção do pilar utilizada [dados de entrada]  INFORMAÇÃO
+    Origem: informada manualmente e confirmada pelo projetista
+    Pilar: d = 200.0 mm; bf = 200.0 mm; tf = 15.00 mm; tw = 9.00 mm; r = 18.0 mm
+    Aço do pilar: fy = 345 MPa; fu = 450 MPa
+Parafusos tracionados [NBR 8800:2024, 6.3.3.1]  25.92 / 144.86 kN = 0.179  OK
+    F_t = M/(d - tf) + N/2 = 103.7 kN na mesa tracionada; 4 parafusos: F_t,0,Sd = 25.9 kN (sem alavanca)
+    F_t,Rd = 0,75 Ab fub / ga2 = 144.9 kN; z = d - tf = 289 mm
+Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade [6.3.5.4]  22.40 / 13.37 mm = 0.597  OK
+    b - 0,5 db = 92.8 mm; a = min(a ; 1,25 b) = 35.0 mm; delta = 1 - df/p = 0.741
+    beta = [(a + 0,5 db)/(b - 0,5 db)] (Ft,Rd/Ft,0,Sd - 1) = 2.225; alfa = 1.000
+    t >= sqrt[4 (b - 0,5 db) Ft,0,Sd ga1 / (p fu (1 + delta alfa))] = 13.37 mm (adotada 22.40 mm)
+    Se a placa fosse rigida (sem alavanca), 6.3.5.3 exigiria t >= 17.64 mm
+Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) [NBR 8800:2024, 6.3.5.4]  NÃO VERIFICÁVEL — DADOS INSUFICIENTES
+    NÃO VERIFICÁVEL — DADOS INSUFICIENTES: ligacao com 2 fileiras tracionadas: a interacao entre fileiras ainda nao foi validada por MEF independente; a soma de larguras tributarias nao e usada para aprovar (metodologia aprovada: apenas 1 fileira)
+      - 6.3.5.4 aplicado a mesa do pilar esta liberado somente para 1 fileira tracionada
+      - Use a Camada B (T-stub EN, complementar e informativa) apenas como indicacao; ela nao substitui esta verificacao
+    A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
+T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) [EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar)]  MÉTODO COMPLEMENTAR — NÃO PARTICIPA DA APROVAÇÃO
+    METODO COMPLEMENTAR (EN 1993-1-8): nao e exigencia da NBR 8800 e NAO participa da aprovacao global.
+    Coeficientes EN usados: gammaM0 = 1.00; gammaM2 = 1.25; k2 = 0.90; metodo 2 da Tabela 6.2 (nao ha coeficientes da NBR neste metodo).
+    Parafuso: Ft,Rd = k2 fub As / gM2 = 146.4 kN (fub = 830 MPa; As = 245 mm2)
+    Parafuso ASTM: a EN nao tem essa classe; fub informado pelo usuario e usado no metodo EN sob responsabilidade do projetista.
+    m = (g - tw)/2 - 0,8 r = 26.10 mm; e = (bf - g)/2 = 55.00 mm; emin = 40.00 mm; ew = dw/4 = 8.66 mm
+    Fileira 1 (isolada): m = 26.10 mm; e = 55.00 mm; n = min(emin ; 1,25 m) = 32.62 mm
+      leff,1 = min(cp 164.0 ; nc 173.2) = 164.0 mm; leff,2 = nc = 173.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, fileira isolada)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 3182453 N.mm; Mpl,2,Rd = 3360192 N.mm (fy = 345 MPa; tf = 15.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 649.3 kN (ew = 8.66 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 277.1 kN; Modo 3 = SFt,Rd = 292.8 kN (2 parafusos x 146.4 kN)
+      FT,Rd = min(modos) = 277.1 kN: modo 2 governa
+    Fileira 2 (isolada): m = 26.10 mm; e = 55.00 mm; n = min(emin ; 1,25 m) = 32.62 mm
+      leff,1 = min(cp 164.0 ; nc 173.2) = 164.0 mm; leff,2 = nc = 173.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, fileira isolada)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 3182453 N.mm; Mpl,2,Rd = 3360192 N.mm (fy = 345 MPa; tf = 15.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 649.3 kN (ew = 8.66 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 277.1 kN; Modo 3 = SFt,Rd = 292.8 kN (2 parafusos x 146.4 kN)
+      FT,Rd = min(modos) = 277.1 kN: modo 2 governa
+    Grupo 1-2: m = 26.10 mm; e = 55.00 mm; n = min(emin ; 1,25 m) = 32.62 mm
+      leff,1 = min(cp 304.0 ; nc 243.2) = 243.2 mm; leff,2 = nc = 243.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, grupo de fileiras)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 4718630 N.mm; Mpl,2,Rd = 4718630 N.mm (fy = 345 MPa; tf = 15.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 962.6 kN (ew = 8.66 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 486.1 kN; Modo 3 = SFt,Rd = 585.6 kN (4 parafusos x 146.4 kN)
+      FT,Rd = min(modos) = 486.1 kN: modo 2 governa
+    Fileira 1: resistencia efetiva = 277.1 kN (isolada)
+    Fileira 2: resistencia efetiva = 208.9 kN (grupo 1-2)
+    Resistencia total da mesa do pilar a tracao (soma das fileiras) = 486.1 kN
+    Resistencia a tracao do conjunto (componente governante: mesa do pilar) = 486.1 kN; tracao solicitante M/z + N/2 = 103.7 kN; razao informativa = 0.21
+    Nao incluidos nesta versao: alma do pilar tracionada (EN 6.2.6.3), alma da viga tracionada (6.2.6.8), mesa enrijecida (Tabela 6.5); chapa de extremidade em multiplas fileiras (Tabela 6.6, fileiras alem da primeira).
+Cisalhamento do parafuso - parafusos da zona comprimida [6.3.3.2]  22.50 / 86.92 kN = 0.259  OK
+    Ab = 0,25 pi db^2 = 314.2 mm2
+    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
+    Fv,Sd (parafuso mais solicitado) = 22.50 kN; 1 plano(s) -> 22.50 kN por plano
+Pressao de contato / rasgamento - chapa / mesa do pilar [6.3.3.3]  22.50 / 144.00 kN = 0.156  OK
+    dh = 22.0 mm; lf = min(24.0, 68.0) mm (conservador: aplicado a todos os parafusos)
+    Fc,Rd = min(1.2 lf t fu ; 2.4 db t fu) / ga2 = 144.00 kN
+Espacamento minimo entre furos [6.3.9]  90.00 / 60.00 mm = 0.667  OK
+    p = 90.0 mm >= 3 db = 60.0 mm (recomendado 2,7 db)
+Espacamento maximo entre parafusos [6.3.10]  300.00 / 90.00 mm = 0.300  OK
+    p = 90.0 mm <= min(24 t ; 300) = 300.0 mm (elementos pintados ou sem corrosao; 14 t / 180 mm em aco patinavel nao pintado)
+Distancia livre entre bordas dos furos [6.3.9]  68.00 / 20.00 mm = 0.294  OK
+    p - dh = 90.0 - 22.0 = 68.0 mm >= db = 20.0 mm
+Distancia minima furo-borda [6.3.11 / Tab. 16]  35.00 / 26.00 mm = 0.743  OK
+    min(le = 35.0, lt = 40.0) mm >= 26.0 mm (valor conservador da tabela; menores distancias se 6.3.3.3 for atendida)
+Distancia maxima furo-borda [6.3.12]  150.00 / 40.00 mm = 0.267  OK
+    max(le, lt) = 40.0 mm <= min(12 t ; 150) = 150.0 mm
+Metal da solda (filete) - mesa da viga [6.2.5]  103.70 / 401.74 kN = 0.258  OK
+    Aw = 0,707 a L = 0,707 x 9.0 x 292.9 = 1864 mm2
+    Fw,Rd = 0,6 Aw fw (1 + 0,5 sen^1,5 theta) / gw2 = 0,6 x 1864 x 485 x 1.000 / 1,35 = 401.74 kN
+Perna minima do filete - mesa [6.2.6.2.1 / Tab. 11]  9.00 / 5.00 mm = 0.556  OK
+    a = 9.0 mm >= 5.0 mm (parte mais fina 10.7 mm)
+Metal da solda (filete) - alma da viga [6.2.5]  45.00 / 476.58 kN = 0.094  OK
+    Aw = 0,707 a L = 0,707 x 6.0 x 521.2 = 2211 mm2
+    Fw,Rd = 0,6 Aw fw (1 + 0,5 sen^1,5 theta) / gw2 = 0,6 x 2211 x 485 x 1.000 / 1,35 = 476.58 kN
+Perna minima do filete - alma [6.2.6.2.1 / Tab. 11]  6.00 / 5.00 mm = 0.833  OK
+    a = 6.0 mm >= 5.0 mm (parte mais fina 7.1 mm)
+Largura da chapa x mesa da viga [detalhamento]  170.00 / 150.00 mm = 0.882  OK
+    b_chapa = 170 mm >= largura da mesa = 150 mm
+Gabarito dos parafusos [NBR 8800:2024, 6.3.9]  90.00 / 60.00 mm = 0.667  OK
+    g = 90 mm >= 3 db = 60 mm
+Distancia do parafuso a borda lateral [NBR 8800:2024, 6.3.11]  40.00 / 26.00 mm = 0.650  OK
+    (b - g)/2 = 40.0 mm >= 26.0 mm (Tabela 16)
+Distancia do parafuso a mesa da viga [detalhamento]  40.00 / 27.20 mm = 0.680  OK
+    firstRow = 40 mm >= solda + 0,5 db + folga = 27 mm
+Apoio: flexão local da mesa [NBR 8800:2024, 5.7.2]  103.70 / 441.05 kN = 0.235  OK
+    R_d = 6,25 tf² fy/γa1 = 441.1 kN (tf = 15.0 mm, fy = 345 MPa)
+    Força de tração normal à mesa = 103.7 kN.
+Apoio: escoamento local da alma [NBR 8800:2024, 5.7.3]  103.70 / 740.54 kN = 0.140  OK
+    R_d = 1,10 (5 k + n) fy tw/γa1 = 740.5 kN (k = 33.0 mm, n = 74 mm, tw = 9.0 mm)
+Apoio: enrugamento da alma [NBR 8800:2024, 5.7.4]  103.70 / 788.23 kN = 0.132  OK
+    R_d = 788.2 kN (n/d = 0.37, tw/tf = 0.60)
+Painel de alma do pilar (cisalhamento) [NBR 8800:2024, 5.7.7.1]  103.70 / 338.73 kN = 0.306  OK
+    F_Sd = F_mesas - V_pilar = 103.7 - 0.0 = 103.7 kN
+    V_Rd (5.4.3, Aw = dc tw = 200 x 9.0 mm): lambda = h/tw = 14.9; kv = 5.34; lambda_p = 61.2; lambda_r = 76.2; Vpl = 372.6 kN -> V_Rd = 338.7 kN
+    N_Sd = 0.0 kN <= 0,4 Np = 1077.5 kN (Np = Ag fy, Ag = 7808 mm2): F_Rd = V_Rd
+    Cortante já atuante no pilar não informado (desprezado, a favor da segurança). Se não atender: chapas de reforço (5.7.7.2) ou enrijecedores diagonais (5.7.7.3).
+Forca minima de calculo da ligacao [NBR 8800:2024, 6.1.5.2]  0.00 / 45.00 kN = 0.000  OK
+    Forca solicitante resultante 40.00 kN < 45 kN: a ligacao e dimensionad
+   [servico] S1 | maxRatio=1e+09 | aprovada=0 | incompleta=1
+=== S2 1 fileira robusta (M=20 V=20)
+VEREDITO: Atende (razão máxima 0.882 — Largura da chapa x mesa da viga).
+  [verif] Seção do pilar utilizada | dados de entrada | - | - | INFORMAÇÃO
+  [verif] Parafusos tracionados | NBR 8800:2024, 6.3.3.1 | 34.57 kN | 208.60 kN | 0.166
+  [verif] Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade | 6.3.5.4 | 25.00 mm | 7.44 mm | 0.297
+  [verif] Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) | NBR 8800:2024, 6.3.5.4 | 15.00 mm | 6.13 mm | 0.409
+  [verif] T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) | EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar) | 69.13 kN | 315.74 kN | MÉTODO COMPLEME
+  [verif] Cisalhamento do parafuso - parafusos da zona comprimida | 6.3.3.2 | 22.50 kN | 125.16 kN | 0.180
+  [verif] Pressao de contato / rasgamento - chapa / mesa do pilar | 6.3.3.3 | 22.50 kN | 129.00 kN | 0.174
+  [verif] Espacamento minimo entre furos | 6.3.9 | 90.00 mm | 72.00 mm | 0.800
+  [verif] Espacamento maximo entre parafusos | 6.3.10 | 300.00 mm | 90.00 mm | 0.300
+  [verif] Distancia livre entre bordas dos furos | 6.3.9 | 63.00 mm | 24.00 mm | 0.381
+  [verif] Distancia minima furo-borda | 6.3.11 / Tab. 16 | 35.00 mm | 30.00 mm | 0.857
+  [verif] Distancia maxima furo-borda | 6.3.12 | 150.00 mm | 40.00 mm | 0.267
+  [verif] Metal da solda (filete) - mesa da viga | 6.2.5 | 69.13 kN | 401.74 kN | 0.172
+  [verif] Perna minima do filete - mesa | 6.2.6.2.1 / Tab. 11 | 9.00 mm | 5.00 mm | 0.556
+  [verif] Metal da solda (filete) - alma da viga | 6.2.5 | 45.00 kN | 476.58 kN | 0.094
+  [verif] Perna minima do filete - alma | 6.2.6.2.1 / Tab. 11 | 6.00 mm | 5.00 mm | 0.833
+  [verif] Largura da chapa x mesa da viga | detalhamento | 170.00 mm | 150.00 mm | 0.882
+  [verif] Gabarito dos parafusos | NBR 8800:2024, 6.3.9 | 90.00 mm | 72.00 mm | 0.800
+  [verif] Distancia do parafuso a borda lateral | NBR 8800:2024, 6.3.11 | 40.00 mm | 30.00 mm | 0.750
+  [verif] Distancia do parafuso a mesa da viga | detalhamento | 40.00 mm | 29.20 mm | 0.730
+  [verif] Apoio: flexão local da mesa | NBR 8800:2024, 5.7.2 | 69.13 kN | 441.05 kN | 0.157
+  [verif] Apoio: escoamento local da alma | NBR 8800:2024, 5.7.3 | 69.13 kN | 756.69 kN | 0.091
+  [verif] Apoio: enrugamento da alma | NBR 8800:2024, 5.7.4 | 69.13 kN | 807.12 kN | 0.086
+  [verif] Painel de alma do pilar (cisalhamento) | NBR 8800:2024, 5.7.7.1 | 69.13 kN | 338.73 kN | 0.204
+  [verif] Forca minima de calculo da ligacao | NBR 8800:2024, 6.1.5.2 | 0.00 kN | 45.00 kN | 0.000
+  [verif] 28 | 13 (início) | Ligação rígida viga–pilar (chapa de extremidade) | 0.88 | atende
+--- MEMORIAL ---
+LIGAÇÃO – Ligação rígida viga–pilar (chapa de extremidade)
+Nó 28, viga 13 (extremidade inicial)
+Chapa 25.0 × 170 mm, 4 parafusos d24 ASTM A325 / F1852, solda 9/6 mm
+Esforços de cálculo: V = 20.00 kN, N = 0.00 kN
+
+RESULTADO DA LIGAÇÃO: APROVADA
+
+Seção do pilar utilizada [dados de entrada]  INFORMAÇÃO
+    Origem: informada manualmente e confirmada pelo projetista
+    Pilar: d = 200.0 mm; bf = 200.0 mm; tf = 15.00 mm; tw = 9.00 mm; r = 18.0 mm
+    Aço do pilar: fy = 345 MPa; fu = 450 MPa
+Parafusos tracionados [NBR 8800:2024, 6.3.3.1]  34.57 / 208.60 kN = 0.166  OK
+    F_t = M/(d - tf) + N/2 = 69.1 kN na mesa tracionada; 2 parafusos: F_t,0,Sd = 34.6 kN (sem alavanca)
+    F_t,Rd = 0,75 Ab fub / ga2 = 208.6 kN; z = d - tf = 289 mm
+Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade [6.3.5.4]  25.00 / 7.44 mm = 0.297  OK
+    b - 0,5 db = 20.8 mm; a = min(a ; 1,25 b) = 35.0 mm; delta = 1 - df/p = 0.682
+    beta = [(a + 0,5 db)/(b - 0,5 db)] (Ft,Rd/Ft,0,Sd - 1) = 11.377; alfa = 1.000
+    t >= sqrt[4 (b - 0,5 db) Ft,0,Sd ga1 / (p fu (1 + delta alfa))] = 7.44 mm (adotada 25.00 mm)
+    Se a placa fosse rigida (sem alavanca), 6.3.5.3 exigiria t >= 9.65 mm
+Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) [NBR 8800:2024, 6.3.5.4]  15.00 / 6.13 mm = 0.409  OK
+    Mesa do pilar tratada como placa flexivel da Figura 15 (1 fileira tracionada, 2 parafusos, um de cada lado da alma)
+    b = (g - tw)/2 = (90.0 - 9.0)/2 = 40.50 mm [b LITERAL, sem desconto de 0,8 r]; a = min((bf - g)/2 ; 1,25 b) = 50.62 mm; p = 2 x min(e_ext ; 1,75 b) = 3,5 b = 141.8 mm
+    Ft,Rd = 0,75 Ab fub / ga2 = 208.60 kN; Ft,0,Sd = (M/z + N/2)/2 = 34.57 kN; df = 27 mm; delta = 1 - df/p = 0.810
+    beta = [(a + 0,5 db)/(b - 0,5 db)] (Ft,Rd/Ft,0,Sd - 1) = 11.063; alfa = 1.000
+    t >= sqrt[4 (b - 0,5 db) Ft,0,Sd ga1 / (p fu (1 + delta alfa))] = 6.13 mm (mesa tf = 15.00 mm; fu = 450 MPa; ga1 = 1.10)
+    Se a mesa fosse rigida (6.3.5.3), exigiria t >= 8.24 mm
+    Hipoteses complementares (nao textuais da NBR): H1 b literal (sem filete); H2 bordas e fileiras vizinhas do pilar suficientemente afastadas (p = 3,5 b); aplicacao do 6.3.5.4 a mesa de perfil laminado com alma e filete.
+    Limitacao: validado so para 1 fileira; contra o T-stub EN e MEF publicado a razao varia (ver docs/METODOLOGIA_ALAVANCA_MESA_PILAR.md, 4.3).
+T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) [EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar)]  MÉTODO COMPLEMENTAR — NÃO PARTICIPA DA APROVAÇÃO
+    METODO COMPLEMENTAR (EN 1993-1-8): nao e exigencia da NBR 8800 e NAO participa da aprovacao global.
+    Coeficientes EN usados: gammaM0 = 1.00; gammaM2 = 1.25; k2 = 0.90; metodo 2 da Tabela 6.2 (nao ha coeficientes da NBR neste metodo).
+    Parafuso: Ft,Rd = k2 fub As / gM2 = 211.0 kN (fub = 830 MPa; As = 353 mm2)
+    Parafuso ASTM: a EN nao tem essa classe; fub informado pelo usuario e usado no metodo EN sob responsabilidade do projetista.
+    m = (g - tw)/2 - 0,8 r = 26.10 mm; e = (bf - g)/2 = 55.00 mm; emin = 40.00 mm; ew = dw/4 = 10.39 mm
+    Fileira 1 (isolada): m = 26.10 mm; e = 55.00 mm; n = min(emin ; 1,25 m) = 32.62 mm
+      leff,1 = min(cp 164.0 ; nc 173.2) = 164.0 mm; leff,2 = nc = 173.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, fileira isolada)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 3182453 N.mm; Mpl,2,Rd = 3360192 N.mm (fy = 345 MPa; tf = 15.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 699.6 kN (ew = 10.39 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 348.8 kN; Modo 3 = SFt,Rd = 421.9 kN (2 parafusos x 211.0 kN)
+      FT,Rd = min(modos) = 348.8 kN: modo 2 governa
+    Fileira 1: resistencia efetiva = 348.8 kN (isolada)
+    Resistencia total da mesa do pilar a tracao (soma das fileiras) = 348.8 kN
+    Chapa de extremidade, fileira na extensao: m = 32.80 mm; e = 35.00 mm; n = min(emin ; 1,25 m) = 35.00 mm
+      leff,1 = min(cp 183.0 ; nc 85.0) = 85.0 mm; leff,2 = nc = 85.0 mm (EN 1993-1-8, Tabela 6.6, chapa de extremidade, fileira na extensao)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 3320312 N.mm; Mpl,2,Rd = 3320312 N.mm (fy = 250 MPa; tf = 25.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 540.8 kN (ew = 10.39 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 315.7 kN; Modo 3 = SFt,Rd = 421.9 kN (2 parafusos x 211.0 kN)
+      FT,Rd = min(modos) = 315.7 kN: modo 2 governa
+    Resistencia a tracao do conjunto (componente governante: chapa de extremidade) = 315.7 kN; tracao solicitante M/z + N/2 = 69.1 kN; razao informativa = 0.22
+    Nao incluidos nesta versao: alma do pilar tracionada (EN 6.2.6.3), alma da viga tracionada (6.2.6.8), mesa enrijecida (Tabela 6.5).
+Cisalhamento do parafuso - parafusos da zona comprimida [6.3.3.2]  22.50 / 125.16 kN = 0.180  OK
+    Ab = 0,25 pi db^2 = 452.4 mm2
+    Fv,Rd = 0.45 Ab fub / ga2 = 125.16 kN por plano de corte
+    Fv,Sd (parafuso mais solicitado) = 22.50 kN; 1 plano(s) -> 22.50 kN por plano
+Pressao de contato / rasgamento - chapa / mesa do pilar [6.3.3.3]  22.50 / 129.00 kN = 0.174  OK
+    dh = 27.0 mm; lf = min(21.5, 63.0) mm (conservador: aplicado a todos os parafusos)
+    Fc,Rd = min(1.2 lf t fu ; 2.4 db t fu) / ga2 = 129.00 kN
+Espacamento minimo entre furos [6.3.9]  90.00 / 72.00 mm = 0.800  OK
+    p = 90.0 mm >= 3 db = 72.0 mm (recomendado 2,7 db)
+Espacamento maximo entre parafusos [6.3.10]  300.00 / 90.00 mm = 0.300  OK
+    p = 90.0 mm <= min(24 t ; 300) = 300.0 mm (elementos pintados ou sem corrosao; 14 t / 180 mm em aco patinavel nao pintado)
+Distancia livre entre bordas dos furos [6.3.9]  63.00 / 24.00 mm = 0.381  OK
+    p - dh = 90.0 - 27.0 = 63.0 mm >= db = 24.0 mm
+Distancia minima furo-borda [6.3.11 / Tab. 16]  35.00 / 30.00 mm = 0.857  OK
+    min(le = 35.0, lt = 40.0) mm >= 30.0 mm (valor conservador da tabela; menores distancias se 6.3.3.3 for atendida)
+Distancia maxima furo-borda [6.3.12]  150.00 / 40.00 mm = 0.267  OK
+    max(le, lt) = 40.0 mm <= min(12 t ; 150) = 150.0 mm
+Metal da solda (filete) - mesa da viga [6.2.5]  69.13 / 401.74 kN = 0.172  OK
+    Aw = 0,707 a L = 0,707 x 9.0 x 292.9 = 1864 mm2
+    Fw,Rd = 0,6 Aw fw (1 + 0,5 sen^1,5 theta) / gw2 = 0,6 x 1864 x 485 x 1.000 / 1,35 = 401.74 kN
+Perna minima do filete - mesa [6.2.6.2.1 / Tab. 11]  9.00 / 5.00 mm = 0.556  OK
+    a = 9.0 mm >= 5.0 mm (parte mais fina 10.7 mm)
+Metal da solda (filete) - alma da viga [6.2.5]  45.00 / 476.58 kN = 0.094  OK
+    Aw = 0,707 a L = 0,707 x 6.0 x 521.2 = 2211 mm2
+    Fw,Rd = 0,6 Aw fw (1 + 0,5 sen^1,5 theta) / gw2 = 0,6 x 2211 x 485 x 1.000 / 1,35 = 476.58 kN
+Perna minima do filete - alma [6.2.6.2.1 / Tab. 11]  6.00 / 5.00 mm = 0.833  OK
+    a = 6.0 mm >= 5.0 mm (parte mais fina 7.1 mm)
+Largura da chapa x mesa da viga [detalhamento]  170.00 / 150.00 mm = 0.882  OK
+    b_chapa = 170 mm >= largura da mesa = 150 mm
+Gabarito dos parafusos [NBR 8800:2024, 6.3.9]  90.00 / 72.00 mm = 0.800  OK
+    g = 90 mm >= 3 db = 72 mm
+Distancia do parafuso a borda lateral [NBR 8800:2024, 6.3.11]  40.00 / 30.00 mm = 0.750  OK
+    (b - g)/2 = 40.0 mm >= 30.0 mm (Tabela 16)
+Distancia do parafuso a mesa da viga [detalhamento]  40.00 / 29.20 mm = 0.730  OK
+    firstRow = 40 mm >= solda + 0,5 db + folga = 29 mm
+Apoio: flexão local da mesa [NBR 8800:2024, 5.7.2]  69.13 / 441.05 kN = 0.157  OK
+    R_d = 6,25 tf² fy/γa1 = 441.1 kN (tf = 15.0 mm, fy = 345 MPa)
+    Força de tração normal à mesa = 69.1 kN.
+Apoio: escoamento local da alma [NBR 8800:2024, 5.7.3]  69.13 / 756.69 kN = 0.091  OK
+    R_d = 1,10 (5 k + n) fy tw/γa1 = 756.7 kN (k = 33.0 mm, n = 79 mm, tw = 9.0 mm)
+Apoio: enrugamento da alma [NBR 8800:2024, 5.7.4]  69.13 / 807.12 kN = 0.086  OK
+    R_d = 807.1 kN (n/d = 0.39, tw/tf = 0.60)
+Painel de alma do pilar (cisalhamento) [NBR 8800:2024, 5.7.7.1]  69.13 / 338.73 kN = 0.204  OK
+    F_Sd = F_mesas - V_pilar = 69.1 - 0.0 = 69.1 kN
+    V_Rd (5.4.3, Aw = dc tw = 200 x 9.0 mm): lambda = h/tw = 14.9; kv = 5.34; lambda_p = 61.2; lambda_r = 76.2; Vpl = 372.6 kN -> V_Rd = 338.7 kN
+    N_Sd = 0.0 kN <= 0,4 Np = 1077.5 kN (Np = Ag fy, Ag = 7808 mm2): F_Rd = V_Rd
+    Cortante já atuante no pilar não informado (desprezado, a favor da segurança). Se não atender: chapas de reforço (5.7.7.2) ou enrijecedores diagonais (5.7.7.3).
+Forca minima de calculo da ligacao [NBR 8800:2024, 6.1.5.2]  0.00 / 45.00 kN = 0.000  OK
+    Forca solicitante resultante 20.00 kN < 45 kN: a ligacao e dimensionada para 45 kN, com a direcao e o sentido da forca atuante (6.1.5.2).
+
+   [servico] S2 | maxRatio=0.882353 | aprovada=1 | incompleta=0
+=== S3 1 fileira mesa esbelta tf=8 (M=20 V=20)
+VEREDITO: Atende (razão máxima 0.882 — Largura da chapa x mesa da viga).
+  [verif] Seção do pilar utilizada | dados de entrada | - | - | INFORMAÇÃO
+  [verif] Parafusos tracionados | NBR 8800:2024, 6.3.3.1 | 34.57 kN | 208.60 kN | 0.166
+  [verif] Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade | 6.3.5.4 | 25.00 mm | 7.44 mm | 0.297
+  [verif] Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) | NBR 8800:2024, 6.3.5.4 | 8.00 mm | 6.16 mm | 0.770
+  [verif] T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) | EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar) | 69.13 kN | 173.34 kN | MÉTODO COMPLEME
+  [verif] Cisalhamento do parafuso - parafusos da zona comprimida | 6.3.3.2 | 22.50 kN | 125.16 kN | 0.180
+  [verif] Pressao de contato / rasgamento - chapa / mesa do pilar | 6.3.3.3 | 22.50 kN | 68.80 kN | 0.327
+  [verif] Espacamento minimo entre furos | 6.3.9 | 90.00 mm | 72.00 mm | 0.800
+  [verif] Espacamento maximo entre parafusos | 6.3.10 | 192.00 mm | 90.00 mm | 0.469
+  [verif] Distancia livre entre bordas dos furos | 6.3.9 | 63.00 mm | 24.00 mm | 0.381
+  [verif] Distancia minima furo-borda | 6.3.11 / Tab. 16 | 35.00 mm | 30.00 mm | 0.857
+  [verif] Distancia maxima furo-borda | 6.3.12 | 96.00 mm | 40.00 mm | 0.417
+  [verif] Metal da solda (filete) - mesa da viga | 6.2.5 | 69.13 kN | 401.74 kN | 0.172
+  [verif] Perna minima do filete - mesa | 6.2.6.2.1 / Tab. 11 | 9.00 mm | 5.00 mm | 0.556
+  [verif] Metal da solda (filete) - alma da viga | 6.2.5 | 45.00 kN | 476.58 kN | 0.094
+  [verif] Perna minima do filete - alma | 6.2.6.2.1 / Tab. 11 | 6.00 mm | 5.00 mm | 0.833
+  [verif] Largura da chapa x mesa da viga | detalhamento | 170.00 mm | 150.00 mm | 0.882
+  [verif] Gabarito dos parafusos | NBR 8800:2024, 6.3.9 | 90.00 mm | 72.00 mm | 0.800
+  [verif] Distancia do parafuso a borda lateral | NBR 8800:2024, 6.3.11 | 40.00 mm | 30.00 mm | 0.750
+  [verif] Distancia do parafuso a mesa da viga | detalhamento | 40.00 mm | 29.20 mm | 0.730
+  [verif] Apoio: flexão local da mesa | NBR 8800:2024, 5.7.2 | 69.13 kN | 125.45 kN | 0.551
+  [verif] Apoio: escoamento local da alma | NBR 8800:2024, 5.7.3 | 69.13 kN | 349.21 kN | 0.198
+  [verif] Apoio: enrugamento da alma | NBR 8800:2024, 5.7.4 | 69.13 kN | 366.04 kN | 0.189
+  [verif] Painel de alma do pilar (cisalhamento) | NBR 8800:2024, 5.7.7.1 | 69.13 kN | 225.82 kN | 0.306
+  [verif] Forca minima de calculo da ligacao | NBR 8800:2024, 6.1.5.2 | 0.00 kN | 45.00 kN | 0.000
+  [verif] 28 | 13 (início) | Ligação rígida viga–pilar (chapa de extremidade) | 0.88 | atende
+--- MEMORIAL ---
+LIGAÇÃO – Ligação rígida viga–pilar (chapa de extremidade)
+Nó 28, viga 13 (extremidade inicial)
+Chapa 25.0 × 170 mm, 4 parafusos d24 ASTM A325 / F1852, solda 9/6 mm
+Esforços de cálculo: V = 20.00 kN, N = 0.00 kN
+
+RESULTADO DA LIGAÇÃO: APROVADA
+
+Seção do pilar utilizada [dados de entrada]  INFORMAÇÃO
+    Origem: informada manualmente e confirmada pelo projetista
+    Pilar: d = 200.0 mm; bf = 200.0 mm; tf = 8.00 mm; tw = 6.00 mm; r = 10.0 mm
+    Aço do pilar: fy = 345 MPa; fu = 450 MPa
+Parafusos tracionados [NBR 8800:2024, 6.3.3.1]  34.57 / 208.60 kN = 0.166  OK
+    F_t = M/(d - tf) + N/2 = 69.1 kN na mesa tracionada; 2 parafusos: F_t,0,Sd = 34.6 kN (sem alavanca)
+    F_t,Rd = 0,75 Ab fub / ga2 = 208.6 kN; z = d - tf = 289 mm
+Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade [6.3.5.4]  25.00 / 7.44 mm = 0.297  OK
+    b - 0,5 db = 20.8 mm; a = min(a ; 1,25 b) = 35.0 mm; delta = 1 - df/p = 0.682
+    beta = [(a + 0,5 db)/(b - 0,5 db)] (Ft,Rd/Ft,0,Sd - 1) = 11.377; alfa = 1.000
+    t >= sqrt[4 (b - 0,5 db) Ft,0,Sd ga1 / (p fu (1 + delta alfa))] = 7.44 mm (adotada 25.00 mm)
+    Se a placa fosse rigida (sem alavanca), 6.3.5.3 exigiria t >= 9.65 mm
+Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) [NBR 8800:2024, 6.3.5.4]  8.00 / 6.16 mm = 0.770  OK
+    Mesa do pilar tratada como placa flexivel da Figura 15 (1 fileira tracionada, 2 parafusos, um de cada lado da alma)
+    b = (g - tw)/2 = (90.0 - 6.0)/2 = 42.00 mm [b LITERAL, sem desconto de 0,8 r]; a = min((bf - g)/2 ; 1,25 b) = 52.50 mm; p = 2 x min(e_ext ; 1,75 b) = 3,5 b = 147.0 mm
+    Ft,Rd = 0,75 Ab fub / ga2 = 208.60 kN; Ft,0,Sd = (M/z + N/2)/2 = 34.57 kN; df = 27 mm; delta = 1 - df/p = 0.816
+    beta = [(a + 0,5 db)/(b - 0,5 db)] (Ft,Rd/Ft,0,Sd - 1) = 10.825; alfa = 1.000
+    t >= sqrt[4 (b - 0,5 db) Ft,0,Sd ga1 / (p fu (1 + delta alfa))] = 6.16 mm (mesa tf = 8.00 mm; fu = 450 MPa; ga1 = 1.10)
+    Se a mesa fosse rigida (6.3.5.3), exigiria t >= 8.31 mm
+    Hipoteses complementares (nao textuais da NBR): H1 b literal (sem filete); H2 bordas e fileiras vizinhas do pilar suficientemente afastadas (p = 3,5 b); aplicacao do 6.3.5.4 a mesa de perfil laminado com alma e filete.
+    Limitacao: validado so para 1 fileira; contra o T-stub EN e MEF publicado a razao varia (ver docs/METODOLOGIA_ALAVANCA_MESA_PILAR.md, 4.3).
+T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) [EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar)]  MÉTODO COMPLEMENTAR — NÃO PARTICIPA DA APROVAÇÃO
+    METODO COMPLEMENTAR (EN 1993-1-8): nao e exigencia da NBR 8800 e NAO participa da aprovacao global.
+    Coeficientes EN usados: gammaM0 = 1.00; gammaM2 = 1.25; k2 = 0.90; metodo 2 da Tabela 6.2 (nao ha coeficientes da NBR neste metodo).
+    Parafuso: Ft,Rd = k2 fub As / gM2 = 211.0 kN (fub = 830 MPa; As = 353 mm2)
+    Parafuso ASTM: a EN nao tem essa classe; fub informado pelo usuario e usado no metodo EN sob responsabilidade do projetista.
+    m = (g - tw)/2 - 0,8 r = 34.00 mm; e = (bf - g)/2 = 55.00 mm; emin = 40.00 mm; ew = dw/4 = 10.39 mm
+    Fileira 1 (isolada): m = 34.00 mm; e = 55.00 mm; n = min(emin ; 1,25 m) = 40.00 mm
+      leff,1 = min(cp 213.6 ; nc 204.8) = 204.8 mm; leff,2 = nc = 204.8 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, fileira isolada)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 1130220 N.mm; Mpl,2,Rd = 1130220 N.mm (fy = 345 MPa; tf = 8.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 173.3 kN (ew = 10.39 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 258.6 kN; Modo 3 = SFt,Rd = 421.9 kN (2 parafusos x 211.0 kN)
+      FT,Rd = min(modos) = 173.3 kN: modo 1 governa
+    Fileira 1: resistencia efetiva = 173.3 kN (isolada)
+    Resistencia total da mesa do pilar a tracao (soma das fileiras) = 173.3 kN
+    Chapa de extremidade, fileira na extensao: m = 32.80 mm; e = 35.00 mm; n = min(emin ; 1,25 m) = 35.00 mm
+      leff,1 = min(cp 183.0 ; nc 85.0) = 85.0 mm; leff,2 = nc = 85.0 mm (EN 1993-1-8, Tabela 6.6, chapa de extremidade, fileira na extensao)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 3320312 N.mm; Mpl,2,Rd = 3320312 N.mm (fy = 250 MPa; tf = 25.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 540.8 kN (ew = 10.39 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 315.7 kN; Modo 3 = SFt,Rd = 421.9 kN (2 parafusos x 211.0 kN)
+      FT,Rd = min(modos) = 315.7 kN: modo 2 governa
+    Resistencia a tracao do conjunto (componente governante: mesa do pilar) = 173.3 kN; tracao solicitante M/z + N/2 = 69.1 kN; razao informativa = 0.40
+    Nao incluidos nesta versao: alma do pilar tracionada (EN 6.2.6.3), alma da viga tracionada (6.2.6.8), mesa enrijecida (Tabela 6.5).
+Cisalhamento do parafuso - parafusos da zona comprimida [6.3.3.2]  22.50 / 125.16 kN = 0.180  OK
+    Ab = 0,25 pi db^2 = 452.4 mm2
+    Fv,Rd = 0.45 Ab fub / ga2 = 125.16 kN por plano de corte
+    Fv,Sd (parafuso mais solicitado) = 22.50 kN; 1 plano(s) -> 22.50 kN por plano
+Pressao de contato / rasgamento - chapa / mesa do pilar [6.3.3.3]  22.50 / 68.80 kN = 0.327  OK
+    dh = 27.0 mm; lf = min(21.5, 63.0) mm (conservador: aplicado a todos os parafusos)
+    Fc,Rd = min(1.2 lf t fu ; 2.4 db t fu) / ga2 = 68.80 kN
+Espacamento minimo entre furos [6.3.9]  90.00 / 72.00 mm = 0.800  OK
+    p = 90.0 mm >= 3 db = 72.0 mm (recomendado 2,7 db)
+Espacamento maximo entre parafusos [6.3.10]  192.00 / 90.00 mm = 0.469  OK
+    p = 90.0 mm <= min(24 t ; 300) = 192.0 mm (elementos pintados ou sem corrosao; 14 t / 180 mm em aco patinavel nao pintado)
+Distancia livre entre bordas dos furos [6.3.9]  63.00 / 24.00 mm = 0.381  OK
+    p - dh = 90.0 - 27.0 = 63.0 mm >= db = 24.0 mm
+Distancia minima furo-borda [6.3.11 / Tab. 16]  35.00 / 30.00 mm = 0.857  OK
+    min(le = 35.0, lt = 40.0) mm >= 30.0 mm (valor conservador da tabela; menores distancias se 6.3.3.3 for atendida)
+Distancia maxima furo-borda [6.3.12]  96.00 / 40.00 mm = 0.417  OK
+    max(le, lt) = 40.0 mm <= min(12 t ; 150) = 96.0 mm
+Metal da solda (filete) - mesa da viga [6.2.5]  69.13 / 401.74 kN = 0.172  OK
+    Aw = 0,707 a L = 0,707 x 9.0 x 292.9 = 1864 mm2
+    Fw,Rd = 0,6 Aw fw (1 + 0,5 sen^1,5 theta) / gw2 = 0,6 x 1864 x 485 x 1.000 / 1,35 = 401.74 kN
+Perna minima do filete - mesa [6.2.6.2.1 / Tab. 11]  9.00 / 5.00 mm = 0.556  OK
+    a = 9.0 mm >= 5.0 mm (parte mais fina 10.7 mm)
+Metal da solda (filete) - alma da viga [6.2.5]  45.00 / 476.58 kN = 0.094  OK
+    Aw = 0,707 a L = 0,707 x 6.0 x 521.2 = 2211 mm2
+    Fw,Rd = 0,6 Aw fw (1 + 0,5 sen^1,5 theta) / gw2 = 0,6 x 2211 x 485 x 1.000 / 1,35 = 476.58 kN
+Perna minima do filete - alma [6.2.6.2.1 / Tab. 11]  6.00 / 5.00 mm = 0.833  OK
+    a = 6.0 mm >= 5.0 mm (parte mais fina 7.1 mm)
+Largura da chapa x mesa da viga [detalhamento]  170.00 / 150.00 mm = 0.882  OK
+    b_chapa = 170 mm >= largura da mesa = 150 mm
+Gabarito dos parafusos [NBR 8800:2024, 6.3.9]  90.00 / 72.00 mm = 0.800  OK
+    g = 90 mm >= 3 db = 72 mm
+Distancia do parafuso a borda lateral [NBR 8800:2024, 6.3.11]  40.00 / 30.00 mm = 0.750  OK
+    (b - g)/2 = 40.0 mm >= 30.0 mm (Tabela 16)
+Distancia do parafuso a mesa da viga [detalhamento]  40.00 / 29.20 mm = 0.730  OK
+    firstRow = 40 mm >= solda + 0,5 db + folga = 29 mm
+Apoio: flexão local da mesa [NBR 8800:2024, 5.7.2]  69.13 / 125.45 kN = 0.551  OK
+    R_d = 6,25 tf² fy/γa1 = 125.5 kN (tf = 8.0 mm, fy = 345 MPa)
+    Força de tração normal à mesa = 69.1 kN.
+Apoio: escoamento local da alma [NBR 8800:2024, 5.7.3]  69.13 / 349.21 kN = 0.198  OK
+    R_d = 1,10 (5 k + n) fy tw/γa1 = 349.2 kN (k = 18.0 mm, n = 79 mm, tw = 6.0 mm)
+Apoio: enrugamento da alma [NBR 8800:2024, 5.7.4]  69.13 / 366.04 kN = 0.189  OK
+    R_d = 366.0 kN (n/d = 0.39, tw/tf = 0.75)
+Painel de alma do pilar (cisalhamento) [NBR 8800:2024, 5.7.7.1]  69.13 / 225.82 kN = 0.306  OK
+    F_Sd = F_mesas - V_pilar = 69.1 - 0.0 = 69.1 kN
+    V_Rd (5.4.3, Aw = dc tw = 200 x 6.0 mm): lambda = h/tw = 27.3; kv = 5.34; lambda_p = 61.2; lambda_r = 76.2; Vpl = 248.4 kN -> V_Rd = 225.8 kN
+    N_Sd = 0.0 kN <= 0,4 Np = 605.8 kN (Np = Ag fy, Ag = 4390 mm2): F_Rd = V_Rd
+    Cortante já atuante no pilar não informado (desprezado, a favor da segurança). Se não atender: chapas de reforço (5.7.7.2) ou enrijecedores diagonais (5.7.7.3).
+Forca minima de calculo da ligacao [NBR 8800:2024, 6.1.5.2]  0.00 / 45.00 kN = 0.000  OK
+    Forca solicitante resultante 20.00 kN < 45 kN: a ligacao e dimensionada para 45 kN, com a direcao e o sentido da forca atuante (6.1.5.2).
+
+   [servico] S3 | maxRatio=0.882353 | aprovada=1 | incompleta=0
+=== S4 2 fileiras, esforco baixo (M=10 V=10): camada B favoravel
+VEREDITO: NÃO VERIFICÁVEL — DADOS INSUFICIENTES. A ligação NÃO está aprovada (1 ocorrência(s): passe o mouse aqui ou veja a tabela de verificações).
+  [verif] Seção do pilar utilizada | dados de entrada | - | - | INFORMAÇÃO
+  [verif] Parafusos tracionados | NBR 8800:2024, 6.3.3.1 | 8.64 kN | 208.60 kN | 0.041
+  [verif] Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade | 6.3.5.4 | 25.00 mm | 7.77 mm | 0.311
+  [verif] Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) | NBR 8800:2024, 6.3.5.4 | - | - | NÃO VERIFICÁVEL — DADOS INSUFICIENTES
+  [verif] T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) | EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar) | 34.57 kN | 629.49 kN | MÉTODO COMPLEME
+  [verif] Cisalhamento do parafuso - parafusos da zona comprimida | 6.3.3.2 | 22.50 kN | 125.16 kN | 0.180
+  [verif] Pressao de contato / rasgamento - chapa / mesa do pilar | 6.3.3.3 | 22.50 kN | 129.00 kN | 0.174
+  [verif] Espacamento minimo entre furos | 6.3.9 | 90.00 mm | 72.00 mm | 0.800
+  [verif] Espacamento maximo entre parafusos | 6.3.10 | 300.00 mm | 90.00 mm | 0.300
+  [verif] Distancia livre entre bordas dos furos | 6.3.9 | 63.00 mm | 24.00 mm | 0.381
+  [verif] Distancia minima furo-borda | 6.3.11 / Tab. 16 | 35.00 mm | 30.00 mm | 0.857
+  [verif] Distancia maxima furo-borda | 6.3.12 | 150.00 mm | 40.00 mm | 0.267
+  [verif] Metal da solda (filete) - mesa da viga | 6.2.5 | 34.57 kN | 401.74 kN | 0.086
+  [verif] Perna minima do filete - mesa | 6.2.6.2.1 / Tab. 11 | 9.00 mm | 5.00 mm | 0.556
+  [verif] Metal da solda (filete) - alma da viga | 6.2.5 | 45.00 kN | 476.58 kN | 0.094
+  [verif] Perna minima do filete - alma | 6.2.6.2.1 / Tab. 11 | 6.00 mm | 5.00 mm | 0.833
+  [verif] Largura da chapa x mesa da viga | detalhamento | 170.00 mm | 150.00 mm | 0.882
+  [verif] Gabarito dos parafusos | NBR 8800:2024, 6.3.9 | 90.00 mm | 72.00 mm | 0.800
+  [verif] Distancia do parafuso a borda lateral | NBR 8800:2024, 6.3.11 | 40.00 mm | 30.00 mm | 0.750
+  [verif] Distancia do parafuso a mesa da viga | detalhamento | 40.00 mm | 29.20 mm | 0.730
+  [verif] Apoio: flexão local da mesa | NBR 8800:2024, 5.7.2 | 34.57 kN | 441.05 kN | 0.078
+  [verif] Apoio: escoamento local da alma | NBR 8800:2024, 5.7.3 | 34.57 kN | 756.69 kN | 0.046
+  [verif] Apoio: enrugamento da alma | NBR 8800:2024, 5.7.4 | 34.57 kN | 807.12 kN | 0.043
+  [verif] Painel de alma do pilar (cisalhamento) | NBR 8800:2024, 5.7.7.1 | 34.57 kN | 338.73 kN | 0.102
+  [verif] Forca minima de calculo da ligacao | NBR 8800:2024, 6.1.5.2 | 0.00 kN | 45.00 kN | 0.000
+  [verif] 28 | 13 (início) | Ligação rígida viga–pilar (chapa de extremidade) | - | NÃO VERIFICÁVEL — dados insuficientes
+--- MEMORIAL ---
+LIGAÇÃO – Ligação rígida viga–pilar (chapa de extremidade)
+Nó 28, viga 13 (extremidade inicial)
+Chapa 25.0 × 170 mm, 6 parafusos d24 ASTM A325 / F1852, solda 9/6 mm
+Esforços de cálculo: V = 10.00 kN, N = 0.00 kN
+
+RESULTADO DA LIGAÇÃO: NÃO VERIFICÁVEL — DADOS INSUFICIENTES
+  ! Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4): ligacao com 2 fileiras tracionadas: a interacao entre fileiras ainda nao foi validada por MEF independente; a soma de larguras tributarias nao e usada para aprovar (metodologia aprovada: apenas 1 fileira)
+
+Seção do pilar utilizada [dados de entrada]  INFORMAÇÃO
+    Origem: informada manualmente e confirmada pelo projetista
+    Pilar: d = 200.0 mm; bf = 200.0 mm; tf = 15.00 mm; tw = 9.00 mm; r = 18.0 mm
+    Aço do pilar: fy = 345 MPa; fu = 450 MPa
+Parafusos tracionados [NBR 8800:2024, 6.3.3.1]  8.64 / 208.60 kN = 0.041  OK
+    F_t = M/(d - tf) + N/2 = 34.6 kN na mesa tracionada; 4 parafusos: F_t,0,Sd = 8.6 kN (sem alavanca)
+    F_t,Rd = 0,75 Ab fub / ga2 = 208.6 kN; z = d - tf = 289 mm
+Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade [6.3.5.4]  25.00 / 7.77 mm = 0.311  OK
+    b - 0,5 db = 90.8 mm; a = min(a ; 1,25 b) = 35.0 mm; delta = 1 - df/p = 0.682
+    beta = [(a + 0,5 db)/(b - 0,5 db)] (Ft,Rd/Ft,0,Sd - 1) = 11.977; alfa = 1.000
+    t >= sqrt[4 (b - 0,5 db) Ft,0,Sd ga1 / (p fu (1 + delta alfa))] = 7.77 mm (adotada 25.00 mm)
+    Se a placa fosse rigida (sem alavanca), 6.3.5.3 exigiria t >= 10.08 mm
+Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) [NBR 8800:2024, 6.3.5.4]  NÃO VERIFICÁVEL — DADOS INSUFICIENTES
+    NÃO VERIFICÁVEL — DADOS INSUFICIENTES: ligacao com 2 fileiras tracionadas: a interacao entre fileiras ainda nao foi validada por MEF independente; a soma de larguras tributarias nao e usada para aprovar (metodologia aprovada: apenas 1 fileira)
+      - 6.3.5.4 aplicado a mesa do pilar esta liberado somente para 1 fileira tracionada
+      - Use a Camada B (T-stub EN, complementar e informativa) apenas como indicacao; ela nao substitui esta verificacao
+    A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
+T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) [EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar)]  MÉTODO COMPLEMENTAR — NÃO PARTICIPA DA APROVAÇÃO
+    METODO COMPLEMENTAR (EN 1993-1-8): nao e exigencia da NBR 8800 e NAO participa da aprovacao global.
+    Coeficientes EN usados: gammaM0 = 1.00; gammaM2 = 1.25; k2 = 0.90; metodo 2 da Tabela 6.2 (nao ha coeficientes da NBR neste metodo).
+    Parafuso: Ft,Rd = k2 fub As / gM2 = 211.0 kN (fub = 830 MPa; As = 353 mm2)
+    Parafuso ASTM: a EN nao tem essa classe; fub informado pelo usuario e usado no metodo EN sob responsabilidade do projetista.
+    m = (g - tw)/2 - 0,8 r = 26.10 mm; e = (bf - g)/2 = 55.00 mm; emin = 40.00 mm; ew = dw/4 = 10.39 mm
+    Fileira 1 (isolada): m = 26.10 mm; e = 55.00 mm; n = min(emin ; 1,25 m) = 32.62 mm
+      leff,1 = min(cp 164.0 ; nc 173.2) = 164.0 mm; leff,2 = nc = 173.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, fileira isolada)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 3182453 N.mm; Mpl,2,Rd = 3360192 N.mm (fy = 345 MPa; tf = 15.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 699.6 kN (ew = 10.39 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 348.8 kN; Modo 3 = SFt,Rd = 421.9 kN (2 parafusos x 211.0 kN)
+      FT,Rd = min(modos) = 348.8 kN: modo 2 governa
+    Fileira 2 (isolada): m = 26.10 mm; e = 55.00 mm; n = min(emin ; 1,25 m) = 32.62 mm
+      leff,1 = min(cp 164.0 ; nc 173.2) = 164.0 mm; leff,2 = nc = 173.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, fileira isolada)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 3182453 N.mm; Mpl,2,Rd = 3360192 N.mm (fy = 345 MPa; tf = 15.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 699.6 kN (ew = 10.39 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 348.8 kN; Modo 3 = SFt,Rd = 421.9 kN (2 parafusos x 211.0 kN)
+      FT,Rd = min(modos) = 348.8 kN: modo 2 governa
+    Grupo 1-2: m = 26.10 mm; e = 55.00 mm; n = min(emin ; 1,25 m) = 32.62 mm
+      leff,1 = min(cp 304.0 ; nc 243.2) = 243.2 mm; leff,2 = nc = 243.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, grupo de fileiras)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 4718630 N.mm; Mpl,2,Rd = 4718630 N.mm (fy = 345 MPa; tf = 15.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 1037.3 kN (ew = 10.39 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 629.5 kN; Modo 3 = SFt,Rd = 843.8 kN (4 parafusos x 211.0 kN)
+      FT,Rd = min(modos) = 629.5 kN: modo 2 governa
+    Fileira 1: resistencia efetiva = 348.8 kN (isolada)
+    Fileira 2: resistencia efetiva = 280.7 kN (grupo 1-2)
+    Resistencia total da mesa do pilar a tracao (soma das fileiras) = 629.5 kN
+    Resistencia a tracao do conjunto (componente governante: mesa do pilar) = 629.5 kN; tracao solicitante M/z + N/2 = 34.6 kN; razao informativa = 0.05
+    Nao incluidos nesta versao: alma do pilar tracionada (EN 6.2.6.3), alma da viga tracionada (6.2.6.8), mesa enrijecida (Tabela 6.5); chapa de extremidade em multiplas fileiras (Tabela 6.6, fileiras alem da primeira).
+Cisalhamento do parafuso - parafusos da zona comprimida [6.3.3.2]  22.50 / 125.16 kN = 0.180  OK
+    Ab = 0,25 pi db^2 = 452.4 mm2
+    Fv,Rd = 0.45 Ab fub / ga2 = 125.16 kN por plano de corte
+    Fv,Sd (parafuso mais solicitado) = 22.50 kN; 1 plano(s) -> 22.50 kN por plano
+Pressao de contato / rasgamento - chapa / mesa do pilar [6.3.3.3]  22.50 / 129.00 kN = 0.174  OK
+    dh = 27.0 mm; lf = min(21.5, 63.0) mm (conservador: aplicado a todos os parafusos)
+    Fc,Rd = min(1.2 lf t fu ; 2.4 db t fu) / ga2 = 129.00 kN
+Espacamento minimo entre furos [6.3.9]  90.00 / 72.00 mm = 0.800  OK
+    p = 90.0 mm >= 3 db = 72.0 mm (recomendado 2,7 db)
+Espacamento maximo entre parafusos [6.3.10]  300.00 / 90.00 mm = 0.300  OK
+    p = 90.0 mm <= min(24 t ; 300) = 300.0 mm (elementos pintados ou sem corrosao; 14 t / 180 mm em aco patinavel nao pintado)
+Distancia livre entre bordas dos furos [6.3.9]  63.00 / 24.00 mm = 0.381  OK
+    p - dh = 90.0 - 27.0 = 63.0 mm >= db = 24.0 mm
+Distancia minima furo-borda [6.3.11 / Tab. 16]  35.00 / 30.00 mm = 0.857  OK
+    min(le = 35.0, lt = 40.0) mm >= 30.0 mm (valor conservador da tabela; menores distancias se 6.3.3.3 for atendida)
+Distancia maxima furo-borda [6.3.12]  150.00 / 40.00 mm = 0.267  OK
+    max(le, lt) = 40.0 mm <= min(12 t ; 150) = 150.0 mm
+Metal da solda (filete) - mesa da viga [6.2.5]  34.57 / 401.74 kN = 0.086  OK
+    Aw = 0,707 a L = 0,707 x 9.0 x 292.9 = 1864 mm2
+    Fw,Rd = 0,6 Aw fw (1 + 0,5 sen^1,5 theta) / gw2 = 0,6 x 1864 x 485 x 1.000 / 1,35 = 401.74 kN
+Perna minima do filete - mesa [6.2.6.2.1 / Tab. 11]  9.00 / 5.00 mm = 0.556  OK
+    a = 9.0 mm >= 5.0 mm (parte mais fina 10.7 mm)
+Metal da solda (filete) - alma da viga [6.2.5]  45.00 / 476.58 kN = 0.094  OK
+    Aw = 0,707 a L = 0,707 x 6.0 x 521.2 = 2211 mm2
+    Fw,Rd = 0,6 Aw fw (1 + 0,5 sen^1,5 theta) / gw2 = 0,6 x 2211 x 485 x 1.000 / 1,35 = 476.58 kN
+Perna minima do filete - alma [6.2.6.2.1 / Tab. 11]  6.00 / 5.00 mm = 0.833  OK
+    a = 6.0 mm >= 5.0 mm (parte mais fina 7.1 mm)
+Largura da chapa x mesa da viga [detalhamento]  170.00 / 150.00 mm = 0.882  OK
+    b_chapa = 170 mm >= largura da mesa = 150 mm
+Gabarito dos parafusos [NBR 8800:2024, 6.3.9]  90.00 / 72.00 mm = 0.800  OK
+    g = 90 mm >= 3 db = 72 mm
+Distancia do parafuso a borda lateral [NBR 8800:2024, 6.3.11]  40.00 / 30.00 mm = 0.750  OK
+    (b - g)/2 = 40.0 mm >= 30.0 mm (Tabela 16)
+Distancia do parafuso a mesa da viga [detalhamento]  40.00 / 29.20 mm = 0.730  OK
+    firstRow = 40 mm >= solda + 0,5 db + folga = 29 mm
+Apoio: flexão local da mesa [NBR 8800:2024, 5.7.2]  34.57 / 441.05 kN = 0.078  OK
+    R_d = 6,25 tf² fy/γa1 = 441.1 kN (tf = 15.0 mm, fy = 345 MPa)
+    Força de tração normal à mesa = 34.6 kN.
+Apoio: escoamento local da alma [NBR 8800:2024, 5.7.3]  34.57 / 756.69 kN = 0.046  OK
+    R_d = 1,10 (5 k + n) fy tw/γa1 = 756.7 kN (k = 33.0 mm, n = 79 mm, tw = 9.0 mm)
+Apoio: enrugamento da alma [NBR 8800:2024, 5.7.4]  34.57 / 807.12 kN = 0.043  OK
+    R_d = 807.1 kN (n/d = 0.39, tw/tf = 0.60)
+Painel de alma do pilar (cisalhamento) [NBR 8800:2024, 5.7.7.1]  34.57 / 338.73 kN = 0.102  OK
+    F_Sd = F_mesas - V_pilar = 34.6 - 0.0 = 34.6 kN
+    V_Rd (5.4.3, Aw = dc tw = 200 x 9.0 mm): lambda = h/tw = 14.9; kv = 5.34; lambda_p = 61.2; lambda_r = 76.2; Vpl = 372.6 kN -> V_Rd = 338.7 kN
+    N_Sd = 0.0 kN <= 0,4 Np = 1077.5 kN (Np = Ag fy, Ag = 7808 mm2): F_Rd = V_Rd
+    Cortante já atuante no pilar não informado (desprezado, a favor da segurança). Se não atender: chapas de reforço (5.7.7.2) ou enrijecedores diagonais (5.7.7.3).
+Forca minima de calculo da ligacao [NBR 8800:2024, 6.1.5.2]  0.00 / 45.00 kN = 0.000  OK
+    Forca solicitante resultante 10.00 kN < 45 kN: a ligacao e dimensionada para
+   [servico] S4 | maxRatio=1e+09 | aprovada=0 | incompleta=1
+=== S5 1 fileira, fu do pilar 700 (divergencia A x B)
+VEREDITO: Atende (razão máxima 0.882 — Largura da chapa x mesa da viga).
+  [verif] Seção do pilar utilizada | dados de entrada | - | - | INFORMAÇÃO
+  [verif] Parafusos tracionados | NBR 8800:2024, 6.3.3.1 | 34.57 kN | 208.60 kN | 0.166
+  [verif] Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade | 6.3.5.4 | 25.00 mm | 7.44 mm | 0.297
+  [verif] Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) | NBR 8800:2024, 6.3.5.4 | 15.00 mm | 4.91 mm | 0.328
+  [verif] T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) | EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar) | 69.13 kN | 315.74 kN | MÉTODO COMPLEME
+  [verif] Advertencia de divergencia entre metodos (informativa) | informativa | 398.08 kN | 348.83 kN | MÉTODO COMPLEMENTAR — NÃO PARTICIPA DA APROVAÇÃO (η informativo 1.14)
+  [verif] Cisalhamento do parafuso - parafusos da zona comprimida | 6.3.3.2 | 22.50 kN | 125.16 kN | 0.180
+  [verif] Pressao de contato / rasgamento - chapa / mesa do pilar | 6.3.3.3 | 22.50 kN | 200.67 kN | 0.112
+  [verif] Espacamento minimo entre furos | 6.3.9 | 90.00 mm | 72.00 mm | 0.800
+  [verif] Espacamento maximo entre parafusos | 6.3.10 | 300.00 mm | 90.00 mm | 0.300
+  [verif] Distancia livre entre bordas dos furos | 6.3.9 | 63.00 mm | 24.00 mm | 0.381
+  [verif] Distancia minima furo-borda | 6.3.11 / Tab. 16 | 35.00 mm | 30.00 mm | 0.857
+  [verif] Distancia maxima furo-borda | 6.3.12 | 150.00 mm | 40.00 mm | 0.267
+  [verif] Metal da solda (filete) - mesa da viga | 6.2.5 | 69.13 kN | 401.74 kN | 0.172
+  [verif] Perna minima do filete - mesa | 6.2.6.2.1 / Tab. 11 | 9.00 mm | 5.00 mm | 0.556
+  [verif] Metal da solda (filete) - alma da viga | 6.2.5 | 45.00 kN | 476.58 kN | 0.094
+  [verif] Perna minima do filete - alma | 6.2.6.2.1 / Tab. 11 | 6.00 mm | 5.00 mm | 0.833
+  [verif] Largura da chapa x mesa da viga | detalhamento | 170.00 mm | 150.00 mm | 0.882
+  [verif] Gabarito dos parafusos | NBR 8800:2024, 6.3.9 | 90.00 mm | 72.00 mm | 0.800
+  [verif] Distancia do parafuso a borda lateral | NBR 8800:2024, 6.3.11 | 40.00 mm | 30.00 mm | 0.750
+  [verif] Distancia do parafuso a mesa da viga | detalhamento | 40.00 mm | 29.20 mm | 0.730
+  [verif] Apoio: flexão local da mesa | NBR 8800:2024, 5.7.2 | 69.13 kN | 441.05 kN | 0.157
+  [verif] Apoio: escoamento local da alma | NBR 8800:2024, 5.7.3 | 69.13 kN | 756.69 kN | 0.091
+  [verif] Apoio: enrugamento da alma | NBR 8800:2024, 5.7.4 | 69.13 kN | 807.12 kN | 0.086
+  [verif] Painel de alma do pilar (cisalhamento) | NBR 8800:2024, 5.7.7.1 | 69.13 kN | 338.73 kN | 0.204
+  [verif] Forca minima de calculo da ligacao | NBR 8800:2024, 6.1.5.2 | 0.00 kN | 45.00 kN | 0.000
+  [verif] 28 | 13 (início) | Ligação rígida viga–pilar (chapa de extremidade) | 0.88 | atende
+--- MEMORIAL ---
+LIGAÇÃO – Ligação rígida viga–pilar (chapa de extremidade)
+Nó 28, viga 13 (extremidade inicial)
+Chapa 25.0 × 170 mm, 4 parafusos d24 ASTM A325 / F1852, solda 9/6 mm
+Esforços de cálculo: V = 20.00 kN, N = 0.00 kN
+
+RESULTADO DA LIGAÇÃO: APROVADA
+
+Seção do pilar utilizada [dados de entrada]  INFORMAÇÃO
+    Origem: informada manualmente e confirmada pelo projetista
+    Pilar: d = 200.0 mm; bf = 200.0 mm; tf = 15.00 mm; tw = 9.00 mm; r = 18.0 mm
+    Aço do pilar: fy = 345 MPa; fu = 700 MPa
+Parafusos tracionados [NBR 8800:2024, 6.3.3.1]  34.57 / 208.60 kN = 0.166  OK
+    F_t = M/(d - tf) + N/2 = 69.1 kN na mesa tracionada; 2 parafusos: F_t,0,Sd = 34.6 kN (sem alavanca)
+    F_t,Rd = 0,75 Ab fub / ga2 = 208.6 kN; z = d - tf = 289 mm
+Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade [6.3.5.4]  25.00 / 7.44 mm = 0.297  OK
+    b - 0,5 db = 20.8 mm; a = min(a ; 1,25 b) = 35.0 mm; delta = 1 - df/p = 0.682
+    beta = [(a + 0,5 db)/(b - 0,5 db)] (Ft,Rd/Ft,0,Sd - 1) = 11.377; alfa = 1.000
+    t >= sqrt[4 (b - 0,5 db) Ft,0,Sd ga1 / (p fu (1 + delta alfa))] = 7.44 mm (adotada 25.00 mm)
+    Se a placa fosse rigida (sem alavanca), 6.3.5.3 exigiria t >= 9.65 mm
+Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) [NBR 8800:2024, 6.3.5.4]  15.00 / 4.91 mm = 0.328  OK
+    Mesa do pilar tratada como placa flexivel da Figura 15 (1 fileira tracionada, 2 parafusos, um de cada lado da alma)
+    b = (g - tw)/2 = (90.0 - 9.0)/2 = 40.50 mm [b LITERAL, sem desconto de 0,8 r]; a = min((bf - g)/2 ; 1,25 b) = 50.62 mm; p = 2 x min(e_ext ; 1,75 b) = 3,5 b = 141.8 mm
+    Ft,Rd = 0,75 Ab fub / ga2 = 208.60 kN; Ft,0,Sd = (M/z + N/2)/2 = 34.57 kN; df = 27 mm; delta = 1 - df/p = 0.810
+    beta = [(a + 0,5 db)/(b - 0,5 db)] (Ft,Rd/Ft,0,Sd - 1) = 11.063; alfa = 1.000
+    t >= sqrt[4 (b - 0,5 db) Ft,0,Sd ga1 / (p fu (1 + delta alfa))] = 4.91 mm (mesa tf = 15.00 mm; fu = 700 MPa; ga1 = 1.10)
+    Se a mesa fosse rigida (6.3.5.3), exigiria t >= 6.61 mm
+    Hipoteses complementares (nao textuais da NBR): H1 b literal (sem filete); H2 bordas e fileiras vizinhas do pilar suficientemente afastadas (p = 3,5 b); aplicacao do 6.3.5.4 a mesa de perfil laminado com alma e filete.
+    Limitacao: validado so para 1 fileira; contra o T-stub EN e MEF publicado a razao varia (ver docs/METODOLOGIA_ALAVANCA_MESA_PILAR.md, 4.3).
+T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) [EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar)]  MÉTODO COMPLEMENTAR — NÃO PARTICIPA DA APROVAÇÃO
+    METODO COMPLEMENTAR (EN 1993-1-8): nao e exigencia da NBR 8800 e NAO participa da aprovacao global.
+    Coeficientes EN usados: gammaM0 = 1.00; gammaM2 = 1.25; k2 = 0.90; metodo 2 da Tabela 6.2 (nao ha coeficientes da NBR neste metodo).
+    Parafuso: Ft,Rd = k2 fub As / gM2 = 211.0 kN (fub = 830 MPa; As = 353 mm2)
+    Parafuso ASTM: a EN nao tem essa classe; fub informado pelo usuario e usado no metodo EN sob responsabilidade do projetista.
+    m = (g - tw)/2 - 0,8 r = 26.10 mm; e = (bf - g)/2 = 55.00 mm; emin = 40.00 mm; ew = dw/4 = 10.39 mm
+    Fileira 1 (isolada): m = 26.10 mm; e = 55.00 mm; n = min(emin ; 1,25 m) = 32.62 mm
+      leff,1 = min(cp 164.0 ; nc 173.2) = 164.0 mm; leff,2 = nc = 173.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, fileira isolada)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 3182453 N.mm; Mpl,2,Rd = 3360192 N.mm (fy = 345 MPa; tf = 15.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 699.6 kN (ew = 10.39 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 348.8 kN; Modo 3 = SFt,Rd = 421.9 kN (2 parafusos x 211.0 kN)
+      FT,Rd = min(modos) = 348.8 kN: modo 2 governa
+    Fileira 1: resistencia efetiva = 348.8 kN (isolada)
+    Resistencia total da mesa do pilar a tracao (soma das fileiras) = 348.8 kN
+    Chapa de extremidade, fileira na extensao: m = 32.80 mm; e = 35.00 mm; n = min(emin ; 1,25 m) = 35.00 mm
+      leff,1 = min(cp 183.0 ; nc 85.0) = 85.0 mm; leff,2 = nc = 85.0 mm (EN 1993-1-8, Tabela 6.6, chapa de extremidade, fileira na extensao)
+      Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 3320312 N.mm; Mpl,2,Rd = 3320312 N.mm (fy = 250 MPa; tf = 25.00 mm; gM0 = 1.00)
+      Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 540.8 kN (ew = 10.39 mm)
+      Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 315.7 kN; Modo 3 = SFt,Rd = 421.9 kN (2 parafusos x 211.0 kN)
+      FT,Rd = min(modos) = 315.7 kN: modo 2 governa
+    Resistencia a tracao do conjunto (componente governante: chapa de extremidade) = 315.7 kN; tracao solicitante M/z + N/2 = 69.1 kN; razao informativa = 0.22
+    Nao incluidos nesta versao: alma do pilar tracionada (EN 6.2.6.3), alma da viga tracionada (6.2.6.8), mesa enrijecida (Tabela 6.5).
+Advertencia de divergencia entre metodos (informativa) [informativa]  MÉTODO COMPLEMENTAR — NÃO PARTICIPA DA APROVAÇÃO
+    ADVERTENCIA: a resistencia da mesa do pilar estimada pela Camada A (NBR 6.3.5.4) e pelo menos 10 % superior a da Camada B (T-stub EN 1993-1-8).
+    R_A (NBR, tracao total da fileira admitida pela espessura da mesa) = 398.1 kN; R_B (EN, mesa do pilar) = 348.8 kN; R_A/R_B = 1.14
+    Os metodos seguem normas diferentes (formulacoes, coeficientes e calibracoes distintos): isto nao e uma comparacao de fatores de seguranca e NAO altera a aprovacao global. Revise a mesa do pilar com criterio de engenharia.
+Cisalhamento do parafuso - parafusos da zona comprimida [6.3.3.2]  22.50 / 125.16 kN = 0.180  OK
+    Ab = 0,25 pi db^2 = 452.4 mm2
+    Fv,Rd = 0.45 Ab fub / ga2 = 125.16 kN por plano de corte
+    Fv,Sd (parafuso mais solicitado) = 22.50 kN; 1 plano(s) -> 22.50 kN por plano
+Pressao de contato / rasgamento - chapa / mesa do pilar [6.3.3.3]  22.50 / 200.67 kN = 0.112  OK
+    dh = 27.0 mm; lf = min(21.5, 63.0) mm (conservador: aplicado a todos os parafusos)
+    Fc,Rd = min(1.2 lf t fu ; 2.4 db t fu) / ga2 = 200.67 kN
+Espacamento minimo entre furos [6.3.9]  90.00 / 72.00 mm = 0.800  OK
+    p = 90.0 mm >= 3 db = 72.0 mm (recomendado 2,7 db)
+Espacamento maximo entre parafusos [6.3.10]  300.00 / 90.00 mm = 0.300  OK
+    p = 90.0 mm <= min(24 t ; 300) = 300.0 mm (elementos pintados ou sem corrosao; 14 t / 180 mm em aco patinavel nao pintado)
+Distancia livre entre bordas dos furos [6.3.9]  63.00 / 24.00 mm = 0.381  OK
+    p - dh = 90.0 - 27.0 = 63.0 mm >= db = 24.0 mm
+Distancia minima furo-borda [6.3.11 / Tab. 16]  35.00 / 30.00 mm = 0.857  OK
+    min(le = 35.0, lt = 40.0) mm >= 30.0 mm (valor conservador da tabela; menores distancias se 6.3.3.3 for atendida)
+Distancia maxima furo-borda [6.3.12]  150.00 / 40.00 mm = 0.267  OK
+    max(le, lt) = 40.0 mm <= min(12 t ; 150) = 150.0 mm
+Metal da solda (filete) - mesa da viga [6.2.5]  69.13 / 401.74 kN = 0.172  OK
+    Aw = 0,707 a L = 0,707 x 9.0 x 292.9 = 1864 mm2
+    Fw,Rd = 0,6 Aw fw (1 + 0,5 sen^1,5 theta) / gw2 = 0,6 x 1864 x 485 x 1.000 / 1,35 = 401.74 kN
+Perna minima do filete - mesa [6.2.6.2.1 / Tab. 11]  9.00 / 5.00 mm = 0.556  OK
+    a = 9.0 mm >= 5.0 mm (parte mais fina 10.7 mm)
+Metal da solda (filete) - alma da viga [6.2.5]  45.00 / 476.58 kN = 0.094  OK
+    Aw = 0,707 a L = 0,707 x 6.0 x 521.2 = 2211 mm2
+    Fw,Rd = 0,6 Aw fw (1 + 0,5 sen^1,5 theta) / gw2 = 0,6 x 2211 x 485 x 1.000 / 1,35 = 476.58 kN
+Perna minima do filete - alma [6.2.6.2.1 / Tab. 11]  6.00 / 5.00 mm = 0.833  OK
+    a = 6.0 mm >= 5.0 mm (parte mais fina 7.1 mm)
+Largura da chapa x mesa da viga [detalhamento]  170.00 / 150.00 mm = 0.882  OK
+    b_chapa = 170 mm >= largura da mesa = 150 mm
+Gabarito dos parafusos [NBR 8800:2024, 6.3.9]  90.00 / 72.00 mm = 0.800  OK
+    g = 90 mm >= 3 db = 72 mm
+Distancia do parafuso a borda lateral [NBR 8800:2024, 6.3.11]  40.00 / 30.00 mm = 0.750  OK
+    (b - g)/2 = 40.0 mm >= 30.0 mm (Tabela 16)
+Distancia do parafuso a mesa da viga [detalhamento]  40.00 / 29.20 mm = 0.730  OK
+    firstRow = 40 mm >= solda + 0,5 db + folga = 29 mm
+Apoio: flexão local da mesa [NBR 8800:2024, 5.7.2]  69.13 / 441.05 kN = 0.157  OK
+    R_d = 6,25 tf² fy/γa1 = 441.1 kN (tf = 15.0 mm, fy = 345 MPa)
+    Força de tração normal à mesa = 69.1 kN.
+Apoio: escoamento local da alma [NBR 8800:2024, 5.7.3]  69.13 / 756.69 kN = 0.091  OK
+    R_d = 1,10 (5 k + n) fy tw/γa1 = 756.7 kN (k = 33.0 mm, n = 79 mm, tw = 9.0 mm)
+Apoio: enrugamento da alma [NBR 8800:2024, 5.7.4]  69.13 / 807.12 kN = 0.086  OK
+    R_d = 807.1 kN (n/d = 0.39, tw/tf = 0.60)
+Painel de alma do pilar (cisalhamento) [NBR 8800:2024, 5.7.7.1]  69.13 / 338.73 kN = 0.204  OK
+    F_Sd = F_mesas - V_pilar = 69.1 - 0.0 = 69.1 kN
+    V_Rd (5.4.3, Aw = dc tw = 200 x 9.0 mm): lambda = h/tw = 14.9; kv = 5.34; lambda_p = 61.2; lambda_r = 76.2; Vpl = 372.6 kN -> V_Rd = 338.7 kN
+    N_Sd = 0.0 kN <= 0,4 Np = 1077.5 kN (Np = Ag fy, Ag = 7808 mm2): F_Rd = V_Rd
+    Cortante já atuante no pilar não informado (desprezado, a favor da segurança). Se não atender: chapas de reforço (5.7.7.2) ou enrijecedores diagonais (5.7.7.3).
+Forca minima de calculo da ligacao [NBR 8800:2024, 6.1.5.2]  0.00 / 45.00 kN = 0.000  OK
+ 
+   [servico] S5 | maxRatio=0.882353 | aprovada=1 | incompleta=0
+=== relatorio: html 244229 caracteres, docx 1750254 bytes

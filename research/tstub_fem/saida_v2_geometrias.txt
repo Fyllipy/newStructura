@@ -1,0 +1,5 @@
+F) TRES GEOMETRIAS de [P2] SEM filete (r=0; tw=8 e hw=30 ASSUMIDOS -- NAO sao os espécimes originais), malha h=4 mm nz=3
+esp. |       MEF | Piluso Ki   EN beff   EN leff bolt rig. |   P/MEF ENb/MEF ENl/MEF
+   1 |     115.6 |     255.8     411.6     452.2     122.7 |    2.21    3.56    3.91
+   7 |      72.7 |     116.2     201.8     201.8      74.8 |    1.60    2.78    2.78
+  12 |      57.2 |      54.9      96.6      96.6      59.8 |    0.96    1.69    1.69

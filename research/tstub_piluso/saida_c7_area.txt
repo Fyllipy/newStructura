@@ -1,0 +1,41 @@
+Combinacoes: R=area em Bu (beta_u, F_u,2, F_u,3); E=area em delta_b (eq. 40/51: so afeta delta_y/Ki quando Ki NAO e fornecido).
+     R         E         | mec   mecTab3 | beta_u   b/blim   Fu(kN)   | du(mm)    Ki(kN/mm) psi      | obs
+#1   bruta     bruta     | 2     2       | 0.7133   1.374    344.0    | 19.18     183.2     0.919    | 2
+#2   bruta     bruta     | 2     2       | 0.7108   1.370    343.7    | 19.38     188.4     0.924    | 2
+#3   bruta     bruta     | 2     2       | 0.5967   1.708    271.4    | 40.19     133.9     0.809    | 2
+#4   bruta     bruta     | 1     1       | 0.3729   0.668    324.2    | 62.63     97.0      0.000    | 1
+#5   bruta     bruta     | 1     1       | 0.4615   0.753    394.4    | 58.43     114.3     0.000    | 1
+#6   bruta     bruta     | 2     2       | 0.6720   1.335    482.3    | 34.03     192.9     0.983    | 2
+#7   bruta     bruta     | 1     1       | 0.3794   0.674    429.9    | 66.64     111.6     0.000    | 1
+#8   bruta     bruta     | 2     1       | 0.4053   1.308    319.4    | 41.24     117.4     1.177    | 1
+#9   bruta     bruta     | 1     1       | 0.2839   0.581    329.0    | 63.28     85.7      0.000    | 1
+#10  bruta     bruta     | 1     1       | 0.3942   0.647    305.3    | 38.98     131.2     0.000    | 1
+#11  bruta     bruta     | 1     1       | 0.3749   0.738    235.6    | 53.57     88.8      0.000    | 1
+#12  bruta     bruta     | 1     1       | 0.3405   0.637    198.8    | 87.77     52.7      0.000    | 1
+#1   ISO       bruta     | 2     2       | 0.9146   1.762    287.6    | 38.81     184.3     0.604    | 2
+#2   ISO       bruta     | 2     2       | 0.9115   1.756    287.3    | 38.00     189.5     0.608    | 2
+#3   ISO       bruta     | 2     2       | 0.7652   2.190    233.3    | 56.91     134.8     0.555    | 2
+#4   ISO       bruta     | 1     1       | 0.4778   0.856    324.2    | 62.63     97.0      0.000    | 1
+#5   ISO       bruta     | 1     1       | 0.5915   0.966    394.4    | 58.43     114.3     0.000    | 1
+#6   ISO       bruta     | 2     2       | 0.8612   1.710    403.2    | 61.82     193.9     0.658    | 2
+#7   ISO       bruta     | 1     1       | 0.4732   0.841    429.9    | 66.64     111.6     0.000    | 1
+#8   ISO       bruta     | 2     1       | 0.5195   1.676    271.8    | 51.38     118.0     0.853    | 1
+#9   ISO       bruta     | 1     1       | 0.3542   0.724    329.0    | 63.28     85.7      0.000    | 1
+#10  ISO       bruta     | 1     1       | 0.5055   0.830    305.3    | 38.98     131.2     0.000    | 1
+#11  ISO       bruta     | 1     1       | 0.4808   0.947    235.6    | 53.57     88.8      0.000    | 1
+#12  ISO       bruta     | 1     1       | 0.4366   0.817    198.8    | 87.77     52.7      0.000    | 1
+
+RESUMO por combinacao (12 especimes; mecanismo pelo criterio beta_u, sem forcar):
+R / E                  | Fu_th/Fu_exp  media  dp  min-max   | du_th/du_exp  media  dp  min-max   | mecanismo previsto != observado
+bruta / bruta          |  0.961  0.057  0.870-1.082          |  0.945  0.089  0.834-1.091          | [8]
+bruta / ISO            |  0.961  0.057  0.870-1.082          |  0.946  0.089  0.835-1.092          | [8]
+ISO / bruta            |  0.896  0.062  0.779-1.015          |  1.198  0.303  0.857-1.771          | [8]
+ISO / ISO              |  0.896  0.062  0.779-1.015          |  1.199  0.303  0.858-1.773          | [8]
+[P2] publicou: Fu media 0,98 dp 0,07 (0,87-1,11); du media 0,95 dp 0,09 (0,84-1,09).
+
+Efeito do alongamento (E) com Ki FORNECIDO: nenhum. Com Ki fornecido, delta_y = Fy/Ki e delta_e = F/Ki (eq. 41-46): as eq. (38)-(40)/(51) e a area de alongamento nao sao usadas.
+Variacao relativa de Ki (Piluso) ao trocar a area de alongamento (bruta -> ISO), para referencia:
+  # 1  Ki(bruta)=183.2  Ki(ISO)=178.8 kN/mm  (-2.41%)  delta_y 0.601 -> 0.616 mm
+  # 4  Ki(bruta)=97.0  Ki(ISO)=96.3 kN/mm  (-0.80%)  delta_y 0.908 -> 0.916 mm
+  # 7  Ki(bruta)=111.6  Ki(ISO)=110.7 kN/mm  (-0.74%)  delta_y 1.029 -> 1.036 mm
+  #12  Ki(bruta)=52.7  Ki(ISO)=52.3 kN/mm  (-0.63%)  delta_y 1.279 -> 1.287 mm

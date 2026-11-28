@@ -1,0 +1,40 @@
+B) VARIANTES FISICAS (malha h=4 mm, nz=3) -- espécime 7 sem filete
+  referencia: K = 72.7 kN/mm (B_q=29.0 kN, Q_q=4.0 kN)
+  SEM furo (aba macica sob a arruela)            K =    131.0 kN/mm  ( +80.2% vs ref)  B_q=32.6 Q_q=7.6 kN
+  parafuso RIGIDO (so flexao da aba + contato)   K =     74.8 kN/mm  (  +2.9% vs ref)  B_q=29.0 Q_q=4.0 kN
+  parafuso colado v1 (ARTEFATO, sem furo)        K =    355.8 kN/mm  (+389.4% vs ref)  B_q=34.7 Q_q=9.7 kN
+  arruela de 3 mm                                K =     36.7 kN/mm  ( -49.6% vs ref)  B_q=25.7 Q_q=0.7 kN
+  arruela de 8 mm                                K =    103.1 kN/mm  ( +41.8% vs ref)  B_q=30.3 Q_q=5.3 kN
+  SEM contato (ponta livre; sem alavanca)        K =     62.7 kN/mm  ( -13.8% vs ref)  B_q=25.0 Q_q=-0.0 kN
+  contato 10x mais mole (kn=2e4)                 K =     69.8 kN/mm  (  -4.0% vs ref)  B_q=28.9 Q_q=3.9 kN
+  contato 10x mais duro (kn=2e6)                 K =     74.0 kN/mm  (  +1.8% vs ref)  B_q=29.0 Q_q=4.0 kN
+  tw = 4 mm                                      K =     72.0 kN/mm  (  -1.0% vs ref)  B_q=28.8 Q_q=3.8 kN
+  tw = 12 mm                                     K =     71.9 kN/mm  (  -1.1% vs ref)  B_q=29.1 Q_q=4.1 kN
+  tw = 16 mm                                     K =     71.0 kN/mm  (  -2.4% vs ref)  B_q=29.2 Q_q=4.2 kN
+  hw = 15 mm                                     K =     71.3 kN/mm  (  -1.9% vs ref)  B_q=29.1 Q_q=4.1 kN
+  hw = 60 mm                                     K =     72.5 kN/mm  (  -0.3% vs ref)  B_q=28.9 Q_q=3.9 kN
+
+C) DEPENDENCIA COM A LARGURA b (parafuso e geometria fixos; formulas: Piluso beff = min(dh+2m, b); EN leff = min(2 pi m, 4m+1,25 n, b))
+  b (mm) |       MEF | Piluso Ki Piluso fl |   EN leff   EN beff
+    40.0 |      51.2 |      38.7      39.1 |      68.8      68.8
+    60.0 |      53.6 |      57.7      58.6 |     102.0     102.0
+    90.0 |      66.2 |      85.9      87.9 |     150.6     150.6
+   122.8 |      72.7 |     116.2     120.0 |     201.8     201.8
+   160.0 |      75.2 |     141.1     146.7 |     257.9     243.2
+   200.0 |      73.5 |     141.1     146.7 |     315.7     243.2
+   260.0 |      66.6 |     141.1     146.7 |     398.2     243.2
+
+D) DEPENDENCIA COM A ESPESSURA tf (m, n, b fixos; Lb = 2 tf + (th+tn)/2): expoente efetivo de tf entre pontos
+  tf=  9.0  MEF     34.6 | Piluso Ki     32.3 | EN(beff)     57.7 | EN(leff)     57.7
+  tf= 11.0  MEF     50.4 | Piluso Ki     58.6 | EN(beff)    103.9 | EN(leff)    103.9  expoente local = 1.88
+  tf= 13.9  MEF     72.7 | Piluso Ki    116.2 | EN(beff)    201.8 | EN(leff)    201.8  expoente local = 1.56
+  tf= 16.0  MEF     87.0 | Piluso Ki    173.7 | EN(beff)    295.2 | EN(leff)    295.2  expoente local = 1.27
+  tf= 19.0  MEF    104.9 | Piluso Ki    278.8 | EN(beff)    453.8 | EN(leff)    453.8  expoente local = 1.09
+
+E) DEPENDENCIA COM m (distancia eixo do parafuso - face da alma; n=71,7 fixo)
+  m= 30.0  MEF    120.7 | Piluso Ki    485.7 | EN(beff)    748.5 | EN(leff)    839.6
+  m= 40.0  MEF     97.5 | Piluso Ki    253.3 | EN(beff)    420.5 | EN(leff)    420.5
+  m= 52.5  MEF     72.7 | Piluso Ki    116.2 | EN(beff)    201.8 | EN(leff)    201.8
+  m= 65.0  MEF     53.9 | Piluso Ki     61.9 | EN(beff)    109.5 | EN(leff)    109.5
+  m= 80.0  MEF     38.2 | Piluso Ki     33.5 | EN(beff)     59.7 | EN(leff)     59.7
+

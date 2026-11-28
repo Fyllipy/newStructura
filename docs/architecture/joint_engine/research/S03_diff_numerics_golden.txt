@@ -1,0 +1,52 @@
+2000,2001c2000,2001
+< chk Solda viga-apoio - mesas (penetracao total) | 6.2.4 | 429.6003996 501.975 kN 0.85582030898 000
+<    Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (6.2.4): bf tf fy / ga1 = 165 x 9.7 x 345 / 1.10 = 501.97 kN
+---
+> chk Solda viga-apoio - mesas (penetracao total) | Tabela 9 (penetracao total) | 429.6003996 501.975 kN 0.85582030898 000
+>    Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (Tabela 9): bf tf fy / ga1 = 165 x 9.7 x 345 / 1.10 = 501.97 kN
+2006c2006
+< chk Solda viga-apoio - alma (metal-base) | 6.2.5 e 5.4.3 | 275.292498279 1091.45454545 N/mm 0.252225344084 000
+---
+> chk Solda viga-apoio - alma (metal-base) | Tabela 9 e 6.5.5 | 275.292498279 1091.45454545 N/mm 0.252225344084 000
+2010c2010
+< chk Solda viga-apoio - perna maxima da alma | 6.2.5.2 | 5.5 5.8 mm 0 010
+---
+> chk Solda viga-apoio - perna maxima da alma | 6.2.6.2.2 | 5.5 5.8 mm 0 010
+2295c2295
+< chk Solda de penetracao total das mesas: resistencia da mesa da viga | 6.2.4 | 429.6003996 501.975 kN 0.85582030898 000
+---
+> chk Solda de penetracao total das mesas: resistencia da mesa da viga | Tabela 9 (penetracao total) | 429.6003996 501.975 kN 0.85582030898 000
+2758,2759c2758,2759
+< chk Solda viga-apoio - mesas (penetracao total) | 6.2.4 | 429.6003996 501.975 kN 0.85582030898 000
+<    Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (6.2.4): bf tf fy / ga1 = 165 x 9.7 x 345 / 1.10 = 501.97 kN
+---
+> chk Solda viga-apoio - mesas (penetracao total) | Tabela 9 (penetracao total) | 429.6003996 501.975 kN 0.85582030898 000
+>    Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (Tabela 9): bf tf fy / ga1 = 165 x 9.7 x 345 / 1.10 = 501.97 kN
+2764c2764
+< chk Solda viga-apoio - alma (metal-base) | 6.2.5 e 5.4.3 | 275.292498279 1091.45454545 N/mm 0.252225344084 000
+---
+> chk Solda viga-apoio - alma (metal-base) | Tabela 9 e 6.5.5 | 275.292498279 1091.45454545 N/mm 0.252225344084 000
+2768c2768
+< chk Solda viga-apoio - perna maxima da alma | 6.2.5.2 | 5.5 5.8 mm 0 010
+---
+> chk Solda viga-apoio - perna maxima da alma | 6.2.6.2.2 | 5.5 5.8 mm 0 010
+2813c2813
+< chk Solda de topo gousset - banzo: tensao normal (N/Ag + M/W) | 6.2.4 | 6.76657206877 227.272727273 MPa 0.0297729171026 000
+---
+> chk Solda de topo gousset - banzo: tensao normal (N/Ag + M/W) | Tabela 9 (penetracao total) | 6.76657206877 227.272727273 MPa 0.0297729171026 000
+2815,2816c2815,2816
+< chk Solda de topo gousset - banzo: cisalhamento | 6.2.4 | 47.3660044814 136.363636364 MPa 0.34735069953 000
+< chk Solda de topo gousset - banzo: interacao tensao normal x cisalhamento | 6.2.4 | 0.121538935057 1 - 0.121538935057 000
+---
+> chk Solda de topo gousset - banzo: cisalhamento | Tabela 9 (penetracao total) | 47.3660044814 136.363636364 MPa 0.34735069953 000
+> chk Solda de topo gousset - banzo: interacao tensao normal x cisalhamento | Tabela 9 (penetracao total); interacao: criterio do programa | 0.121538935057 1 - 0.121538935057 000
+2950c2950
+< chk Solda de topo gousset - banzo: tensao normal (N/Ag + M/W) | 6.2.4 | 6.76657206877 227.272727273 MPa 0.0297729171026 000
+---
+> chk Solda de topo gousset - banzo: tensao normal (N/Ag + M/W) | Tabela 9 (penetracao total) | 6.76657206877 227.272727273 MPa 0.0297729171026 000
+2952,2953c2952,2953
+< chk Solda de topo gousset - banzo: cisalhamento | 6.2.4 | 47.3660044814 136.363636364 MPa 0.34735069953 000
+< chk Solda de topo gousset - banzo: interacao tensao normal x cisalhamento | 6.2.4 | 0.121538935057 1 - 0.121538935057 000
+---
+> chk Solda de topo gousset - banzo: cisalhamento | Tabela 9 (penetracao total) | 47.3660044814 136.363636364 MPa 0.34735069953 000
+> chk Solda de topo gousset - banzo: interacao tensao normal x cisalhamento | Tabela 9 (penetracao total); interacao: criterio do programa | 0.121538935057 1 - 0.121538935057 000

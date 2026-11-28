@@ -1,0 +1,41 @@
+A) NBR 8800:2024 6.3.5.4 aplicado ao T-stub da verificacao IDEA (bf=300, w=165, tw=20, 2 parafusos M24, faixa de 100 mm de comprimento ao longo da alma => p = 100 mm por parafuso; fu=360; gamma_a1=1,0 so para comparar a mecanica)
+  chapa   b=m(EN)  b=lit.   MC(EN)  RM(MEF)  | NBR 6.3.5.4 com b=m: kN  /MC  /RM | com b literal: kN  /MC  /RM | placa rigida (6.3.5.3, b=m): kN
+  tf10    61.2    72.5     44    115   |      64   1.45  0.55  |      52   1.18  0.45  |     37
+  tf12    61.2    72.5     63    144   |      92   1.46  0.64  |      75   1.18  0.52  |     53
+  tf15    61.2    72.5     98    200   |     143   1.46  0.72  |     116   1.19  0.58  |     82
+  tf20    61.2    72.5    174    269   |     255   1.46  0.95  |     207   1.19  0.77  |    146
+  tf25    57.2    72.5    279    310   |     349   1.25  1.13  |     311   1.12  1.00  |    249
+  tf30    57.2    72.5    305    329   |     389   1.28  1.18  |     347   1.14  1.05  |    358
+  tf35    57.2    72.5    335    347   |     407   1.21  1.17  |     388   1.16  1.12  |    407
+  tf40    57.2    72.5    371    371   |     407   1.10  1.10  |     407   1.10  1.10  |    407
+  tf45    57.2    72.5    407    400   |     407   1.00  1.02  |     407   1.00  1.02  |    407
+  tf50    57.2    72.5    407    407   |     407   1.00  1.00  |     407   1.00  1.00  |    407
+
+B) NBR 6.3.5.4 aplicado a mesa do pilar do SCI P398 C.1 (UKC 254x254x107; tf=20,5; m=33,4; e=79,4; fu=410; w=100; M24 8.8; gamma_a1=1,0) - comparado ao EN publicado
+  fileira 1 isolada: p = 116.9 mm -> NBR 407 kN | EN publicado 398 kN (2.2%)
+  fileiras 1-2    p_i=[108.4, 108.4] -> NBR (soma das fileiras com largura tributaria) 813 kN | EN publicado (grupo) 697 kN (16.7%)
+  fileiras 1-2-3  p_i=[108.4, 95.0, 103.4] -> NBR (soma das fileiras com largura tributaria) 1213 kN | EN publicado (grupo) 988 kN (22.8%)
+  fileiras 2-3    p_i=[103.4, 103.4] -> NBR (soma das fileiras com largura tributaria) 813 kN | EN publicado (grupo) 691 kN (17.7%)
+  soma das fileiras ISOLADAS (p=3,5b cada), para mostrar o erro de ignorar a interacao: 3 x 407 = 1220 kN (EN grupo 988)
+
+C) Varredura de espessura da mesa - fileira isolada (UKC 254x254x107; m=33,4; e=79,4; fu=410, fy=265): EN (P398, metodo 2) x NBR 6.3.5.4 (p = 3,5 b) , gamma = 1,0
+   tf    EN modo  EN kN | NBR kN  NBR/EN
+    8.0   1       137 |     127   0.93
+   10.0   1       214 |     199   0.93
+   12.0   2       285 |     287   1.01
+   14.0   2       306 |     353   1.15
+   16.0   2       331 |     372   1.13
+   18.0   2       359 |     394   1.10
+   20.5   2       398 |     407   1.02
+   25.0   3       407 |     407   1.00
+
+D) Varredura - grupo de 3 fileiras (p1-2=100, p2-3=90), tributario NBR por fileira x EN grupo (P398 metodo 2)
+   tf    EN grupo kN | NBR soma kN  NBR/EN
+    8.0       275   |     328    1.19
+   10.0       430   |     513    1.19
+   12.0       620   |     739    1.19
+   14.0       824   |     996    1.21
+   16.0       869   |    1087    1.25
+   18.0       919   |    1144    1.24
+   20.5       991   |    1213    1.22
+   25.0      1144   |    1220    1.07

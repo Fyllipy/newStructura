@@ -1,0 +1,36 @@
+[janela do nó, visita 1] ligações definidas listadas: 0; respostas mecânicas: 0
+    par 14–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–48 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 1228–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    ação create: pedido de definição (par 0, tipologia 147): enviado
+[configurador, visita 1] ligações na lista: 1
+    id 1 | tipo 147 | nó 10 | viga 14 | extremidade início | apoio (barra) 18 | verificada sim
+    clique em "Aplicar e fechar"
+[janela do nó, visita 2] ligações definidas listadas: 1; respostas mecânicas: 1
+    ligação 1: Viga–pilar flangeada fora do nó | barra 14 | topologia Partial | lacunas 4 | modelo: Disponível (EnComponentMethod) | M–θ: Sim | fingerprint f93939200a3b
+    resposta mecânica (1ª): Sentido POSITIVO (mesa superior tracionada): Curva M–θ calculada (determinado, com ressalvas) Rigidez inicial Sj,ini = 432.451 kN·m/rad   |   Resistência Mj,Rd = 1.1625 kN·m (ligação soldada ao pilar: alma do pilar comprimida (Fc,wc,Rd))   |   Em Mj,Rd: secante = 144.71; tangente = 39.11 kN·m/rad   |   Braço de alavanca z = 143.8 mm   |   Capacidade de rotação: indisponível   |   Convergência: não aplicável (forma fechada) Flexibilidade total: fileiras tracionadas 4.7 %; maior contribuinte: k1 Parte soldada ao pilar — Painel de alma do pilar ao cisalhamento Fingerprint da configuração: 5bc2b11d6e9f   Fingerprint da análise (deste sentido): 95971e00ee46
+    níveis de momento: 5; componentes: 9
+    aviso do topo: ATENÇÃO — ligação que NÃO atende ao comportamento requerido do nó:NÃO ATENDE (viga 14): Não atende: nenhum dos dois sentidos atende ao requerido.
+    quadro de comparação: Classificação normativa e comparação com o requerido — sentido POSITIVO (mesa superior tracionada)Comportamento requerido: Rígido &nbsp; (base: continuidade implícita do modelo (não declarada))Rigidez inicial (Sj,ini): 432.451 kN·m/rad &nbsp; | &nbsp; Si a 2/3 Mj,Rd: 432.451 kN·m/rad &nbsp; | &nbsp; η = Si/(EIv/Lv) = 15.27Critério: NBR 8800 2024, 6.1.2.1 e 6.1.2.2 — rotulada: Si ≤ 14.158; rígida: Si ≥ 707.91 kN·m/rad (EIv/Lv = 28.317; Kv/Kp = n/d)Classificação da ligação: semirrígidaResultado da comparação (este sentido): NÃO ATENDE — requerido rígido; ligação real semirrígida. Si = 432.45 kN·m/rad (η = Si/(EIv/Lv) = 15.27) &lt; 25 EIv/Lv: a ligação é semirrígida, mas o modelo a considera rígida (contínua) (limites: rotulada ≤ 14.158; rígida ≥ 707.91 kN·m/rad).
+    resultado global: Resultado global (dois sentidos, regra conservadora do programa): NÃO ATENDE — Não atende: nenhum dos dois sentidos atende ao requerido.Simetria: Sentidos ASSIMÉTRICOS: as fileiras/componentes de cada sentido diferem; as respostas são independentes e não se presume simetria.Regra de combinação (decisão CONSERVADORA do programa; a NBR 8800:2024, 6.1.2 não define como reunir classes direcionais): Atende somente se os dois sentidos atendem; Não atende se algum sentido não atende; Indeterminado se nenhum não atende mas algum sentido é indeterminado ou está indisponível; Não aplicável se ambos o são. Não há média de rigidezes nem de resistências.
+    sentido 0: Positivo (mesa superior tracionada) | Calculada (determinado, com ressalvas) | 432.451 | 1.1625 | ligação soldada ao pilar: alma do pilar comprimida (Fc,wc,Rd) | mesa superior tracionada; 2 fileira(s) tracionada(s): 1 (h = 208.0 mm) 2 (h = 138.0 mm) | semirrígida | NÃO ATENDE
+    sentido 1: Negativo (mesa inferior tracionada) | Calculada (determinado, com ressalvas) | 429.725 | 1.1625 | ligação soldada ao pilar: alma do pilar comprimida (Fc,wc,Rd) | mesa inferior tracionada; 1 fileira(s) tracionada(s): 1 (h = 138.0 mm) | semirrígida | NÃO ATENDE
+    par 14–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: NÃO ATENDE (+: NÃO ATENDE; −: NÃO ATENDE) [classes: +semirrígida / −semirrígida]
+    par 14–48 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 14–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 1228–18 | requerido: Rígido | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    par 48–1228 | requerido: Indeterminado | sistema/contraventamento: indeterminada | ligação definida: sem ligação definida
+    fim do fluxo: janela fechada sem novo pedido
+[salvamento] saveToDat(C:/Users/João/Documents/Repos/newStructura/docs/architecture/joint_engine/visual/inc6_t147_projeto.dat): ok
+    seção [CONNECTIONS] no arquivo: presente
+      [CONNECTIONS]
+      # ID tipo(0=chapa de cisalhamento,1=cantoneira dupla) no viga extremidade_final(0/1) aproveitamento verificada(0/1) parafuso governante chave=valor...
+      1 147 10 14 0 1e+09 1 ASTM%20A325%20%2F%20F1852 Dados%20de%20entrada%3A%20parafusos beamD=100 beamFu=400 beamFy=250 bfl=50 bothSides=0 cont=0 contT=9.
+      
+      [ANALYSIS_RESULTS]
+      # FINGERPRINT: impressao digital do modelo analisado (resultados so sao restaurados se o modelo nao mudou)
+ligações no modelo ao final: 1

@@ -1,0 +1,901 @@
+=== C01 IPE300 / col 260x146x12.7 / padrao (2 fileiras)
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=4944beb5dc95
+Sj_ini=23683.1717334 MjRd_used=83.9668241333 MjRd_EN=83.9668241333 MjRd_NBR=0 nbrAvail=0 nbrBelowCurve=0
+metrics: onset=55.9778827556 thOnset=0.0023636142737 thRes=0.0105953245056 secRes=7924.89405007 tanRes=2141.86325678 M_half=72.3617496415 th_half=0.00611081576878
+curve(42 pts): (8.441479549e-05,1.999210098) (0.000168829591,3.998420197) (0.0002532443865,5.997630295) (0.000337659182,7.996840394) (0.0004220739774,9.996050492) (0.0005064887729,11.99526059) (0.0005909035684,13.99447069) (0.0006753183639,15.99368079) (0.0007597331594,17.99289089) (0.0008441479549,19.99210098) (0.0009285627504,21.99131108) (0.001012977546,23.99052118) (0.001097392341,25.98973128) (0.001181807137,27.98894138) (0.001266221932,29.98815148) (0.001350636728,31.98736157) (0.001435051523,33.98657167) (0.001519466319,35.98578177) (0.001603881114,37.98499187) (0.00168829591,39.98420197) (0.001772710705,41.98341207) (0.001857125501,43.98262217) (0.001941540296,45.98183226) (0.002025955092,47.98104236) (0.002110369887,49.98025246) (0.002194784683,51.97946256) (0.002279199478,53.97867266) (0.002363614274,55.97788276) (0.00269131468,57.97709285) (0.003050988218,59.97630295) (0.003444531456,61.97551305) (0.003873885746,63.97472315) (0.004341036781,65.97393325) (0.004848014176,67.97314335) (0.005396891066,69.97235344) (0.005989783717,71.97156354) (0.00662885115,73.97077364) (0.007316294784,75.96998374) (0.008054358089,77.96919384) (0.008845326249,79.96840394) (0.009691525837,81.96761403) (0.01059532451,83.96682413)
+classe: byStiffness=1 final=1 eta=3.55247576001
+equivalente bilinear: valid=1 k=23683.1717334 My=55.9778827556 h=0.143567630972
+  M=20.9917 sec=23683.17173 tan=23683.17173
+  M=41.9834 sec=23683.17173 tan=23683.17173
+  M=55.9779 sec=23683.17173 tan=23683.17173
+  M=67.1735 sec=14476.06418 tan=3912.449778
+  M=83.9668 sec=7924.89405 tan=2141.863257
+memoria (65 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 214.6 mm;  Avc = 2219 mm2
+| Fileira 1: h = 404.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 0.5649 mm
+| Fileira 2: h = 334.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 1.8251 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 353.71 mm;  keq = soma(keff,r h_r) / zeq = 2.3729 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 2.384 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 2219 / (1.00 x 353.71) = 2.384 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: 4.636 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 187.00 mm (sp = 44.80 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 187.00 x 7.60 / 214.60 = 4.636 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 4.160 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 167.80 mm;  k3 = 0,7 beff,t,wc twc / dc = 4.160 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 8.453 mm
+|       m = 33.20 mm;  leff = min(circular = 208.60; não circular = 167.80) = 167.80 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 8.453 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 0.791 mm
+|       m = 102.80 mm;  leff = min(circular = 645.91; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 0.791 mm
+|   k10 (fileira 1) - Parafusos tracionados: 6.748 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 58.10 mm
+|       k10 = 1,6 As / Lb = 1,6 x 245 / 58.10 = 6.748 mm (uma fileira, As de um parafuso)
+|   k3 (fileira 2) - Alma do pilar tracionada: 4.160 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 167.80 mm;  k3 = 0,7 beff,t,wc twc / dc = 4.160 mm
+|   k4 (fileira 2) - Mesa do pilar em flexão: 8.453 mm
+|       m = 33.20 mm;  leff = min(circular = 208.60; não circular = 167.80) = 167.80 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 8.453 mm
+|   k5 (fileira 2) - Chapa de extremidade em flexão: 24.366 mm
+|       m = 32.80 mm;  leff = min(circular = 206.09; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 24.366 mm
+|   k10 (fileira 2) - Parafusos tracionados: 6.748 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 58.10 mm
+|       k10 = 1,6 As / Lb = 1,6 x 245 / 58.10 = 6.748 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 1.0566 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 353.71^2 / 1.0566 = 2.368e+10 N.mm/rad = 23683.2 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 262089 N (6.2.6.1);  Vwp,Rd / beta = 262089 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.808; kwc = 1.000; beff,c,wc = 187.00 mm; lambda_p = 0.869; rho = 0.886  ->  231186 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 136840541 / 289.30 = 473006 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 167.8; leff,2 = 167.8; m = 33.20; n = min(e; 1,25 m) = 28.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 1537754 N.mm;  modo 1 = 4 Mpl,1/m = 185272 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 182807 N;  modo 3 = SFt = 289725 N
+| Fileira 1, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 102.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2423273 N.mm;  modo 1 = 4 Mpl,1/m = 94291 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 115095 N;  modo 3 = SFt = 289725 N
+| Fileira 1: Ft,fc,Rd = 182807 N;  Ft,ep,Rd = 94291 N;  Ft,wc,Rd = 242437 N;  Ft,wb,Rd = 137159 N  ->  isolada = 94291 N (chapa de extremidade (modo 1 (escoamento completo da mesa)))
+| Fileira 2, mesa do pilar: leff,1 = 167.8; leff,2 = 167.8; m = 33.20; n = min(e; 1,25 m) = 28.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 1537754 N.mm;  modo 1 = 4 Mpl,1/m = 185272 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 182807 N;  modo 3 = SFt = 289725 N
+| Fileira 2, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 32.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2423273 N.mm;  modo 1 = 4 Mpl,1/m = 295521 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 225763 N;  modo 3 = SFt = 289725 N
+| Fileira 2: Ft,fc,Rd = 182807 N;  Ft,ep,Rd = 225763 N;  Ft,wc,Rd = 242437 N;  Ft,wb,Rd = 137159 N  ->  isolada = 137159 N (alma da viga tracionada (Ft,wb,Rd))
+| Fileira 1: Ftr,Rd efetiva = 94291 N (h = 404.65 mm)
+| Fileira 2: Ftr,Rd efetiva = 136895 N (h = 334.65 mm)  [limitada por: alma do pilar comprimida (Fc,wc,Rd)]
+| Mj,Rd = soma(Ftr,Rd hr) = 83.97 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 83.97 kN.m
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 55.98 kN.m (theta = 0.00236 rad)
+|   Rigidez secante a Sj,ini/2: M = 72.36 kN.m (theta = 0.00611 rad)
+|   Em Mj,Rd: theta = 0.01060 rad;  secante = 7925 kN.m/rad;  tangente = 2142 kN.m/rad
+=== C02 idem, 1 fileira
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=604b2f758cf9
+Sj_ini=19301.2971598 MjRd_used=45.9002897727 MjRd_EN=45.9002897727 MjRd_NBR=63.705647084 nbrAvail=1 nbrBelowCurve=0
+metrics: onset=30.6001931818 thOnset=0.0015853956824 thRes=0.00710682022517 secRes=6458.62542156 tanRes=1745.57443826 M_half=39.5563999388 th_half=0.00409883331791
+curve(42 pts): (5.662127437e-05,1.092864042) (0.0001132425487,2.185728084) (0.0001698638231,3.278592127) (0.0002264850975,4.371456169) (0.0002831063719,5.464320211) (0.0003397276462,6.557184253) (0.0003963489206,7.650048295) (0.000452970195,8.742912338) (0.0005095914693,9.83577638) (0.0005662127437,10.92864042) (0.0006228340181,12.02150446) (0.0006794552925,13.11436851) (0.0007360765668,14.20723255) (0.0007926978412,15.30009659) (0.0008493191156,16.39296063) (0.0009059403899,17.48582468) (0.0009625616643,18.57868872) (0.001019182939,19.67155276) (0.001075804213,20.7644168) (0.001132425487,21.85728084) (0.001189046762,22.95014489) (0.001245668036,24.04300893) (0.001302289311,25.13587297) (0.001358910585,26.22873701) (0.001415531859,27.32160106) (0.001472153134,28.4144651) (0.001528774408,29.50732914) (0.001585395682,30.60019318) (0.001805200925,31.69305722) (0.002046452165,32.78592127) (0.002310421527,33.87878531) (0.002598411173,34.97164935) (0.002911753007,36.06451339) (0.003251808397,37.15737744) (0.003619967898,38.25024148) (0.004017650997,39.34310552) (0.004446305858,40.43596956) (0.004907409086,41.5288336) (0.005402465487,42.62169765) (0.005933007852,43.71456169) (0.006500596729,44.80742573) (0.007106820225,45.90028977)
+classe: byStiffness=1 final=1 eta=2.89519457397
+equivalente bilinear: valid=1 k=19301.2971598 My=30.6001931818 h=0.143567630972
+  M=11.4751 sec=19301.29716 tan=19301.29716
+  M=22.9501 sec=19301.29716 tan=19301.29716
+  M=30.6002 sec=19301.29716 tan=19301.29716
+  M=36.7202 sec=11797.69414 tan=3188.565984
+  M=45.9003 sec=6458.625422 tan=1745.574438
+memoria (48 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 214.6 mm;  Avc = 2219 mm2
+| Fileira 1: h = 334.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 1.8251 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 334.65 mm;  keq = soma(keff,r h_r) / zeq = 1.8251 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 2.520 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 2219 / (1.00 x 334.65) = 2.520 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: 4.636 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 187.00 mm (sp = 44.80 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 187.00 x 7.60 / 214.60 = 4.636 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 4.160 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 167.80 mm;  k3 = 0,7 beff,t,wc twc / dc = 4.160 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 8.453 mm
+|       m = 33.20 mm;  leff = min(circular = 208.60; não circular = 167.80) = 167.80 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 8.453 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 24.366 mm
+|       m = 32.80 mm;  leff = min(circular = 206.09; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 24.366 mm
+|   k10 (fileira 1) - Parafusos tracionados: 6.748 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 58.10 mm
+|       k10 = 1,6 As / Lb = 1,6 x 245 / 58.10 = 6.748 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 1.1604 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 334.65^2 / 1.1604 = 1.93e+10 N.mm/rad = 19301.3 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 262089 N (6.2.6.1);  Vwp,Rd / beta = 262089 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.808; kwc = 1.000; beff,c,wc = 187.00 mm; lambda_p = 0.869; rho = 0.886  ->  231186 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 136840541 / 289.30 = 473006 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 167.8; leff,2 = 167.8; m = 33.20; n = min(e; 1,25 m) = 28.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 1537754 N.mm;  modo 1 = 4 Mpl,1/m = 185272 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 182807 N;  modo 3 = SFt = 289725 N
+| Fileira 1, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 32.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2423273 N.mm;  modo 1 = 4 Mpl,1/m = 295521 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 225763 N;  modo 3 = SFt = 289725 N
+| Fileira 1: Ft,fc,Rd = 182807 N;  Ft,ep,Rd = 225763 N;  Ft,wc,Rd = 242437 N;  Ft,wb,Rd = 137159 N  ->  isolada = 137159 N (alma da viga tracionada (Ft,wb,Rd))
+| Fileira 1: Ftr,Rd efetiva = 137159 N (h = 334.65 mm)
+| Mj,Rd = soma(Ftr,Rd hr) = 45.90 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 45.90 kN.m
+|   NÍVEL C (verificação construtiva da ligação cadastrada, NBR 8800:2024, V = N = 0): Mj,Rd = 63.71 kN.m  (governa: Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4))
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 30.60 kN.m (theta = 0.00159 rad)
+|   Rigidez secante a Sj,ini/2: M = 39.56 kN.m (theta = 0.00410 rad)
+|   Em Mj,Rd: theta = 0.00711 rad;  secante = 6459 kN.m/rad;  tangente = 1746 kN.m/rad
+=== C03 idem, 3 fileiras
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=cb40baf30027
+Sj_ini=25273.7990518 MjRd_used=91.8200227865 MjRd_EN=91.8200227865 MjRd_NBR=0 nbrAvail=0 nbrBelowCurve=0
+metrics: onset=61.2133485244 thOnset=0.00242200819904 thRes=0.0108570857393 secRes=8457.15185378 tanRes=2285.71671724 M_half=79.1295558637 th_half=0.00626178563037
+curve(42 pts): (8.650029282e-05,2.186191019) (0.0001730005856,4.372382037) (0.0002595008785,6.558573056) (0.0003460011713,8.744764075) (0.0004325014641,10.93095509) (0.0005190017569,13.11714611) (0.0006055020498,15.30333713) (0.0006920023426,17.48952815) (0.0007785026354,19.67571917) (0.0008650029282,21.86191019) (0.0009515032211,24.04810121) (0.001038003514,26.23429222) (0.001124503807,28.42048324) (0.0012110041,30.60667426) (0.001297504392,32.79286528) (0.001384004685,34.9790563) (0.001470504978,37.16524732) (0.001557005271,39.35143834) (0.001643505564,41.53762936) (0.001730005856,43.72382037) (0.001816506149,45.91001139) (0.001903006442,48.09620241) (0.001989506735,50.28239343) (0.002076007028,52.46858445) (0.002162507321,54.65477547) (0.002249007613,56.84096649) (0.002335507906,59.02715751) (0.002422008199,61.21334852) (0.002757804559,63.39953954) (0.003126363959,65.58573056) (0.003529629823,67.77192158) (0.003969591462,69.9581126) (0.004448283628,72.14430362) (0.004967786078,74.33049464) (0.005530223166,76.51668566) (0.006137763439,78.70287667) (0.006792619258,80.88906769) (0.00749704643,83.07525871) (0.00825334385,85.26144973) (0.009063853157,87.44764075) (0.009930958405,89.63383177) (0.01085708574,91.82002279)
+classe: byStiffness=1 final=1 eta=3.79106985777
+equivalente bilinear: valid=1 k=25273.7990518 My=61.2133485244 h=0.143567630972
+  M=22.9550 sec=25273.79905 tan=25273.79905
+  M=45.9100 sec=25273.79905 tan=25273.79905
+  M=61.2133 sec=25273.79905 tan=25273.79905
+  M=73.4560 sec=15448.31669 tan=4175.220726
+  M=91.8200 sec=8457.151854 tan=2285.716717
+memoria (83 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 214.6 mm;  Avc = 2219 mm2
+| Fileira 1: h = 474.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 0.1537 mm
+| Fileira 2: h = 404.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 0.5649 mm
+| Fileira 3: h = 334.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 1.8251 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 363.38 mm;  keq = soma(keff,r h_r) / zeq = 2.5105 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 2.321 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 2219 / (1.00 x 363.38) = 2.321 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: 4.636 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 187.00 mm (sp = 44.80 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 187.00 x 7.60 / 214.60 = 4.636 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 4.160 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 167.80 mm;  k3 = 0,7 beff,t,wc twc / dc = 4.160 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 8.453 mm
+|       m = 33.20 mm;  leff = min(circular = 208.60; não circular = 167.80) = 167.80 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 8.453 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 0.167 mm
+|       m = 172.80 mm;  leff = min(circular = 1085.73; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 0.167 mm
+|   k10 (fileira 1) - Parafusos tracionados: 6.748 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 58.10 mm
+|       k10 = 1,6 As / Lb = 1,6 x 245 / 58.10 = 6.748 mm (uma fileira, As de um parafuso)
+|   k3 (fileira 2) - Alma do pilar tracionada: 4.160 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 167.80 mm;  k3 = 0,7 beff,t,wc twc / dc = 4.160 mm
+|   k4 (fileira 2) - Mesa do pilar em flexão: 8.453 mm
+|       m = 33.20 mm;  leff = min(circular = 208.60; não circular = 167.80) = 167.80 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 8.453 mm
+|   k5 (fileira 2) - Chapa de extremidade em flexão: 0.791 mm
+|       m = 102.80 mm;  leff = min(circular = 645.91; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 0.791 mm
+|   k10 (fileira 2) - Parafusos tracionados: 6.748 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 58.10 mm
+|       k10 = 1,6 As / Lb = 1,6 x 245 / 58.10 = 6.748 mm (uma fileira, As de um parafuso)
+|   k3 (fileira 3) - Alma do pilar tracionada: 4.160 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 167.80 mm;  k3 = 0,7 beff,t,wc twc / dc = 4.160 mm
+|   k4 (fileira 3) - Mesa do pilar em flexão: 8.453 mm
+|       m = 33.20 mm;  leff = min(circular = 208.60; não circular = 167.80) = 167.80 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 8.453 mm
+|   k5 (fileira 3) - Chapa de extremidade em flexão: 24.366 mm
+|       m = 32.80 mm;  leff = min(circular = 206.09; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 24.366 mm
+|   k10 (fileira 3) - Parafusos tracionados: 6.748 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 58.10 mm
+|       k10 = 1,6 As / Lb = 1,6 x 245 / 58.10 = 6.748 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 1.0449 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 363.38^2 / 1.0449 = 2.527e+10 N.mm/rad = 25273.8 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 262089 N (6.2.6.1);  Vwp,Rd / beta = 262089 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.808; kwc = 1.000; beff,c,wc = 187.00 mm; lambda_p = 0.869; rho = 0.886  ->  231186 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 136840541 / 289.30 = 473006 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 167.8; leff,2 = 167.8; m = 33.20; n = min(e; 1,25 m) = 28.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 1537754 N.mm;  modo 1 = 4 Mpl,1/m = 185272 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 182807 N;  modo 3 = SFt = 289725 N
+| Fileira 1, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 172.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2423273 N.mm;  modo 1 = 4 Mpl,1/m = 56094 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 77235 N;  modo 3 = SFt = 289725 N
+| Fileira 1: Ft,fc,Rd = 182807 N;  Ft,ep,Rd = 56094 N;  Ft,wc,Rd = 242437 N;  Ft,wb,Rd = 137159 N  ->  isolada = 56094 N (chapa de extremidade (modo 1 (escoamento completo da mesa)))
+| Fileira 2, mesa do pilar: leff,1 = 167.8; leff,2 = 167.8; m = 33.20; n = min(e; 1,25 m) = 28.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 1537754 N.mm;  modo 1 = 4 Mpl,1/m = 185272 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 182807 N;  modo 3 = SFt = 289725 N
+| Fileira 2, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 102.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2423273 N.mm;  modo 1 = 4 Mpl,1/m = 94291 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 115095 N;  modo 3 = SFt = 289725 N
+| Fileira 2: Ft,fc,Rd = 182807 N;  Ft,ep,Rd = 94291 N;  Ft,wc,Rd = 242437 N;  Ft,wb,Rd = 137159 N  ->  isolada = 94291 N (chapa de extremidade (modo 1 (escoamento completo da mesa)))
+| Fileira 3, mesa do pilar: leff,1 = 167.8; leff,2 = 167.8; m = 33.20; n = min(e; 1,25 m) = 28.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 1537754 N.mm;  modo 1 = 4 Mpl,1/m = 185272 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 182807 N;  modo 3 = SFt = 289725 N
+| Fileira 3, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 32.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2423273 N.mm;  modo 1 = 4 Mpl,1/m = 295521 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 225763 N;  modo 3 = SFt = 289725 N
+| Fileira 3: Ft,fc,Rd = 182807 N;  Ft,ep,Rd = 225763 N;  Ft,wc,Rd = 242437 N;  Ft,wb,Rd = 137159 N  ->  isolada = 137159 N (alma da viga tracionada (Ft,wb,Rd))
+| Fileira 1: Ftr,Rd efetiva = 56094 N (h = 474.65 mm)
+| Fileira 2: Ftr,Rd efetiva = 94291 N (h = 404.65 mm)
+| Fileira 3: Ftr,Rd efetiva = 80801 N (h = 334.65 mm)  [limitada por: alma do pilar comprimida (Fc,wc,Rd)]
+| Mj,Rd = soma(Ftr,Rd hr) = 91.82 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 91.82 kN.m
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 61.21 kN.m (theta = 0.00242 rad)
+|   Rigidez secante a Sj,ini/2: M = 79.13 kN.m (theta = 0.00626 rad)
+|   Em Mj,Rd: theta = 0.01086 rad;  secante = 8457 kN.m/rad;  tangente = 2286 kN.m/rad
+=== C04 IPE300 / HEB200 / M24 / chapa 25 / 1 fileira
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=130b88219bce
+Sj_ini=29715.4847664 MjRd_used=45.9002897727 MjRd_EN=45.9002897727 MjRd_NBR=101.358126042 nbrAvail=1 nbrBelowCurve=0
+metrics: onset=30.6001931818 thOnset=0.0010297726395 thRes=0.00461614037616 secRes=9943.4345649 tanRes=2687.41474727 M_half=39.5563999388 th_half=0.00266234256313
+curve(42 pts): (3.677759427e-05,1.092864042) (7.355518854e-05,2.185728084) (0.0001103327828,3.278592127) (0.0001471103771,4.371456169) (0.0001838879713,5.464320211) (0.0002206655656,6.557184253) (0.0002574431599,7.650048295) (0.0002942207541,8.742912338) (0.0003309983484,9.83577638) (0.0003677759427,10.92864042) (0.0004045535369,12.02150446) (0.0004413311312,13.11436851) (0.0004781087255,14.20723255) (0.0005148863197,15.30009659) (0.000551663914,16.39296063) (0.0005884415083,17.48582468) (0.0006252191026,18.57868872) (0.0006619966968,19.67155276) (0.0006987742911,20.7644168) (0.0007355518854,21.85728084) (0.0007723294796,22.95014489) (0.0008091070739,24.04300893) (0.0008458846682,25.13587297) (0.0008826622624,26.22873701) (0.0009194398567,27.32160106) (0.000956217451,28.4144651) (0.0009929950452,29.50732914) (0.001029772639,30.60019318) (0.001172544206,31.69305722) (0.001329245734,32.78592127) (0.001500703515,33.87878531) (0.001687763352,34.97164935) (0.001891290366,36.06451339) (0.002112168813,37.15737744) (0.002351301911,38.25024148) (0.002609611668,39.34310552) (0.002888038721,40.43596956) (0.003187542178,41.5288336) (0.003509099467,42.62169765) (0.00385370619,43.71456169) (0.004222375983,44.80742573) (0.004616140376,45.90028977)
+classe: byStiffness=1 final=1 eta=4.45732271496
+equivalente bilinear: valid=1 k=29715.4847664 My=30.6001931818 h=0.143567630972
+  M=11.4751 sec=29715.48477 tan=29715.48477
+  M=22.9501 sec=29715.48477 tan=29715.48477
+  M=30.6002 sec=29715.48477 tan=29715.48477
+  M=36.7202 sec=18163.24559 tan=4908.985295
+  M=45.9003 sec=9943.434565 tan=2687.414747
+memoria (48 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 134.0 mm;  Avc = 2483 mm2
+| Fileira 1: h = 334.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 3.2070 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 334.65 mm;  keq = soma(keff,r h_r) / zeq = 3.2070 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 2.820 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 2483 / (1.00 x 334.65) = 2.820 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: 11.458 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 243.70 mm (sp = 50.00 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 243.70 x 9.00 / 134.00 = 11.458 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 7.710 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 163.99 mm;  k3 = 0,7 beff,t,wc twc / dc = 7.710 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 28.017 mm
+|       m = 26.10 mm;  leff = min(circular = 163.99; não circular = 173.15) = 163.99 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 28.017 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 33.873 mm
+|       m = 32.80 mm;  leff = min(circular = 206.09; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 33.873 mm
+|   k10 (fileira 1) - Parafusos tracionados: 8.554 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 66.00 mm
+|       k10 = 1,6 As / Lb = 1,6 x 353 / 66.00 = 8.554 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 0.75375 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 334.65^2 / 0.75375 = 2.972e+10 N.mm/rad = 29715.5 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 293243 N (6.2.6.1);  Vwp,Rd / beta = 293243 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.705; kwc = 1.000; beff,c,wc = 243.70 mm; lambda_p = 0.662; rho = 1.000  ->  351228 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 136840541 / 289.30 = 473006 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 164.0; leff,2 = 173.2; m = 26.10; n = min(e; 1,25 m) = 32.62 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2096478 N.mm;  modo 1 = 4 Mpl,1/m = 321299 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 307167 N;  modo 3 = SFt = 417204 N
+| Fileira 1, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 32.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 3018466 N.mm;  modo 1 = 4 Mpl,1/m = 368106 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 312158 N;  modo 3 = SFt = 417204 N
+| Fileira 1: Ft,fc,Rd = 307167 N;  Ft,ep,Rd = 312158 N;  Ft,wc,Rd = 277678 N;  Ft,wb,Rd = 137159 N  ->  isolada = 137159 N (alma da viga tracionada (Ft,wb,Rd))
+| Fileira 1: Ftr,Rd efetiva = 137159 N (h = 334.65 mm)
+| Mj,Rd = soma(Ftr,Rd hr) = 45.90 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 45.90 kN.m
+|   NÍVEL C (verificação construtiva da ligação cadastrada, NBR 8800:2024, V = N = 0): Mj,Rd = 101.36 kN.m  (governa: Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4))
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 30.60 kN.m (theta = 0.00103 rad)
+|   Rigidez secante a Sj,ini/2: M = 39.56 kN.m (theta = 0.00266 rad)
+|   Em Mj,Rd: theta = 0.00462 rad;  secante = 9943 kN.m/rad;  tangente = 2687 kN.m/rad
+=== C05 idem, 2 fileiras
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=e4475579cad4
+Sj_ini=34871.6777947 MjRd_used=93.4264465865 MjRd_EN=93.4264465865 MjRd_NBR=0 nbrAvail=0 nbrBelowCurve=0
+metrics: onset=62.2842977243 thOnset=0.00178609982838 thRes=0.00800651252266 secRes=11668.8066523 tanRes=3153.73152766 M_half=80.5139554528 th_half=0.00461772765434
+curve(42 pts): (6.378927958e-05,2.224439204) (0.0001275785592,4.448878409) (0.0001913678388,6.673317613) (0.0002551571183,8.897756818) (0.0003189463979,11.12219602) (0.0003827356775,13.34663523) (0.0004465249571,15.57107443) (0.0005103142367,17.79551364) (0.0005741035163,20.01995284) (0.0006378927958,22.24439204) (0.0007016820754,24.46883125) (0.000765471355,26.69327045) (0.0008292606346,28.91770966) (0.0008930499142,31.14214886) (0.0009568391938,33.36658807) (0.001020628473,35.59102727) (0.001084417753,37.81546648) (0.001148207033,40.03990568) (0.001211996312,42.26434488) (0.001275785592,44.48878409) (0.001339574871,46.71322329) (0.001403364151,48.9376625) (0.00146715343,51.1621017) (0.00153094271,53.38654091) (0.00159473199,55.61098011) (0.001658521269,57.83541932) (0.001722310549,60.05985852) (0.001786099828,62.28429772) (0.002033731451,64.50873693) (0.002305524041,66.73317613) (0.002602910767,68.95761534) (0.00292735864,71.18205454) (0.003280368178,73.40649375) (0.00366347309,75.63093295) (0.004078239971,77.85537216) (0.004526268007,80.07981136) (0.005009188696,82.30425056) (0.005528665571,84.52868977) (0.006086393944,86.75312897) (0.006684100646,88.97756818) (0.007323543789,91.20200738) (0.008006512523,93.42644659)
+classe: byStiffness=1 final=1 eta=5.2307516692
+equivalente bilinear: valid=1 k=34871.6777947 My=62.2842977243 h=0.143567630972
+  M=23.3566 sec=34871.67779 tan=34871.67779
+  M=46.7132 sec=34871.67779 tan=34871.67779
+  M=62.2843 sec=34871.67779 tan=34871.67779
+  M=74.7412 sec=21314.90881 tan=5760.786164
+  M=93.4264 sec=11668.80665 tan=3153.731528
+memoria (65 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 134.0 mm;  Avc = 2483 mm2
+| Fileira 1: h = 404.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 0.8395 mm
+| Fileira 2: h = 334.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 3.2070 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 351.48 mm;  keq = soma(keff,r h_r) / zeq = 4.0200 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 2.685 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 2483 / (1.00 x 351.48) = 2.685 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: 11.458 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 243.70 mm (sp = 50.00 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 243.70 x 9.00 / 134.00 = 11.458 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 7.710 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 163.99 mm;  k3 = 0,7 beff,t,wc twc / dc = 7.710 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 28.017 mm
+|       m = 26.10 mm;  leff = min(circular = 163.99; não circular = 173.15) = 163.99 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 28.017 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 1.100 mm
+|       m = 102.80 mm;  leff = min(circular = 645.91; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 1.100 mm
+|   k10 (fileira 1) - Parafusos tracionados: 8.554 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 66.00 mm
+|       k10 = 1,6 As / Lb = 1,6 x 353 / 66.00 = 8.554 mm (uma fileira, As de um parafuso)
+|   k3 (fileira 2) - Alma do pilar tracionada: 7.710 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 163.99 mm;  k3 = 0,7 beff,t,wc twc / dc = 7.710 mm
+|   k4 (fileira 2) - Mesa do pilar em flexão: 28.017 mm
+|       m = 26.10 mm;  leff = min(circular = 163.99; não circular = 173.15) = 163.99 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 28.017 mm
+|   k5 (fileira 2) - Chapa de extremidade em flexão: 33.873 mm
+|       m = 32.80 mm;  leff = min(circular = 206.09; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 33.873 mm
+|   k10 (fileira 2) - Parafusos tracionados: 8.554 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 66.00 mm
+|       k10 = 1,6 As / Lb = 1,6 x 353 / 66.00 = 8.554 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 0.70853 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 351.48^2 / 0.70853 = 3.487e+10 N.mm/rad = 34871.7 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 293243 N (6.2.6.1);  Vwp,Rd / beta = 293243 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.705; kwc = 1.000; beff,c,wc = 243.70 mm; lambda_p = 0.662; rho = 1.000  ->  351228 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 136840541 / 289.30 = 473006 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 164.0; leff,2 = 173.2; m = 26.10; n = min(e; 1,25 m) = 32.62 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2096478 N.mm;  modo 1 = 4 Mpl,1/m = 321299 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 307167 N;  modo 3 = SFt = 417204 N
+| Fileira 1, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 102.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 3018466 N.mm;  modo 1 = 4 Mpl,1/m = 117450 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 159139 N;  modo 3 = SFt = 417204 N
+| Fileira 1: Ft,fc,Rd = 307167 N;  Ft,ep,Rd = 117450 N;  Ft,wc,Rd = 277678 N;  Ft,wb,Rd = 137159 N  ->  isolada = 117450 N (chapa de extremidade (modo 1 (escoamento completo da mesa)))
+| Fileira 2, mesa do pilar: leff,1 = 164.0; leff,2 = 173.2; m = 26.10; n = min(e; 1,25 m) = 32.62 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2096478 N.mm;  modo 1 = 4 Mpl,1/m = 321299 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 307167 N;  modo 3 = SFt = 417204 N
+| Fileira 2, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 32.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 3018466 N.mm;  modo 1 = 4 Mpl,1/m = 368106 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 312158 N;  modo 3 = SFt = 417204 N
+| Fileira 2: Ft,fc,Rd = 307167 N;  Ft,ep,Rd = 312158 N;  Ft,wc,Rd = 277678 N;  Ft,wb,Rd = 137159 N  ->  isolada = 137159 N (alma da viga tracionada (Ft,wb,Rd))
+| Fileira 1: Ftr,Rd efetiva = 117450 N (h = 404.65 mm)
+| Fileira 2: Ftr,Rd efetiva = 137159 N (h = 334.65 mm)
+| Mj,Rd = soma(Ftr,Rd hr) = 93.43 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 93.43 kN.m
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 62.28 kN.m (theta = 0.00179 rad)
+|   Rigidez secante a Sj,ini/2: M = 80.51 kN.m (theta = 0.00462 rad)
+|   Em Mj,Rd: theta = 0.00801 rad;  secante = 11669 kN.m/rad;  tangente = 3154 kN.m/rad
+=== C06 mesa do pilar esbelta tf=8 / 1 fileira (camada A reprova)
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=c51699c26dca
+Sj_ini=13546.9706195 MjRd_used=29.3131925134 MjRd_EN=29.3131925134 MjRd_NBR=26.3 nbrAvail=1 nbrBelowCurve=1
+metrics: onset=19.5421283422 thOnset=0.00144254600465 thRes=0.00646647094817 secRes=4533.10511225 tanRes=1225.16354385 M_half=25.2618092888 th_half=0.00372951414724
+curve(42 pts): (5.151950017e-05,0.6979331551) (0.0001030390003,1.39586631) (0.0001545585005,2.093799465) (0.0002060780007,2.79173262) (0.0002575975008,3.489665775) (0.000309117001,4.18759893) (0.0003606365012,4.885532086) (0.0004121560013,5.583465241) (0.0004636755015,6.281398396) (0.0005151950017,6.979331551) (0.0005667145018,7.677264706) (0.000618234002,8.375197861) (0.0006697535022,9.073131016) (0.0007212730023,9.771064171) (0.0007727925025,10.46899733) (0.0008243120027,11.16693048) (0.0008758315028,11.86486364) (0.000927351003,12.56279679) (0.0009788705032,13.26072995) (0.001030390003,13.9586631) (0.001081909503,14.65659626) (0.001133429004,15.35452941) (0.001184948504,16.05246257) (0.001236468004,16.75039572) (0.001287987504,17.44832888) (0.001339507004,18.14626203) (0.001391026504,18.84419519) (0.001442546005,19.54212834) (0.001642546029,20.2400615) (0.001862059691,20.93799465) (0.002102244493,21.63592781) (0.002364285268,22.33386096) (0.002649393911,23.03179412) (0.002958809125,23.72972727) (0.003293796171,24.42766043) (0.003655646636,25.12559358) (0.0040456782,25.82352674) (0.00446523442,26.52145989) (0.004915684514,27.21939305) (0.005398423161,27.9173262) (0.005914870303,28.61525936) (0.006466470948,29.31319251)
+classe: byStiffness=1 final=1 eta=2.03204559292
+equivalente bilinear: valid=1 k=13546.9706195 My=19.5421283422 h=0.143567630972
+  M=7.3283 sec=13546.97062 tan=13546.97062
+  M=14.6566 sec=13546.97062 tan=13546.97062
+  M=19.5421 sec=13546.97062 tan=13546.97062
+  M=23.4506 sec=8280.42875 tan=2237.953716
+  M=29.3132 sec=4533.105112 tan=1225.163544
+memoria (49 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 164.0 mm;  Avc = 1398 mm2
+| Fileira 1: h = 334.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 1.2746 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 334.65 mm;  keq = soma(keff,r h_r) / zeq = 1.2746 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 1.587 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 1398 / (1.00 x 334.65) = 1.587 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: 4.187 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 163.50 mm (sp = 44.80 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 163.50 x 6.00 / 164.00 = 4.187 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 5.244 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 204.75 mm;  k3 = 0,7 beff,t,wc twc / dc = 5.244 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 2.400 mm
+|       m = 34.00 mm;  leff = min(circular = 213.63; não circular = 204.75) = 204.75 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 2.400 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 24.366 mm
+|       m = 32.80 mm;  leff = min(circular = 206.09; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 24.366 mm
+|   k10 (fileira 1) - Parafusos tracionados: 7.342 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 53.40 mm
+|       k10 = 1,6 As / Lb = 1,6 x 245 / 53.40 = 7.342 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 1.6534 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 334.65^2 / 1.6534 = 1.355e+10 N.mm/rad = 13547.0 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 165077 N (6.2.6.1);  Vwp,Rd / beta = 165077 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.781; kwc = 1.000; beff,c,wc = 163.50 mm; lambda_p = 0.899; rho = 0.865  ->  150527 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 136840541 / 289.30 = 473006 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 204.8; leff,2 = 204.8; m = 34.00; n = min(e; 1,25 m) = 42.50 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 744545 N.mm;  modo 1 = 4 Mpl,1/m = 87594 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 180423 N;  modo 3 = SFt = 289725 N
+| Fileira 1, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 32.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2423273 N.mm;  modo 1 = 4 Mpl,1/m = 295521 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 225763 N;  modo 3 = SFt = 289725 N
+| Fileira 1: Ft,fc,Rd = 87594 N;  Ft,ep,Rd = 225763 N;  Ft,wc,Rd = 197225 N;  Ft,wb,Rd = 137159 N  ->  isolada = 87594 N (mesa do pilar (modo 1 (escoamento completo da mesa)))
+| Fileira 1: Ftr,Rd efetiva = 87594 N (h = 334.65 mm)
+| Mj,Rd = soma(Ftr,Rd hr) = 29.31 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 29.31 kN.m
+|   NÍVEL C (verificação construtiva da ligação cadastrada, NBR 8800:2024, V = N = 0): Mj,Rd = 26.30 kN.m  (governa: Apoio: flexão local da mesa)
+|   ATENÇÃO (nível C): a ligação cadastrada resiste, pela NBR, a 26.30 kN.m, menos que o Mj,Rd da curva (29.31 kN.m): ela NÃO sustenta o momento da curva. Redimensione a ligação (etapa posterior) antes de adotar a curva como representativa.
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 19.54 kN.m (theta = 0.00144 rad)
+|   Rigidez secante a Sj,ini/2: M = 25.26 kN.m (theta = 0.00373 rad)
+|   Em Mj,Rd: theta = 0.00647 rad;  secante = 4533 kN.m/rad;  tangente = 1225 kN.m/rad
+=== C07 mesa do pilar esbelta tf=8 / 2 fileiras
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=706707806d92
+Sj_ini=17238.487521 MjRd_used=56.5055257541 MjRd_EN=56.5055257541 MjRd_NBR=0 nbrAvail=0 nbrBelowCurve=0
+metrics: onset=37.6703505027 thOnset=0.00218524684703 thRes=0.00979576055483 secRes=5768.36534925 tanRes=1559.01766196 M_half=48.6958837634 th_half=0.0056496701006
+curve(42 pts): (7.804453025e-05,1.345369661) (0.0001560890605,2.690739322) (0.0002341335908,4.036108982) (0.000312178121,5.381478643) (0.0003902226513,6.726848304) (0.0004682671815,8.072217965) (0.0005463117118,9.417587626) (0.000624356242,10.76295729) (0.0007024007723,12.10832695) (0.0007804453025,13.45369661) (0.0008584898328,14.79906627) (0.000936534363,16.14443593) (0.001014578893,17.48980559) (0.001092623424,18.83517525) (0.001170667954,20.18054491) (0.001248712484,21.52591457) (0.001326757014,22.87128423) (0.001404801545,24.21665389) (0.001482846075,25.56202356) (0.001560890605,26.90739322) (0.001638935135,28.25276288) (0.001716979666,29.59813254) (0.001795024196,30.9435022) (0.001873068726,32.28887186) (0.001951113256,33.63424152) (0.002029157787,34.97961118) (0.002107202317,36.32498084) (0.002185246847,37.6703505) (0.00248821772,39.01572016) (0.002820748909,40.36108982) (0.003184593861,41.70645949) (0.003581547424,43.05182915) (0.004013445444,44.39719881) (0.004482164374,45.74256847) (0.004989620903,47.08793813) (0.005537771593,48.43330779) (0.006128612538,49.77867745) (0.006764179031,51.12404711) (0.00744654524,52.46941677) (0.008177823899,53.81478643) (0.008960166011,55.16015609) (0.009795760555,56.50552575)
+classe: byStiffness=1 final=1 eta=2.58577312815
+equivalente bilinear: valid=1 k=17238.487521 My=37.6703505027 h=0.143567630972
+  M=14.1264 sec=17238.48752 tan=17238.48752
+  M=28.2528 sec=17238.48752 tan=17238.48752
+  M=37.6704 sec=17238.48752 tan=17238.48752
+  M=45.2044 sec=10536.82566 tan=2847.79072
+  M=56.5055 sec=5768.365349 tan=1559.017662
+memoria (65 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 164.0 mm;  Avc = 1398 mm2
+| Fileira 1: h = 404.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 0.4983 mm
+| Fileira 2: h = 334.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 1.2746 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 357.12 mm;  keq = soma(keff,r h_r) / zeq = 1.7590 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 1.487 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 1398 / (1.00 x 357.12) = 1.487 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: 4.187 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 163.50 mm (sp = 44.80 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 163.50 x 6.00 / 164.00 = 4.187 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 5.244 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 204.75 mm;  k3 = 0,7 beff,t,wc twc / dc = 5.244 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 2.400 mm
+|       m = 34.00 mm;  leff = min(circular = 213.63; não circular = 204.75) = 204.75 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 2.400 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 0.791 mm
+|       m = 102.80 mm;  leff = min(circular = 645.91; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 0.791 mm
+|   k10 (fileira 1) - Parafusos tracionados: 7.342 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 53.40 mm
+|       k10 = 1,6 As / Lb = 1,6 x 245 / 53.40 = 7.342 mm (uma fileira, As de um parafuso)
+|   k3 (fileira 2) - Alma do pilar tracionada: 5.244 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 204.75 mm;  k3 = 0,7 beff,t,wc twc / dc = 5.244 mm
+|   k4 (fileira 2) - Mesa do pilar em flexão: 2.400 mm
+|       m = 34.00 mm;  leff = min(circular = 213.63; não circular = 204.75) = 204.75 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 2.400 mm
+|   k5 (fileira 2) - Chapa de extremidade em flexão: 24.366 mm
+|       m = 32.80 mm;  leff = min(circular = 206.09; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 24.366 mm
+|   k10 (fileira 2) - Parafusos tracionados: 7.342 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 53.40 mm
+|       k10 = 1,6 As / Lb = 1,6 x 245 / 53.40 = 7.342 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 1.4796 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 357.12^2 / 1.4796 = 1.724e+10 N.mm/rad = 17238.5 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 165077 N (6.2.6.1);  Vwp,Rd / beta = 165077 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.781; kwc = 1.000; beff,c,wc = 163.50 mm; lambda_p = 0.899; rho = 0.865  ->  150527 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 136840541 / 289.30 = 473006 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 204.8; leff,2 = 204.8; m = 34.00; n = min(e; 1,25 m) = 42.50 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 744545 N.mm;  modo 1 = 4 Mpl,1/m = 87594 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 180423 N;  modo 3 = SFt = 289725 N
+| Fileira 1, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 102.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2423273 N.mm;  modo 1 = 4 Mpl,1/m = 94291 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 115095 N;  modo 3 = SFt = 289725 N
+| Fileira 1: Ft,fc,Rd = 87594 N;  Ft,ep,Rd = 94291 N;  Ft,wc,Rd = 197225 N;  Ft,wb,Rd = 137159 N  ->  isolada = 87594 N (mesa do pilar (modo 1 (escoamento completo da mesa)))
+| Fileira 2, mesa do pilar: leff,1 = 204.8; leff,2 = 204.8; m = 34.00; n = min(e; 1,25 m) = 42.50 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 744545 N.mm;  modo 1 = 4 Mpl,1/m = 87594 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 180423 N;  modo 3 = SFt = 289725 N
+| Fileira 2, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 32.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2423273 N.mm;  modo 1 = 4 Mpl,1/m = 295521 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 225763 N;  modo 3 = SFt = 289725 N
+| Fileira 2: Ft,fc,Rd = 87594 N;  Ft,ep,Rd = 225763 N;  Ft,wc,Rd = 197225 N;  Ft,wb,Rd = 137159 N  ->  isolada = 87594 N (mesa do pilar (modo 1 (escoamento completo da mesa)))
+| Fileira 1: Ftr,Rd efetiva = 87594 N (h = 404.65 mm)
+| Fileira 2: Ftr,Rd efetiva = 62934 N (h = 334.65 mm)  [limitada por: alma do pilar comprimida (Fc,wc,Rd)]
+| Mj,Rd = soma(Ftr,Rd hr) = 56.51 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 56.51 kN.m
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 37.67 kN.m (theta = 0.00219 rad)
+|   Rigidez secante a Sj,ini/2: M = 48.70 kN.m (theta = 0.00565 rad)
+|   Em Mj,Rd: theta = 0.00980 rad;  secante = 5768 kN.m/rad;  tangente = 1559 kN.m/rad
+=== C08 IPE400 / HEB300 / M24 / chapa 22 / 2 fileiras
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=781823320de2
+Sj_ini=66600.9801462 MjRd_used=132.412680336 MjRd_EN=132.412680336 MjRd_NBR=0 nbrAvail=0 nbrBelowCurve=0
+metrics: onset=88.275120224 thOnset=0.00132543274934 thRes=0.00594148979633 secRes=22286.1075042 tanRes=6023.27229842 M_half=114.111892676 th_half=0.00342673313292
+curve(42 pts): (4.733688391e-05,3.152682865) (9.467376781e-05,6.30536573) (0.0001420106517,9.458048595) (0.0001893475356,12.61073146) (0.0002366844195,15.76341433) (0.0002840213034,18.91609719) (0.0003313581873,22.06878006) (0.0003786950712,25.22146292) (0.0004260319551,28.37414579) (0.0004733688391,31.52682865) (0.000520705723,34.67951152) (0.0005680426069,37.83219438) (0.0006153794908,40.98487725) (0.0006627163747,44.13756011) (0.0007100532586,47.29024298) (0.0007573901425,50.44292584) (0.0008047270264,53.59560871) (0.0008520639103,56.74829157) (0.0008994007942,59.90097444) (0.0009467376781,63.0536573) (0.000994074562,66.20634017) (0.001041411446,69.35902303) (0.00108874833,72.5117059) (0.001136085214,75.66438876) (0.001183422098,78.81707163) (0.001230758982,81.96975449) (0.001278095865,85.12243736) (0.001325432749,88.27512022) (0.001509195749,91.42780309) (0.001710888171,94.58048595) (0.001931573544,97.73316882) (0.002172340509,100.8858517) (0.002434302576,104.0385345) (0.002718597882,107.1912174) (0.003026388969,110.3439003) (0.003358862564,113.4965831) (0.003717229373,116.649266) (0.004102723874,119.8019489) (0.004516604128,122.9546317) (0.004960151586,126.1073146) (0.00543467091,129.2599975) (0.005941489796,132.4126803)
+classe: byStiffness=1 final=1 eta=9.99014702193
+equivalente bilinear: valid=1 k=66600.9801462 My=88.275120224 h=0.143567630972
+  M=33.1032 sec=66600.98015 tan=66600.98015
+  M=66.2063 sec=66600.98015 tan=66600.98015
+  M=88.2751 sec=66600.98015 tan=66600.98015
+  M=105.9301 sec=40709.07705 tan=11002.45326
+  M=132.4127 sec=22286.1075 tan=6023.272298
+memoria (65 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 208.0 mm;  Avc = 4743 mm2
+| Fileira 1: h = 503.25 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 0.6987 mm
+| Fileira 2: h = 433.25 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 3.0656 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 447.90 mm;  keq = soma(keff,r h_r) / zeq = 3.7504 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 4.024 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 4743 / (1.00 x 447.90) = 4.024 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: 11.457 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 309.50 mm (sp = 44.00 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 309.50 x 11.00 / 208.00 = 11.457 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 6.490 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 175.30 mm;  k3 = 0,7 beff,t,wc twc / dc = 6.490 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 49.828 mm
+|       m = 27.90 mm;  leff = min(circular = 175.30; não circular = 230.35) = 175.30 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 49.828 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 0.878 mm
+|       m = 101.20 mm;  leff = min(circular = 635.86; não circular = 95.00) = 95.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 0.878 mm
+|   k10 (fileira 1) - Parafusos tracionados: 8.427 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 67.00 mm
+|       k10 = 1,6 As / Lb = 1,6 x 353 / 67.00 = 8.427 mm (uma fileira, As de um parafuso)
+|   k3 (fileira 2) - Alma do pilar tracionada: 6.490 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 175.30 mm;  k3 = 0,7 beff,t,wc twc / dc = 6.490 mm
+|   k4 (fileira 2) - Mesa do pilar em flexão: 49.828 mm
+|       m = 27.90 mm;  leff = min(circular = 175.30; não circular = 230.35) = 175.30 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 49.828 mm
+|   k5 (fileira 2) - Chapa de extremidade em flexão: 29.976 mm
+|       m = 31.20 mm;  leff = min(circular = 196.04; não circular = 95.00) = 95.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 29.976 mm
+|   k10 (fileira 2) - Parafusos tracionados: 8.427 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 67.00 mm
+|       k10 = 1,6 As / Lb = 1,6 x 353 / 67.00 = 8.427 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 0.60244 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 447.90^2 / 0.60244 = 6.66e+10 N.mm/rad = 66601.0 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 560096 N (6.2.6.1);  Vwp,Rd / beta = 560096 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.774; kwc = 1.000; beff,c,wc = 309.50 mm; lambda_p = 0.760; rho = 0.969  ->  580503 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 281436898 / 386.50 = 728168 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 175.3; leff,2 = 230.3; m = 27.90; n = min(e; 1,25 m) = 34.88 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 3595660 N.mm;  modo 1 = 4 Mpl,1/m = 515507 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 382311 N;  modo 3 = SFt = 417204 N
+| Fileira 1, chapa de extremidade: leff,1 = 95.0; leff,2 = 95.0; m = 101.20; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2612500 N.mm;  modo 1 = 4 Mpl,1/m = 103261 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 155192 N;  modo 3 = SFt = 417204 N
+| Fileira 1: Ft,fc,Rd = 382311 N;  Ft,ep,Rd = 103261 N;  Ft,wc,Rd = 397607 N;  Ft,wb,Rd = 185682 N  ->  isolada = 103261 N (chapa de extremidade (modo 1 (escoamento completo da mesa)))
+| Fileira 2, mesa do pilar: leff,1 = 175.3; leff,2 = 230.3; m = 27.90; n = min(e; 1,25 m) = 34.88 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 3595660 N.mm;  modo 1 = 4 Mpl,1/m = 515507 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 382311 N;  modo 3 = SFt = 417204 N
+| Fileira 2, chapa de extremidade: leff,1 = 95.0; leff,2 = 95.0; m = 31.20; n = min(e; 1,25 m) = 39.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2612500 N.mm;  modo 1 = 4 Mpl,1/m = 334936 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 306210 N;  modo 3 = SFt = 417204 N
+| Fileira 2: Ft,fc,Rd = 382311 N;  Ft,ep,Rd = 306210 N;  Ft,wc,Rd = 397607 N;  Ft,wb,Rd = 185682 N  ->  isolada = 185682 N (alma da viga tracionada (Ft,wb,Rd))
+| Fileira 1: Ftr,Rd efetiva = 103261 N (h = 503.25 mm)
+| Fileira 2: Ftr,Rd efetiva = 185682 N (h = 433.25 mm)
+| Mj,Rd = soma(Ftr,Rd hr) = 132.41 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 132.41 kN.m
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 88.28 kN.m (theta = 0.00133 rad)
+|   Rigidez secante a Sj,ini/2: M = 114.11 kN.m (theta = 0.00343 rad)
+|   Em Mj,Rd: theta = 0.00594 rad;  secante = 22286 kN.m/rad;  tangente = 6023 kN.m/rad
+=== C09 idem, 1 fileira
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=aaf95385c0ff
+Sj_ini=57413.8367932 MjRd_used=80.4466477273 MjRd_EN=80.4466477273 MjRd_NBR=146.418550258 nbrAvail=1 nbrBelowCurve=0
+metrics: onset=53.6310984848 thOnset=0.000934114518039 thRes=0.00418733570624 secRes=19211.8935215 tanRes=5192.40365447 M_half=69.3280976436 th_half=0.00241503099308
+curve(42 pts): (3.336123279e-05,1.915396374) (6.672246557e-05,3.830792749) (0.0001000836984,5.746189123) (0.0001334449311,7.661585498) (0.0001668061639,9.576981872) (0.0002001673967,11.49237825) (0.0002335286295,13.40777462) (0.0002668898623,15.323171) (0.0003002510951,17.23856737) (0.0003336123279,19.15396374) (0.0003669735607,21.06936012) (0.0004003347934,22.98475649) (0.0004336960262,24.90015287) (0.000467057259,26.81554924) (0.0005004184918,28.73094562) (0.0005337797246,30.64634199) (0.0005671409574,32.56173837) (0.0006005021902,34.47713474) (0.000633863423,36.39253111) (0.0006672246557,38.30792749) (0.0007005858885,40.22332386) (0.0007339471213,42.13872024) (0.0007673083541,44.05411661) (0.0008006695869,45.96951299) (0.0008340308197,47.88490936) (0.0008673920525,49.80030574) (0.0009007532853,51.71570211) (0.000934114518,53.63109848) (0.001063623681,55.54649486) (0.001205768818,57.46189123) (0.001361299463,59.37728761) (0.00153098285,61.29268398) (0.001715603737,63.20808036) (0.00191596424,65.12347673) (0.002132883675,67.03887311) (0.002367198401,68.95426948) (0.002619761678,70.86966585) (0.00289144352,72.78506223) (0.003183130559,74.7004586) (0.003495725913,76.61585498) (0.003830149059,78.53125135) (0.004187335706,80.44664773)
+classe: byStiffness=1 final=1 eta=8.61207551898
+equivalente bilinear: valid=1 k=57413.8367932 My=53.6310984848 h=0.143567630972
+  M=20.1117 sec=57413.83679 tan=57413.83679
+  M=40.2233 sec=57413.83679 tan=57413.83679
+  M=53.6311 sec=57413.83679 tan=57413.83679
+  M=64.3573 sec=35093.54218 tan=9484.74113
+  M=80.4466 sec=19211.89352 tan=5192.403654
+memoria (48 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 208.0 mm;  Avc = 4743 mm2
+| Fileira 1: h = 433.25 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 3.0656 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 433.25 mm;  keq = soma(keff,r h_r) / zeq = 3.0656 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 4.160 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 4743 / (1.00 x 433.25) = 4.160 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: 11.457 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 309.50 mm (sp = 44.00 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 309.50 x 11.00 / 208.00 = 11.457 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 6.490 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 175.30 mm;  k3 = 0,7 beff,t,wc twc / dc = 6.490 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 49.828 mm
+|       m = 27.90 mm;  leff = min(circular = 175.30; não circular = 230.35) = 175.30 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 49.828 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 29.976 mm
+|       m = 31.20 mm;  leff = min(circular = 196.04; não circular = 95.00) = 95.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 29.976 mm
+|   k10 (fileira 1) - Parafusos tracionados: 8.427 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 67.00 mm
+|       k10 = 1,6 As / Lb = 1,6 x 353 / 67.00 = 8.427 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 0.65387 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 433.25^2 / 0.65387 = 5.741e+10 N.mm/rad = 57413.8 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 560096 N (6.2.6.1);  Vwp,Rd / beta = 560096 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.774; kwc = 1.000; beff,c,wc = 309.50 mm; lambda_p = 0.760; rho = 0.969  ->  580503 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 281436898 / 386.50 = 728168 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 175.3; leff,2 = 230.3; m = 27.90; n = min(e; 1,25 m) = 34.88 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 3595660 N.mm;  modo 1 = 4 Mpl,1/m = 515507 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 382311 N;  modo 3 = SFt = 417204 N
+| Fileira 1, chapa de extremidade: leff,1 = 95.0; leff,2 = 95.0; m = 31.20; n = min(e; 1,25 m) = 39.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2612500 N.mm;  modo 1 = 4 Mpl,1/m = 334936 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 306210 N;  modo 3 = SFt = 417204 N
+| Fileira 1: Ft,fc,Rd = 382311 N;  Ft,ep,Rd = 306210 N;  Ft,wc,Rd = 397607 N;  Ft,wb,Rd = 185682 N  ->  isolada = 185682 N (alma da viga tracionada (Ft,wb,Rd))
+| Fileira 1: Ftr,Rd efetiva = 185682 N (h = 433.25 mm)
+| Mj,Rd = soma(Ftr,Rd hr) = 80.45 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 80.45 kN.m
+|   NÍVEL C (verificação construtiva da ligação cadastrada, NBR 8800:2024, V = N = 0): Mj,Rd = 146.42 kN.m  (governa: Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4))
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 53.63 kN.m (theta = 0.00093 rad)
+|   Rigidez secante a Sj,ini/2: M = 69.33 kN.m (theta = 0.00242 rad)
+|   Em Mj,Rd: theta = 0.00419 rad;  secante = 19212 kN.m/rad;  tangente = 5192 kN.m/rad
+=== C10 idem, viga dos dois lados
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=445573815c28
+Sj_ini=90794.026319 MjRd_used=80.4466477273 MjRd_EN=80.4466477273 MjRd_NBR=146.418550258 nbrAvail=1 nbrBelowCurve=0
+metrics: onset=53.6310984848 thOnset=0.000590689725516 thRes=0.00264787253725 secRes=30381.6164092 tanRes=8211.24767817 M_half=69.3280976436 th_half=0.0015271510793
+curve(42 pts): (2.109606163e-05,1.915396374) (4.219212325e-05,3.830792749) (6.328818488e-05,5.746189123) (8.43842465e-05,7.661585498) (0.0001054803081,9.576981872) (0.0001265763698,11.49237825) (0.0001476724314,13.40777462) (0.000168768493,15.323171) (0.0001898645546,17.23856737) (0.0002109606163,19.15396374) (0.0002320566779,21.06936012) (0.0002531527395,22.98475649) (0.0002742488011,24.90015287) (0.0002953448628,26.81554924) (0.0003164409244,28.73094562) (0.000337536986,30.64634199) (0.0003586330476,32.56173837) (0.0003797291093,34.47713474) (0.0004008251709,36.39253111) (0.0004219212325,38.30792749) (0.0004430172941,40.22332386) (0.0004641133558,42.13872024) (0.0004852094174,44.05411661) (0.000506305479,45.96951299) (0.0005274015406,47.88490936) (0.0005484976023,49.80030574) (0.0005695936639,51.71570211) (0.0005906897255,53.63109848) (0.000672585179,55.54649486) (0.0007624710228,57.46189123) (0.0008608212276,59.37728761) (0.0009681209551,61.29268398) (0.001084866449,63.20808036) (0.00121156493,65.12347673) (0.001348734494,67.03887311) (0.001496904016,68.95426948) (0.001656613056,70.86966585) (0.00182841177,72.78506223) (0.002012860822,74.7004586) (0.0022105313,76.61585498) (0.002422004639,78.53125135) (0.002647872537,80.44664773)
+classe: byStiffness=1 final=1 eta=13.6191039478
+equivalente bilinear: valid=1 k=90794.026319 My=53.6310984848 h=0.143567630972
+  M=20.1117 sec=90794.02632 tan=90794.02632
+  M=40.2233 sec=90794.02632 tan=90794.02632
+  M=53.6311 sec=90794.02632 tan=90794.02632
+  M=64.3573 sec=55496.79607 tan=14999.13407
+  M=80.4466 sec=30381.61641 tan=8211.247678
+memoria (48 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 208.0 mm;  Avc = 4743 mm2
+| Fileira 1: h = 433.25 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 3.0656 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 433.25 mm;  keq = soma(keff,r h_r) / zeq = 3.0656 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: infinito (rígido)
+|       beta = 0 (momentos iguais nos dois lados do pilar): painel sem cisalhamento liquido, k1 = infinito
+|   k2 - Alma do pilar comprimida: 11.457 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 309.50 mm (sp = 44.00 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 309.50 x 11.00 / 208.00 = 11.457 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 6.490 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 175.30 mm;  k3 = 0,7 beff,t,wc twc / dc = 6.490 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 49.828 mm
+|       m = 27.90 mm;  leff = min(circular = 175.30; não circular = 230.35) = 175.30 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 49.828 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 29.976 mm
+|       m = 31.20 mm;  leff = min(circular = 196.04; não circular = 95.00) = 95.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 29.976 mm
+|   k10 (fileira 1) - Parafusos tracionados: 8.427 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 67.00 mm
+|       k10 = 1,6 As / Lb = 1,6 x 353 / 67.00 = 8.427 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 0.41348 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 433.25^2 / 0.41348 = 9.079e+10 N.mm/rad = 90794.0 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 560096 N (6.2.6.1);  Vwp,Rd / beta = infinito (beta = 0)
+| Fc,wc,Rd (6.2.6.2): omega = 1.000; kwc = 1.000; beff,c,wc = 309.50 mm; lambda_p = 0.760; rho = 0.969  ->  750144 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 281436898 / 386.50 = 728168 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 175.3; leff,2 = 230.3; m = 27.90; n = min(e; 1,25 m) = 34.88 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 3595660 N.mm;  modo 1 = 4 Mpl,1/m = 515507 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 382311 N;  modo 3 = SFt = 417204 N
+| Fileira 1, chapa de extremidade: leff,1 = 95.0; leff,2 = 95.0; m = 31.20; n = min(e; 1,25 m) = 39.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2612500 N.mm;  modo 1 = 4 Mpl,1/m = 334936 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 306210 N;  modo 3 = SFt = 417204 N
+| Fileira 1: Ft,fc,Rd = 382311 N;  Ft,ep,Rd = 306210 N;  Ft,wc,Rd = 438252 N;  Ft,wb,Rd = 185682 N  ->  isolada = 185682 N (alma da viga tracionada (Ft,wb,Rd))
+| Fileira 1: Ftr,Rd efetiva = 185682 N (h = 433.25 mm)
+| Mj,Rd = soma(Ftr,Rd hr) = 80.45 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 80.45 kN.m
+|   NÍVEL C (verificação construtiva da ligação cadastrada, NBR 8800:2024, V = N = 0): Mj,Rd = 146.42 kN.m  (governa: Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4))
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 53.63 kN.m (theta = 0.00059 rad)
+|   Rigidez secante a Sj,ini/2: M = 69.33 kN.m (theta = 0.00153 rad)
+|   Em Mj,Rd: theta = 0.00265 rad;  secante = 30382 kN.m/rad;  tangente = 8211 kN.m/rad
+=== C11 idem, enrijecedores de continuidade + reforco de alma
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=b5925a3c05bd
+Sj_ini=110800.621413 MjRd_used=80.4466477273 MjRd_EN=80.4466477273 MjRd_NBR=146.418550258 nbrAvail=1 nbrBelowCurve=0
+metrics: onset=53.6310984848 thOnset=0.000484032470222 thRes=0.00216976227904 secRes=37076.2495525 tanRes=10020.6079872 M_half=69.3280976436 th_half=0.00125140268636
+curve(42 pts): (1.728687394e-05,1.915396374) (3.457374787e-05,3.830792749) (5.186062181e-05,5.746189123) (6.914749575e-05,7.661585498) (8.643436968e-05,9.576981872) (0.0001037212436,11.49237825) (0.0001210081176,13.40777462) (0.0001382949915,15.323171) (0.0001555818654,17.23856737) (0.0001728687394,19.15396374) (0.0001901556133,21.06936012) (0.0002074424872,22.98475649) (0.0002247293612,24.90015287) (0.0002420162351,26.81554924) (0.000259303109,28.73094562) (0.000276589983,30.64634199) (0.0002938768569,32.56173837) (0.0003111637309,34.47713474) (0.0003284506048,36.39253111) (0.0003457374787,38.30792749) (0.0003630243527,40.22332386) (0.0003803112266,42.13872024) (0.0003975981005,44.05411661) (0.0004148849745,45.96951299) (0.0004321718484,47.88490936) (0.0004494587223,49.80030574) (0.0004667455963,51.71570211) (0.0004840324702,53.63109848) (0.0005511405592,55.54649486) (0.0006247962623,57.46189123) (0.000705387968,59.37728761) (0.0007933132356,61.29268398) (0.0008889787051,63.20808036) (0.0009928000112,65.12347673) (0.0011052017,67.03887311) (0.001226617152,68.95426948) (0.001357488501,70.86966585) (0.001498266564,72.78506223) (0.001649410771,74.7004586) (0.001811389092,76.61585498) (0.001984677975,78.53125135) (0.002169762279,80.44664773)
+classe: byStiffness=1 final=1 eta=16.620093212
+equivalente bilinear: valid=1 k=110800.621413 My=53.6310984848 h=0.143567630972
+  M=20.1117 sec=110800.6214 tan=110800.6214
+  M=40.2233 sec=110800.6214 tan=110800.6214
+  M=53.6311 sec=110800.6214 tan=110800.6214
+  M=64.3573 sec=67725.5954 tan=18304.21497
+  M=80.4466 sec=37076.24955 tan=10020.60799
+memoria (47 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 208.0 mm;  Avc = 6839 mm2
+| Fileira 1: h = 433.25 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 5.8105 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 433.25 mm;  keq = soma(keff,r h_r) / zeq = 5.8105 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 5.998 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 6839 / (1.00 x 433.25) = 5.998 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: infinito (rígido)
+|       Alma enrijecida por enrijecedores horizontais alinhados com as mesas da viga: k2 = infinito
+|   k3 (fileira 1) - Alma do pilar tracionada: infinito (rígido)
+|       Alma enrijecida: k3 = infinito
+|   k4 (fileira 1) - Mesa do pilar em flexão: 49.828 mm
+|       m = 27.90 mm;  leff = min(circular = 175.30; não circular = 230.35) = 175.30 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 49.828 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 29.976 mm
+|       m = 31.20 mm;  leff = min(circular = 196.04; não circular = 95.00) = 95.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 29.976 mm
+|   k10 (fileira 1) - Parafusos tracionados: 8.427 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 67.00 mm
+|       k10 = 1,6 As / Lb = 1,6 x 353 / 67.00 = 8.427 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 0.33882 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 433.25^2 / 0.33882 = 1.108e+11 N.mm/rad = 110800.6 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 807621 N (6.2.6.1);  Vwp,Rd / beta = 807621 N
+| Fc,wc,Rd: alma enrijecida, não limita.
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 281436898 / 386.50 = 728168 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 175.3; leff,2 = 230.3; m = 27.90; n = min(e; 1,25 m) = 34.88 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 3595660 N.mm;  modo 1 = 4 Mpl,1/m = 515507 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 382311 N;  modo 3 = SFt = 417204 N
+| Fileira 1, chapa de extremidade: leff,1 = 95.0; leff,2 = 95.0; m = 31.20; n = min(e; 1,25 m) = 39.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 2612500 N.mm;  modo 1 = 4 Mpl,1/m = 334936 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 306210 N;  modo 3 = SFt = 417204 N
+| Fileira 1: Ft,fc,Rd = 382311 N;  Ft,ep,Rd = 306210 N;  Ft,wc,Rd = infinito;  Ft,wb,Rd = 185682 N  ->  isolada = 185682 N (alma da viga tracionada (Ft,wb,Rd))
+| Fileira 1: Ftr,Rd efetiva = 185682 N (h = 433.25 mm)
+| Mj,Rd = soma(Ftr,Rd hr) = 80.45 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 80.45 kN.m
+|   NÍVEL C (verificação construtiva da ligação cadastrada, NBR 8800:2024, V = N = 0): Mj,Rd = 146.42 kN.m  (governa: Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4))
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 53.63 kN.m (theta = 0.00048 rad)
+|   Rigidez secante a Sj,ini/2: M = 69.33 kN.m (theta = 0.00125 rad)
+|   Em Mj,Rd: theta = 0.00217 rad;  secante = 37076 kN.m/rad;  tangente = 10021 kN.m/rad
+=== C12 chapa fina 12 / M16 / 1 fileira
+supported=1 message=[Sentido inverso (fileiras de parafusos na outra mesa) não calculado: a chapa de extremidade só tem fileiras tracionadas na extensão considerada.]
+fingerprint=84907cc87c6f
+Sj_ini=15518.7200779 MjRd_used=28.3821784922 MjRd_EN=28.3821784922 MjRd_NBR=43.5173639747 nbrAvail=1 nbrBelowCurve=0
+metrics: onset=18.9214523282 thOnset=0.00121926629472 thRes=0.00546557964008 secRes=5192.89450731 tanRes=1403.48500198 M_half=24.4594709343 th_half=0.00315225364097
+curve(42 pts): (4.354522481e-05,0.6757661546) (8.709044962e-05,1.351532309) (0.0001306356744,2.027298464) (0.0001741808992,2.703064618) (0.0002177261241,3.378830773) (0.0002612713489,4.054596927) (0.0003048165737,4.730363082) (0.0003483617985,5.406129237) (0.0003919070233,6.081895391) (0.0004354522481,6.757661546) (0.0004789974729,7.4334277) (0.0005225426977,8.109193855) (0.0005660879225,8.78496001) (0.0006096331474,9.460726164) (0.0006531783722,10.13649232) (0.000696723597,10.81225847) (0.0007402688218,11.48802463) (0.0007838140466,12.16379078) (0.0008273592714,12.83955694) (0.0008709044962,13.51532309) (0.000914449721,14.19108925) (0.0009579949459,14.8668554) (0.001001540171,15.54262156) (0.001045085395,16.21838771) (0.00108863062,16.89415386) (0.001132175845,17.56992002) (0.00117572107,18.24568617) (0.001219266295,18.92145233) (0.001388309977,19.59721848) (0.001573846943,20.27298464) (0.001776855535,20.94875079) (0.001998337196,21.62451695) (0.002239316241,22.3002831) (0.002500839645,22.97604926) (0.00278397683,23.65181541) (0.003089819468,24.32758156) (0.003419481287,25.00334772) (0.003774097885,25.67911387) (0.004154826552,26.35488003) (0.004562846096,27.03064618) (0.004999356675,27.70641234) (0.00546557964,28.38217849)
+classe: byStiffness=1 final=1 eta=2.32780801168
+equivalente bilinear: valid=1 k=15518.7200779 My=18.9214523282 h=0.143567630972
+  M=7.0955 sec=15518.72008 tan=15518.72008
+  M=14.1911 sec=15518.72008 tan=15518.72008
+  M=18.9215 sec=15518.72008 tan=15518.72008
+  M=22.7057 sec=9485.637749 tan=2563.685878
+  M=28.3822 sec=5192.894507 tan=1403.485002
+memoria (48 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 214.6 mm;  Avc = 2219 mm2
+| Fileira 1: h = 334.65 mm;  keff,r = 1 / (1/k3 + 1/k4 + 1/k5 + 1/k10) = 1.2441 mm
+| zeq = soma(keff,r h_r^2) / soma(keff,r h_r) = 334.65 mm;  keq = soma(keff,r h_r) / zeq = 1.2441 mm
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 2.520 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 2219 / (1.00 x 334.65) = 2.520 mm (z = zeq)
+|   k2 - Alma do pilar comprimida: 4.120 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 166.20 mm (sp = 24.00 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 166.20 x 7.60 / 214.60 = 4.120 mm
+|   k3 (fileira 1) - Alma do pilar tracionada: 4.160 mm
+|       beff,t,wc = leff da mesa do pilar (fileira isolada) = 167.80 mm;  k3 = 0,7 beff,t,wc twc / dc = 4.160 mm
+|   k4 (fileira 1) - Mesa do pilar em flexão: 8.453 mm
+|       m = 33.20 mm;  leff = min(circular = 208.60; não circular = 167.80) = 167.80 mm
+|       k4 = 0,9 leff tfc^3 / m^3 = 8.453 mm
+|   k5 (fileira 1) - Chapa de extremidade em flexão: 3.746 mm
+|       m = 32.80 mm;  leff = min(circular = 206.09; não circular = 85.00) = 85.00 mm
+|       k5 = 0,9 leff tp^3 / m^3 = 3.746 mm
+|   k10 (fileira 1) - Parafusos tracionados: 5.614 mm
+|       Lb = tp + tfc + arruelas + (cabeça + porca)/2 = 44.70 mm
+|       k10 = 1,6 As / Lb = 1,6 x 157 / 44.70 = 5.614 mm (uma fileira, As de um parafuso)
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 1.4433 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 334.65^2 / 1.4433 = 1.552e+10 N.mm/rad = 15518.7 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 262089 N (6.2.6.1);  Vwp,Rd / beta = 262089 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.839; kwc = 1.000; beff,c,wc = 166.20 mm; lambda_p = 0.819; rho = 0.923  ->  222263 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 136840541 / 289.30 = 473006 N (6.2.6.7)
+| Fileira 1, mesa do pilar: leff,1 = 167.8; leff,2 = 167.8; m = 33.20; n = min(e; 1,25 m) = 28.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 1537754 N.mm;  modo 1 = 4 Mpl,1/m = 185272 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 135088 N;  modo 3 = SFt = 185424 N
+| Fileira 1, chapa de extremidade: leff,1 = 85.0; leff,2 = 85.0; m = 32.80; n = min(e; 1,25 m) = 40.00 mm
+|   Mpl,1,Rd = 0,25 leff,1 t^2 fy/g = 695455 N.mm;  modo 1 = 4 Mpl,1/m = 84812 N;  modo 2 = (2 Mpl,2 + n SFt)/(m+n) = 120987 N;  modo 3 = SFt = 185424 N
+| Fileira 1: Ft,fc,Rd = 135088 N;  Ft,ep,Rd = 84812 N;  Ft,wc,Rd = 242437 N;  Ft,wb,Rd = 137159 N  ->  isolada = 84812 N (chapa de extremidade (modo 1 (escoamento completo da mesa)))
+| Fileira 1: Ftr,Rd efetiva = 84812 N (h = 334.65 mm)
+| Mj,Rd = soma(Ftr,Rd hr) = 28.38 kN.m
+| Não considerado: efeito de grupo de fileiras (6.2.7.2(8)); o resultado pode ser não conservador com fileiras muito próximas.
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 28.38 kN.m
+|   NÍVEL C (verificação construtiva da ligação cadastrada, NBR 8800:2024, V = N = 0): Mj,Rd = 43.52 kN.m  (governa: Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade)
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 18.92 kN.m (theta = 0.00122 rad)
+|   Rigidez secante a Sj,ini/2: M = 24.46 kN.m (theta = 0.00315 rad)
+|   Em Mj,Rd: theta = 0.00547 rad;  secante = 5193 kN.m/rad;  tangente = 1403 kN.m/rad
+=== C13 controle: mesas soldadas (catalogo 144), sem alavanca A2
+supported=1 message=[]
+fingerprint=e7c3c5d3b825
+Sj_ini=16863.5060045 MjRd_used=55.8429523702 MjRd_EN=55.8429523702 MjRd_NBR=66.280109375 nbrAvail=1 nbrBelowCurve=0
+metrics: onset=37.2286349135 thOnset=0.00220764501186 thRes=0.00989616434213 secRes=5642.88854142 tanRes=1525.10501119 M_half=48.1248848026 th_half=0.00570757762824
+curve(42 pts): (7.884446471e-05,1.329594104) (0.0001576889294,2.659188208) (0.0002365333941,3.988782312) (0.0003153778588,5.318376416) (0.0003942223235,6.64797052) (0.0004730667883,7.977564624) (0.000551911253,9.307158728) (0.0006307557177,10.63675283) (0.0007096001824,11.96634694) (0.0007884446471,13.29594104) (0.0008672891118,14.62553514) (0.0009461335765,15.95512925) (0.001024978041,17.28472335) (0.001103822506,18.61431746) (0.001182666971,19.94391156) (0.001261511435,21.27350566) (0.0013403559,22.60309977) (0.001419200365,23.93269387) (0.001498044829,25.26228798) (0.001576889294,26.59188208) (0.001655733759,27.92147619) (0.001734578224,29.25107029) (0.001813422688,30.58066439) (0.001892267153,31.9102585) (0.001971111618,33.2398526) (0.002049956082,34.56944671) (0.002128800547,35.89904081) (0.002207645012,37.22863491) (0.002513721251,38.55822902) (0.002849660791,39.88782312) (0.003217235051,41.21741723) (0.003618257276,42.54701133) (0.00405458213,43.87660543) (0.004528105297,45.20619954) (0.005040763112,46.53579364) (0.005594532192,47.86538775) (0.006191429091,49.19498185) (0.006833509962,50.52457595) (0.007522870232,51.85417006) (0.008261644291,53.18376416) (0.009052005189,54.51335827) (0.009896164342,55.84295237)
+classe: byStiffness=1 final=1 eta=2.52952590068
+equivalente bilinear: valid=1 k=16863.5060045 My=37.2286349135 h=0.143567630972
+  M=13.9607 sec=16863.506 tan=16863.506
+  M=27.9215 sec=16863.506 tan=16863.506
+  M=37.2286 sec=16863.506 tan=16863.506
+  M=44.6744 sec=10307.62256 tan=2785.843935
+  M=55.8430 sec=5642.888541 tan=1525.105011
+memoria (33 linhas):
+| MÉTODO DOS COMPONENTES — EN 1993-1-8:2005, 6.3 (rigidez inicial Sj,ini)
+| E = 200000 MPa;  altura livre da alma do pilar dc = hc - 2 tfc - 2 rc = 214.6 mm;  Avc = 2219 mm2
+| Componentes:
+|   k1 - Painel de alma do pilar ao cisalhamento: 2.915 mm
+|       k1 = 0,38 Avc / (beta z) = 0,38 x 2219 / (1.00 x 289.30) = 2.915 mm (z = d - tfb)
+|   k2 - Alma do pilar comprimida: 3.079 mm
+|       beff,c,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) + sp = 124.20 mm (sp = 0.00 mm)
+|       k2 = 0,7 beff,c,wc twc / dc = 0,7 x 124.20 x 7.60 / 214.60 = 3.079 mm
+|   k3 - Alma do pilar tracionada: 3.079 mm
+|       beff,t,wc = tfb + 2 raiz(2) ap + 5 (tfc + s) = 124.20 mm
+|       k3 = 0,7 beff,t,wc twc / dc = 3.079 mm
+| Soma das flexibilidades: 1/k1 + 1/k2 + 1/keq = 0.99261 1/mm
+| Sj,ini = E z^2 / soma(1/ki) = 200000 x 289.30^2 / 0.99261 = 1.686e+10 N.mm/rad = 16863.5 kN.m/rad
+| 
+| RESISTÊNCIA DOS COMPONENTES — EN 1993-1-8:2005, 6.2 (gamma de escoamento = 1.10)
+| Vwp,Rd = 0,9 fy,wc Avc / (raiz(3) g) = 262089 N (6.2.6.1);  Vwp,Rd / beta = 262089 N
+| Fc,wc,Rd (6.2.6.2): omega = 0.900; kwc = 1.000; beff,c,wc = 124.20 mm; lambda_p = 0.708; rho = 1.000  ->  193028 N
+| Fc,fb,Rd = Mc,Rd / (h - tfb) = 136840541 / 289.30 = 473006 N (6.2.6.7)
+| Ft,wc,Rd (6.2.6.3): omega = 0.900; beff,t,wc = 124.20 mm  ->  193028 N
+| Mj,Rd = F x z = 193028 N x 289.30 mm = 55.84 kN.m (limitada por: alma do pilar tracionada)
+| 
+| MOMENTO RESISTENTE DE CÁLCULO Mj,Rd
+|   NÍVEL A (comportamento mecânico, usado na curva): método dos componentes, EN 1993-1-8, 6.2.7: Mj,Rd = 55.84 kN.m
+|   NÍVEL C (verificação construtiva da ligação cadastrada, NBR 8800:2024, V = N = 0): Mj,Rd = 66.28 kN.m  (governa: Apoio: flexão local da mesa)
+|   Aviso: Verificação não atendida independente do momento: Perna maxima ao longo de bordas - alma ao pilar
+| 
+| CURVA MOMENTO-ROTAÇÃO — EN 1993-1-8, 6.3.1 (eq. 6.28)
+|   theta = M / Sj,ini                              para M <= 2/3 Mj,Rd
+|   theta = M / Sj,ini x (1,5 M / Mj,Rd)^psi         para 2/3 Mj,Rd < M <= Mj,Rd,  psi = 2,7 (Tabela 6.8)
+|   Domínio de validade: M <= Mj,Rd, V e N pequenos (N <= 5% Npl,Rd, 6.2.7.1(2)). A capacidade de rotação não é calculada: a curva termina em Mj,Rd.
+|   Início da perda de rigidez: M = 2/3 Mj,Rd = 37.23 kN.m (theta = 0.00221 rad)
+|   Rigidez secante a Sj,ini/2: M = 48.12 kN.m (theta = 0.00571 rad)
+|   Em Mj,Rd: theta = 0.00990 rad;  secante = 5643 kN.m/rad;  tangente = 1525 kN.m/rad
+=== C14 pilar NAO informado (A1): Nao verificavel
+supported=0 message=[Rigidez não calculável: Geometria invalida (altura livre da alma do pilar, espessuras ou E).]
+fingerprint=f19f37e9e0e2
+Sj_ini=0 MjRd_used=0 MjRd_EN=0 MjRd_NBR=0 nbrAvail=0 nbrBelowCurve=0
+metrics: onset=0 thOnset=0 thRes=0 secRes=0 tanRes=0 M_half=0 th_half=0
+curve(0 pts):
+memoria (0 linhas):
