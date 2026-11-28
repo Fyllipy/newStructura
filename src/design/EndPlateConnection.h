@@ -41,6 +41,7 @@ struct EndPlateInput {
     double weldFw {485.0};
 
     // pilar
+    std::string columnSource;        ///< origem da secao do pilar (ex.: "barra 12" ou "informada manualmente e confirmada"): vai para a memoria de calculo e para as mensagens
     double colDepth {260.0};
     double colFlangeWidth {146.0};
     double colFlangeThickness {12.7};

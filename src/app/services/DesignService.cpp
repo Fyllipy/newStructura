@@ -283,11 +283,27 @@ std::vector<DesignService::ElementData> DesignService::buildElements(const Struc
 
 QVector<DesignService::MemberEffects> DesignService::collectEffects(const Structura::App::SolverBridge::ModelData &geometry,
                                                                     const std::vector<ResultSet> &sets, double forceFactorToN,
-                                                                    double lengthFactorToMm, int stations)
+                                                                    double lengthFactorToMm, int stations,
+                                                                    const std::vector<Structura::App::SolverBridge::MaterialData> *nominalMaterials)
 {
     using namespace Structura::Visualization;
     QMap<int, MemberEffects> byMember;
     const double momentFactor = forceFactorToN * lengthFactorToMm;
+    // E e G do material de cada barra (unidades do modelo -> MPa): as verificacoes usam o modulo cadastrado no material, nao 200 GPa fixo
+    const double toMpa = lengthFactorToMm > 0.0 ? forceFactorToN / (lengthFactorToMm * lengthFactorToMm) : 0.0;
+    QHash<int, std::pair<double, double>> materialOfMember;
+    {
+        QHash<int, std::pair<double, double>> byId;
+        for (const auto &material : (nominalMaterials ? *nominalMaterials : geometry.materials)) {
+            byId.insert(material.id, {material.e * toMpa, material.g * toMpa});
+        }
+        for (const auto &member : geometry.members) {
+            const auto it = byId.constFind(member.materialId);
+            if (it != byId.constEnd()) {
+                materialOfMember.insert(member.id, it.value());
+            }
+        }
+    }
     // tirantes (so tracao): compressao e folga (barra desativada), nao esforco de projeto: nao passa pela esbeltez de compressao
     QSet<int> ties;
     for (const auto &member : geometry.members) {
@@ -383,6 +399,10 @@ QVector<DesignService::MemberEffects> DesignService::collectEffects(const Struct
             me.memberId = data.element.externalId;
             me.warping = me.warping || warp.valid;
             me.lengthMm = length * lengthFactorToMm;
+            if (const auto mat = materialOfMember.constFind(me.memberId); mat != materialOfMember.constEnd()) {
+                me.materialEMpa = mat->first;
+                me.materialGMpa = mat->second;
+            }
             me.cantilever = cantilevers.contains(me.memberId);
             me.torsionReleasedStart = torsionStart.contains(me.memberId);
             me.torsionReleasedEnd = torsionEnd.contains(me.memberId);
@@ -447,7 +467,8 @@ QVector<DesignService::MemberEffects> DesignService::collectEffects(const Struct
 // Secao
 // ---------------------------------------------------------------------------------------------------------------------
 
-std::array<double, 2> DesignService::serviceInertiaRatios(const Structura::Design::DesignSection &ds, const QString &steelName, double mxNmm, double myNmm)
+std::array<double, 2> DesignService::serviceInertiaRatios(const Structura::Design::DesignSection &ds, const QString &steelName, double mxNmm, double myNmm,
+                                                         double materialEMpa, double materialGMpa)
 {
     using namespace Structura::Design;
     if (!ds.supported() || ds.standard != Standard::NBR14762) {
@@ -458,6 +479,12 @@ std::array<double, 2> DesignService::serviceInertiaRatios(const Structura::Desig
     steel.fy = option ? option->fy : 250.0;
     steel.fu = option ? option->fu : 400.0;
     steel.coldFormed = true;
+    if (materialEMpa > 0.0) {
+        steel.E = materialEMpa;
+    }
+    if (materialGMpa > 0.0) {
+        steel.G = materialGMpa;
+    }
     return Nbr14762::serviceInertiaRatios(ds, steel, mxNmm, myNmm);
 }
 
@@ -489,6 +516,15 @@ DesignService::MemberVerdict DesignService::verifyMember(const MemberEffects &ef
     in.steel.fy = steel ? steel->fy : 250.0;
     in.steel.fu = steel ? steel->fu : 400.0;
     in.steel.coldFormed = steel ? steel->coldFormed : false;
+    // modulo de elasticidade do material usado na analise (o padrao 200 GPa / 77 GPa so vale sem material associado)
+    if (effects.materialEMpa > 0.0) {
+        in.steel.E = effects.materialEMpa;
+    }
+    if (effects.materialGMpa > 0.0) {
+        in.steel.G = effects.materialGMpa;
+    }
+    verdict.steelEMpa = in.steel.E;
+    verdict.steelGMpa = in.steel.G;
     in.length = effects.lengthMm;
     in.Kx = params.kx;
     in.Ky = params.ky;

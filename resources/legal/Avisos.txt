@@ -1,0 +1,62 @@
+DIZERES LEGAIS E LICENÇAS DE TERCEIROS
+=======================================
+
+O Structura::Metálicas usa bibliotecas de terceiros, distribuídas com o programa. Os direitos autorais de cada uma pertencem
+aos seus autores. Abaixo estão os avisos exigidos pelas licenças. Os textos completos das licenças LGPL 3.0 e GPL 3.0 e a
+licença do VTK estão nos outros itens da lista desta janela.
+
+
+Qt 6.9
+------
+Este programa usa o Qt (módulos Core, Gui, Widgets, Network, OpenGL, OpenGLWidgets e Svg), © The Qt Company Ltd. e
+colaboradores, licenciado sob a GNU Lesser General Public License versão 3 (LGPL 3.0) e distribuído em bibliotecas de vínculo
+dinâmico (arquivos Qt6*.dll, plug-ins e traduções, na pasta do programa).
+
+ - O Qt é software livre. O código-fonte do Qt, na versão usada por este programa, está disponível em
+   https://download.qt.io/official_releases/qt/ e em https://www.qt.io/download-open-source .
+ - Você pode usar, estudar e modificar o Qt conforme a LGPL 3.0 (texto completo no item "GNU LGPL 3.0"; ela incorpora as
+   condições da GPL 3.0, item "GNU GPL 3.0").
+ - O Qt não foi modificado por este programa.
+ - "Qt" e os logotipos do Qt são marcas de The Qt Company Ltd.
+ - O Qt inclui componentes de terceiros com licenças próprias (por exemplo FreeType, HarfBuzz, libpng, libjpeg, zlib, PCRE2,
+   double-conversion e md4c). A lista completa está em https://doc.qt.io/qt-6/licenses-used-in-qt.html .
+
+
+VTK 9.5 (Visualization Toolkit)
+-------------------------------
+A visualização 3D usa o VTK, © 1993-2015 Ken Martin, Will Schroeder e Bill Lorensen, e © Kitware, Inc. e colaboradores,
+distribuído sob a licença BSD de 3 cláusulas (texto completo no item "VTK"), em bibliotecas vtk*.dll. Nem os nomes dos autores
+nem os dos colaboradores são usados para endossar ou promover este produto.
+
+O VTK embute bibliotecas de terceiros, que acompanham este programa com suas licenças próprias:
+ - FreeType (vtkfreetype): FreeType License (FTL) ou GPL 2.0; este programa adota a FTL. "Portions of this software are
+   copyright © The FreeType Project (www.freetype.org). All rights reserved."
+ - expat (vtkexpat): MIT.                       - libpng (vtkpng): licença libpng.
+ - libjpeg (vtkjpeg): IJG / BSD.                 - libtiff (vtktiff): BSD.
+ - zlib (vtkzlib): licença zlib.                 - LZ4 (vtklz4): BSD de 2 cláusulas.
+ - liblzma/XZ (vtklzma): domínio público.        - {fmt} (vtkfmt): MIT.
+ - pugixml (vtkpugixml): MIT.                    - loguru (vtkloguru): domínio público.
+ - KISS FFT (vtkkissfft): BSD de 3 cláusulas.    - Verdict (vtkverdict): BSD de 3 cláusulas.
+ - MetaIO (vtkmetaio): BSD.                      - glad (vtkglad): domínio público / MIT.
+ - scnlib (vtkscn): Apache 2.0.                  - DIY (vtkParallelDIY): BSD de 3 cláusulas.
+Os textos dessas licenças estão no código-fonte do VTK, em https://gitlab.kitware.com/vtk/vtk (pasta ThirdParty).
+
+
+Outros componentes
+------------------
+ - Eigen 3 (álgebra linear dos solvers), © os autores do Eigen, Mozilla Public License 2.0.
+   Código-fonte do Eigen: https://eigen.tuxfamily.org . Os arquivos do Eigen não foram alterados.
+ - nlohmann/json, © Niels Lohmann, licença MIT.
+ - QR Code generator library (C++), © Project Nayuki, licença MIT (https://www.nayuki.io/page/qr-code-generator-library).
+   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation
+   files, to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge,
+   publish, distribute, sublicense, and/or sell copies of the Software. The above copyright notice and this permission notice
+   shall be included in all copies or substantial portions of the Software. The Software is provided "as is", without warranty
+   of any kind.
+ - TweetNaCl, de Daniel J. Bernstein, Wesley Janssen e outros: domínio público.
+
+
+Garantia
+--------
+O Qt, o VTK e os demais componentes acima são fornecidos "no estado em que se encontram", sem garantia de qualquer tipo.
+Esses avisos não alteram os termos de uso do Structura::Metálicas.

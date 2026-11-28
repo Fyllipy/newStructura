@@ -121,11 +121,8 @@ double angleLength(const DoubleAngleInput &in)
 
 double worstRatio(const std::vector<Check> &checks)
 {
-    double worst = 0.0;
-    for (const auto &c : checks) {
-        worst = std::max(worst, c.ratio());
-    }
-    return worst;
+    // Uma lista sem nenhuma verificacao executada (vazia, ou so com notas/NAO APLICAVEL) nunca e aprovacao: razao de "nao verificavel".
+    return summarize(checks).worstRatio;
 }
 
 const Check *governing(const std::vector<Check> &checks)

@@ -29,12 +29,14 @@
 #include "app/services/DesignService.h"
 #include "app/services/MaterialLibrary.h"
 #include "app/services/UserLibrary.h"
+#include "ui/LegalNoticesDialog.h"
 #include "viz/SceneController.h"
 
 #include <QDialog>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QElapsedTimer>
@@ -744,24 +746,37 @@ void MainWindow::onAbout()
 {
     const QString title = tr("Sobre o %1").arg(Structura::App::Product::displayName());
     const QStringList args = {Structura::App::Product::displayName(), Structura::App::Product::versionDisplay()};
+    QString text;
     if (Structura::App::Edition::kHasDesign) {
-        QMessageBox::about(this, title,
-                           tr("<b>%1</b> — versão %2<br>Modelagem, análise e dimensionamento de estruturas metálicas.<br><br>"
-                              "Análise: solver de elementos de barra (1ª e 2ª ordem).<br>"
-                              "Dimensionamento: NBR 8800:2024 e NBR 14762:2010.<br>"
-                              "Ligações: NBR 8800:2024, NBR 6118:2023 e CIDECT Design Guide 1.<br>"
-                              "<br>"
-                              "Todos os direitos reservados para Structura.<br>"
-                              "Créditos: Eng. João Nunes. Email: jfyllipy@gmail.com")
-                               .arg(args[0], args[1]));
+        text = tr("<b>%1</b> — versão %2<br>Modelagem, análise e dimensionamento de estruturas metálicas.<br><br>"
+                  "Análise: solver de elementos de barra (1ª e 2ª ordem).<br>"
+                  "Dimensionamento: NBR 8800:2024 e NBR 14762:2010.<br>"
+                  "Ligações: NBR 8800:2024, NBR 6118:2023 e CIDECT Design Guide 1.<br>"
+                  "<br>"
+                  "Todos os direitos reservados para Structura.<br>"
+                  "Créditos: Eng. João Nunes. Email: jfyllipy@gmail.com")
+                   .arg(args[0], args[1]);
     } else {
-        QMessageBox::about(this, title,
-                           tr("<b>%1</b> — versão %2<br>Modelagem e análise estrutural de estruturas metálicas.<br><br>"
-                              "Edição demonstrativa: análise de barras (1ª e 2ª ordem, não linear e vento), visualização e relatórios de análise. "
-                              "<br>"
-                              "Todos os direitos reservados para Structura.<br>"
-                              "Créditos: Eng. João Nunes. Email: jfyllipy@gmail.com")
-                               .arg(args[0], args[1]));
+        text = tr("<b>%1</b> — versão %2<br>Modelagem e análise estrutural de estruturas metálicas.<br><br>"
+                  "Edição demonstrativa: análise de barras (1ª e 2ª ordem, não linear e vento), visualização e relatórios de análise. "
+                  "<br>"
+                  "Todos os direitos reservados para Structura.<br>"
+                  "Créditos: Eng. João Nunes. Email: jfyllipy@gmail.com")
+                   .arg(args[0], args[1]);
+    }
+    text += tr("<br><br>Este programa usa o Qt e o VTK, entre outras bibliotecas de terceiros. Veja os avisos e licenças em \"Dizeres legais\".");
+    QMessageBox box(this);
+    box.setWindowTitle(title);
+    box.setTextFormat(Qt::RichText);
+    box.setText(text);
+    box.setIconPixmap(windowIcon().pixmap(64, 64));
+    QPushButton *legal = box.addButton(tr("Dizeres legais"), QMessageBox::ActionRole);
+    box.addButton(QMessageBox::Ok)->setText(tr("OK"));
+    box.setDefaultButton(QMessageBox::Ok);
+    box.exec();
+    if (box.clickedButton() == legal) {
+        Structura::UI::LegalNoticesDialog dialog(this);
+        dialog.exec();
     }
 }
 

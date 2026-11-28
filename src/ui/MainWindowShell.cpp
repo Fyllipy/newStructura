@@ -72,11 +72,17 @@ void MainWindow::onShellEditor()
     if (!m_sceneController) {
         return;
     }
+    Structura::UI::ShellDialog *dialog = ensureShellDialog();
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+    dialog->selectObjectId(m_selectedShellObject);
+}
+
+Structura::UI::ShellDialog *MainWindow::ensureShellDialog()
+{
     if (m_shellDialog) {
-        m_shellDialog->show();
-        m_shellDialog->raise();
-        m_shellDialog->activateWindow();
-        return;
+        return m_shellDialog;
     }
     const QString appDir = QCoreApplication::applicationDirPath();
     const QString bundledEnc = QDir(appDir).filePath(QStringLiteral("mefs.enc"));
@@ -118,8 +124,7 @@ void MainWindow::onShellEditor()
     auto *dialog = new Structura::UI::ShellDialog(m_extras.shell, callbacks, library, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     m_shellDialog = dialog;
-    dialog->show();
-    dialog->selectObjectId(m_selectedShellObject);
+    return dialog;
 }
 
 bool MainWindow::coupledShellResults(const QStringList &cases, bool runAnalysis, Structura::Shell::Results &out, std::string &error)
@@ -191,7 +196,7 @@ void MainWindow::onShellCoupleToggled(bool on)
             return;
         }
     }
-    showStatusMessage(tr("Acoplamento ativo: nós coincidentes ou sobre a casca são ligados; use Analisar para resolver barras e cascas juntas."), 7000);
+    showStatusMessage(tr("Acoplamento ativo: nós coincidentes ou sobre a casca são ligados; marque \"Analisar MEF\" na janela Processar para resolver barras e cascas juntas."), 7000);
 }
 
 void MainWindow::refreshShellVisuals(bool force)

@@ -582,6 +582,9 @@ struct DesignSettings {
     bool autoB2 {true};                 ///< Calcula B2 por andar (Anexo C) nas analises de 1a ordem
     double rs {0.85};                   ///< Rs do Anexo C (0,85 em porticos, 1,0 nos demais casos)
     bool singleStorey {false};          ///< Galpao/edificacao de um pavimento (limite de topo H/300; senao H/400)
+    /// DECLARACAO EXPLICITA do projetista (orienta o comportamento requerido das ligacoes; nenhum valor e presumido): 0 = nao declarado.
+    int structuralSystem {0};           ///< 1 = portico de vigas e pilares; 2 = galpao / um pavimento; 3 = trelica; 4 = outro
+    int bracingCondition {0};           ///< 1 = contraventada (estabilidade lateral por contraventamento/nucleos); 2 = nao contraventada (estabilidade pelos porticos)
     bool geometricImperfection {false};  ///< Imperfeicao geometrica inicial direta (desaprumo H/n) nas combinacoes ultimas da 2a ordem, no lugar das forcas nocionais
     double imperfectionRatio {1.0 / 333.0};   ///< Desaprumo: deslocamento horizontal = razao x altura acima da base (NBR 8800, 4.9.7.1: H/333)
     bool notionalLoads {false};       ///< Forcas nocionais (NBR 8800, 4.9.7.2): variantes das combinacoes ultimas com 0,3% das cargas gravitacionais
@@ -610,7 +613,7 @@ struct DesignSettings {
     [[nodiscard]] bool isDefault() const
     {
         return members.isEmpty() && defaultSteel == QLatin1String("MR250") && rectTubeStandard == QLatin1String("AUTO")
-            && amplifyB1 && slendernessGoverns && !secondOrder && !stabilityFunctions && !shearDeformation && !vonMises && !fireCheck && fireTrrf == 60.0 && !warpingTorsion && loadSteps == 0 && rigidZoneFactor == 0.0 && stiffnessReduction == 0.8 && autoB2 && rs == 0.85 && !singleStorey && !notionalLoads && !geometricImperfection && imperfectionRatio == 1.0 / 333.0 && notionalFactor == 0.003 && !groupByFamily && targetEta == 1.0
+            && amplifyB1 && slendernessGoverns && !secondOrder && !stabilityFunctions && !shearDeformation && !vonMises && !fireCheck && fireTrrf == 60.0 && !warpingTorsion && loadSteps == 0 && rigidZoneFactor == 0.0 && stiffnessReduction == 0.8 && autoB2 && rs == 0.85 && !singleStorey && structuralSystem == 0 && bracingCondition == 0 && !notionalLoads && !geometricImperfection && imperfectionRatio == 1.0 / 333.0 && notionalFactor == 0.003 && !groupByFamily && targetEta == 1.0
             && combinations.isEmpty() && defaults == DesignMemberParams {};
     }
 };

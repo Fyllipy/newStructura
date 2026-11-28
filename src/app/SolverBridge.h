@@ -6,6 +6,7 @@
 #include <array>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace Structura::App {
@@ -390,6 +391,15 @@ public:
     explicit SolverBridge(QString libraryPath = QString());
 
     [[nodiscard]] Result solve(const ModelData &model, bool isPreview = false) const;
+
+    /// O que o servidor de licencas recebe para conferir o equilibrio global de um calculo oficial: o modelo em JSON
+    /// (nos de barra e de casca, barras e cargas) e os totais de reacao (forca e momento em torno da origem, sinal das reacoes).
+    struct LicenseSummary {
+        std::string modelJson;
+        std::array<double, 3> reactionForce {{0.0, 0.0, 0.0}};
+        std::array<double, 3> reactionMoment {{0.0, 0.0, 0.0}};
+    };
+    [[nodiscard]] static LicenseSummary licenseSummary(const ModelData &model);
 
 private:
     QString m_libraryPath;

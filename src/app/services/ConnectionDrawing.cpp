@@ -54,6 +54,12 @@ std::string fmtNum(double v, int decimals = 0)
     return s;
 }
 
+/// Aproveitamento para a legenda dos desenhos: razao >= 1e8 e a marca de ligacao NAO VERIFICAVEL (dados insuficientes), nunca um numero.
+std::string etaLabel(double eta)
+{
+    return eta >= 1.0e8 ? std::string("NAO VERIFICAVEL") : fmtNum(eta, 2);
+}
+
 double val(const NodeConnection &c, const char *key, double fallback = 0.0)
 {
     return c.values.value(QString::fromLatin1(key), fallback);
@@ -208,9 +214,9 @@ std::vector<std::string> connectionNotes(const SheetBuilder::ConnectionDetail &d
 void notesFinish(Sheet &s, const L &l, double rx0, double ry0, std::vector<std::string> lines, const SheetBuilder::ConnectionDetail &d, const char *norm)
 {
     if (d.hasForces) {
-        lines.push_back("ESFORÇOS DE CÁLCULO: V = " + fmtNum(d.shearKN, 1) + " kN; N = " + fmtNum(d.axialKN, 1) + " kN; APROVEIT. η = " + fmtNum(d.eta, 2));
+        lines.push_back("ESFORÇOS DE CÁLCULO: V = " + fmtNum(d.shearKN, 1) + " kN; N = " + fmtNum(d.axialKN, 1) + " kN; APROVEIT. η = " + etaLabel(d.eta));
     } else {
-        lines.push_back("APROVEITAMENTO η = " + fmtNum(d.eta, 2));
+        lines.push_back("APROVEITAMENTO η = " + etaLabel(d.eta));
     }
     lines.push_back(std::string(norm) + " COTAS EM mm.");
     notesBlock(s, l, rx0 + 6.0, ry0 + 33.0, lines);
@@ -1841,9 +1847,9 @@ double drawCatalogDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, doub
             lines.push_back("Perfil: " + d.beamSection.toStdString());
         }
         if (d.hasForces) {
-            lines.push_back("Esforços: V = " + fmtNum(d.shearKN, 1) + " kN; N = " + fmtNum(d.axialKN, 1) + " kN; η = " + fmtNum(d.eta, 2));
+            lines.push_back("Esforços: V = " + fmtNum(d.shearKN, 1) + " kN; N = " + fmtNum(d.axialKN, 1) + " kN; η = " + etaLabel(d.eta));
         } else {
-            lines.push_back("η = " + fmtNum(d.eta, 2));
+            lines.push_back("η = " + etaLabel(d.eta));
         }
         if (outside) {
             lines.push_back("Junta a " + fmtNum(val(c, "outDist", 0.0), 0) + " mm da face do apoio; solda viga-apoio: mesas " + std::string(val(c, "supWeldKind", 0.0) < 0.5 ? "penetração total" : "filete " + fmtNum(val(c, "supWeldLegF", 0.0), 0) + " mm") +
@@ -2073,7 +2079,7 @@ double drawConnectionDetail(Sheet &s, const SheetBuilder::ConnectionDetail &d, d
             lines.push_back("SOLDA DE FILETE " + fmtNum(val(c, "weldLeg", 6.0), 0) + " mm EM AMBOS OS LADOS, ELETRODO fw = " + fmtNum(val(c, "weldFw", 485.0), 0) + " MPa");
         }
         if (d.hasForces) {
-            lines.push_back("ESFORÇOS DE CÁLCULO: V = " + fmtNum(d.shearKN, 1) + " kN; N = " + fmtNum(d.axialKN, 1) + " kN; APROVEIT. η = " + fmtNum(d.eta, 2));
+            lines.push_back("ESFORÇOS DE CÁLCULO: V = " + fmtNum(d.shearKN, 1) + " kN; N = " + fmtNum(d.axialKN, 1) + " kN; APROVEIT. η = " + etaLabel(d.eta));
         }
         lines.push_back("NBR 8800:2024 - 6.2, 6.3 E 6.5. COTAS EM mm.");
         notesBlock(s, l, rx0 + 6.0, 52.0, lines);

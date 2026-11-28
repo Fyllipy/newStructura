@@ -1455,7 +1455,11 @@ private slots:
         loaded.extras.design.stabilityFunctions = true;
         loaded.extras.design.shearDeformation = true;
         loaded.extras.design.loadSteps = 8;
+        QCOMPARE(loaded.extras.design.structuralSystem, 0);   // arquivo sem as chaves: NAO declarado (nenhum padrao assumido)
+        QCOMPARE(loaded.extras.design.bracingCondition, 0);
         loaded.extras.design.rigidZoneFactor = 0.5;
+        loaded.extras.design.structuralSystem = 1;
+        loaded.extras.design.bracingCondition = 2;
         const QString second = dir.filePath(QStringLiteral("b.dat"));
         QString error;
         QVERIFY(service.save(second, &gateway, loaded.materials, loaded.sections, loaded.supports, loaded.nodal, loaded.member, loaded.extras, &error));
@@ -1470,6 +1474,8 @@ private slots:
         QVERIFY(std::abs(again.extras.design.imperfectionRatio - 1.0 / 400.0) < 1e-12);
         QCOMPARE(again.extras.design.loadSteps, 8);
         QVERIFY(std::abs(again.extras.design.rigidZoneFactor - 0.5) < 1e-12);
+        QCOMPARE(again.extras.design.structuralSystem, 1);
+        QCOMPARE(again.extras.design.bracingCondition, 2);
     }
 #endif
 #ifndef STRUCTURA_EDITION_DEMO   // usa recursos exclusivos da edicao Comercial

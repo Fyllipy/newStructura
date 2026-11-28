@@ -148,6 +148,7 @@ MainWindow::MainWindow(QWidget *parent)
                 refreshPropertiesPanel();
                 updateStatus();
                 updateLoadActionsEnabled();
+                updateJointAction();
                 updateEditActionsEnabled();
             });
     setupSessionServices();

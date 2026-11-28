@@ -178,6 +178,20 @@ std::shared_ptr<const ShellCouplingService::Mapping> ShellCouplingService::mappi
         int nextId = maxId + 1;
         std::vector<char> merged(m.mesh.nodes.size(), 0);
         std::unordered_map<int, char> mergedBar;
+        // Casca apoiada nas barras: se algum no da casca sobre barra tem apoio definido, so esses nos transferem (e so nos graus apoiados);
+        // sem nenhum apoio nesses nos, vale o comportamento padrao (todos os nos em contato transferem as translacoes).
+        bool explicitBarSupports = false;
+        if (!shell.monolithic) {
+            for (std::size_t n = 0; n < m.mesh.nodes.size() && !explicitBarSupports; ++n) {
+                if (findBarNode(m.mesh.nodes[n]) != 0 && std::any_of(job.nodes[n].fixed.begin(), job.nodes[n].fixed.end(), [](int f) { return f != 0; })) {
+                    explicitBarSupports = true;
+                }
+            }
+        }
+        if (explicitBarSupports) {
+            m.warnings.push_back("Apoios definidos em nos da casca sobre barras: so esses nos transferem reacao a barra (nos graus apoiados); "
+                                 "os demais nos em contato com barras ficam livres.");
+        }
         for (std::size_t n = 0; n < m.mesh.nodes.size(); ++n) {
             const int barId = findBarNode(m.mesh.nodes[n]);
             if (barId != 0) {
@@ -199,15 +213,36 @@ std::shared_ptr<const ShellCouplingService::Mapping> ShellCouplingService::mappi
                     node.x = m.mesh.nodes[n][0];
                     node.y = m.mesh.nodes[n][1];
                     node.z = m.mesh.nodes[n][2];
-                    node.restraints = job.nodes[n].fixed;
                     m.nodeIdOfMeshNode[n] = node.id;
-                    part->nodes.push_back(node);
-                    SolverBridge::ShellTieData tie;
-                    tie.slave = node.id;
-                    tie.masters = {barId};
-                    tie.weights = {1.0};
-                    tie.dofMask = 7;
-                    part->ties.push_back(std::move(tie));
+                    if (explicitBarSupports) {
+                        // o usuario definiu apoios nos nos da casca sobre barras: o apoio vale como ligacao com a barra, so nos graus
+                        // restritos (apoiado = a reacao da casca vai para a barra; livre = nada e transferido). O no da casca nao fica
+                        // fixo no solo, senao seguraria o no da barra.
+                        int mask = 0;
+                        for (int c = 0; c < 6; ++c) {
+                            if (job.nodes[n].fixed[static_cast<std::size_t>(c)]) {
+                                mask |= 1 << c;
+                            }
+                        }
+                        part->nodes.push_back(node);
+                        if (mask != 0) {
+                            SolverBridge::ShellTieData tie;
+                            tie.slave = node.id;
+                            tie.masters = {barId};
+                            tie.weights = {1.0};
+                            tie.dofMask = mask;
+                            part->ties.push_back(std::move(tie));
+                        }
+                    } else {
+                        node.restraints = job.nodes[n].fixed;
+                        part->nodes.push_back(node);
+                        SolverBridge::ShellTieData tie;
+                        tie.slave = node.id;
+                        tie.masters = {barId};
+                        tie.weights = {1.0};
+                        tie.dofMask = 7;
+                        part->ties.push_back(std::move(tie));
+                    }
                 }
             } else {
                 SolverBridge::ShellNodeData node;

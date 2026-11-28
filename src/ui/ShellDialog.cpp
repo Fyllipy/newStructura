@@ -284,12 +284,9 @@ void ShellDialog::buildUi()
     m_status->setWordWrap(true);
     m_meshInfo = new QLabel;
     auto *mesh = new QPushButton(tr("Gerar malha"));
-    auto *run = new QPushButton(tr("Analisar"));
-    run->setStyleSheet(QStringLiteral("QPushButton { background: #0d7fb9; color: white; font-weight: 600; padding: 5px 16px; border-radius: 4px; }"));
     auto *close = new QPushButton(tr("Fechar"));
     bottom->addWidget(m_meshInfo, 1);
     bottom->addWidget(mesh);
-    bottom->addWidget(run);
     bottom->addWidget(close);
     root->addWidget(m_status);
     root->addLayout(bottom);
@@ -298,7 +295,6 @@ void ShellDialog::buildUi()
     connect(duplicate, &QPushButton::clicked, this, [this]() { duplicateObject(); });
     connect(remove, &QPushButton::clicked, this, [this]() { removeObject(); });
     connect(mesh, &QPushButton::clicked, this, [this]() { generateMesh(); });
-    connect(run, &QPushButton::clicked, this, [this]() { analyze(); });
     connect(close, &QPushButton::clicked, this, &QDialog::close);
 }
 
@@ -1321,7 +1317,7 @@ void ShellDialog::generateMesh()
     }
 }
 
-void ShellDialog::analyze()
+void ShellDialog::analyze(bool quiet)
 {
     if (m_analyzing) {
         return;
@@ -1331,19 +1327,32 @@ void ShellDialog::analyze()
         bool &flag;
         ~Reset() { flag = false; }
     } reset {m_analyzing};
+    // quiet (analise pedida pela janela Processar): o motivo vai para o log da janela, sem caixas de dialogo
+    auto stop = [&](const QString &text, int tab, bool warning) {
+        m_status->setText(text.trimmed());
+        if (quiet) {
+            return;
+        }
+        if (warning) {
+            QMessageBox::warning(this, tr("Cascas"), text);
+        } else {
+            QMessageBox::information(this, tr("Cascas"), text);
+        }
+        if (tab >= 0) {
+            m_tabs->setCurrentIndex(tab);
+        }
+    };
     if (m_model.objects.empty()) {
-        QMessageBox::information(this, tr("Cascas"), tr("Adicione ao menos um objeto."));
+        stop(tr("Adicione ao menos um objeto."), -1, false);
         return;
     }
     const QStringList cases = shellCaseNames();
     if (cases.isEmpty()) {
-        QMessageBox::information(this, tr("Cascas"), tr("Defina ao menos uma carga (aba Cargas)."));
-        m_tabs->setCurrentIndex(2);
+        stop(tr("Defina ao menos uma carga (aba Cargas)."), 2, false);
         return;
     }
     if (m_model.supports.empty() && !m_model.coupled) {
-        QMessageBox::information(this, tr("Cascas"), tr("Defina os apoios (aba Apoios): sem apoios a estrutura é instável."));
-        m_tabs->setCurrentIndex(3);
+        stop(tr("Defina os apoios (aba Apoios): sem apoios a estrutura é instável."), 3, false);
         return;
     }
     // qualidade da malha ANTES de resolver: elemento invertido/degenerado ou normais opostas produzem resultado estruturalmente incorreto sem nenhum erro numerico
@@ -1396,8 +1405,7 @@ void ShellDialog::analyze()
         messages += QStringLiteral("• %1\n").arg(QString::fromStdString(w));
     }
     if (!m_results.ok()) {
-        m_status->setText(tr("Falha na análise: %1").arg(QString::fromStdString(m_results.error)));
-        QMessageBox::warning(this, tr("Cascas"), tr("Falha na análise: %1").arg(QString::fromStdString(m_results.error)));
+        stop(tr("Falha na análise: %1").arg(QString::fromStdString(m_results.error)), -1, true);
         return;
     }
     if (m_results.maxWarp > 0.0) {
@@ -1496,6 +1504,21 @@ void ShellDialog::showProjectResults()
     }
     m_runProjectAnalysis = false;
     analyze();
+    m_runProjectAnalysis = true;
+}
+
+void ShellDialog::analyzeFromProcess()
+{
+    if (m_analyzing) {
+        return;
+    }
+    if (m_model.objects.empty()) {
+        m_status->setText(tr("Análise do MEF não executada: não há cascas no projeto."));
+        return;
+    }
+    // acoplado as barras, os resultados vem da propria analise do projeto (ja executada); desacoplado, resolve a malha com o solver de cascas
+    m_runProjectAnalysis = false;
+    analyze(true);
     m_runProjectAnalysis = true;
 }
 

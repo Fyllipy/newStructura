@@ -271,15 +271,15 @@ private slots:
         UI::ShellDialog dialog(model, callbacks, dll);
         dialog.show();
         auto *mesh = button(&dialog, QStringLiteral("Gerar malha"));
-        auto *run = button(&dialog, QStringLiteral("Analisar"));
-        QVERIFY(mesh && run);
+        QVERIFY(mesh);
+        QVERIFY2(!button(&dialog, QStringLiteral("Analisar")), "o botao Analisar saiu da janela: a analise vem da janela Processar (Analisar MEF)");
         mesh->click();
         QVERIFY(renders >= 1);
         QVERIFY(triangles > 100);
         QVERIFY(!valued);   // so a malha
         const std::uint64_t plainRevision = last.geometryRevision;
         QVERIFY(plainRevision != 0);
-        run->click();
+        dialog.analyzeFromProcess();   // o que o checkbox "Analisar MEF" da janela Processar aciona
         QVERIFY(valued);
         QVERIFY(renders >= 2);
         // Fase 1: o mesmo RenderMesh que colore a vista alimenta a legenda e o probe da janela principal (resultados reais do solver)

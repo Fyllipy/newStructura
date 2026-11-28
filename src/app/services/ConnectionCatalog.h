@@ -3,12 +3,14 @@
 #include "app/ProjectDataTypes.h"
 #include "app/services/ConnectionService.h"
 #include "app/services/ConnectionSolids.h"
+#include "design/MomentConnection.h"
 
 #include <QMap>
 #include <QString>
 #include <QVector>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -91,6 +93,8 @@ public:
     };
 
     static bool isCatalog(int type) { return type >= kFirstId; }
+    /// Dados da ligacao rigida viga-pilar (familia Moment), sem esforcos: geometria e acos. Vazio se a ligacao nao e dessa familia.
+    static std::optional<Structura::Design::Connections::MomentConnectionInput> momentInput(const Structura::App::ProjectData::NodeConnection &connection);
     /// A tipologia usa as demais barras que chegam ao no (no de trelica).
     static bool usesBraces(int type);
     static Structura::App::ProjectData::NodeConnection makeDefaultWithBraces(int type, const BeamInfo &beam, double plateFy, double plateFu, const QVector<BraceInfo> &braces);

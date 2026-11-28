@@ -53,6 +53,16 @@ ConnectionService::Forces forces(double shearKn)
 
 } // namespace
 
+// secao do pilar explicita e confirmada (nao existe mais pilar padrao embutido no dimensionamento)
+static void withColumn(Structura::App::ProjectData::NodeConnection &c)
+{
+    for (const auto &kv : {std::pair<const char *, double> {"supD", 260.0}, {"supBf", 146.0}, {"supTf", 12.7}, {"supTw", 7.6}, {"supR", 10.0}, {"supFy", 250.0}, {"supFu", 400.0}, {"supConfirmed", 1.0}}) {
+        if (!c.values.contains(QString::fromLatin1(kv.first))) {
+            c.values[QString::fromLatin1(kv.first)] = kv.second;
+        }
+    }
+}
+
 class TestConnectionCatalog : public QObject
 {
     Q_OBJECT
@@ -92,6 +102,7 @@ private slots:
         {
             using Structura::App::ProjectData::NodeConnection;
             auto plate = ConnectionService::makeDefault(NodeConnection::kEndPlate, beam(), 250.0, 400.0);
+            withColumn(plate);
             ConnectionService::Forces ef;
             ef.shear = 50000.0;
             ef.moment = 80e6;
@@ -329,7 +340,8 @@ private slots:
     {
         int count = 0;
         for (const auto &entry : ConnectionCatalog::entries()) {
-            const auto c = ConnectionService::makeDefault(entry.id, beam(), 250.0, 400.0);
+            auto c = ConnectionService::makeDefault(entry.id, beam(), 250.0, 400.0);
+            withColumn(c);
             QCOMPARE(c.type, entry.id);
             QVERIFY2(!ConnectionService::fields(entry.id).isEmpty(), qPrintable(entry.name));
             const auto e = ConnectionService::evaluate(c, forces(60.0));

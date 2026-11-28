@@ -227,10 +227,11 @@ void ConnectionDialog::showChecks(const std::vector<C::Check> &checks)
         const auto &c = checks[i];
         const int row = static_cast<int>(i);
         const QString unit = QString::fromStdString(c.unit);
+        const bool evaluated = c.status == Structura::Design::Connections::CheckStatus::Evaluated;
         const QStringList cells {QString::fromStdString(c.name), QString::fromStdString(c.clause),
-                                 QStringLiteral("%1 %2").arg(c.minimumRule ? c.demand : c.demand, 0, 'f', 2).arg(unit),
-                                 QStringLiteral("%1 %2").arg(c.resistance, 0, 'f', 2).arg(unit),
-                                 QString::number(c.ratio(), 'f', 3)};
+                                 evaluated ? QStringLiteral("%1 %2").arg(c.demand, 0, 'f', 2).arg(unit) : QStringLiteral("-"),
+                                 evaluated ? QStringLiteral("%1 %2").arg(c.resistance, 0, 'f', 2).arg(unit) : QStringLiteral("-"),
+                                 evaluated ? QString::number(c.ratio(), 'f', 3) : QString::fromStdString(c.statusLabel())};
         for (int col = 0; col < cells.size(); ++col) {
             auto *item = new QTableWidgetItem(cells[col]);
             if (col == 4) {
@@ -248,10 +249,15 @@ void ConnectionDialog::showChecks(const std::vector<C::Check> &checks)
         }
         worst = std::max(worst, c.ratio());
     }
-    const bool ok = worst <= 1.0 + 1e-9;
+    const auto global = Structura::Design::Connections::summarize(checks);
+    const bool ok = global.status == Structura::Design::Connections::Summary::Approved;
     m_verdict->setStyleSheet(ok ? QStringLiteral("color:#1e8449; font-weight:600;") : QStringLiteral("color:#c0392b; font-weight:600;"));
-    m_verdict->setText(ok ? tr("A ligação atende às verificações listadas (razão máxima %1).").arg(worst, 0, 'f', 3)
-                          : tr("A ligação NÃO atende (razão máxima %1).").arg(worst, 0, 'f', 3));
+    if (global.status == Structura::Design::Connections::Summary::Incomplete) {
+        m_verdict->setText(tr("NÃO VERIFICÁVEL — DADOS INSUFICIENTES: a ligação NÃO está aprovada (há verificação obrigatória que não pôde ser realizada ou nenhuma foi executada)."));
+    } else {
+        m_verdict->setText(ok ? tr("A ligação atende às verificações listadas (razão máxima %1).").arg(worst, 0, 'f', 3)
+                              : tr("A ligação NÃO atende (razão máxima %1).").arg(worst, 0, 'f', 3));
+    }
 }
 
 } // namespace Structura::UI

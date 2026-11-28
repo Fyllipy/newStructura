@@ -112,9 +112,13 @@ private slots:
         QCOMPARE(static_cast<int>(web.size()), 1);
         const double h = 310.0 - 2.0 * 9.7;
         QVERIFY(std::abs(web[0].resistance - 8.0 * (345.0 * 5.8 * 5.8 / 4.0) * (100.0 + h) / h / 1.1 / 1e3) < 1e-6);
-        // sem face informada, nada e verificado
+        // sem face informada a verificacao nao some: fica NAO APLICAVEL com justificativa (e nunca conta como aprovacao sozinha)
         in.face = D::SupportInput::None;
-        QVERIFY(D::checkSupportMember(in).empty());
+        const auto none = D::checkSupportMember(in);
+        QCOMPARE(static_cast<int>(none.size()), 1);
+        QVERIFY(none[0].status == D::CheckStatus::NotApplicable);
+        QVERIFY(!none[0].reason.empty());
+        QVERIFY(D::summarize(none).status == D::Summary::Incomplete);
     }
 
     void trussGeneratorProducesStableConnectedGeometry()
@@ -2025,6 +2029,35 @@ private slots:
         const auto verdict = DesignService::verifyMember(effects[0], section, settings.paramsFor(1), settings, 1000.0);
         QVERIFY(verdict.supported);
         QVERIFY(verdict.output.maxRatio > 0.2 && verdict.output.maxRatio < 1.5);
+
+        // O E (e o G) das verificacoes vem do material da barra no modelo, nao de 200 GPa fixo
+        QVERIFY(std::abs(effects[0].materialEMpa - 200000.0) < 1e-6);
+        QVERIFY(std::abs(effects[0].materialGMpa - 77000.0) < 1e-6);
+        QVERIFY(std::abs(verdict.steelEMpa - 200000.0) < 1e-6);
+        {
+            SolverBridge::ModelData stiffer = model;
+            stiffer.materials[0].e = 2.1e8;   // kN/m2 -> 210 GPa
+            stiffer.materials[0].g = 8.1e7;
+            DesignService::ResultSet stiffSet;
+            stiffSet.name = "ELU1";
+            stiffSet.result = &result;
+            stiffSet.terms = {{&stiffer, 1.0}};
+            const auto stiffEffects = DesignService::collectEffects(stiffer, {stiffSet}, 1000.0, 1000.0);
+            QVERIFY(std::abs(stiffEffects[0].materialEMpa - 210000.0) < 1e-6);
+            const auto stiffVerdict = DesignService::verifyMember(stiffEffects[0], section, settings.paramsFor(1), settings, 1000.0);
+            QVERIFY(std::abs(stiffVerdict.steelEMpa - 210000.0) < 1e-6);
+            QVERIFY(std::abs(stiffVerdict.steelGMpa - 81000.0) < 1e-6);
+            // modelo de segunda ordem com E reduzido: o E de projeto continua o cadastrado quando se informam os materiais nominais
+            SolverBridge::ModelData reduced = model;
+            reduced.materials[0].e *= 0.8;
+            DesignService::ResultSet redSet;
+            redSet.name = "ELU1";
+            redSet.result = &result;
+            redSet.terms = {{&reduced, 1.0}};
+            const std::vector<SolverBridge::MaterialData> nominal = model.materials;
+            const auto redEffects = DesignService::collectEffects(reduced, {redSet}, 1000.0, 1000.0, 21, &nominal);
+            QVERIFY(std::abs(redEffects[0].materialEMpa - 200000.0) < 1e-6);
+        }
         // Serie parametrica de formados a frio (nao depende do catalogo em recursos do executavel)
         ProjectData::SectionInfo cold;
         cold.name = "Ue";

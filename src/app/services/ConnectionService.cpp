@@ -1,4 +1,5 @@
 #include "ConnectionService.h"
+#include "design/InputValidation.h"
 #include "ConnectionCatalog.h"
 
 #include "design/ConnectionHelpers.h"
@@ -348,6 +349,16 @@ D::TubularJointInput toTubular(const NodeConnection &c, const ConnectionService:
 
 // ---- ligacao rigida por chapa de extremidade ------------------------------------------------------------------------
 
+double signatureOf(const NodeConnection &c)
+{
+    double sig = 0.0, weight = 1.0;
+    for (const char *key : {"supD", "supBf", "supTf", "supTw", "supR", "supFy", "supFu"}) {
+        sig += weight * std::round(value(c, key, 0.0) * 1.0e4) / 1.0e4;
+        weight += 2.0;
+    }
+    return sig;
+}
+
 D::EndPlateInput toEndPlate(const NodeConnection &c, double shear, double axial, double moment, double panelShear = -1.0, double columnAxial = 0.0)
 {
     D::EndPlateInput in;
@@ -371,16 +382,44 @@ D::EndPlateInput toEndPlate(const NodeConnection &c, double shear, double axial,
     in.weldFlangeLeg = value(c, "weldF", 8.0);
     in.weldWebLeg = value(c, "weldW", 6.0);
     in.weldFw = value(c, "weldFw", 485.0);
-    auto positive = [&c](const char *key, double fallback) {
-        const double v = value(c, key, 0.0);
-        return v > 0.0 ? v : fallback;
-    };
-    in.colDepth = positive("supD", 260.0);
-    in.colFlangeWidth = positive("supBf", 146.0);
-    in.colFlangeThickness = positive("supTf", 12.7);
-    in.colWebThickness = positive("supTw", 7.6);
-    in.colRadius = value(c, "supR", 10.0);
-    in.column = {value(c, "supFy", 250.0), value(c, "supFu", 400.0)};
+    // GEOMETRIA DO PILAR: nunca ha valor padrao. A secao vem (a) da barra de apoio vinculada (secao efetiva do modelo) ou (b) da geometria
+    // informada manualmente e CONFIRMADA ("supConfirmed"). Sem isso as dimensoes ficam em zero e a verificacao e declarada NAO VERIFICAVEL
+    // (checkEndPlate valida as entradas), com a origem registrada em `columnSource`.
+    {
+        const int linkedBar = static_cast<int>(value(c, "supMember", 0.0) + 0.5);
+        const bool numbers = value(c, "supD", 0.0) != 0.0 || value(c, "supBf", 0.0) != 0.0 || value(c, "supTf", 0.0) != 0.0 || value(c, "supTw", 0.0) != 0.0;
+        bool available = false;
+        if (linkedBar > 0) {
+            if (value(c, "supType", 0.0) >= 0.5) {
+                in.columnSource = "barra " + std::to_string(linkedBar) + " (seção efetiva do modelo)";
+                available = true;
+            } else {
+                in.columnSource = "barra " + std::to_string(linkedBar) + " vinculada, mas o perfil de apoio não é I/H (seção sem mesa e alma): informe e confirme a geometria do pilar manualmente";
+            }
+        } else if (numbers) {
+            if (value(c, "supConfirmed", 0.0) < 0.5) {
+                in.columnSource = "geometria informada manualmente, NÃO CONFIRMADA (escolha \"Confirmada pelo projetista\" no campo \"Geometria do pilar informada à mão\")";
+            } else if (c.values.contains(QStringLiteral("supConfirmedSig")) && std::abs(value(c, "supConfirmedSig", 0.0) - signatureOf(c)) > 1.0e-6) {
+                in.columnSource = "geometria do pilar ALTERADA após a confirmação: confirme novamente";
+            } else {
+                in.columnSource = "informada manualmente e confirmada pelo projetista";
+                available = true;
+            }
+        } else {
+            in.columnSource = "nenhuma barra de apoio vinculada e nenhuma geometria do pilar informada";
+        }
+        if (available) {
+            in.colDepth = value(c, "supD", 0.0);
+            in.colFlangeWidth = value(c, "supBf", 0.0);
+            in.colFlangeThickness = value(c, "supTf", 0.0);
+            in.colWebThickness = value(c, "supTw", 0.0);
+            in.colRadius = value(c, "supR", 0.0);
+            in.column = {value(c, "supFy", 0.0), value(c, "supFu", 0.0)};
+        } else {
+            in.colDepth = in.colFlangeWidth = in.colFlangeThickness = in.colWebThickness = in.colRadius = 0.0;
+            in.column = {0.0, 0.0};
+        }
+    }
     in.colUnbraced = value(c, "supLb", 0.0);
     in.continuityPlates = value(c, "cont", 0.0) != 0.0;
     in.beamOnBothSides = value(c, "bothSides", 0.0) != 0.0;
@@ -395,6 +434,19 @@ D::EndPlateInput toEndPlate(const NodeConnection &c, double shear, double axial,
     return in;
 }
 
+}
+
+double ConnectionService::columnSignature(const NodeConnection &connection)
+{
+    return signatureOf(connection);
+}
+
+Structura::Design::Connections::EndPlateInput ConnectionService::endPlateInput(const NodeConnection &c)
+{
+    return toEndPlate(c, 0.0, 0.0, 0.0);
+}
+
+namespace {
 // ---- avaliacao por combinacao ---------------------------------------------------------------------------------------
 
 QVector<ConnectionService::ForceCase> casesOf(const ConnectionService::Forces &f)
@@ -730,6 +782,10 @@ QVector<ConnectionService::FieldDef> ConnectionService::fields(int type)
         add("supFy", QObject::tr("fy do pilar"), 150, 800, 0, mpa);
         add("supFu", QObject::tr("fu do pilar"), 250, 1000, 0, mpa);
         supportMember();
+        add("supConfirmed", QObject::tr("Geometria do pilar informada à mão (sem barra de apoio vinculada)"), 0, 1, 0, QString(),
+            {QObject::tr("Não confirmada"), QObject::tr("Confirmada pelo projetista")},
+            QObject::tr("Sem barra de apoio vinculada, a verificação exige a geometria do pilar (altura, mesa, alma, raio e aço) informada nos campos acima E confirmada aqui. "
+                        "Não existem valores padrão: sem a confirmação a ligação fica NÃO VERIFICÁVEL. Com barra de apoio vinculada a seção do modelo é usada e este campo é ignorado."));
         break;
     }
     case NodeConnection::kColdFormed: {
@@ -1009,6 +1065,12 @@ void ConnectionService::appendSupportLocal(Evaluation &e, const NodeConnection &
 {
     const int face = static_cast<int>(value(c, "supType", 0.0) + 0.5);
     if (face != 1 && face != 2) {
+        // a verificacao nao some em silencio: fica registrada como NAO APLICAVEL, com a justificativa
+        D::SupportInput none;
+        none.face = D::SupportInput::None;
+        for (auto &check : D::checkSupportMember(none)) {
+            e.checks.push_back(std::move(check));
+        }
         return;
     }
     D::SupportInput in;
@@ -1018,8 +1080,8 @@ void ConnectionService::appendSupportLocal(Evaluation &e, const NodeConnection &
     in.tf = value(c, "supTf", 0.0);
     in.tw = value(c, "supTw", 0.0);
     in.k = value(c, "supTf", 0.0) + value(c, "supR", 0.0);
-    in.fy = value(c, "supFy", 250.0);
-    in.fu = value(c, "supFu", 400.0);
+    in.fy = value(c, "supFy", 0.0);   // sem aco do apoio informado a verificacao e NAO VERIFICAVEL (nao ha valor padrao)
+    in.fu = value(c, "supFu", 0.0);
     in.atMemberEnd = value(c, "supEnd", 1.0) != 0.0;
     in.unbracedLength = value(c, "supLb", 0.0);
     in.lengthAlong = lengthAlong;
@@ -1302,7 +1364,10 @@ ConnectionService::Evaluation ConnectionService::evaluateExactBeamFrame(const No
             }
         }
         if (c.type == NodeConnection::kEndPlate) {
-            e.parts = D::partsEndPlate(toEndPlate(c, 0, 0, 0));
+            const auto partsInput = toEndPlate(c, 0, 0, 0);
+            if (Structura::Design::Validation::validate(partsInput).empty()) {   // sem geometria valida do pilar nao ha lista de pecas
+                e.parts = D::partsEndPlate(partsInput);
+            }
         } else if (c.type == NodeConnection::kSplice) {
             e.parts = D::partsSplice(toSplice(c, 0, 0, 0));
         } else if (c.type == NodeConnection::kBasePlate) {

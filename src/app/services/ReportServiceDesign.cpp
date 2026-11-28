@@ -303,14 +303,14 @@ std::string inequalityFor(const std::string &id)
     return "\\eta \\le 1";
 }
 
-/// "NBR 8800:2024, 5.3.7" -> "ABNT NBR 8800:2024, Artigo 5.3.7"
+/// "NBR 8800:2024, 5.3.7" -> "ABNT NBR 8800:2024, item 5.3.7"
 std::string clauseTitle(const std::string &clause)
 {
     const auto comma = clause.find(", ");
     if (clause.rfind("NBR", 0) != 0) {
         return clause;
     }
-    return "ABNT " + (comma == std::string::npos ? clause : clause.substr(0, comma) + ", Artigo " + clause.substr(comma + 2));
+    return "ABNT " + (comma == std::string::npos ? clause : clause.substr(0, comma) + ", item " + clause.substr(comma + 2));
 }
 
 Structura::Report::CalcCard cardOf(const std::string &id, const std::string &title, const std::string &clause, double demand, double resistance, const std::string &unit, double ratio,
@@ -488,8 +488,8 @@ void appendBarDetail(ReportDocument &doc, const ReportService::Input &input, con
             put("fy", steel->fy, "MPa", 0);
             put("fu", steel->fu, "MPa", 0);
         }
-        put("E", 200000.0, "MPa", 0);
-        put("G", 77000.0, "MPa", 0);
+        put("E", v.steelEMpa > 0.0 ? v.steelEMpa : 200000.0, "MPa", 0);
+        put("G", v.steelGMpa > 0.0 ? v.steelGMpa : 77000.0, "MPa", 0);
         put("L", v.lengthM * 1000.0, "mm", 0);
         put("Lx", params.lx > 0.0 ? params.lx * 1000.0 : params.kx * v.lengthM * 1000.0, "mm", 0);
         put("Ly", params.ly > 0.0 ? params.ly * 1000.0 : params.ky * v.lengthM * 1000.0, "mm", 0);
@@ -663,14 +663,29 @@ void ReportService::appendDesignChapters(ReportDocument &doc, const Input &input
             summary.rows.push_back({std::to_string(c.nodeId), S(QStringLiteral("%1 (%2)").arg(c.memberId).arg(c.atEnd ? QStringLiteral("fim") : QStringLiteral("início"))),
                                     S(ConnectionService::typeName(c.type)), S(entry.evaluation.description),
                                     entry.hasForces ? S(num(entry.forces.shear / 1000.0, 1)) : "-", entry.hasForces ? S(num(entry.forces.axial / 1000.0, 1)) : "-",
-                                    S(num(entry.evaluation.maxRatio, 2))});
-            summary.status.push_back({CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, statusOf(entry.evaluation.maxRatio)});
+                                    entry.evaluation.incomplete() ? std::string("NÃO VERIFICÁVEL") : S(num(entry.evaluation.maxRatio, 2))});
+            summary.status.push_back({CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None,
+                                      entry.evaluation.incomplete() ? CellStatus::Fail : statusOf(entry.evaluation.maxRatio)});
         }
         doc.table(summary);
         for (const auto &entry : input.connections) {
             const auto &c = entry.connection;
             doc.heading(2, S(QStringLiteral("Ligação no nó %1 — viga %2 (%3)").arg(c.nodeId).arg(c.memberId).arg(ConnectionService::typeName(c.type))));
             doc.paragraph(S(entry.evaluation.description));
+            {
+                // RESULTADO GLOBAL: APROVADA so com todas as verificacoes obrigatorias executadas e atendidas; caso contrario o motivo e listado
+                const auto summaryOfChecks = entry.evaluation.summary();
+                const bool incomplete = entry.evaluation.incomplete();
+                const QString verdictText = QStringLiteral("Resultado da ligação: %1 (%2 verificação(ões) executada(s), %3 reprovada(s), %4 não verificável(is), %5 não aplicável(is)).")
+                                                .arg(entry.evaluation.statusText()).arg(summaryOfChecks.executed).arg(summaryOfChecks.failed).arg(summaryOfChecks.unverifiable).arg(summaryOfChecks.notApplicable);
+                doc.blocks.push_back(paragraphOf(S(verdictText), incomplete || summaryOfChecks.failed > 0 ? ParagraphStyle::Fail : ParagraphStyle::Ok, true));
+                if (incomplete) {
+                    doc.paragraph("A ligação NÃO pode ser apresentada como aprovada: há verificação obrigatória que não pôde ser realizada por dados insuficientes ou inválidos. Corrija os dados abaixo e reverifique.");
+                    for (const QString &problem : entry.evaluation.problems()) {
+                        doc.paragraph(S(QStringLiteral("— %1").arg(problem)));
+                    }
+                }
+            }
             if (!entry.evaluation.governingCase.isEmpty() && entry.hasForces) {
                 doc.paragraph(S(QStringLiteral("Combinação governante: %1.").arg(entry.evaluation.governingCase)));
             }
@@ -679,6 +694,18 @@ void ReportService::appendDesignChapters(ReportDocument &doc, const Input &input
             t.widths = {5, 2, 1.6, 1.6, 1};
             t.align = {'l', 'l', 'r', 'r', 'r'};
             for (const auto &check : entry.evaluation.checks) {
+                if (check.status != Structura::Design::Connections::CheckStatus::Evaluated) {
+                    // nao calculada: mostra o ESTADO no lugar da razao (NAO VERIFICAVEL / NAO APLICAVEL / INFORMACAO)
+                    const bool isComplementary = check.status == Structura::Design::Connections::CheckStatus::Complementary;
+                    const auto st = check.status == Structura::Design::Connections::CheckStatus::Unverifiable ? CellStatus::Fail : (isComplementary ? CellStatus::Complementary : CellStatus::None);
+                    const bool comp = isComplementary && check.resistance > 0.0;   // a advertencia de divergencia nao tem demanda/resistencia: so a mensagem
+                    const bool warning = check.origin == Structura::Design::Connections::CheckOrigin::DivergenceWarning;
+                    const std::string label = isComplementary ? std::string("◇ ") + check.statusLabel() : check.statusLabel();
+                    t.rows.push_back({warning && !check.reason.empty() ? check.reason : check.name, check.clause, comp ? S(QStringLiteral("%1 %2").arg(num(check.demand, 2), QString::fromStdString(check.unit))) : std::string("-"),
+                                      comp ? S(QStringLiteral("%1 %2").arg(num(check.resistance, 2), QString::fromStdString(check.unit))) : std::string("-"), label});
+                    t.status.push_back({CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, st});
+                    continue;
+                }
                 t.rows.push_back({check.name, check.clause, S(QStringLiteral("%1 %2").arg(num(check.demand, 2), QString::fromStdString(check.unit))),
                                   S(QStringLiteral("%1 %2").arg(num(check.resistance, 2), QString::fromStdString(check.unit))), S(num(check.ratio(), 3))});
                 t.status.push_back({CellStatus::None, CellStatus::None, CellStatus::None, CellStatus::None, statusOf(check.ratio())});
@@ -687,6 +714,16 @@ void ReportService::appendDesignChapters(ReportDocument &doc, const Input &input
             if (o.showFormulas) {
                 for (const auto &check : entry.evaluation.checks) {
                     if (check.lines.empty()) {
+                        continue;
+                    }
+                    if (check.status != Structura::Design::Connections::CheckStatus::Evaluated) {
+                        // estado e linhas de memoria da verificacao nao calculada (inclui a secao do pilar utilizada, a origem e as causas)
+                        const bool isComplementary = check.status == Structura::Design::Connections::CheckStatus::Complementary;
+                        doc.blocks.push_back(paragraphOf(S(QStringLiteral("%1%2 — %3").arg(isComplementary ? QStringLiteral("◇ ") : QString(), QString::fromStdString(check.name), QString::fromStdString(check.statusLabel()))),
+                                                         check.status == Structura::Design::Connections::CheckStatus::Unverifiable ? ParagraphStyle::Fail : (isComplementary ? ParagraphStyle::Note : ParagraphStyle::Normal), true));
+                        for (const auto &line : check.lines) {
+                            doc.paragraph(line);
+                        }
                         continue;
                     }
                     doc.blocks.push_back(cardOf("", check.name, check.clause, check.demand, check.resistance, check.unit, check.ratio(), check.lines, true, {}));

@@ -470,6 +470,9 @@ void MainWindow::showViewportContextMenu(const QPoint &widgetPos, const QPoint &
         return action;
     };
     add(tr("Atribuir material/secao..."), hasBars, &MainWindow::onAssignProperties);
+    if (m_jointMomentRotationAction && m_selectionModel->selectedBars().size() == 2) {
+        menu.addAction(m_jointMomentRotationAction);
+    }
     add(tr("Forca nodal..."), hasNodes, &MainWindow::onApplyNodalLoad);
     add(tr("Carga distribuida..."), hasBars, &MainWindow::onApplyDistributedLoad);
     add(tr("Momento distribuido..."), hasBars, &MainWindow::onApplyMemberMoment);

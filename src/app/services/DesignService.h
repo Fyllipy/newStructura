@@ -74,15 +74,19 @@ public:
         bool torsionReleasedEnd {false};
         bool warping {false};      ///< analisada com torcao com empenamento
         bool cantilever {false};   ///< balanco: uma extremidade livre (so esta barra chega ao no, sem apoio) e a outra ligada ao resto da estrutura
+        double materialEMpa {0.0}; ///< E do material da barra no modelo (MPa); 0 = nao informado (usa 200 GPa)
+        double materialGMpa {0.0}; ///< G do material da barra no modelo (MPa); 0 = nao informado
         std::vector<Structura::Design::ComboEffects> combos;
         std::vector<EndRecord> ends;
     };
 
     /// Converte os resultados do solver em esforcos por barra. `geometry` fornece nos e barras.
     /// `forceFactorToN`: fator das unidades de forca do modelo para N; `lengthFactorToMm`: das unidades de comprimento para mm.
+    /// `nominalMaterials`: materiais do projeto sem reducao de rigidez (E e G cadastrados); sem ele usa os de `geometry`, que podem ter E reduzido (2a ordem).
     static QVector<MemberEffects> collectEffects(const Structura::App::SolverBridge::ModelData &geometry,
                                                  const std::vector<ResultSet> &sets, double forceFactorToN,
-                                                 double lengthFactorToMm, int stations = 21);
+                                                 double lengthFactorToMm, int stations = 21,
+                                                 const std::vector<Structura::App::SolverBridge::MaterialData> *nominalMaterials = nullptr);
 
     /// Define o B2 de cada combinacao/barra (`b2[combinacao][barra]`); ignora combinacoes ausentes.
     /// `stiffnessFactor`: reducao de rigidez (4.10.7.1.2) usada em Ne de B1 (1,0 = nominal).
@@ -107,12 +111,15 @@ public:
         QString steel;
         bool supported {false};
         double lengthM {0.0};
+        double steelEMpa {0.0};   ///< E usado nas verificacoes (material da barra no modelo), MPa
+        double steelGMpa {0.0};   ///< G usado nas verificacoes, MPa
         Structura::Design::BarDesignOutput output;
     };
 
     /// Razoes Ief/I (eixos X e Y de projeto) para as flechas de ELS: secao efetiva em perfis formados a frio (momentos de servico
     /// `mxNmm`, `myNmm` em N.mm), 1,0 nos demais.
-    static std::array<double, 2> serviceInertiaRatios(const Structura::Design::DesignSection &section, const QString &steelName, double mxNmm, double myNmm);
+    static std::array<double, 2> serviceInertiaRatios(const Structura::Design::DesignSection &section, const QString &steelName, double mxNmm, double myNmm,
+                                                      double materialEMpa = 0.0, double materialGMpa = 0.0);
 
     /// Verifica uma barra com o perfil informado.
     static MemberVerdict verifyMember(const MemberEffects &effects, const SectionInfo &section,

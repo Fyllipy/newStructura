@@ -44,6 +44,8 @@ public:
     NodeConnectionsDialog(const QVector<Structura::App::ProjectData::NodeConnection> &connections, Callbacks callbacks, QWidget *parent = nullptr);
 
     [[nodiscard]] QVector<Structura::App::ProjectData::NodeConnection> connections() const { return m_connections; }
+    /// Inicia a criacao de uma ligacao da tipologia dada (o mesmo caminho do botao "Nova ligacao" depois da escolha da tipologia).
+    void startNewConnection(int type) { addConnection(type); }
 
 private:
     void rebuildList();
@@ -58,6 +60,9 @@ private:
     void proposeCurrent(bool announce = true);
     void refreshForces();
     void showEvaluation(const Structura::App::Services::ConnectionService::Evaluation &evaluation);
+    /// Orientacao sobre o limite de 1 fileira da verificacao NBR da mesa do pilar (6.3.5.4) e acao explicita "Usar 1 fileira".
+    void updateRowsGuidance();
+    void useOneRow();
     [[nodiscard]] QString memorialText() const;
 
     QVector<Structura::App::ProjectData::NodeConnection> m_connections;
@@ -80,6 +85,8 @@ private:
     QComboBox *m_steelPreset {nullptr};
     QTableWidget *m_table {nullptr};
     QLabel *m_verdict {nullptr};
+    QLabel *m_rowsNotice {nullptr};
+    QPushButton *m_oneRow {nullptr};
     QLabel *m_parts {nullptr};
 };
 

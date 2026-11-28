@@ -32,7 +32,7 @@ std::vector<Check> checkMomentConnection(const MomentConnectionInput &in)
     if (in.flangeMode == MomentConnectionInput::Welded) {
         const double ag = in.beamBf * in.beamTf;
         if (!in.flangeFillet) {
-            Check w = ratioN("Solda de penetracao total das mesas: resistencia da mesa da viga", "6.2.4", fMax, ag * in.beam.fy / in.gammaA1);
+            Check w = ratioN("Solda de penetracao total das mesas: resistencia da mesa da viga", "Tabela 9 (penetracao total)", fMax, ag * in.beam.fy / in.gammaA1);
             w.lines.push_back(fmtn("a solda de penetracao total tem a resistencia do metal-base: Ag fy/ga1 = %.2f kN", ag * in.beam.fy / in.gammaA1 / 1000.0));
             checks.push_back(w);
         } else {

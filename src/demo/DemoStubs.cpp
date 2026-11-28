@@ -29,6 +29,8 @@ void MainWindow::createCommercialActions()
     m_modalAction = make(tr("Analise\nmodal"), "modal.svg", tr("Frequências naturais, períodos, participação de massa e formas modais."));
     m_connectionsAction = make(tr("Ligacoes"), "connection.svg", tr("Verificação de ligações parafusadas e soldadas, com os esforços da barra selecionada."));
     m_copyConnectionsAction = make(tr("Copiar\nligações"), "connection-copy.svg", tr("Copia uma ligação para outros nós."));
+    m_jointMomentRotationAction = make(tr("Gráfico\nMomento-Rotação"), "connection.svg", tr("Diagrama momento-rotação e classificação da rigidez da ligação."));
+    m_nodeBehaviorAction = make(tr("Comportamento\ndo nó"), "connection.svg", tr("Comportamento estrutural requerido do nó, antes de definir a ligação."));
     m_exportDstvAction = make(tr("Exportar NC\n(DSTV)"), "dxf.svg", tr("Grava arquivos .nc1 (DSTV) das chapas das ligações para máquinas CNC."));
     m_exportIfcAction = make(tr("Exportar\nIFC"), "dxf.svg", tr("Exporta as peças de perfil em IFC."));
     m_sheetsAction = make(tr("Pranchas"), "sheets.svg", tr("Gera plantas, elevações, lista de barras e detalhes de ligações; exporta PDF e DXF."));
@@ -55,6 +57,11 @@ void MainWindow::addConnectionQuantities(Structura::App::Services::QuantityServi
 void MainWindow::onCheckConnections() {}
 void MainWindow::onOpenConnectionCalculator() {}
 void MainWindow::onCopyConnections() {}
+void MainWindow::onJointMomentRotation() {}
+void MainWindow::onNodeRequiredBehavior() {}
+void MainWindow::openNodeBehaviorForAutomation(int, const QString &) {}
+void MainWindow::runNodeFlowForAutomation(int, const QString &) {}
+void MainWindow::updateJointAction() {}
 void MainWindow::refreshConnectionNodeMembers() {}
 void MainWindow::storeNodeMembers(Structura::App::ProjectData::NodeConnection &) const {}
 QVector<MainWindow::ConnectionPlacementInfo> MainWindow::connectionPlacements() const { return {}; }

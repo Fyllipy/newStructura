@@ -9,6 +9,9 @@
 #include "viz/SceneController.h"
 
 #include <QAction>
+#include <QHash>
+#include <QSet>
+#include <QUuid>
 #include <QVTKOpenGLNativeWidget.h>
 
 #include <algorithm>
@@ -126,14 +129,49 @@ std::vector<std::array<double, 3>> exactPoints(const std::vector<Structura::Shel
 
 void MainWindow::applyShellSupportToSelection()
 {
-    if (m_shellNodeSel.empty()) {
-        showStatusMessage(tr("Selecione nós de cascas primeiro (botão \"Selecionar nós\")."), 5000);
-        return;
+    // alvos: nos de casca selecionados + nos da malha que ficam sobre as barras selecionadas
+    auto points = exactPoints(m_shellSelRefs, m_shellNodeTable, m_shellMesh, m_shellNodeSel.ids());
+    int onBars = 0;
+    if (m_selectionModel && !m_selectionModel->selectedBars().isEmpty() && m_sceneController && !m_shellMesh.nodes.empty()) {
+        const double upm = std::max(shellUnitsPerMeter(), 1e-12);
+        QHash<QUuid, std::array<double, 3>> position;
+        for (const auto &node : m_sceneController->nodeInfos()) {
+            position.insert(node.id, {node.x / upm, node.y / upm, node.z / upm});
+        }
+        const QSet<QUuid> selected = m_selectionModel->selectedBars();
+        constexpr double kOnBarTol = 1.0e-3;   // m
+        for (const auto &bar : m_sceneController->bars()) {
+            if (!selected.contains(bar.id)) {
+                continue;
+            }
+            const auto a = position.constFind(bar.startNodeId), b = position.constFind(bar.endNodeId);
+            if (a == position.constEnd() || b == position.constEnd()) {
+                continue;
+            }
+            const std::array<double, 3> d {{(*b)[0] - (*a)[0], (*b)[1] - (*a)[1], (*b)[2] - (*a)[2]}};
+            const double len2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+            if (len2 < 1e-18) {
+                continue;
+            }
+            for (const auto &p : m_shellMesh.nodes) {
+                double t = ((p[0] - (*a)[0]) * d[0] + (p[1] - (*a)[1]) * d[1] + (p[2] - (*a)[2]) * d[2]) / len2;
+                t = std::clamp(t, 0.0, 1.0);
+                const double dx = p[0] - ((*a)[0] + t * d[0]), dy = p[1] - ((*a)[1] + t * d[1]), dz = p[2] - ((*a)[2] + t * d[2]);
+                if (std::sqrt(dx * dx + dy * dy + dz * dz) > kOnBarTol) {
+                    continue;
+                }
+                const std::array<double, 3> q {{p[0], p[1], p[2]}};
+                if (std::none_of(points.begin(), points.end(), [&](const std::array<double, 3> &e) { return samePoint(e, q, kSupportPointTol); })) {
+                    points.push_back(q);
+                    ++onBars;
+                }
+            }
+        }
     }
-    const std::vector<int> ids = m_shellNodeSel.ids();
-    const auto points = exactPoints(m_shellSelRefs, m_shellNodeTable, m_shellMesh, ids);
     if (points.empty()) {
-        showStatusMessage(tr("Os nós selecionados não estão na malha atual."), 5000);
+        showStatusMessage(m_shellNodeSel.empty() ? tr("Selecione nós de cascas (botão \"Selecionar nós\") ou barras que tenham casca sobre elas.")
+                                                 : tr("Os nós selecionados não estão na malha atual."),
+                          6000);
         return;
     }
     Structura::UI::ShellSupportDialog dialog(static_cast<int>(points.size()), this);
@@ -190,7 +228,9 @@ void MainWindow::applyShellSupportToSelection()
         }
         markModified();
     }
-    showStatusMessage(tr("Apoio aplicado a %1 nó(s). Reanalise para atualizar os resultados.").arg(points.size()), 6000);
+    showStatusMessage(onBars > 0 ? tr("Apoio aplicado a %1 nó(s) (%2 sobre as barras selecionadas). Reanalise para atualizar os resultados.").arg(points.size()).arg(onBars)
+                                 : tr("Apoio aplicado a %1 nó(s). Reanalise para atualizar os resultados.").arg(points.size()),
+                      6000);
 }
 
 void MainWindow::removeShellSupportFromSelection()

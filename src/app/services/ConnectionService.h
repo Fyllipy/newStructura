@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/ProjectDataTypes.h"
+#include "design/EndPlateConnection.h"
 #include "design/ShearConnections.h"
 
 #include <QString>
@@ -95,12 +96,31 @@ public:
     struct Evaluation {
         std::vector<Structura::Design::Connections::Check> checks;
         std::vector<Structura::Design::Connections::Part> parts;
-        double maxRatio {0.0};
+        double maxRatio {0.0};   ///< >= 1e9 quando ha verificacao nao verificavel ou nenhuma verificacao executada: nunca e aprovacao
         QString governing;
         QString governingCase;   ///< combinacao que governa (tipologias avaliadas por combinacao)
         QString description;     ///< resumo da ligacao projetada
+
+        /// Resultado GLOBAL: APROVADA so com >= 1 verificacao executada, nenhuma reprovada e nenhuma NAO VERIFICAVEL (lista vazia nunca aprova).
+        [[nodiscard]] Structura::Design::Connections::Summary summary() const { return Structura::Design::Connections::summarize(checks); }
+        [[nodiscard]] bool approved() const { return summary().status == Structura::Design::Connections::Summary::Approved; }
+        [[nodiscard]] bool incomplete() const { return summary().status == Structura::Design::Connections::Summary::Incomplete; }
+        [[nodiscard]] QString statusText() const { return QString::fromStdString(summary().label()); }
+        /// Razoes pelas quais a ligacao nao pode ser apresentada como integralmente aprovada (verificacoes nao verificaveis, nenhuma verificacao).
+        [[nodiscard]] QStringList problems() const
+        {
+            QStringList list;
+            for (const std::string &p : summary().problems) {
+                list << QString::fromStdString(p);
+            }
+            return list;
+        }
     };
 
+    /// Dados da ligacao rigida por chapa de extremidade (tipo kEndPlate ou variante do catalogo), sem esforcos: geometria e acos.
+    static Structura::Design::Connections::EndPlateInput endPlateInput(const Structura::App::ProjectData::NodeConnection &connection);
+    /// Assinatura da geometria/aco do pilar informados a mao: a confirmacao (`supConfirmed`) so vale enquanto a assinatura gravada (`supConfirmedSig`) coincidir com a atual.
+    static double columnSignature(const Structura::App::ProjectData::NodeConnection &connection);
     static QVector<FieldDef> fields(int type);
     /// Campos da verificacao de fadiga (NBR 8800:2024, Anexo H, H.5 e H.6) das ligacoes parafusadas e por pino.
     static QVector<FieldDef> fatigueFields();

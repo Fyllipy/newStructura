@@ -249,6 +249,17 @@ std::string buildModelJsonAndReactions(const SolverBridge::ModelData &model,
     for (const auto &n : model.nodes) {
         nodeCoords[n.id] = {{n.x, n.y, n.z}};
     }
+    // Nos das cascas acopladas ("Acoplar as barras"): ficam em model.shell, nao em model.nodes, mas as cargas nodais
+    // sobre eles estao em model.nodalLoads. Sem as coordenadas deles o cliente descartava essas cargas do total de
+    // reacoes enquanto o servidor (que recompoe o lado aplicado pelo JSON) as somava na origem: EQUILIBRIUM_FAIL.
+    std::vector<const SolverBridge::ShellNodeData *> shellOnlyNodes;
+    if (model.shell) {
+        for (const auto &n : model.shell->nodes) {
+            if (nodeCoords.emplace(n.id, std::array<double, 3>{{n.x, n.y, n.z}}).second) {
+                shellOnlyNodes.push_back(&n);
+            }
+        }
+    }
 
     // 1. Cargas Nodais
     for (const auto &nl : model.nodalLoads) {
@@ -308,6 +319,13 @@ std::string buildModelJsonAndReactions(const SolverBridge::ModelData &model,
                 ",\"y\":" + std::to_string(model.nodes[i].y) +
                 ",\"z\":" + std::to_string(model.nodes[i].z) + "}";
     }
+    for (const auto *n : shellOnlyNodes) {
+        json += std::string(json.back() == '[' ? "" : ",") +
+                "{\"id\":" + std::to_string(n->id) +
+                ",\"x\":" + std::to_string(n->x) +
+                ",\"y\":" + std::to_string(n->y) +
+                ",\"z\":" + std::to_string(n->z) + "}";
+    }
     json += "],\"members\":[";
     for (size_t i = 0; i < model.members.size(); ++i) {
         if (i > 0) json += ",";
@@ -354,6 +372,18 @@ std::string buildModelJsonAndReactions(const SolverBridge::ModelData &model,
 SolverBridge::SolverBridge(QString libraryPath)
     : m_libraryPath(std::move(libraryPath))
 {
+}
+
+SolverBridge::LicenseSummary SolverBridge::licenseSummary(const ModelData &model)
+{
+    structura_license::ReactionTotals reactions;
+    LicenseSummary out;
+    out.modelJson = buildModelJsonAndReactions(model, reactions);
+    for (int i = 0; i < 3; ++i) {
+        out.reactionForce[static_cast<std::size_t>(i)] = reactions.F[i];
+        out.reactionMoment[static_cast<std::size_t>(i)] = reactions.M_origin[i];
+    }
+    return out;
 }
 
 SolverBridge::Result SolverBridge::solve(const ModelData &input, bool isPreview) const

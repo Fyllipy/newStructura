@@ -1,4 +1,6 @@
 #include "design/EndPlateConnection.h"
+#include "design/InputValidation.h"
+#include "design/ColumnFlangeLever.h"
 
 #include "design/ConnectionHelpers.h"
 #include "design/SupportChecks.h"
@@ -37,6 +39,18 @@ double endPlateHeight(const EndPlateInput &in)
 std::vector<Check> checkEndPlate(const EndPlateInput &in)
 {
     std::vector<Check> out;
+    // dados obrigatorios ausentes ou invalidos (inclusive a geometria do pilar): NAO VERIFICAVEL, nunca valor padrao
+    if (const auto issues = Validation::validate(in); !issues.empty()) {
+        return Validation::toUnverifiableChecks(issues, "ligação por chapa de extremidade (entradas)");
+    }
+    {
+        Check sectionInfo = informationCheck("Seção do pilar utilizada", "dados de entrada",
+                                   {std::string("Origem: ") + (in.columnSource.empty() ? std::string("informada pelo chamador") : in.columnSource),
+                                    fmtn("Pilar: d = %.1f mm; bf = %.1f mm; tf = %.2f mm; tw = %.2f mm; r = %.1f mm", in.colDepth, in.colFlangeWidth, in.colFlangeThickness, in.colWebThickness, in.colRadius),
+                                    fmtn("Aço do pilar: fy = %.0f MPa; fu = %.0f MPa", in.column.fy, in.column.fu)});
+        sectionInfo.origin = CheckOrigin::ColumnSectionInfo;
+        out.push_back(std::move(sectionInfo));
+    }
     const double z = std::max(in.beamDepth - in.flangeThickness, 1.0);
     const double mAbs = std::abs(in.moment);
     const double ft = std::max(0.0, mAbs / z + in.axial / 2.0);    // forca na mesa tracionada
@@ -72,6 +86,10 @@ std::vector<Check> checkEndPlate(const EndPlateInput &in)
             c.name += " - chapa de extremidade";
             out.push_back(std::move(c));
         }
+    }
+    // alavanca na MESA DO PILAR (A2): camada A (NBR 6.3.5.4, 1 fileira; varias = NAO VERIFICAVEL) + camada B (T-stub EN, complementar)
+    for (Check c : columnFlangeLeverChecks(in, ft)) {
+        out.push_back(std::move(c));
     }
     // parafusos de cortante (zona comprimida): cortante + pressao de contato
     {

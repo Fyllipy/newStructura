@@ -125,7 +125,10 @@ std::string mapIdentifier(const std::string &id)
     if (id == "Ct") {
         return "C_{t}";
     }
-    if (id.size() == 1) {
+    // comprimento (em bytes) do primeiro ponto de codigo UTF-8: letras gregas e acentuadas ocupam 2 ou mais bytes e NUNCA podem ser cortadas
+    const unsigned char lead = static_cast<unsigned char>(id[0]);
+    const std::size_t leadLen = lead >= 0xF0 ? 4 : (lead >= 0xE0 ? 3 : (lead >= 0xC0 ? 2 : 1));
+    if (id.size() <= leadLen) {
         return id;
     }
     // palavras longas em minusculas: texto
@@ -134,10 +137,10 @@ std::string mapIdentifier(const std::string &id)
         return "\\mathrm{" + id + "}";
     }
     // inicial + subscrito: Ag, fy, Nex, Mpl, Nc,Rd, B2, r0 ...
-    std::string base(1, id[0]);
-    std::string rest = id.substr(1);
+    std::string base = id.substr(0, leadLen);
+    std::string rest = id.substr(leadLen);
     if (!sub.empty()) {
-        rest = id.substr(1, us - 1) + (us > 1 ? "," : "") + sub;
+        rest = us > leadLen ? id.substr(leadLen, us - leadLen) + "," + sub : sub;
     }
     // "Cw", "Ix": subscrito simples
     return base + "_{" + mapSubscript(rest) + "}";

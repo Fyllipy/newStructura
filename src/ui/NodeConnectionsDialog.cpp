@@ -108,11 +108,19 @@ NodeConnectionsDialog::NodeConnectionsDialog(const QVector<NodeConnection> &conn
     auto *copy = new QPushButton(tr("Copiar memorial"));
     auto *support = new QPushButton(tr("Barra de apoio…"));
     support->setToolTip(tr("Escolhe em qual das barras que chegam ao nó a ligação se apoia; a barra fica destacada no modelo."));
-    for (auto *button : {propose, refresh, focus, support, copy}) {
+    m_oneRow = new QPushButton(tr("Usar 1 fileira"));
+    m_oneRow->setVisible(false);
+    for (auto *button : {propose, refresh, focus, support, copy, m_oneRow}) {
         actions->addWidget(button);
     }
     actions->addStretch(1);
     rightLayout->addLayout(actions);
+    m_rowsNotice = new QLabel;
+    m_rowsNotice->setWordWrap(true);
+    m_rowsNotice->setVisible(false);
+    m_rowsNotice->setStyleSheet(QStringLiteral("color:#7a4b00; background:#fff6e0; border-left:4px solid #e0a100; padding:6px 8px;"));
+    rightLayout->addWidget(m_rowsNotice);
+    connect(m_oneRow, &QPushButton::clicked, this, [this]() { useOneRow(); });
 
     m_table = new QTableWidget(0, 5);
     m_table->setHorizontalHeaderLabels({tr("Verificação"), tr("Item NBR"), tr("Solicitação / valor"), tr("Resistência / limite"), tr("Razão")});
@@ -217,6 +225,9 @@ void NodeConnectionsDialog::rebuildList()
 void NodeConnectionsDialog::selectRow(int row)
 {
     m_current = row;
+    if (m_rowsNotice) {
+        m_rowsNotice->setProperty("userAction", QString());   // a mensagem da acao "Usar 1 fileira" vale so para a ligacao em que foi feita
+    }
     m_forces.reset();
     if (row < 0 || row >= m_connections.size()) {
         m_current = -1;
@@ -227,6 +238,7 @@ void NodeConnectionsDialog::selectRow(int row)
         m_parts->clear();
         m_preview->clear();
         buildForm();
+        updateRowsGuidance();
         return;
     }
     const auto &c = m_connections.at(row);
@@ -248,6 +260,13 @@ void NodeConnectionsDialog::buildForm()
     m_steelPreset = nullptr;
     m_choices.clear();
     if (m_current >= 0) {
+        {
+            // confirmacao antiga (sem assinatura): adota as dimensoes atuais como as confirmadas, para que edicoes posteriores a invalidem
+            auto &stored = m_connections[m_current];
+            if (stored.values.value(QStringLiteral("supConfirmed")) >= 0.5 && !stored.values.contains(QStringLiteral("supConfirmedSig"))) {
+                stored.values[QStringLiteral("supConfirmedSig")] = ConnectionService::columnSignature(stored);
+            }
+        }
         const auto &c = m_connections.at(m_current);
         auto addSection = [this](const QString &title) {
             auto *label = new QLabel(title);
@@ -348,6 +367,21 @@ void NodeConnectionsDialog::readForm()
     for (auto it = m_choices.constBegin(); it != m_choices.constEnd(); ++it) {
         c.values[it.key()] = it.value()->currentIndex();
     }
+    if (auto *confirm = m_choices.value(QStringLiteral("supConfirmed"))) {
+        // a confirmacao da geometria manual do pilar vale so para as dimensoes confirmadas: alterou uma dimensao, volta a "nao confirmada"
+        const double signature = ConnectionService::columnSignature(c);
+        const QString sigKey = QStringLiteral("supConfirmedSig");
+        if (c.values.value(QStringLiteral("supConfirmed")) < 0.5) {
+            c.values.remove(sigKey);
+        } else if (!c.values.contains(sigKey)) {
+            c.values[sigKey] = signature;
+        } else if (std::abs(c.values.value(sigKey) - signature) > 1.0e-6) {
+            c.values[QStringLiteral("supConfirmed")] = 0.0;
+            c.values.remove(sigKey);
+            const QSignalBlocker blocker(confirm);
+            confirm->setCurrentIndex(0);
+        }
+    }
 }
 
 void NodeConnectionsDialog::refreshForces()
@@ -397,8 +431,11 @@ void NodeConnectionsDialog::verifyCurrent()
     // atualiza a linha da lista sem perder a selecao
     const int row = m_current;
     m_list->blockSignals(true);
-    m_list->setItem(row, 3, new QTableWidgetItem(c.verified ? QString::number(c.eta, 'f', 2) : QStringLiteral("-")));
-    m_list->setItem(row, 4, new QTableWidgetItem(!c.verified ? tr("não verificada") : (c.eta <= 1.0 + 1e-9 ? tr("atende") : tr("NÃO atende"))));
+    const bool incomplete = m_evaluation.incomplete();
+    m_list->setItem(row, 3, new QTableWidgetItem(c.verified && !incomplete ? QString::number(c.eta, 'f', 2) : QStringLiteral("-")));
+    m_list->setItem(row, 4, new QTableWidgetItem(!c.verified ? tr("não verificada")
+                                                 : incomplete ? tr("NÃO VERIFICÁVEL — dados insuficientes")
+                                                              : (m_evaluation.approved() ? tr("atende") : tr("NÃO atende"))));
     m_list->blockSignals(false);
 }
 
@@ -411,14 +448,33 @@ void NodeConnectionsDialog::showEvaluation(const ConnectionService::Evaluation &
     for (std::size_t i = 0; i < e.checks.size(); ++i) {
         const auto &c = e.checks[i];
         const QString unit = QString::fromStdString(c.unit);
-        const QStringList cells {QString::fromStdString(c.name), QString::fromStdString(c.clause), QStringLiteral("%1 %2").arg(c.demand, 0, 'f', 2).arg(unit),
-                                 QStringLiteral("%1 %2").arg(c.resistance, 0, 'f', 2).arg(unit), QString::number(c.ratio(), 'f', 3)};
+        const bool evaluated = c.status == Structura::Design::Connections::CheckStatus::Evaluated;
+        const bool complementary = c.status == Structura::Design::Connections::CheckStatus::Complementary && c.resistance > 0.0;
+        const QString demandText = evaluated || complementary ? QStringLiteral("%1 %2").arg(c.demand, 0, 'f', 2).arg(unit) : QStringLiteral("-");
+        const QString resistanceText = evaluated || complementary ? QStringLiteral("%1 %2").arg(c.resistance, 0, 'f', 2).arg(unit) : QStringLiteral("-");
+        // verificacoes nao calculadas mostram o ESTADO (NAO VERIFICAVEL / NAO APLICAVEL / INFORMACAO / METODO COMPLEMENTAR) no lugar da razao
+        const QString ratioText = evaluated ? QString::number(c.ratio(), 'f', 3)
+                                  : complementary ? QStringLiteral("%1 (η informativo %2)").arg(QString::fromStdString(c.statusLabel())).arg(c.demand / c.resistance, 0, 'f', 2)
+                                                  : QString::fromStdString(c.statusLabel());
+        const bool isComplementary = c.status == Structura::Design::Connections::CheckStatus::Complementary;
+        const bool isWarning = c.origin == Structura::Design::Connections::CheckOrigin::DivergenceWarning;
+        // identidade visual do metodo complementar: glifo "◇" + cor indigo (diferente do cinza de INFORMACAO / NAO APLICAVEL); a advertencia mostra so a mensagem informativa
+        const QString shownRatio = isComplementary ? QStringLiteral("◇ ") + ratioText : ratioText;
+        const QString shownName = isWarning && !c.reason.empty() ? QString::fromStdString(c.reason) : QString::fromStdString(c.name);
+        const QStringList cells {shownName, QString::fromStdString(c.clause), demandText, resistanceText, shownRatio};
         for (int col = 0; col < cells.size(); ++col) {
             auto *item = new QTableWidgetItem(cells[col]);
             if (col == 4) {
-                item->setForeground(c.ok() ? QColor(QStringLiteral("#1e8449")) : QColor(QStringLiteral("#c0392b")));
+                const QColor color = c.status == Structura::Design::Connections::CheckStatus::NotApplicable || c.status == Structura::Design::Connections::CheckStatus::Information || c.status == Structura::Design::Connections::CheckStatus::Complementary
+                                         ? QColor(QStringLiteral("#6b7785"))
+                                         : (c.ok() ? QColor(QStringLiteral("#1e8449")) : QColor(QStringLiteral("#c0392b")));
+                item->setForeground(isComplementary ? QColor(QStringLiteral("#5b4bb7")) : color);
+                if (!c.reason.empty()) {
+                    item->setToolTip(QString::fromStdString(c.reason));
+                }
                 QFont font;
                 font.setBold(true);
+                font.setItalic(isComplementary);
                 item->setFont(font);
             }
             if (col == 0) {
@@ -431,17 +487,65 @@ void NodeConnectionsDialog::showEvaluation(const ConnectionService::Evaluation &
             m_table->setItem(static_cast<int>(i), col, item);
         }
     }
-    const bool ok = e.maxRatio <= 1.0 + 1e-9;
-    m_verdict->setStyleSheet(ok ? QStringLiteral("color:#1e8449; font-weight:600;") : QStringLiteral("color:#c0392b; font-weight:600;"));
-    m_verdict->setText(ok ? tr("Atende (razão máxima %1 — %2).").arg(e.maxRatio, 0, 'f', 3).arg(e.governing)
-                          : tr("NÃO atende (razão máxima %1 — %2).").arg(e.maxRatio, 0, 'f', 3).arg(e.governing));
+    if (e.incomplete()) {
+        // sem aprovacao integral: dados insuficientes ou nenhuma verificacao executada
+        m_verdict->setStyleSheet(QStringLiteral("color:#b9770e; font-weight:600;"));
+        const QStringList problems = e.problems();
+        m_verdict->setText(tr("NÃO VERIFICÁVEL — DADOS INSUFICIENTES. A ligação NÃO está aprovada (%1 ocorrência(s): passe o mouse aqui ou veja a tabela de verificações).").arg(problems.size()));
+        m_verdict->setToolTip(problems.join(QLatin1Char('\n')));
+    } else {
+        const bool ok = e.approved();
+        m_verdict->setToolTip(QString());
+        m_verdict->setStyleSheet(ok ? QStringLiteral("color:#1e8449; font-weight:600;") : QStringLiteral("color:#c0392b; font-weight:600;"));
+        m_verdict->setText(ok ? tr("Atende (razão máxima %1 — %2).").arg(e.maxRatio, 0, 'f', 3).arg(e.governing)
+                              : tr("NÃO atende (razão máxima %1 — %2).").arg(e.maxRatio, 0, 'f', 3).arg(e.governing));
+    }
     QStringList parts;
     double mass = 0.0;
     for (const auto &p : e.parts) {
         parts << QStringLiteral("%1 × %2").arg(p.quantity).arg(QString::fromStdString(p.description));
         mass += p.totalMass();
     }
+    updateRowsGuidance();
     m_parts->setText(tr("Peças: %1. Massa aproximada: %2 kg.").arg(parts.join(QStringLiteral("; ")), QString::number(mass, 'f', 1)));
+}
+
+void NodeConnectionsDialog::updateRowsGuidance()
+{
+    // so a ligacao rigida por chapa de extremidade (o padrao do programa tem 2 fileiras): a emenda viga-viga nao tem pilar
+    const bool endPlate = m_current >= 0 && m_current < m_connections.size() && m_connections.at(m_current).type == Structura::App::ProjectData::NodeConnection::kEndPlate;
+    const double rows = endPlate ? m_connections.at(m_current).values.value(QStringLiteral("tRows"), 2.0) : 0.0;
+    const bool manyRows = endPlate && rows >= 1.5;
+    m_oneRow->setVisible(manyRows);
+    m_oneRow->setToolTip(tr("Altera \"Fileiras tracionadas\" de %1 para 1: o desenho, as verificações e a resistência da ligação mudam. Você pode voltar a aumentar o número de fileiras no campo do formulário.").arg(static_cast<int>(rows + 0.5)));
+    if (manyRows) {
+        m_rowsNotice->setText(tr("Limite da verificação NBR da mesa do pilar: o efeito de alavanca na mesa do pilar (NBR 8800:2024, 6.3.5.4) só está liberado para 1 fileira tracionada. "
+                                 "Com 2 ou mais fileiras, como nesta ligação (%1), essa verificação obrigatória fica NÃO VERIFICÁVEL e a ligação não pode ser aprovada. "
+                                 "O método T-stub da EN 1993-1-8 é mostrado apenas como complemento informativo e não participa da aprovação global. "
+                                 "Mantenha as fileiras (a ligação continuará NÃO VERIFICÁVEL) ou use \"Usar 1 fileira\" (a resistência da ligação diminui).").arg(static_cast<int>(rows + 0.5)));
+        m_rowsNotice->setVisible(true);
+    } else if (!m_rowsNotice->property("userAction").toString().isEmpty() && endPlate) {
+        m_rowsNotice->setText(m_rowsNotice->property("userAction").toString());
+        m_rowsNotice->setVisible(true);
+    } else {
+        m_rowsNotice->setVisible(false);
+    }
+}
+
+void NodeConnectionsDialog::useOneRow()
+{
+    // acao EXPLICITA do usuario: nada e alterado sem este clique; o resultado e visivel (campo, desenho, verificacoes e aviso)
+    if (m_current < 0 || m_current >= m_connections.size()) {
+        return;
+    }
+    auto *field = m_fields.value(QStringLiteral("tRows"));
+    if (!field) {
+        return;
+    }
+    const int before = static_cast<int>(field->value() + 0.5);
+    m_rowsNotice->setProperty("userAction", tr("Fileiras tracionadas alteradas de %1 para 1 por ação do usuário (\"Usar 1 fileira\"). A ligação foi reverificada; a resistência é menor que a da configuração anterior. Para voltar, aumente o número de fileiras no formulário.").arg(before));
+    field->setValue(1.0);   // dispara readForm() + verifyCurrent(): dados, desenho e verificacoes atualizados juntos
+    updateRowsGuidance();
 }
 
 void NodeConnectionsDialog::chooseType()
@@ -608,7 +712,19 @@ QString NodeConnectionsDialog::memorialText() const
         text += tr("Esforços de cálculo: V = %1 kN, N = %2 kN\n").arg(m_forces->shear / 1000.0, 0, 'f', 2).arg(m_forces->axial / 1000.0, 0, 'f', 2);
     }
     text += QLatin1Char('\n');
+    text += tr("RESULTADO DA LIGAÇÃO: %1\n").arg(m_evaluation.statusText());
+    for (const QString &problem : m_evaluation.problems()) {
+        text += QStringLiteral("  ! %1\n").arg(problem);
+    }
+    text += QLatin1Char('\n');
     for (const auto &check : m_evaluation.checks) {
+        if (check.status != Structura::Design::Connections::CheckStatus::Evaluated) {
+            text += QStringLiteral("%1 [%2]  %3\n").arg(QString::fromStdString(check.name), QString::fromStdString(check.clause), QString::fromStdString(check.statusLabel()));
+            for (const auto &line : check.lines) {
+                text += QStringLiteral("    %1\n").arg(QString::fromStdString(line));
+            }
+            continue;
+        }
         text += QStringLiteral("%1 [%2]  %3 / %4 %5 = %6  %7\n")
                     .arg(QString::fromStdString(check.name), QString::fromStdString(check.clause))
                     .arg(check.demand, 0, 'f', 2).arg(check.resistance, 0, 'f', 2).arg(QString::fromStdString(check.unit))

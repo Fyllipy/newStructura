@@ -153,6 +153,7 @@ HtmlResult toHtml(const ReportDocument &doc, double eqPx, bool includeCover)
                         case CellStatus::Ok: bg = QStringLiteral("#e3f4e8"); color = QStringLiteral("#1e6b3a"); bold = true; break;
                         case CellStatus::Warn: bg = QStringLiteral("#fff1d6"); color = QStringLiteral("#8a5a00"); bold = true; break;
                         case CellStatus::Fail: bg = QStringLiteral("#fbe1de"); color = QStringLiteral("#a32a1e"); bold = true; break;
+                        case CellStatus::Complementary: bg = QStringLiteral("#ece9fa"); color = QStringLiteral("#4b3fa0"); bold = true; break;
                         case CellStatus::None: break;
                         }
                     }

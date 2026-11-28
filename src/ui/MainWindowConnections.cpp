@@ -87,6 +87,11 @@ void MainWindow::onCheckConnections()
     // Pede ao usuario a barra de apoio entre as que chegam ao no (exceto a propria), destacando-a no modelo enquanto escolhe.
     // Retorna false se cancelado.
     auto chooseSupport = [this, barsAtNode, sectionInfoOf, attachToSupport](NodeConnection &connection, const SceneController::BarInfo &beamBar, int nodeId) -> bool {
+        // pedido da janela "Comportamento requerido do no": o apoio ja foi escolhido (o outro elemento do par viga-pilar)
+        if (m_pendingConnection.beamId > 0 && m_pendingConnection.beamId == beamBar.externalId && m_pendingConnection.nodeId == nodeId && m_pendingConnection.supportId > 0) {
+            attachToSupport(connection, beamBar, nodeId, m_pendingConnection.supportId);
+            return true;
+        }
         const auto refs = barsAtNode(nodeId);
         struct Candidate {
             int memberId {0};
@@ -215,20 +220,27 @@ void MainWindow::onCheckConnections()
             auto highlight = [this, startPos, endPos, &ends](const QString &text) {
                 m_sceneController->setNodeHighlight(ends.indexOf(text) == 1 ? endPos : startPos);
             };
-            QInputDialog chooser(this);
-            chooser.setWindowTitle(tr("Nova ligação"));
-            chooser.setLabelText(prompt.arg(bar.externalId));
-            chooser.setComboBoxItems(ends);
-            chooser.setComboBoxEditable(false);
-            highlight(ends.value(0));
-            connect(&chooser, &QInputDialog::textValueChanged, this, highlight);
-            const bool accepted = chooser.exec() == QDialog::Accepted;
-            m_sceneController->setNodeHighlight(std::nullopt);
-            if (!accepted) {
-                return none;
+            const bool preset = m_pendingConnection.beamId > 0 && m_pendingConnection.beamId == bar.externalId
+                && (nodeExternal.value(bar.startNodeId) == m_pendingConnection.nodeId || nodeExternal.value(bar.endNodeId) == m_pendingConnection.nodeId);
+            bool atEnd = false;
+            if (preset) {
+                atEnd = nodeExternal.value(bar.endNodeId) == m_pendingConnection.nodeId;   // extremidade do no escolhido na janela de comportamento requerido
+            } else {
+                QInputDialog chooser(this);
+                chooser.setWindowTitle(tr("Nova ligação"));
+                chooser.setLabelText(prompt.arg(bar.externalId));
+                chooser.setComboBoxItems(ends);
+                chooser.setComboBoxEditable(false);
+                highlight(ends.value(0));
+                connect(&chooser, &QInputDialog::textValueChanged, this, highlight);
+                const bool accepted = chooser.exec() == QDialog::Accepted;
+                m_sceneController->setNodeHighlight(std::nullopt);
+                if (!accepted) {
+                    return none;
+                }
+                const QString choice = chooser.textValue();
+                atEnd = ends.indexOf(choice) == 1;
             }
-            const QString choice = chooser.textValue();
-            const bool atEnd = ends.indexOf(choice) == 1;
             const auto section = sectionInfoOf(bar.sectionId);
             const ConnectionService::BeamInfo beam = memberInfo(section, bar.externalId);
             const auto defaultSteel = Structura::App::Services::MaterialLibrary::findSteel(m_extras.design.defaultSteel);
@@ -258,7 +270,13 @@ void MainWindow::onCheckConnections()
 
     StateGuard guard(this, tr("Ligações"));
     NodeConnectionsDialog dialog(m_extras.connections, callbacks, this);
-    if (dialog.exec() != QDialog::Accepted) {
+    if (m_pendingConnection.type > 0) {
+        const int pendingType = m_pendingConnection.type;
+        QTimer::singleShot(0, &dialog, [&dialog, pendingType]() { dialog.startNewConnection(pendingType); });
+    }
+    const int dialogResult = dialog.exec();
+    m_pendingConnection = {};
+    if (dialogResult != QDialog::Accepted) {
         return;
     }
     m_extras.connections = dialog.connections();

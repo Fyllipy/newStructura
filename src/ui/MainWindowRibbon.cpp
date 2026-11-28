@@ -629,7 +629,7 @@ void MainWindow::createRibbon()
     {   // na Demonstrativa o botao aparece desabilitado
         calc->addGroup(tr("Dimensionamento"), {item(m_designSettingsAction, tr("Parâmetros"), true), item(m_bucklingLengthsAction, tr("Comprimentos de flambagem"), true), item(m_verifyDesignAction, tr("Verificar perfis"), true),
                                                item(m_optimizeDesignAction, tr("Dimensionar perfis"), true)});
-        calc->addGroup(tr("Ligações e mistas"), {item(m_connectionsAction, tr("Ligações"), true), item(m_copyConnectionsAction, tr("Copiar ligações"), true), item(m_compositeAction, tr("Vigas e lajes mistas"), true)});
+        calc->addGroup(tr("Ligações e mistas"), {item(m_connectionsAction, tr("Ligações"), true), item(m_copyConnectionsAction, tr("Copiar ligações"), true), item(m_nodeBehaviorAction, tr("Comportamento do nó"), true), item(m_jointMomentRotationAction, tr("Gráfico momento-rotação"), true), item(m_compositeAction, tr("Vigas e lajes mistas"), true)});
     }
     calc->addGroup(tr("Resultados"), {item(m_showDiagramsAction, tr("Mostrar diagramas"), true),
                                       item(m_compareAction, tr("Comparar combinações"), true)});

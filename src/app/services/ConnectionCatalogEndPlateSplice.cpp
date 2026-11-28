@@ -1,6 +1,7 @@
 #include "app/services/ConnectionCatalogInternal.h"
 
 #include "design/ShearConnections.h"
+#include "design/ColumnFlangeLever.h"
 
 #include <QObject>
 
@@ -20,9 +21,14 @@ bool columnKey(const QString &key)
     return key.startsWith(QLatin1String("sup")) || key.startsWith(QLatin1String("cont")) || key == QLatin1String("doubler");
 }
 
-bool columnCheck(const std::string &name)
+bool columnCheck(const Structura::Design::Connections::Check &check)
 {
-    return name.rfind("Apoio:", 0) == 0 || name.rfind("Painel de alma", 0) == 0 || name.find("nrijecedores") != std::string::npos;
+    const std::string &name = check.name;
+    // A2 e secao do pilar: identificados pela ORIGEM explicita; as demais verificacoes de pilar (pre-existentes) continuam por nome
+    if (Structura::Design::Connections::isColumnFlangeLeverCheck(check) || check.origin == Structura::Design::Connections::CheckOrigin::ColumnSectionInfo) {
+        return true;
+    }
+    return name.rfind("Apoio:", 0) == 0 || name.rfind("Painel de alma", 0) == 0 || name.rfind("Seção do pilar", 0) == 0 || name.find("nrijecedores") != std::string::npos;
 }
 
 } // namespace
@@ -63,10 +69,20 @@ Cat::Evaluation endPlateSpliceEvaluate(const NodeConnection &c, const Cat::Force
     NodeConnection legacy = c;
     legacy.type = NodeConnection::kEndPlate;
     legacy.values["supTf"] = c.values.value(QStringLiteral("plateT"), 22.4);   // a outra chapa tem a mesma espessura
+    if (c.values.value(QStringLiteral("outside"), 0.0) == 0.0 && c.values.value(QStringLiteral("supMember"), 0.0) < 0.5) {
+        // Emenda viga-viga: NAO ha pilar. O "apoio" e a outra chapa de extremidade, modelada de forma equivalente pelos mesmos parametros usados desde
+        // sempre nesta tipologia (so a flexao da "mesa" e mantida; todas as verificacoes de pilar sao descartadas abaixo). Declarado e confirmado aqui,
+        // e nao por valor padrao escondido em toEndPlate.
+        legacy.values["supD"] = 260.0;
+        legacy.values["supBf"] = 146.0;
+        legacy.values["supTw"] = 7.6;
+        legacy.values["supR"] = 10.0;
+        legacy.values["supConfirmed"] = 1.0;
+    }
     Cat::Evaluation e = ConnectionService::evaluate(legacy, f);
     std::vector<D::Check> kept;
     for (auto &chk : e.checks) {
-        if (!columnCheck(chk.name)) {
+        if (!columnCheck(chk)) {
             if (chk.name.find("mesa do pilar") != std::string::npos) {
                 const auto pos = chk.name.find("mesa do pilar");
                 chk.name.replace(pos, 13, "outra chapa");

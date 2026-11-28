@@ -33,7 +33,7 @@ struct Equation {
 };
 
 /// Status usado para colorir celulas de tabela.
-enum class CellStatus { None = 0, Ok, Warn, Fail };
+enum class CellStatus { None = 0, Ok, Warn, Fail, Complementary };   // Complementary: metodo informativo, identidade propria (indigo)
 
 struct Table {
     std::string caption;

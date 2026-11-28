@@ -323,4 +323,23 @@ QPair<QString, QString> momentSteelKeys()
     return {QStringLiteral("plateFy"), QStringLiteral("plateFu")};
 }
 
+std::optional<D::MomentConnectionInput> momentInputOf(const NodeConnection &c)
+{
+    const auto *entry = Cat::find(c.type);
+    if (!entry || entry->legacyType >= 0 || entry->family != Cat::Family::Moment) {
+        return std::nullopt;
+    }
+    return toInput(c, 0.0, 0.0, 0.0);
+}
+
 } // namespace Structura::App::Services::catalog
+
+namespace Structura::App::Services {
+
+std::optional<Structura::Design::Connections::MomentConnectionInput> ConnectionCatalog::momentInput(const Structura::App::ProjectData::NodeConnection &connection)
+{
+    return catalog::momentInputOf(connection);
+}
+
+} // namespace Structura::App::Services
+

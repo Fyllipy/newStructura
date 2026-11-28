@@ -1,6 +1,7 @@
 #include "design/SupportChecks.h"
 
 #include "design/ConnectionHelpers.h"
+#include "design/InputValidation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,8 +15,15 @@ using detail::ratioN;
 std::vector<Check> checkSupportMember(const SupportInput &in)
 {
     std::vector<Check> out;
-    if (in.face == SupportInput::None || in.tf <= 0.0 || in.tw <= 0.0 || in.d <= 0.0) {
+    if (in.face == SupportInput::None) {
+        // NAO APLICAVEL so com justificativa explicita (e nunca para dados invalidos de um apoio que existe)
+        out.push_back(notApplicableCheck("Apoio: forças localizadas (5.7.2 a 5.7.5)", "NBR 8800:2024, 5.7",
+                                         "nenhum perfil I/H de apoio foi definido para esta ligação (campo \"Chapa soldada na\" = não verificar, ou o apoio não é um perfil I/H): "
+                                         "as forças localizadas em mesa e alma não se aplicam"));
         return out;
+    }
+    if (const auto issues = Validation::validate(in); !issues.empty()) {
+        return Validation::toUnverifiableChecks(issues, "NBR 8800:2024, 5.7 (entradas)");
     }
     const double g = in.gammaA1;
     const double k = in.k > 0.0 ? in.k : 1.5 * in.tf;
@@ -111,8 +119,8 @@ std::vector<Check> checkSupportMember(const SupportInput &in)
 std::vector<Check> checkColumnPanel(const ColumnPanelInput &in)
 {
     std::vector<Check> out;
-    if (in.d <= 0.0 || in.tw <= 0.0) {
-        return out;
+    if (const auto issues = Validation::validate(in); !issues.empty()) {
+        return Validation::toUnverifiableChecks(issues, "NBR 8800:2024, 5.7.7 (entradas)");
     }
     const double h = std::max(in.d - 2.0 * (in.tf + in.radius), 1.0);
     const double tw = in.tw + in.doubler;

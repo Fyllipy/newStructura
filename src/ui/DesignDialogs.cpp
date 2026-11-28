@@ -648,6 +648,17 @@ DesignSettingsDialog::DesignSettingsDialog(const DesignSettings &settings, const
     analysisForm->addRow(m_autoB2);
     analysisForm->addRow(tr("Rs (Anexo C)"), m_rs);
     analysisForm->addRow(m_singleStorey);
+    // declaracao explicita (nao ha valor padrao): orienta o comportamento requerido das ligacoes viga-pilar
+    m_structuralSystem = new QComboBox;
+    m_structuralSystem->addItems({tr("Não declarado"), tr("Pórtico de vigas e pilares"), tr("Galpão / um pavimento"), tr("Treliça"), tr("Outro")});
+    m_structuralSystem->setCurrentIndex(std::clamp(settings.structuralSystem, 0, 4));
+    m_structuralSystem->setToolTip(tr("Sistema estrutural do projeto. Declaração do projetista: o programa não presume nenhum valor."));
+    m_bracing = new QComboBox;
+    m_bracing->addItems({tr("Não declarada"), tr("Contraventada (estabilidade lateral por contraventamento ou núcleos)"), tr("Não contraventada (estabilidade lateral pelos pórticos)")});
+    m_bracing->setCurrentIndex(std::clamp(settings.bracingCondition, 0, 2));
+    m_bracing->setToolTip(tr("Condição de contraventamento. Orienta o comportamento requerido das ligações viga-pilar; sem declaração, os critérios que dependem dela ficam insuficientes."));
+    analysisForm->addRow(tr("Sistema estrutural"), m_structuralSystem);
+    analysisForm->addRow(tr("Condição de contraventamento"), m_bracing);
     analysisForm->addRow(m_vonMises);
     m_notional = new QCheckBox(tr("Forças nocionais (NBR 8800, 4.9.7.2): 0,3% das cargas gravitacionais, em X e Y"));
     m_notional->setChecked(settings.notionalLoads);
@@ -752,6 +763,8 @@ DesignSettings DesignSettingsDialog::settings() const
     s.autoB2 = m_autoB2->isChecked();
     s.rs = m_rs->value();
     s.singleStorey = m_singleStorey->isChecked();
+    s.structuralSystem = m_structuralSystem->currentIndex();
+    s.bracingCondition = m_bracing->currentIndex();
     s.notionalLoads = m_notional->isChecked();
     s.geometricImperfection = m_geometric->isChecked();
     s.imperfectionRatio = 1.0 / m_imperfectionDenominator->value();

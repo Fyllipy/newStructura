@@ -91,6 +91,45 @@ class TestShellCoupling : public QObject
     Q_OBJECT
 
 private slots:
+    // "Acoplar as barras": cargas nodais em nos de casca (que ficam fora de model.nodes) precisam entrar no equilibrio enviado
+    // ao servidor de licencas; antes eram descartadas no total de reacoes do cliente e somadas na origem pelo servidor
+    // (EQUILIBRIUM_FAIL: calculo bloqueado).
+    void licenseEquilibriumIncludesLoadsOnShellNodes()
+    {
+        auto model = baseModel();
+        model.nodes.push_back(node(1, 0.0, 0.0, 0.0, true));
+        model.nodes.push_back(node(2, 3.0, 0.0, 0.0));
+        SolverBridge::MemberData member;
+        member.id = 1;
+        member.nodeI = 1;
+        member.nodeJ = 2;
+        member.materialId = 1;
+        member.sectionId = 1;
+        model.members.push_back(member);
+        auto part = std::make_shared<SolverBridge::ShellPart>();
+        SolverBridge::ShellNodeData shellNode;
+        shellNode.id = 99;
+        shellNode.x = 1.5;
+        shellNode.y = 2.0;
+        shellNode.z = 0.0;
+        part->nodes.push_back(shellNode);
+        model.shell = part;
+        SolverBridge::NodalLoadData onBar;
+        onBar.nodeId = 2;
+        onBar.values = {0.0, 0.0, -1000.0, 0.0, 0.0, 0.0};
+        SolverBridge::NodalLoadData onShell;
+        onShell.nodeId = 99;
+        onShell.values = {0.0, 0.0, -500.0, 0.0, 0.0, 0.0};
+        model.nodalLoads = {onBar, onShell};
+
+        const auto summary = SolverBridge::licenseSummary(model);
+        QVERIFY2(summary.modelJson.find("\"id\":99") != std::string::npos, "no de casca ausente do JSON enviado ao servidor");
+        // reacoes = -(cargas): Fz = +1500; Mx = -(2*(-500)) = +1000; My = -(-3*(-1000) + -1.5*(-500)) = -3750
+        QCOMPARE(summary.reactionForce[2], 1500.0);
+        QVERIFY(std::abs(summary.reactionMoment[0] - 1000.0) < 1e-9);
+        QVERIFY(std::abs(summary.reactionMoment[1] + 3750.0) < 1e-9);
+    }
+
     void unilateralShellSpringsForbidSuperposition()
     {
         // D2 (Etapa 3): fundacao so-compressao de casca torna a resposta nao linear => o app nao pode superpor casos nem combinacoes
@@ -147,7 +186,12 @@ private slots:
         clamp.axis = 0;
         clamp.value = 0.0;
         clamp.fixed = {{1, 1, 1, 1, 1, 1}};
-        shell.supports = {clamp};
+        // com apoios definidos em nos da casca sobre barras, so esses nos transferem: a linha da barra (y = 0) apoia as translacoes
+        Shell::Support onBar;
+        onBar.axis = 1;
+        onBar.value = 0.0;
+        onBar.fixed = {{1, 1, 1, 0, 0, 0}};
+        shell.supports = {clamp, onBar};
         shell.coupled = true;
         // carga na ponta da barra (no da barra = no da malha)
         SolverBridge::NodalLoadData load;
@@ -581,6 +625,78 @@ private slots:
         QVERIFY(std::abs(reaction - q * a * a) / (q * a * a) < 1e-6);
         // forca cortante total absorvida pelas vigas = reacoes (a carga passa pela viga): soma das forcas verticais nas barras que chegam aos cantos
         qWarning("momento maximo nas vigas %g (quinhao triangular %g)", midMoment, triangular);
+    }
+
+    // Casca apoiada nas barras: com apoios definidos em nos da casca sobre barras, so esses nos transferem reacao a barra; sem apoios
+    // nesses nos, todos os nos em contato transferem (comportamento padrao).
+    void shellSupportsOnBarNodesDecideWhereTheReactionGoesToTheBars()
+    {
+        const double a = 4.0, t = 0.12, q = 1.0e4;
+        const int n = 8;
+        auto build = [&](bool cornerSupports) {
+            SolverBridge::ModelData model = baseModel();
+            model.sections[0].area = 0.05;
+            model.sections[0].iy = model.sections[0].iz = 3.0e-3;
+            int nextId = 1;
+            std::map<std::pair<int, int>, int> ids;
+            auto at = [&](int i, int j) {
+                const auto key = std::make_pair(i, j);
+                if (!ids.count(key)) {
+                    const bool corner = (i == 0 || i == n) && (j == 0 || j == n);
+                    ids[key] = nextId;
+                    SolverBridge::NodeData nd = node(nextId++, a * i / n, a * j / n, 0.0);
+                    if (corner) {
+                        nd.restraints = {{1, 1, 1, 0, 0, 0}};
+                    }
+                    model.nodes.push_back(nd);
+                }
+                return ids[key];
+            };
+            int memberId = 1;
+            for (int k = 0; k < n; ++k) {
+                model.members.push_back(member(memberId++, at(k, 0), at(k + 1, 0)));
+                model.members.push_back(member(memberId++, at(k, n), at(k + 1, n)));
+                model.members.push_back(member(memberId++, at(0, k), at(0, k + 1)));
+                model.members.push_back(member(memberId++, at(n, k), at(n, k + 1)));
+            }
+            Shell::Model shell;
+            shell.objects = {plate(1, {{0, 0, 0}, {a, 0, 0}, {a, a, 0}, {0, a, 0}}, t, 0.5)};
+            shell.objects[0].material = 0;
+            Shell::Load pressure;
+            pressure.caseName = "Q";
+            pressure.type = Shell::Load::Pressure;
+            pressure.v = {-q, 0, 0, 0};
+            shell.loads = {pressure};
+            shell.coupled = true;
+            if (cornerSupports) {
+                Shell::Support s;
+                s.selector = Shell::Support::Nodes;
+                s.fixed = {{1, 1, 1, 0, 0, 0}};
+                s.points = {{0, 0, 0}, {a, 0, 0}, {a, a, 0}, {0, a, 0}};
+                shell.supports = {s};
+            }
+            const auto mapping = ShellCouplingService::attach(model, shell, "Q", 1.0);
+            if (!mapping) {
+                throw std::runtime_error("attach sem mapeamento");
+            }
+            const auto r = SolverBridge(solverLibrary()).solve(model);
+            double midMoment = 0.0, reaction = 0.0;
+            for (const auto &m : r.memberResults) {
+                midMoment = std::max(midMoment, std::abs(m.localForces[5]) + std::abs(m.localForces[4]));
+                midMoment = std::max(midMoment, std::abs(m.localForces[11]) + std::abs(m.localForces[10]));
+            }
+            for (const auto &nr : r.nodeResults) {
+                reaction += nr.reactions[2];
+            }
+            return std::make_pair(midMoment, reaction);
+        };
+        const auto [momentAll, reactionAll] = build(false);
+        const auto [momentCorners, reactionCorners] = build(true);
+        QVERIFY(std::abs(reactionAll - q * a * a) / (q * a * a) < 1e-6);
+        QVERIFY2(std::abs(reactionCorners - q * a * a) / (q * a * a) < 1e-3, qPrintable(QString::number(reactionCorners)));
+        // padrao: vigas recebem carga em todos os nos; so cantos apoiados: as vigas so recebem as reacoes dos cantos (que caem direto nos apoios)
+        QVERIFY2(momentAll > 1.0e4, qPrintable(QString::number(momentAll)));
+        QVERIFY2(momentCorners < 0.05 * momentAll, qPrintable(QString::number(momentCorners) + " vs " + QString::number(momentAll)));
     }
 
     void tributaryLoadsFollowTheEnvelopeAndGiveParabolicDiagrams()

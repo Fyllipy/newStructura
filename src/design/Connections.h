@@ -20,6 +20,29 @@ double standardHoleDiameter(double boltDiameter);
 /// Distancia minima do centro do furo-padrao a borda (Tabela 16), mm.
 double minimumEdgeDistance(double boltDiameter);
 
+/// Razao atribuida a uma verificacao NAO VERIFICAVEL e a uma avaliacao sem nenhuma verificacao executada: nunca e aprovacao.
+constexpr double kUnverifiableRatio = 1.0e9;
+
+/// Estado de uma verificacao. Uma verificacao obrigatoria nunca desaparece da relacao: ou foi avaliada, ou e declarada nao verificavel
+/// (dados insuficientes/invalidos), ou e declarada nao aplicavel COM justificativa. `Information` so registra um dado usado (ex.: secao do pilar).
+enum class CheckStatus {
+    Evaluated,       ///< calculada: APROVADO (razao <= 1) ou REPROVADO (razao > 1)
+    Unverifiable,    ///< NAO VERIFICAVEL - DADOS INSUFICIENTES: impede a aprovacao global
+    NotApplicable,   ///< NAO APLICAVEL - COM JUSTIFICATIVA (campo `reason`): nao impede a aprovacao
+    Information,     ///< registro informativo (nao e verificacao)
+    Complementary    ///< metodo complementar (ex.: T-stub EN): tem demanda/resistencia para exibicao, mas NUNCA entra em Summary/maxRatio/aprovacao
+};
+
+/// ORIGEM explicita de uma verificacao: identifica o seu papel sem depender do texto do nome (consumidores que filtram verificacoes usam isto).
+enum class CheckOrigin {
+    Design,                    ///< verificacao tradicional de dimensionamento (padrao)
+    ColumnFlangeLeverNbr,      ///< A2, Camada A: efeito de alavanca na mesa do pilar, NBR 8800:2024, 6.3.5.4 (participa da aprovacao)
+    ColumnFlangeLeverEn,       ///< A2, Camada B: T-stub EN 1993-1-8 (complementar, informativa)
+    DivergenceWarning,         ///< A2: advertencia de divergencia entre as camadas A e B (informativa)
+    ColumnSectionInfo,         ///< registro informativo da secao do pilar utilizada
+    Information                ///< demais registros informativos
+};
+
 struct Check {
     std::string name;
     std::string clause;
@@ -30,8 +53,17 @@ struct Check {
     bool rangeRule {false};   ///< faixa de validade/disposicao: razao 0 enquanto atendida, > 1 se violada (demand = valor, resistance = limite)
     bool rangeLower {false};  ///< rangeRule com limite inferior (valor >= limite); senao limite superior (valor <= limite)
     std::vector<std::string> lines;   ///< memoria: formulas e valores substituidos
+    CheckStatus status {CheckStatus::Evaluated};
+    std::string reason;               ///< Unverifiable: o que falta ou esta invalido; NotApplicable: justificativa
+    CheckOrigin origin {CheckOrigin::Design};   ///< papel da verificacao (nao muda o calculo nem a aprovacao)
     double ratio() const
     {
+        if (status == CheckStatus::Unverifiable) {
+            return kUnverifiableRatio;
+        }
+        if (status == CheckStatus::NotApplicable || status == CheckStatus::Information || status == CheckStatus::Complementary) {
+            return 0.0;
+        }
         if (rangeRule) {
             if (rangeLower) {
                 return demand + 1e-9 >= resistance ? 0.0 : (demand > 0.0 ? resistance / demand : 1e9);
@@ -43,8 +75,35 @@ struct Check {
         }
         return resistance > 0.0 ? demand / resistance : (demand > 0.0 ? 1e9 : 0.0);
     }
-    bool ok() const { return ratio() <= 1.0 + 1e-9; }
+    bool ok() const { return status != CheckStatus::Unverifiable && ratio() <= 1.0 + 1e-9; }
+    /// Rotulo exibido ao usuario: APROVADO, REPROVADO, NAO VERIFICAVEL - DADOS INSUFICIENTES, NAO APLICAVEL - COM JUSTIFICATIVA ou INFORMACAO.
+    [[nodiscard]] std::string statusLabel() const;
 };
+
+/// Verificacao que NAO pode ser realizada (dados obrigatorios ausentes ou invalidos): registra a ocorrencia e a razao e impede a aprovacao global.
+Check unverifiableCheck(const std::string &name, const std::string &clause, const std::string &reason, const std::vector<std::string> &details = {});
+/// Verificacao nao aplicavel, SEMPRE com justificativa. Nao pode ser usada para esconder dados invalidos.
+Check notApplicableCheck(const std::string &name, const std::string &clause, const std::string &justification);
+/// Registro informativo de um dado utilizado (por exemplo, a secao efetiva do pilar).
+Check informationCheck(const std::string &name, const std::string &clause, const std::vector<std::string> &lines);
+
+/// Resultado global de um conjunto de verificacoes.
+struct Summary {
+    enum Status {
+        Approved,     ///< >= 1 verificacao executada, nenhuma reprovada e nenhuma nao verificavel
+        Failed,       ///< pelo menos uma verificacao reprovada
+        Incomplete    ///< nao ha verificacao executada (lista vazia) ou ha verificacao nao verificavel: NUNCA e aprovacao
+    };
+    Status status {Incomplete};
+    int executed {0};          ///< verificacoes calculadas (aprovadas + reprovadas)
+    int failed {0};
+    int unverifiable {0};
+    int notApplicable {0};
+    double worstRatio {kUnverifiableRatio};
+    std::vector<std::string> problems;   ///< razoes das verificacoes nao verificaveis (e "nenhuma verificacao executada")
+    [[nodiscard]] std::string label() const;   ///< APROVADA, REPROVADA ou NAO VERIFICAVEL - DADOS INSUFICIENTES
+};
+Summary summarize(const std::vector<Check> &checks);
 
 struct BoltedInput {
     BoltGrade grade;

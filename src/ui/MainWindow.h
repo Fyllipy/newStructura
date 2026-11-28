@@ -26,6 +26,9 @@
 #include "app/services/SheetBuilder.h"
 #include "shell/ShellMesh.h"
 #include "shell/ShellSelection.h"
+#include "design/JointClassification.h"
+
+#include <map>
 #include "shell/ShellVisual.h"
 #include "shell/ShellResults.h"
 #include <optional>
@@ -97,6 +100,10 @@ public:
     /// Verificacao automatizada (variavel STRUCTURA_AUTOSHOT): analisa o modelo aberto, exibe os diagramas e grava capturas da tela em `directory`.
     void automatedCapture(const QString &directory);
     void selectBarForAutomation(int externalId);   ///< so desenvolvimento (STRUCTURA_SELECT_BAR): seleciona uma barra para a verificacao da interface
+    /// Verificacao visual automatizada (so desenvolvimento): seleciona o no, abre a janela do comportamento requerido, grava as imagens das abas e encerra o programa.
+    void openNodeBehaviorForAutomation(int nodeExternalId, const QString &shotPrefix);
+    /// Verificacao automatizada do fluxo completo (so desenvolvimento): no -> tipologia -> configurador -> criacao -> salvamento -> retorno -> substituicao.
+    void runNodeFlowForAutomation(int nodeExternalId, const QString &prefix);   ///< Incremento 1: comportamento estrutural requerido do nó selecionado (antes de definir a ligacao)
     void offerRecovery();
 
 private slots:
@@ -153,6 +160,8 @@ private slots:
     void runStairDialog(int editIndex);
     void onImportCad();
     void onShellEditor();
+    /// Cria (sem exibir) a janela do editor de cascas; devolve a existente se ja foi criada.
+    Structura::UI::ShellDialog *ensureShellDialog();
     bool newFromTemplateDialog();
     bool addSteelMaterial(const QString &name);
     void ensureDefaultMaterial();
@@ -198,6 +207,9 @@ private slots:
     /// (cortante do pilar e esforco normal no painel de alma).
     void storeNodeMembers(Structura::App::ProjectData::NodeConnection &connection) const;
     void onCopyConnections();
+    void onNodeRequiredBehavior();
+    void onJointMomentRotation();   ///< "Grafico Momento-Rotacao": classificacao da rigidez da ligacao entre duas barras (NBR 8800:2024, 6.1.2)
+    void updateJointAction();
     void refreshConnectionNodeMembers();
     QString designCacheKey() const;
     QVector<QUuid> expandWithGroups(const QVector<QUuid> &ids) const;
@@ -563,6 +575,7 @@ private:
     QToolButton *m_ribbonCollapseButton {nullptr};
     QVector<Structura::UI::RibbonPage *> m_ribbonPages;
     int m_ribbonLevel {-1};
+    bool m_processMef {false};   ///< janela Processar: "Analisar MEF" (analisa as cascas junto, qualquer que seja a opcao)
     int m_processChoice {0};   ///< ultima escolha da janela Processar: 0 = so analise, 1 = analise + verificar, 2 = analise + dimensionar
     bool m_ribbonCollapsed {false};
 
@@ -602,6 +615,18 @@ private:
     QAction *m_insertNodeAction {nullptr};
     QAction *m_splitBarsAction {nullptr};
     QAction *m_copyConnectionsAction {nullptr};
+    QAction *m_jointMomentRotationAction {nullptr};
+    QAction *m_nodeBehaviorAction {nullptr};
+    /// Pedido vindo da janela "Comportamento requerido do no": o configurador de ligacoes existente o usa para nao perguntar de novo a viga, a extremidade e o apoio.
+    struct PendingConnectionRequest {
+        int nodeId {0};
+        int beamId {0};
+        int supportId {0};
+        int type {0};
+    };
+    PendingConnectionRequest m_pendingConnection;
+    QString m_nodeBehaviorShotPrefix;
+    std::map<QString, Structura::Design::JointClass::JointBehavior> m_jointBehaviors;   ///< dados de ligacao informados na sessao (no:barraA:barraB)
     QAction *m_generateTrussAction {nullptr};
     QAction *m_generateStairAction {nullptr};
     QAction *m_editStairAction {nullptr};

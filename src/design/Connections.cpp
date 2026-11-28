@@ -1,5 +1,6 @@
 #include "design/Connections.h"
 #include "design/ConnectionHelpers.h"
+#include "design/InputValidation.h"
 
 #include <algorithm>
 #include <array>
@@ -43,6 +44,110 @@ Check minimumCheck(const std::string &name, const std::string &clause, double ad
 }
 
 } // namespace
+
+std::string Check::statusLabel() const
+{
+    switch (status) {
+    case CheckStatus::Unverifiable: return "NÃO VERIFICÁVEL — DADOS INSUFICIENTES";
+    case CheckStatus::NotApplicable: return "NÃO APLICÁVEL — COM JUSTIFICATIVA";
+    case CheckStatus::Information: return "INFORMAÇÃO";
+    case CheckStatus::Complementary: return "MÉTODO COMPLEMENTAR — NÃO PARTICIPA DA APROVAÇÃO GLOBAL";
+    case CheckStatus::Evaluated: break;
+    }
+    return ratio() <= 1.0 + 1e-9 ? "APROVADO" : "REPROVADO";
+}
+
+Check unverifiableCheck(const std::string &name, const std::string &clause, const std::string &reason, const std::vector<std::string> &details)
+{
+    Check c;
+    c.name = name;
+    c.clause = clause;
+    c.status = CheckStatus::Unverifiable;
+    c.reason = reason;
+    c.unit = "-";
+    c.lines.push_back("NÃO VERIFICÁVEL — DADOS INSUFICIENTES: " + reason);
+    for (const std::string &d : details) {
+        c.lines.push_back("  - " + d);
+    }
+    c.lines.push_back("A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.");
+    return c;
+}
+
+Check notApplicableCheck(const std::string &name, const std::string &clause, const std::string &justification)
+{
+    Check c;
+    c.name = name;
+    c.clause = clause;
+    c.status = CheckStatus::NotApplicable;
+    c.reason = justification;
+    c.unit = "-";
+    c.lines.push_back("NÃO APLICÁVEL — COM JUSTIFICATIVA: " + justification);
+    return c;
+}
+
+Check informationCheck(const std::string &name, const std::string &clause, const std::vector<std::string> &lines)
+{
+    Check c;
+    c.name = name;
+    c.clause = clause;
+    c.status = CheckStatus::Information;
+    c.origin = CheckOrigin::Information;
+    c.unit = "-";
+    c.lines = lines;
+    return c;
+}
+
+Summary summarize(const std::vector<Check> &checks)
+{
+    Summary s;
+    s.worstRatio = 0.0;
+    for (const Check &c : checks) {
+        switch (c.status) {
+        case CheckStatus::Unverifiable:
+            ++s.unverifiable;
+            s.problems.push_back(c.name + ": " + c.reason);
+            break;
+        case CheckStatus::NotApplicable:
+            ++s.notApplicable;
+            break;
+        case CheckStatus::Information:
+        case CheckStatus::Complementary:   // metodo complementar: nao conta como executada, aprovada, reprovada nem nao verificavel
+            break;
+        case CheckStatus::Evaluated:
+            ++s.executed;
+            s.worstRatio = std::max(s.worstRatio, c.ratio());
+            if (!c.ok()) {
+                ++s.failed;
+            }
+            break;
+        }
+    }
+    if (s.unverifiable > 0) {
+        s.worstRatio = kUnverifiableRatio;
+    }
+    if (s.executed == 0 && s.unverifiable == 0) {
+        s.worstRatio = kUnverifiableRatio;
+        s.problems.push_back("Nenhuma verificação foi executada: a ausência de verificações não é aprovação.");
+    }
+    if (s.failed > 0) {
+        s.status = Summary::Failed;
+    } else if (s.executed > 0 && s.unverifiable == 0) {
+        s.status = Summary::Approved;
+    } else {
+        s.status = Summary::Incomplete;
+    }
+    return s;
+}
+
+std::string Summary::label() const
+{
+    switch (status) {
+    case Approved: return "APROVADA";
+    case Failed: return "REPROVADA";
+    case Incomplete: break;
+    }
+    return "NÃO VERIFICÁVEL — DADOS INSUFICIENTES";
+}
 
 const std::vector<BoltGrade> &boltGrades()
 {
@@ -107,6 +212,9 @@ double boltBearingResistance(const BoltedInput &in)
 std::vector<Check> checkBolted(const BoltedInput &in)
 {
     std::vector<Check> checks;
+    if (const auto issues = Validation::validate(in); !issues.empty()) {
+        return Validation::toUnverifiableChecks(issues, "6.3 (entradas)");
+    }
     const int n = std::max(1, in.nx) * std::max(1, in.ny);
     const double ab = 0.25 * kPi * in.db * in.db;
     const double abe = 0.75 * ab;
@@ -283,6 +391,9 @@ std::vector<Check> checkSlip(const SlipInput &in)
 std::vector<Check> checkFilletWeld(const WeldInput &in)
 {
     std::vector<Check> checks;
+    if (const auto issues = Validation::validate(in); !issues.empty()) {
+        return Validation::toUnverifiableChecks(issues, "6.2 (entradas)");
+    }
     const double aw = 0.707 * in.leg * in.length;
     const double theta = in.angleDeg * kPi / 180.0;
     const double angleFactor = in.useAngleFactor ? 1.0 + 0.5 * std::pow(std::sin(theta), 1.5) : 1.0;
@@ -469,8 +580,16 @@ IcrResult weldGroupIcr(const IcrInput &in)
 std::vector<Check> checkPrying(const PryingInput &in)
 {
     std::vector<Check> checks;
-    if (in.tensionForce <= 0.0 || in.p <= 0.0 || in.fu <= 0.0) {
-        return checks;
+    if (!(in.tensionForce > 0.0) && std::isfinite(in.tensionForce)) {
+        return checks;   // sem tracao nos parafusos a verificacao de alavanca nao tem demanda (nao e dado invalido)
+    }
+    {
+        Validation::Validator v("efeito de alavanca");
+        v.finite("tensionForce", in.tensionForce).positive("p (largura tributária)", in.p).positive("fu", in.fu, "MPa").positive("db", in.db).positive("b", in.b).nonNegative("a", in.a)
+            .nonNegative("holeWidth", in.holeWidth).positive("thickness", in.thickness).positive("boltResistance", in.boltResistance, "N").positive("gammaA1", in.gammaA1, "-");
+        if (!v.ok()) {
+            return Validation::toUnverifiableChecks(v.issues(), "6.3.5 (entradas)");
+        }
     }
     const double bEff = in.b - 0.5 * in.db;
     const double aEff = std::min(in.a, 1.25 * in.b);

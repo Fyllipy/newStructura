@@ -55,6 +55,9 @@ public:
     void selectObjectId(int id);
     /// Mostra os resultados da analise acoplada do projeto (sem executa-la de novo).
     void showProjectResults();
+    /// Analise do MEF pedida pela janela Processar ("Analisar MEF"): sem caixas de dialogo; o log fica na janela das cascas.
+    /// No modelo acoplado as barras usa os resultados da analise do projeto recem-executada.
+    void analyzeFromProcess();
 
 private:
     void buildUi();
@@ -78,7 +81,7 @@ private:
     void notifyChanged();
 
     void generateMesh();
-    void analyze();
+    void analyze(bool quiet = false);
     void refreshResultSelector();
     void refreshView();
     void updateLegend(const Structura::Shell::RenderMesh &mesh, const QString &title, const QString &unit);

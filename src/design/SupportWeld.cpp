@@ -28,9 +28,33 @@ Check make(const std::string &name, const std::string &clause, double demand, do
 
 } // namespace
 
+SupportWeldRuns supportWeldRuns(const SupportWeldInput &in)
+{
+    auto makeRun = [](const char *name, int count, double length, double leg) {
+        WeldRun r;
+        r.name = name;
+        r.count = count;
+        r.length = length;
+        r.geometricLeg = leg;
+        r.effectiveLeg = std::min(leg, length / 4.0);
+        r.belowFourLegs = length < 4.0 * leg;
+        r.belowMinimumLength = length < kMinimumFilletRunLength;
+        return r;
+    };
+    SupportWeldRuns runs;
+    if (!in.flangeFullPenetration) {
+        runs.flange.push_back(makeRun("face externa da mesa", 1, in.flangeWidth, in.flangeLeg));
+        if (in.flangeWidth > in.webThickness) {
+            runs.flange.push_back(makeRun("faces internas da mesa (cada lado da alma)", 2, (in.flangeWidth - in.webThickness) / 2.0, in.flangeLeg));
+        }
+    }
+    runs.web.push_back(makeRun("filete da alma", 2, std::max(in.depth - 2.0 * in.flangeThickness, 1.0), in.webLeg));
+    return runs;
+}
+
 double minimumFilletLeg(double t)
 {
-    if (t <= 6.35) {
+    if (t <= 6.3) {   // NBR 8800:2024, Tabela 11: "abaixo de 6,3 e ate 6,3"
         return 3.0;
     }
     if (t <= 12.5) {
@@ -44,7 +68,7 @@ double minimumFilletLeg(double t)
 
 double maximumFilletLeg(double t)
 {
-    return t < 6.35 ? t : t - 1.5;
+    return t < 6.3 ? t : t - 1.5;   // NBR 8800:2024, 6.2.6.2.2
 }
 
 std::vector<Check> checkSupportWeld(const SupportWeldInput &in)
@@ -55,19 +79,76 @@ std::vector<Check> checkSupportWeld(const SupportWeldInput &in)
     const double flangeForce = std::abs(in.moment) / lever + std::abs(in.axial) / 2.0;
     const double webHeight = std::max(d - 2.0 * tf, 1.0);
     const double thinnestFlange = in.supportThickness > 0.0 ? std::min(tf, in.supportThickness) : tf;
+    const SupportWeldRuns runs = supportWeldRuns(in);
+    const auto anyReduced = [](const std::vector<WeldRun> &v) {
+        for (const WeldRun &r : v) {
+            if (r.belowFourLegs) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const auto shortest = [](const std::vector<WeldRun> &v) {
+        double m = 1e300;
+        for (const WeldRun &r : v) {
+            m = std::min(m, r.length);
+        }
+        return m;
+    };
+    // 6.2.6.2.3: so gera verificacao quando ha desvio (comprimento < 40 mm) ou quando a alternativa de perna efetiva e acionada;
+    // quando todos os trechos atendem (caso usual), nada e acrescentado e os resultados permanecem identicos.
+    const auto appendLengthChecks = [&](std::vector<Check> &out, const std::vector<WeldRun> &v, const char *family) {
+        if (v.empty()) {
+            return;
+        }
+        bool tooShort = false;
+        for (const WeldRun &r : v) {
+            tooShort = tooShort || r.belowMinimumLength;
+        }
+        if (tooShort) {
+            Check c = make(std::string("Solda viga-apoio - comprimento efetivo minimo (") + family + ")", "6.2.6.2.3", shortest(v), kMinimumFilletRunLength, "mm");
+            c.minimumRule = true;
+            for (const WeldRun &r : v) {
+                c.lines.push_back(fmt("trecho '", 0.0) + r.name + fmt("': L = %.2f mm (minimo 40 mm; 4 x perna = %.2f mm)", r.length, 4.0 * r.geometricLeg));
+            }
+            out.push_back(c);
+        }
+        if (anyReduced(v)) {
+            double minEff = 1e300;
+            double geo = 0.0;
+            for (const WeldRun &r : v) {
+                minEff = std::min(minEff, r.effectiveLeg);
+                geo = r.geometricLeg;
+            }
+            Check c = make(std::string("Solda viga-apoio - perna efetiva (") + family + ")", "6.2.6.2.3", minEff, geo, "mm");
+            c.status = CheckStatus::Information;
+            c.lines.push_back(fmt("alternativa normativa: para efeito de calculo a perna nao pode ser considerada maior que 25 %% do comprimento do trecho; perna geometrica informada = %.2f mm", geo));
+            for (const WeldRun &r : v) {
+                c.lines.push_back(fmt("trecho '", 0.0) + r.name + fmt("': L = %.2f mm; perna geometrica %.2f mm; perna efetiva considerada no calculo = %.2f mm", r.length, r.geometricLeg, r.effectiveLeg));
+            }
+            out.push_back(c);
+        }
+    };
 
     // ---- mesas
     if (in.flangeFullPenetration) {
         const double rd = bf * tf * in.beamFy / in.gammaA1;
-        Check c = make("Solda viga-apoio - mesas (penetracao total)", "6.2.4", flangeForce / 1000.0, rd / 1000.0, "kN");
-        c.lines.push_back(fmt("Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (6.2.4): bf tf fy / ga1 = %.0f x %.1f x %.0f / %.2f = %.2f kN", bf, tf, in.beamFy, in.gammaA1, rd / 1000.0));
+        Check c = make("Solda viga-apoio - mesas (penetracao total)", "Tabela 9 (penetracao total)", flangeForce / 1000.0, rd / 1000.0, "kN");
+        c.lines.push_back(fmt("Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (Tabela 9): bf tf fy / ga1 = %.0f x %.1f x %.0f / %.2f = %.2f kN", bf, tf, in.beamFy, in.gammaA1, rd / 1000.0));
         c.lines.push_back(fmt("F = M/(d - tf) + N/2 = %.2f kN.m / %.3f m + %.2f kN / 2 = %.2f kN (a mesa tracionada governa; a comprimida e atendida pela mesma solda)", std::abs(in.moment) / 1e6, lever / 1000.0,
                               std::abs(in.axial) / 1000.0, flangeForce / 1000.0));
         checks.push_back(c);
     } else {
         const double length = std::max(2.0 * bf - tw, bf);   // face externa + as duas faces internas da mesa
         const double te = 0.707 * in.flangeLeg;
-        const double rdWeld = 0.60 * te * length * in.fw * 1.5 / in.gammaW2;   // filetes transversais (theta = 90 graus: 1,0 + 0,5 sen^1,5 theta = 1,5)
+        double rdWeld = 0.60 * te * length * in.fw * 1.5 / in.gammaW2;   // filetes transversais (theta = 90 graus: 1,0 + 0,5 sen^1,5 theta = 1,5)
+        if (anyReduced(runs.flange)) {   // 6.2.6.2.3: perna efetiva (<= 25 % do comprimento) nos trechos curtos
+            double throatLength = 0.0;
+            for (const WeldRun &r : runs.flange) {
+                throatLength += r.count * 0.707 * r.effectiveLeg * r.length;
+            }
+            rdWeld = 0.60 * throatLength * in.fw * 1.5 / in.gammaW2;
+        }
         const double rdBase = std::min(0.60 * tf * length * in.beamFy / in.gammaA1, 0.60 * tf * length * in.beamFu / in.gammaA2);
         const double rd = std::min(rdWeld, rdBase);
         Check c = make("Solda viga-apoio - mesas (filete)", "6.2.5 e Tabela 9", flangeForce / 1000.0, rd / 1000.0, "kN");
@@ -81,15 +162,19 @@ std::vector<Check> checkSupportWeld(const SupportWeldInput &in)
         lo.minimumRule = true;
         lo.lines.push_back(fmt("perna adotada %.1f mm >= minima %.1f mm (parte mais fina = %.1f mm)", in.flangeLeg, minLeg, thinnestFlange));
         checks.push_back(lo);
-        Check hi = make("Solda viga-apoio - perna maxima das mesas", "6.2.5.2", in.flangeLeg, maxLeg, "mm");
+        Check hi = make("Solda viga-apoio - perna maxima das mesas", "6.2.6.2.2", in.flangeLeg, maxLeg, "mm");
         hi.rangeRule = true;
         hi.lines.push_back(fmt("perna adotada %.1f mm <= maxima %.1f mm na borda da mesa (tf = %.1f mm)", in.flangeLeg, maxLeg, tf));
         checks.push_back(hi);
+        appendLengthChecks(checks, runs.flange, "mesas");
     }
 
     // ---- alma: dois filetes longitudinais ao cortante
     {
-        const double te = 0.707 * in.webLeg;
+        double te = 0.707 * in.webLeg;
+        if (anyReduced(runs.web)) {
+            te = 0.707 * runs.web.front().effectiveLeg;   // 6.2.6.2.3: perna efetiva
+        }
         const double fv = std::abs(in.shear) / (2.0 * webHeight);   // N/mm por filete
         const double perLength = 0.60 * te * in.fw / in.gammaW2;
         Check c = make("Solda viga-apoio - alma (filetes)", "6.2.5", fv, perLength, "N/mm");
@@ -97,7 +182,7 @@ std::vector<Check> checkSupportWeld(const SupportWeldInput &in)
         c.lines.push_back(fmt("fv <= 0,60 te fw / gw2 = 0,60 x %.2f x %.0f / %.2f = %.2f N/mm", te, in.fw, in.gammaW2, perLength));
         checks.push_back(c);
         const double base = std::min(0.60 * tw * in.beamFy / in.gammaA1, 0.60 * tw * in.beamFu / in.gammaA2);
-        Check b = make("Solda viga-apoio - alma (metal-base)", "6.2.5 e 5.4.3", 2.0 * fv, base, "N/mm");
+        Check b = make("Solda viga-apoio - alma (metal-base)", "Tabela 9 e 6.5.5", 2.0 * fv, base, "N/mm");
         b.lines.push_back(fmt("2 fv = %.2f N/mm <= min(0,6 tw fy/ga1 ; 0,6 tw fu/ga2) = %.2f N/mm (cisalhamento do metal-base da alma)", 2.0 * fv, base));
         checks.push_back(b);
         const double minLeg = minimumFilletLeg(in.supportThickness > 0.0 ? std::min(tw, in.supportThickness) : tw), maxLeg = maximumFilletLeg(tw);
@@ -105,10 +190,11 @@ std::vector<Check> checkSupportWeld(const SupportWeldInput &in)
         lo.minimumRule = true;
         lo.lines.push_back(fmt("perna adotada %.1f mm >= minima %.1f mm", in.webLeg, minLeg));
         checks.push_back(lo);
-        Check hi = make("Solda viga-apoio - perna maxima da alma", "6.2.5.2", in.webLeg, maxLeg, "mm");
+        Check hi = make("Solda viga-apoio - perna maxima da alma", "6.2.6.2.2", in.webLeg, maxLeg, "mm");
         hi.rangeRule = true;
         hi.lines.push_back(fmt("perna adotada %.1f mm <= maxima %.1f mm na borda da alma (tw = %.1f mm)", in.webLeg, maxLeg, tw));
         checks.push_back(hi);
+        appendLengthChecks(checks, runs.web, "alma");
     }
 
     // ---- metal-base do apoio (so se informado)

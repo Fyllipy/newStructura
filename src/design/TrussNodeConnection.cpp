@@ -162,23 +162,23 @@ std::vector<Check> checkTrussNode(const TrussNodeInput &in)
         const double tg = in.gussetThickness, Lg = std::max(in.gussetWidth, 1.0);
         const double shear = std::abs(r.fx), normal = r.fy, M = std::abs(r.moment);
         if (in.chordMode == TrussNodeInput::ButtWeld) {
-            // solda de penetracao total: a resistencia e a do metal-base da chapa (6.2.4)
+            // solda de penetracao total: a resistencia e a do metal-base da chapa (NBR 8800:2024, Tabela 9)
             const double area = tg * Lg, z = tg * Lg * Lg / 6.0;
             const double sigma = std::abs(normal) / area + M / z;
             const double tau = shear / area;
             const double fN = in.gusset.fy / g1, fV = 0.6 * in.gusset.fy / g1;
-            Check n = ratioN("Solda de topo gousset - banzo: tensao normal (N/Ag + M/W)", "6.2.4", sigma, fN);
+            Check n = ratioN("Solda de topo gousset - banzo: tensao normal (N/Ag + M/W)", "Tabela 9 (penetracao total)", sigma, fN);
             n.unit = "MPa";
             n.demand = sigma;
             n.resistance = fN;
             n.lines.push_back(fmtn("Fy = %.2f kN, M = %.2f kN.m, Ag = %.0f mm2, W = %.0f mm3", normal / 1000.0, M / 1e6, area, z));
             checks.push_back(n);
-            Check s = ratioN("Solda de topo gousset - banzo: cisalhamento", "6.2.4", tau, fV);
+            Check s = ratioN("Solda de topo gousset - banzo: cisalhamento", "Tabela 9 (penetracao total)", tau, fV);
             s.unit = "MPa";
             s.demand = tau;
             s.resistance = fV;
             checks.push_back(s);
-            Check i = detail::dimensionless("Solda de topo gousset - banzo: interacao tensao normal x cisalhamento", "6.2.4", std::pow(sigma / fN, 2.0) + std::pow(tau / fV, 2.0));
+            Check i = detail::dimensionless("Solda de topo gousset - banzo: interacao tensao normal x cisalhamento", "Tabela 9 (penetracao total); interacao: criterio do programa", std::pow(sigma / fN, 2.0) + std::pow(tau / fV, 2.0));
             checks.push_back(i);
         } else if (in.chordMode == TrussNodeInput::FilletWeld) {
             const double te = 0.707 * in.chordWeldLeg;

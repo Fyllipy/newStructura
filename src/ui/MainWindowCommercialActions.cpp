@@ -28,6 +28,16 @@ void MainWindow::createCommercialActions()
     m_copyConnectionsAction->setIcon(Structura::UI::actionIcon(QStringLiteral("connection-copy.svg")));
     m_copyConnectionsAction->setToolTip(tr("Copia uma ligação para outros nós: a cada cópia selecione a barra que se apoia e a barra de apoio; as cópias que não atendem aos esforços do nó de destino ficam em vermelho"));
     connect(m_copyConnectionsAction, &QAction::triggered, this, &MainWindow::onCopyConnections);
+    m_jointMomentRotationAction = new QAction(tr("Gráfico\nMomento-Rotação"), this);
+    m_jointMomentRotationAction->setIcon(Structura::UI::actionIcon(QStringLiteral("connection.svg")));
+    m_jointMomentRotationAction->setToolTip(tr("Selecione duas barras que compartilham um nó: diagrama momento-rotação e classificação da rigidez da ligação (NBR 8800:2024, 6.1.2)"));
+    m_jointMomentRotationAction->setEnabled(false);
+    connect(m_jointMomentRotationAction, &QAction::triggered, this, &MainWindow::onJointMomentRotation);
+    m_nodeBehaviorAction = new QAction(tr("Comportamento\ndo nó"), this);
+    m_nodeBehaviorAction->setIcon(Structura::UI::actionIcon(QStringLiteral("connection.svg")));
+    m_nodeBehaviorAction->setToolTip(tr("Selecione um nó: orienta o comportamento estrutural requerido (rotulado, semirrígido ou rígido) a partir do modelo, antes de definir a ligação (NBR 8800:2024, 6.1.2)"));
+    m_nodeBehaviorAction->setEnabled(false);
+    connect(m_nodeBehaviorAction, &QAction::triggered, this, &MainWindow::onNodeRequiredBehavior);
     m_exportDstvAction = new QAction(tr("Exportar NC\n(DSTV)"), this);
     m_exportDstvAction->setIcon(Structura::UI::actionIcon(QStringLiteral("dxf.svg")));
     m_exportDstvAction->setToolTip(tr("Grava um arquivo .nc1 (DSTV) por chapa das ligações, com contorno e furação, para máquinas de corte e furação CNC"));

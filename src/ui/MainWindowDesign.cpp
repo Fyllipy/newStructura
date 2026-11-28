@@ -265,7 +265,31 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
         }
         auto designSections = std::make_shared<QHash<QString, Structura::Design::DesignSection>>();
         const double momentToNmm = factors.first * factors.second;
-        const StructuralChecks::InertiaRatio inertiaRatio = [sectionOfBar, designSections, designSettings, momentToNmm](int memberId, double mz, double my) -> std::array<double, 2> {
+        // E e G (MPa) do material de cada barra: as verificacoes usam o modulo cadastrado no material
+        // (os modelos das combinacoes de 2a ordem tem E reduzido: usa os materiais do projeto)
+        auto nominalMaterials = std::make_shared<std::vector<Structura::App::SolverBridge::MaterialData>>();
+        for (const auto &material : m_materials) {
+            Structura::App::SolverBridge::MaterialData data;
+            data.id = material.externalId;
+            data.e = material.youngModulus;
+            data.g = material.shearModulus;
+            nominalMaterials->push_back(data);
+        }
+        auto modulusOfBar = std::make_shared<QHash<int, std::pair<double, double>>>();
+        {
+            const double toMpa = factors.first / (factors.second * factors.second);
+            QHash<int, std::pair<double, double>> byId;
+            for (const auto &material : *nominalMaterials) {
+                byId.insert(material.id, {material.e * toMpa, material.g * toMpa});
+            }
+            for (const auto &member : geometry.members) {
+                const auto it = byId.constFind(member.materialId);
+                if (it != byId.constEnd()) {
+                    modulusOfBar->insert(member.id, it.value());
+                }
+            }
+        }
+        const StructuralChecks::InertiaRatio inertiaRatio = [sectionOfBar, designSections, designSettings, momentToNmm, modulusOfBar](int memberId, double mz, double my) -> std::array<double, 2> {
             const SectionInfo *section = sectionOfBar.value(memberId, nullptr);
             if (!section) {
                 return {1.0, 1.0};
@@ -277,14 +301,15 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
             if (it == designSections->end()) {
                 it = designSections->insert(key, SectionPropertiesService::makeSection(*section, designSettings.rectTubeStandard));
             }
-            return DesignService::serviceInertiaRatios(it.value(), steelName, mz * momentToNmm, my * momentToNmm);
+            const auto modulus = modulusOfBar->value(memberId, {0.0, 0.0});
+            return DesignService::serviceInertiaRatios(it.value(), steelName, mz * momentToNmm, my * momentToNmm, modulus.first, modulus.second);
         };
         DesignRunData heavy;
         heavy = Structura::UI::runBusy(this, tr("Dimensionamento"), tr("Reunindo os esforços das combinações…"),
                                        [&](Structura::UI::BusyProgress &progress) {
             DesignRunData out;
             progress.setDetail(tr("Esforços de cálculo por barra e combinação…"));
-            out.effects = DesignService::collectEffects(geometry, ultimate, factors.first, factors.second);
+            out.effects = DesignService::collectEffects(geometry, ultimate, factors.first, factors.second, 21, nominalMaterials.get());
             // B2 por andar (so na analise de 1a ordem)
             if (secondOrder) {
                 out.warnings.append(designSettings.geometricActive()
@@ -307,14 +332,6 @@ bool MainWindow::buildDesignRun(DesignRunData &run)
                 out.deflections = StructuralChecks::deflections(geometry, service, designSettings, factors.second, inertiaRatio);
                 out.elsStories = StructuralChecks::stories(geometry, service, designSettings, factors.first, factors.second, false);
                 out.warnings += out.elsStories.warnings;
-            }
-            // as resistencias usam E = 200 GPa (NBR 8800 e NBR 14762): rigidez do modelo diferente da de projeto desloca os esforcos
-            for (const auto &material : m_materials) {
-                const double eMpa = material.youngModulus * factors.first / (factors.second * factors.second);
-                if (eMpa > 0.0 && std::abs(eMpa - 200000.0) > 0.01 * 200000.0) {
-                    out.warnings.append(tr("O material \"%1\" tem E = %2 GPa no modelo; as verificações usam E = 200 GPa (aço estrutural). Os esforços da análise foram obtidos com a rigidez do modelo: ajuste o módulo de elasticidade do material para 200 GPa.")
-                                            .arg(material.name).arg(eMpa / 1000.0, 0, 'f', 1));
-                }
             }
             return out;
         });

@@ -11,6 +11,7 @@
 
 #include <QLabel>
 
+#include <QCheckBox>
 #include <QDialogButtonBox>
 
 #include <QDialog>
@@ -275,6 +276,14 @@ void MainWindow::onRunStructuralAnalysis()
         layout->addWidget(radio);
         radios.append(radio);
     }
+    const bool hasShells = !m_extras.shell.objects.empty();
+    auto *mef = new QCheckBox(tr("Analisar MEF"), &dialog);
+    mef->setEnabled(hasShells);
+    mef->setChecked(hasShells && m_processMef);
+    mef->setToolTip(hasShells ? tr("Analisa também as cascas (MEF), junto com a opção escolhida acima. O log da análise do MEF fica na janela de edição das cascas.")
+                              : tr("Não há cascas no projeto."));
+    layout->addSpacing(4);
+    layout->addWidget(mef);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     buttons->button(QDialogButtonBox::Ok)->setText(tr("Processar"));
     buttons->button(QDialogButtonBox::Cancel)->setText(tr("Cancelar"));
@@ -290,6 +299,20 @@ void MainWindow::onRunStructuralAnalysis()
             m_processChoice = i;
         }
     }
+    if (hasShells) {
+        m_processMef = mef->isChecked();
+    }
+    const bool analyzeMef = hasShells && m_processMef && m_sceneController;
+    if (analyzeMef) {
+        // MEF ANTES das demais analises: o projeto pode depender dos esforcos provocados pelas cascas.
+        // Desacoplado, as cascas sao resolvidas aqui, antes da analise do projeto. Acoplado as barras, cascas e barras sao uma unica
+        // analise: a janela das cascas ja existe e recebe os resultados quando a analise do projeto (abaixo) termina.
+        Structura::UI::ShellDialog *shell = ensureShellDialog();
+        shell->setModel(m_extras.shell);
+        if (!m_extras.shell.coupled) {
+            shell->analyzeFromProcess();
+        }
+    }
     if (!runStructuralAnalysis(m_processChoice == 0)) {
         return;
     }
@@ -297,6 +320,10 @@ void MainWindow::onRunStructuralAnalysis()
         onVerifyDesign();
     } else if (m_processChoice == 2) {
         onOptimizeDesign();
+    }
+    if (analyzeMef && m_shellDialog) {
+        m_shellDialog->show();
+        m_shellDialog->raise();
     }
 }
 

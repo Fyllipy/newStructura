@@ -45,6 +45,8 @@ chk Perna maxima do filete (borda da chapa) | 6.2.6.2.2 | 8 6 mm 0.75 100
    a = 6.0 mm <= 8.0 mm
 chk Altura da chapa x altura da viga | detalhamento | 310 210 mm 0.677419354839 100
    H = 210 mm <= altura da viga = 310 mm
+chk Apoio: forças localizadas (5.7.2 a 5.7.5) | NBR 8800:2024, 5.7 | 0 0 - 0 000
+   NÃO APLICÁVEL — COM JUSTIFICATIVA: nenhum perfil I/H de apoio foi definido para esta ligação (campo "Chapa soldada na" = não verificar, ou o apoio não é um perfil I/H): as forças localizadas em mesa e alma não se aplicam
 peca Chapa 9.5 x 95 x 210 mm 1 1.48777125 0
 peca Parafuso d = 20 mm (+ porca e arruelas) 3 0.12423136121 0
 peca Filete de solda 6 mm (2 x 210 mm) 1 0.059346 420
@@ -97,6 +99,8 @@ chk Alma da viga - rasgamento | 6.5.6 | 80 177.866666667 kN 0.449775112444 000
    Agv = 1015; Anv = 667; Ant = 133 mm2; Rr,Rd = 177.87 kN
 chk Comprimento da cantoneira x altura da viga | detalhamento | 310 210 mm 0.677419354839 100
    L = 210 mm <= altura da viga = 310 mm
+chk Apoio: forças localizadas (5.7.2 a 5.7.5) | NBR 8800:2024, 5.7 | 0 0 - 0 000
+   NÃO APLICÁVEL — COM JUSTIFICATIVA: nenhum perfil I/H de apoio foi definido para esta ligação (campo "Chapa soldada na" = não verificar, ou o apoio não é um perfil I/H): as forças localizadas em mesa e alma não se aplicam
 peca Cantoneira 9.5 mm, abas 85 x 85, comprimento 210 mm 2 2.513550375 0
 peca Parafuso d = 20 mm na alma (corte duplo) 3 0.15585973795 0
 peca Parafuso d = 20 mm no apoio 6 0.144873038661 0
@@ -157,6 +161,8 @@ chk Perna maxima ao longo de bordas (solda chapa-apoio) | 6.2.6.2.2 | 8 6 mm 0.7
 chk Comprimento minimo efetivo (solda chapa-apoio) | 6.2.6.2.3 | 400 40 mm 0.1 100
    L = 400.0 mm >= max(4a ; 40) = 40.0 mm
    A solda e verificada para a forca total da diagonal (metodo da forca uniforme conservador, sem decomposicao entre o banzo e os montantes).
+chk Apoio: forças localizadas (5.7.2 a 5.7.5) | NBR 8800:2024, 5.7 | 0 0 - 0 000
+   NÃO APLICÁVEL — COM JUSTIFICATIVA: nenhum perfil I/H de apoio foi definido para esta ligação (campo "Chapa soldada na" = não verificar, ou o apoio não é um perfil I/H): as forças localizadas em mesa e alma não se aplicam
 peca Chapa de no 9.5 x 200 x 255 mm 1 3.803325 0
 peca Parafuso d = 20 mm (+ porca e arruelas) 3 0.137215642188 0
 peca Filete de solda 6 mm (2 x 200 mm) 1 0.05652 400
@@ -348,8 +354,12 @@ chk Pressao de contato (chapa) | NBR 14762:2010, 10.3.5 | 352.2 35.2921935484 kN
 peca Chapa de ligacao t = 4.75 mm, 120 x 50 mm 1 0.223725 0
 peca Parafuso d = 12 mm 2 0.0173123746361 0
 solidos 10 5915.16695297
-### legado tipo 7 campos 44
-descricao Chapa 22.4 × 185 mm, 6 parafusos d20 ASTM A325 / F1852, solda 8/6 mm governa Apoio: flexão local da mesa caso ELU1 max 1.87512357442
+### legado tipo 7 campos 45
+descricao Chapa 22.4 × 185 mm, 6 parafusos d20 ASTM A325 / F1852, solda 8/6 mm governa Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) caso ELU1 max 1000000000
+chk Seção do pilar utilizada | dados de entrada | 0 0 - 0 000
+   Origem: informada manualmente e confirmada pelo projetista
+   Pilar: d = 260.0 mm; bf = 146.0 mm; tf = 12.70 mm; tw = 7.60 mm; r = 10.0 mm
+   Aço do pilar: fy = 250 MPa; fu = 400 MPa
 chk Parafusos tracionados | NBR 8800:2024, 6.3.3.1 | 107.4000999 144.862327916 kN 0.741394270308 000
    F_t = M/(d - tf) + N/2 = 429.6 kN na mesa tracionada; 4 parafusos: F_t,0,Sd = 107.4 kN (sem alavanca)
    F_t,Rd = 0,75 Ab fub / ga2 = 144.9 kN; z = d - tf = 300 mm
@@ -358,6 +368,40 @@ chk Efeito de alavanca - espessura da placa (flexivel) - chapa de extremidade | 
    beta = [(a + 0,5 db)/(b - 0,5 db)] (Ft,Rd/Ft,0,Sd - 1) = 0.168; alfa = 0.264
    t >= sqrt[4 (b - 0,5 db) Ft,0,Sd ga1 / (p fu (1 + delta alfa))] = 31.54 mm (adotada 22.40 mm)
    Se a placa fosse rigida (sem alavanca), 6.3.5.3 exigiria t >= 34.58 mm
+chk Efeito de alavanca - mesa do pilar (NBR 8800:2024, 6.3.5.4) | NBR 8800:2024, 6.3.5.4 | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: ligacao com 2 fileiras tracionadas: a interacao entre fileiras ainda nao foi validada por MEF independente; a soma de larguras tributarias nao e usada para aprovar (metodologia aprovada: apenas 1 fileira)
+     - 6.3.5.4 aplicado a mesa do pilar esta liberado somente para 1 fileira tracionada
+     - Use a Camada B (T-stub EN, complementar e informativa) apenas como indicacao; ela nao substitui esta verificacao
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
+chk T-stub EN 1993-1-8 - METODO COMPLEMENTAR (nao participa da aprovacao global) | EN 1993-1-8, 6.2.4 e 6.2.6.4 (metodo complementar) | 429.6003996 307.296874489 kN 0 000
+   METODO COMPLEMENTAR (EN 1993-1-8): nao e exigencia da NBR 8800 e NAO participa da aprovacao global.
+   Coeficientes EN usados: gammaM0 = 1.00; gammaM2 = 1.25; k2 = 0.90; metodo 2 da Tabela 6.2 (nao ha coeficientes da NBR neste metodo).
+   Parafuso: Ft,Rd = k2 fub As / gM2 = 146.4 kN (fub = 830 MPa; As = 245 mm2)
+   Parafuso ASTM: a EN nao tem essa classe; fub informado pelo usuario e usado no metodo EN sob responsabilidade do projetista.
+   m = (g - tw)/2 - 0,8 r = 37.70 mm; e = (bf - g)/2 = 23.50 mm; emin = 23.50 mm; ew = dw/4 = 8.66 mm
+   Fileira 1 (isolada): m = 37.70 mm; e = 23.50 mm; n = min(emin ; 1,25 m) = 23.50 mm
+     leff,1 = min(cp 236.9 ; nc 180.2) = 180.2 mm; leff,2 = nc = 180.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, fileira isolada)
+     Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 1816277 N.mm; Mpl,2,Rd = 1816277 N.mm (fy = 250 MPa; tf = 12.70 mm; gM0 = 1.00)
+     Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 249.6 kN (ew = 8.66 mm)
+     Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 171.8 kN; Modo 3 = SFt,Rd = 292.8 kN (2 parafusos x 146.4 kN)
+     FT,Rd = min(modos) = 171.8 kN: modo 2 governa
+   Fileira 2 (isolada): m = 37.70 mm; e = 23.50 mm; n = min(emin ; 1,25 m) = 23.50 mm
+     leff,1 = min(cp 236.9 ; nc 180.2) = 180.2 mm; leff,2 = nc = 180.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, fileira isolada)
+     Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 1816277 N.mm; Mpl,2,Rd = 1816277 N.mm (fy = 250 MPa; tf = 12.70 mm; gM0 = 1.00)
+     Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 249.6 kN (ew = 8.66 mm)
+     Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 171.8 kN; Modo 3 = SFt,Rd = 292.8 kN (2 parafusos x 146.4 kN)
+     FT,Rd = min(modos) = 171.8 kN: modo 2 governa
+   Grupo 1-2: m = 37.70 mm; e = 23.50 mm; n = min(emin ; 1,25 m) = 23.50 mm
+     leff,1 = min(cp 376.9 ; nc 250.2) = 250.2 mm; leff,2 = nc = 250.2 mm (EN 1993-1-8, Tabela 6.4, mesa nao enrijecida, grupo de fileiras)
+     Mpl,1,Rd = 0,25 leff,1 tf^2 fy/gM0 = 2521920 N.mm; Mpl,2,Rd = 2521920 N.mm (fy = 250 MPa; tf = 12.70 mm; gM0 = 1.00)
+     Modo 1 (metodo 2) = (8 n - 2 ew) Mpl,1 / [2 m n - ew (m + n)] = 346.6 kN (ew = 8.66 mm)
+     Modo 2 = (2 Mpl,2 + n SFt,Rd)/(m + n) = 307.3 kN; Modo 3 = SFt,Rd = 585.6 kN (4 parafusos x 146.4 kN)
+     FT,Rd = min(modos) = 307.3 kN: modo 2 governa
+   Fileira 1: resistencia efetiva = 171.8 kN (isolada)
+   Fileira 2: resistencia efetiva = 135.5 kN (grupo 1-2)
+   Resistencia total da mesa do pilar a tracao (soma das fileiras) = 307.3 kN
+   Resistencia a tracao do conjunto (componente governante: mesa do pilar) = 307.3 kN; tracao solicitante M/z + N/2 = 429.6 kN; razao informativa = 1.40
+   Nao incluidos nesta versao: alma do pilar tracionada (EN 6.2.6.3), alma da viga tracionada (6.2.6.8), mesa enrijecida (Tabela 6.5); chapa de extremidade em multiplas fileiras (Tabela 6.6, fileiras alem da primeira).
 chk Cisalhamento do parafuso - parafusos da zona comprimida | 6.3.3.2 | 40 86.9173967493 kN 0.460207064362 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -409,7 +453,7 @@ peca Parafuso d = 20 mm 6 0.256737613233 0
 peca Filete de solda 8 mm (mesas) e 6 mm (alma) 1 0 1229.6
 solidos 25 26923.95
 ### Viga–viga soldada com tala simples de alma tipo 101 campos 28
-descricao tala t = 9.5 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Solda tala - apoio - metal-base caso  max 0.842995899837
+descricao tala t = 9.5 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Solda tala - alma da viga (grupo excentrico) | 6.2.5.2-b (CIR) | 100 240.043531644 kN 0.416591104602 000
    filetes 6.0 mm: 2 x 120 mm; excentricidade da face do apoio ao centroide = 72.0 mm
    Fr,Rd (metodo do centro instantaneo de rotacao) = 240.04 kN
@@ -438,12 +482,19 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 215 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 215 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 9.5 x 132 x 215 mm 1 2.1164385 0
 peca Filete 6 mm tala-alma (2 x 120 mm) por tala 1 0.033912 240
 peca Filete 6 mm tala-apoio (2 x 215 mm) por tala 1 0.060759 430
 solidos 10 19240.9
 ### Viga–viga parafusada com tala simples de alma tipo 102 campos 44
-descricao tala t = 9.5 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Espacamento minimo entre furos caso  max 0.857142857143
+descricao tala t = 9.5 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Cisalhamento do parafuso | 6.3.3.2 | 60.4818145116 86.9173967493 kN 0.695853957592 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -488,12 +539,19 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 210 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 210 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 9.5 x 95 x 210 mm 1 1.48777125 0
 peca Parafuso d = 20 mm (+ porca e arruelas) 3 0.12423136121 0
 peca Filete 6 mm tala-apoio (2 x 210 mm) por tala 1 0.059346 420
 solidos 17 20214.7
 ### Viga–pilar parafusada com tala simples (alma do pilar) tipo 103 campos 43
-descricao tala t = 9.5 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Espacamento minimo entre furos caso  max 0.857142857143
+descricao tala t = 9.5 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Cisalhamento do parafuso | 6.3.3.2 | 60.4818145116 86.9173967493 kN 0.695853957592 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -538,12 +596,19 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 210 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 210 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 9.5 x 95 x 210 mm 1 1.48777125 0
 peca Parafuso d = 20 mm (+ porca e arruelas) 3 0.12423136121 0
 peca Filete 6 mm tala-apoio (2 x 210 mm) por tala 1 0.059346 420
 solidos 17 19644.7
 ### Viga–pilar parafusada com tala simples (mesa do pilar) tipo 104 campos 43
-descricao tala t = 9.5 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Espacamento minimo entre furos caso  max 0.857142857143
+descricao tala t = 9.5 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Cisalhamento do parafuso | 6.3.3.2 | 60.4818145116 86.9173967493 kN 0.695853957592 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -588,12 +653,20 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 210 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 210 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); bf deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - bf: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 9.5 x 95 x 210 mm 1 1.48777125 0
 peca Parafuso d = 20 mm (+ porca e arruelas) 3 0.12423136121 0
 peca Filete 6 mm tala-apoio (2 x 210 mm) por tala 1 0.059346 420
 solidos 15 15518.7
 ### Viga–pilar soldada com tala simples (alma do pilar) tipo 105 campos 27
-descricao tala t = 9.5 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Solda tala - apoio - metal-base caso  max 0.842995899837
+descricao tala t = 9.5 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Solda tala - alma da viga (grupo excentrico) | 6.2.5.2-b (CIR) | 100 240.043531644 kN 0.416591104602 000
    filetes 6.0 mm: 2 x 120 mm; excentricidade da face do apoio ao centroide = 72.0 mm
    Fr,Rd (metodo do centro instantaneo de rotacao) = 240.04 kN
@@ -622,12 +695,19 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 215 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 215 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 9.5 x 132 x 215 mm 1 2.1164385 0
 peca Filete 6 mm tala-alma (2 x 120 mm) por tala 1 0.033912 240
 peca Filete 6 mm tala-apoio (2 x 215 mm) por tala 1 0.060759 430
 solidos 10 18670.9
 ### Viga–pilar soldada com tala simples (mesa do pilar) tipo 106 campos 27
-descricao tala t = 9.5 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Solda tala - apoio - metal-base caso  max 0.842995899837
+descricao tala t = 9.5 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Solda tala - alma da viga (grupo excentrico) | 6.2.5.2-b (CIR) | 100 240.043531644 kN 0.416591104602 000
    filetes 6.0 mm: 2 x 120 mm; excentricidade da face do apoio ao centroide = 72.0 mm
    Fr,Rd (metodo do centro instantaneo de rotacao) = 240.04 kN
@@ -656,12 +736,20 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 215 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 215 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); bf deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - bf: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 9.5 x 132 x 215 mm 1 2.1164385 0
 peca Filete 6 mm tala-alma (2 x 120 mm) por tala 1 0.033912 240
 peca Filete 6 mm tala-apoio (2 x 215 mm) por tala 1 0.060759 430
 solidos 8 14544.9
 ### Viga–viga parafusada com dupla tala de alma tipo 111 campos 44
-descricao 2 talas t = 8.0 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Perna maxima do filete - tala - apoio caso  max 0.923076923077
+descricao 2 talas t = 8.0 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Cisalhamento do parafuso - corte duplo | 6.3.3.2 | 30.2409072558 86.9173967493 kN 0.347926978796 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -706,12 +794,19 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 210 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 210 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 8.0 x 95 x 210 mm 2 1.25286 0
 peca Parafuso d = 20 mm (+ porca e arruelas) 3 0.145871829506 0
 peca Filete 6 mm tala-apoio (2 x 210 mm) por tala 2 0.059346 420
 solidos 19 21364.7
 ### Viga–viga soldada com dupla tala de alma tipo 112 campos 28
-descricao 2 talas t = 8.0 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Perna maxima do filete - tala - alma da viga caso  max 0.923076923077
+descricao 2 talas t = 8.0 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Solda tala - alma da viga (cada tala, grupo excentrico) | 6.2.5.2-b (CIR) | 50 240.043531644 kN 0.208295552301 000
    filetes 6.0 mm: 2 x 120 mm; excentricidade da face do apoio ao centroide = 72.0 mm
    Fr,Rd (metodo do centro instantaneo de rotacao) = 240.04 kN
@@ -740,12 +835,19 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 215 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 215 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 8.0 x 132 x 215 mm 2 1.782264 0
 peca Filete 6 mm tala-alma (2 x 120 mm) por tala 2 0.033912 240
 peca Filete 6 mm tala-apoio (2 x 215 mm) por tala 2 0.060759 430
 solidos 14 21854
 ### Viga–pilar parafusada com dupla tala (mesa do pilar) tipo 113 campos 43
-descricao 2 talas t = 8.0 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Perna maxima do filete - tala - apoio caso  max 0.923076923077
+descricao 2 talas t = 8.0 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Cisalhamento do parafuso - corte duplo | 6.3.3.2 | 30.2409072558 86.9173967493 kN 0.347926978796 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -790,12 +892,20 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 210 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 210 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); bf deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - bf: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 8.0 x 95 x 210 mm 2 1.25286 0
 peca Parafuso d = 20 mm (+ porca e arruelas) 3 0.145871829506 0
 peca Filete 6 mm tala-apoio (2 x 210 mm) por tala 2 0.059346 420
 solidos 17 16668.7
 ### Viga–pilar parafusada com dupla tala (alma do pilar) tipo 114 campos 43
-descricao 2 talas t = 8.0 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Perna maxima do filete - tala - apoio caso  max 0.923076923077
+descricao 2 talas t = 8.0 mm, 3 parafuso(s) d20 ASTM A325 / F1852 em 1 linha(s), solda ao apoio 6 mm governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Cisalhamento do parafuso - corte duplo | 6.3.3.2 | 30.2409072558 86.9173967493 kN 0.347926978796 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -840,12 +950,19 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 210 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 210 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 8.0 x 95 x 210 mm 2 1.25286 0
 peca Parafuso d = 20 mm (+ porca e arruelas) 3 0.145871829506 0
 peca Filete 6 mm tala-apoio (2 x 210 mm) por tala 2 0.059346 420
 solidos 19 20794.7
 ### Viga–pilar soldada com dupla tala (mesa do pilar) tipo 115 campos 27
-descricao 2 talas t = 8.0 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Perna maxima do filete - tala - alma da viga caso  max 0.923076923077
+descricao 2 talas t = 8.0 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Solda tala - alma da viga (cada tala, grupo excentrico) | 6.2.5.2-b (CIR) | 50 240.043531644 kN 0.208295552301 000
    filetes 6.0 mm: 2 x 120 mm; excentricidade da face do apoio ao centroide = 72.0 mm
    Fr,Rd (metodo do centro instantaneo de rotacao) = 240.04 kN
@@ -874,12 +991,20 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 215 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 215 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); bf deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - bf: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 8.0 x 132 x 215 mm 2 1.782264 0
 peca Filete 6 mm tala-alma (2 x 120 mm) por tala 2 0.033912 240
 peca Filete 6 mm tala-apoio (2 x 215 mm) por tala 2 0.060759 430
 solidos 12 17158
 ### Viga–pilar soldada com dupla tala (alma do pilar) tipo 116 campos 27
-descricao 2 talas t = 8.0 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Perna maxima do filete - tala - alma da viga caso  max 0.923076923077
+descricao 2 talas t = 8.0 mm soldada(s) à alma (filete 6 mm, L = 120 mm) e ao apoio (filete 6 mm) governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Solda tala - alma da viga (cada tala, grupo excentrico) | 6.2.5.2-b (CIR) | 50 240.043531644 kN 0.208295552301 000
    filetes 6.0 mm: 2 x 120 mm; excentricidade da face do apoio ao centroide = 72.0 mm
    Fr,Rd (metodo do centro instantaneo de rotacao) = 240.04 kN
@@ -908,12 +1033,19 @@ chk Altura da tala x alma da viga entre mesas | detalhamento | 215 270.6 mm 0 01
 chk Altura minima da tala (>= 0,5 d) | detalhamento | 215 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Tala 8.0 x 132 x 215 mm 2 1.782264 0
 peca Filete 6 mm tala-alma (2 x 120 mm) por tala 2 0.033912 240
 peca Filete 6 mm tala-apoio (2 x 215 mm) por tala 2 0.060759 430
 solidos 14 21284
 ### Viga–pilar com chapa de extremidade flexível (mesa do pilar) tipo 107 campos 39
-descricao Chapa de extremidade flexível t = 9.5 mm, 6 parafusos d20 ASTM A325 / F1852 em duas colunas, filete 6 mm à alma governa Chapa: flexao pela tracao axial (balanco entre a alma e a coluna de parafusos) caso  max 2.27922437673
+descricao Chapa de extremidade flexível t = 9.5 mm, 6 parafusos d20 ASTM A325 / F1852 em duas colunas, filete 6 mm à alma governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Altura da chapa <= trecho reto da alma da viga | NBR 8800:2024, 6.2.6 (disposicao) | 210 270.6 mm 0 010
    hp = 210 mm; alma reta = d - 2 tf - 2 r = 271 mm
 chk Cisalhamento do parafuso - parafusos ao apoio | 6.3.3.2 | 13.3333333333 86.9173967493 kN 0.153402354787 000
@@ -963,12 +1095,20 @@ chk Comprimento minimo efetivo - chapa / alma | 6.2.6.2.3 | 420 40 mm 0.09523809
 chk Alma da viga: escoamento por cisalhamento no comprimento soldado | NBR 8800:2024, 5.4.3 | 80 229.205454545 kN 0.34903183329 000
    Rd = 0,6 fy hp tw/ga1 = 229.2 kN
 chk Alma da viga: tracao axial nos filetes (escoamento da alma, 2 filetes de comprimento hp) | NBR 8800:2024, 5.2.2 | 60 764.018181818 kN 0.0785321624902 000
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); bf deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - bf: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Chapa de extremidade 9.5 mm, 188 x 210 mm 1 2.944221 0
 peca Parafuso d = 20 mm 6 0.211459094954 0
 peca Filete de solda 6 mm (chapa - alma, 2 x 210 mm) 1 0.059346 420
 solidos 25 16743.75
 ### Viga–pilar com chapa de extremidade flexível (alma do pilar) tipo 108 campos 39
-descricao Chapa de extremidade flexível t = 9.5 mm, 6 parafusos d20 ASTM A325 / F1852 em duas colunas, filete 6 mm à alma governa Chapa: flexao pela tracao axial (balanco entre a alma e a coluna de parafusos) caso  max 2.27922437673
+descricao Chapa de extremidade flexível t = 9.5 mm, 6 parafusos d20 ASTM A325 / F1852 em duas colunas, filete 6 mm à alma governa Dados de entrada: perfil de apoio (pilar) caso  max 1000000000
 chk Altura da chapa <= trecho reto da alma da viga | NBR 8800:2024, 6.2.6 (disposicao) | 210 270.6 mm 0 010
    hp = 210 mm; alma reta = d - 2 tf - 2 r = 271 mm
 chk Cisalhamento do parafuso - parafusos ao apoio | 6.3.3.2 | 13.3333333333 86.9173967493 kN 0.153402354787 000
@@ -1018,12 +1158,19 @@ chk Comprimento minimo efetivo - chapa / alma | 6.2.6.2.3 | 420 40 mm 0.09523809
 chk Alma da viga: escoamento por cisalhamento no comprimento soldado | NBR 8800:2024, 5.4.3 | 80 229.205454545 kN 0.34903183329 000
    Rd = 0,6 fy hp tw/ga1 = 229.2 kN
 chk Alma da viga: tracao axial nos filetes (escoamento da alma, 2 filetes de comprimento hp) | NBR 8800:2024, 5.2.2 | 60 764.018181818 kN 0.0785321624902 000
+chk Dados de entrada: perfil de apoio (pilar) | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 peca Chapa de extremidade 9.5 mm, 188 x 210 mm 1 2.944221 0
 peca Parafuso d = 20 mm 6 0.211459094954 0
 peca Filete de solda 6 mm (chapa - alma, 2 x 210 mm) 1 0.059346 420
 solidos 27 20869.75
 ### Ligação mista com pilar de apoio: chapa de extremidade de altura total tipo 161 campos 95
-descricao Ligação mista (chapa de extremidade de altura total): 8 d12.5 CA-50 (As = 982 mm²), M−Rd = 168.6 kN·m, θu = 12.4 mrad, Si = 82170 kN·m/rad governa Capacidade de rotacao >= rotacao necessaria caso ELU1 max 2.99167088351
+descricao Ligação mista (chapa de extremidade de altura total): 8 d12.5 CA-50 (As = 982 mm²), M−Rd = 168.6 kN·m, θu = 12.4 mrad, Si = 82170 kN·m/rad governa Dados de entrada: perfil de apoio (pilar) [alma, só cortante] caso ELU1 max 1000000000
 chk Altura da chapa <= trecho reto da alma da viga [alma, só cortante] | NBR 8800:2024, 6.2.6 (disposicao) | 210 270.6 mm 0 010
    hp = 210 mm; alma reta = d - 2 tf - 2 r = 271 mm
 chk Cisalhamento do parafuso - parafusos ao apoio [alma, só cortante] | 6.3.3.2 | 13.3333333333 86.9173967493 kN 0.153402354787 000
@@ -1073,6 +1220,14 @@ chk Comprimento minimo efetivo - chapa / alma [alma, só cortante] | 6.2.6.2.3 |
 chk Alma da viga: escoamento por cisalhamento no comprimento soldado [alma, só cortante] | NBR 8800:2024, 5.4.3 | 80 229.205454545 kN 0.34903183329 000
    Rd = 0,6 fy hp tw/ga1 = 229.2 kN
 chk Alma da viga: tracao axial nos filetes (escoamento da alma, 2 filetes de comprimento hp) [alma, só cortante] | NBR 8800:2024, 5.2.2 | 60 764.018181818 kN 0.0785321624902 000
+chk Dados de entrada: perfil de apoio (pilar) [alma, só cortante] | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); bf deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - bf: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 chk Largura efetiva da laje (regiao de momento negativo) | NBR 8800:2024, L.2.2.1.1 e L.2.2.2-b | 0 1000 mm 0 000
    Distancia entre pontos de momento nulo = 1/4 (L1 + L2) = 4000 mm; cada lado: min(L/8 ; e/2) -> 500 + 500 = 1000 mm
 chk Armadura longitudinal dentro da largura efetiva | NBR 8800:2024, O.2.1 / O.2.2 | 700 1000 mm 0 010
@@ -1128,7 +1283,7 @@ peca Par de enrijecedores da alma do pilar (area 1761 mm2) 1 3.594201 0
 peca Armadura longitudinal 8 d12.5 mm (CA-50) 8 2.3120158435 2400
 solidos 47 71508.5547619
 ### Ligação mista com pilar de apoio: cantoneiras na alma e na mesa inferior tipo 162 campos 104
-descricao Ligação mista (cantoneiras na alma e na mesa inferior): 8 d12.5 CA-50 (As = 982 mm²), M−Rd = 168.6 kN·m, θu = 20.0 mrad, Si = 22844 kN·m/rad governa Capacidade de rotacao >= rotacao necessaria caso ELU1 max 1.85597805028
+descricao Ligação mista (cantoneiras na alma e na mesa inferior): 8 d12.5 CA-50 (As = 982 mm²), M−Rd = 168.6 kN·m, θu = 20.0 mrad, Si = 22844 kN·m/rad governa Dados de entrada: perfil de apoio (pilar) [alma, só cortante] caso ELU1 max 1000000000
 chk Cisalhamento do parafuso - lado da alma (corte duplo) [alma, só cortante] | 6.3.3.2 | 27.7051203958 86.9173967493 kN 0.318752303129 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -1175,6 +1330,14 @@ chk Alma da viga - rasgamento [alma, só cortante] | 6.5.6 | 80 177.866666667 kN
    Agv = 1015; Anv = 667; Ant = 133 mm2; Rr,Rd = 177.87 kN
 chk Comprimento da cantoneira x altura da viga [alma, só cortante] | detalhamento | 310 210 mm 0.677419354839 100
    L = 210 mm <= altura da viga = 310 mm
+chk Dados de entrada: perfil de apoio (pilar) [alma, só cortante] | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); bf deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - bf: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 chk Largura efetiva da laje (regiao de momento negativo) | NBR 8800:2024, L.2.2.1.1 e L.2.2.2-b | 0 1000 mm 0 000
    Distancia entre pontos de momento nulo = 1/4 (L1 + L2) = 4000 mm; cada lado: min(L/8 ; e/2) -> 500 + 500 = 1000 mm
 chk Armadura longitudinal dentro da largura efetiva | NBR 8800:2024, O.2.1 / O.2.2 | 700 1000 mm 0 010
@@ -1238,7 +1401,7 @@ peca Par de enrijecedores da alma do pilar (area 1761 mm2) 1 3.594201 0
 peca Armadura longitudinal 8 d12.5 mm (CA-50) 8 2.3120158435 2400
 solidos 67 63267.1047619
 ### Ligação mista com viga de apoio: cantoneiras na alma e na mesa inferior tipo 163 campos 102
-descricao Ligação mista (cantoneiras na alma e na mesa inferior): 8 d12.5 CA-50 (As = 982 mm²), M−Rd = 168.6 kN·m, θu = 20.0 mrad, Si = 22844 kN·m/rad governa Capacidade de rotacao >= rotacao necessaria caso ELU1 max 1.85597805028
+descricao Ligação mista (cantoneiras na alma e na mesa inferior): 8 d12.5 CA-50 (As = 982 mm²), M−Rd = 168.6 kN·m, θu = 20.0 mrad, Si = 22844 kN·m/rad governa Dados de entrada: perfil de apoio (pilar) [alma, só cortante] caso ELU1 max 1000000000
 chk Cisalhamento do parafuso - lado da alma (corte duplo) [alma, só cortante] | 6.3.3.2 | 27.7051203958 86.9173967493 kN 0.318752303129 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -1285,6 +1448,13 @@ chk Alma da viga - rasgamento [alma, só cortante] | 6.5.6 | 80 177.866666667 kN
    Agv = 1015; Anv = 667; Ant = 133 mm2; Rr,Rd = 177.87 kN
 chk Comprimento da cantoneira x altura da viga [alma, só cortante] | detalhamento | 310 210 mm 0.677419354839 100
    L = 210 mm <= altura da viga = 310 mm
+chk Dados de entrada: perfil de apoio (pilar) [alma, só cortante] | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 chk Largura efetiva da laje (regiao de momento negativo) | NBR 8800:2024, L.2.2.1.1 e L.2.2.2-b | 0 1000 mm 0 000
    Distancia entre pontos de momento nulo = 1/4 (L1 + L2) = 4000 mm; cada lado: min(L/8 ; e/2) -> 500 + 500 = 1000 mm
 chk Armadura longitudinal dentro da largura efetiva | NBR 8800:2024, O.2.1 / O.2.2 | 700 1000 mm 0 010
@@ -1342,7 +1512,7 @@ peca Parafuso d = 20 mm (aba horizontal) 4 0.225442166776 0
 peca Armadura longitudinal 8 d12.5 mm (CA-50) 8 2.3120158435 2400
 solidos 65 61657.8
 ### Ligação mista com pilar de apoio: chapa simples na alma e cantoneira na mesa inferior tipo 164 campos 111
-descricao Ligação mista (chapa simples na alma e cantoneira na mesa inferior): 8 d12.5 CA-50 (As = 982 mm²), M−Rd = 168.6 kN·m, θu = 20.0 mrad, Si = 22844 kN·m/rad governa Capacidade de rotacao >= rotacao necessaria caso ELU1 max 1.85597805028
+descricao Ligação mista (chapa simples na alma e cantoneira na mesa inferior): 8 d12.5 CA-50 (As = 982 mm²), M−Rd = 168.6 kN·m, θu = 20.0 mrad, Si = 22844 kN·m/rad governa Dados de entrada: perfil de apoio (pilar) [alma, só cortante] caso ELU1 max 1000000000
 chk Cisalhamento do parafuso [alma, só cortante] | 6.3.3.2 | 60.4818145116 86.9173967493 kN 0.695853957592 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -1387,6 +1557,14 @@ chk Altura da tala x alma da viga entre mesas [alma, só cortante] | detalhament
 chk Altura minima da tala (>= 0,5 d) [alma, só cortante] | detalhamento | 210 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao [alma, só cortante] | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) [alma, só cortante] | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); bf deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - bf: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 chk Largura efetiva da laje (regiao de momento negativo) | NBR 8800:2024, L.2.2.1.1 e L.2.2.2-b | 0 1000 mm 0 000
    Distancia entre pontos de momento nulo = 1/4 (L1 + L2) = 4000 mm; cada lado: min(L/8 ; e/2) -> 500 + 500 = 1000 mm
 chk Armadura longitudinal dentro da largura efetiva | NBR 8800:2024, O.2.1 / O.2.2 | 700 1000 mm 0 010
@@ -1455,7 +1633,7 @@ peca Par de enrijecedores da alma do pilar (area 1761 mm2) 1 3.594201 0
 peca Armadura longitudinal 8 d12.5 mm (CA-50) 8 2.3120158435 2400
 solidos 56 61153.9047619
 ### Ligação mista com viga de apoio: chapa simples na alma e cantoneira na mesa inferior tipo 165 campos 110
-descricao Ligação mista (chapa simples na alma e cantoneira na mesa inferior): 8 d12.5 CA-50 (As = 982 mm²), M−Rd = 168.6 kN·m, θu = 20.0 mrad, Si = 22844 kN·m/rad governa Capacidade de rotacao >= rotacao necessaria caso ELU1 max 1.85597805028
+descricao Ligação mista (chapa simples na alma e cantoneira na mesa inferior): 8 d12.5 CA-50 (As = 982 mm²), M−Rd = 168.6 kN·m, θu = 20.0 mrad, Si = 22844 kN·m/rad governa Dados de entrada: perfil de apoio (pilar) [alma, só cortante] caso ELU1 max 1000000000
 chk Cisalhamento do parafuso [alma, só cortante] | 6.3.3.2 | 60.4818145116 86.9173967493 kN 0.695853957592 000
    Ab = 0,25 pi db^2 = 314.2 mm2
    Fv,Rd = 0.45 Ab fub / ga2 = 86.92 kN por plano de corte
@@ -1500,6 +1678,13 @@ chk Altura da tala x alma da viga entre mesas [alma, só cortante] | detalhament
 chk Altura minima da tala (>= 0,5 d) [alma, só cortante] | detalhamento | 210 155 mm 0 011
 chk Alma da viga - cisalhamento na secao da ligacao [alma, só cortante] | 5.4.3 | 80 338.350909091 kN 0.236440919325 000
    altura da alma na ligacao = 310 mm; VRd = 0,6 tw h fy / ga1 = 338.35 kN
+chk Dados de entrada: perfil de apoio (pilar) [alma, só cortante] | NBR 8800:2024, 5.7 (entradas) | 0 0 - 1000000000 000
+   NÃO VERIFICÁVEL — DADOS INSUFICIENTES: d deve ser maior que zero (valor 0 mm); tf deve ser maior que zero (valor 0 mm); tw deve ser maior que zero (valor 0 mm); 2 tf geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+     - d: deve ser maior que zero (valor 0 mm)
+     - tf: deve ser maior que zero (valor 0 mm)
+     - tw: deve ser maior que zero (valor 0 mm)
+     - 2 tf: geometria impossível: 2 tf = 0 deve ser menor que d = 0 (as duas mesas não cabem na altura do perfil)
+   A ligação não pode ser apresentada como aprovada enquanto esta verificação obrigatória não puder ser realizada.
 chk Largura efetiva da laje (regiao de momento negativo) | NBR 8800:2024, L.2.2.1.1 e L.2.2.2-b | 0 1000 mm 0 000
    Distancia entre pontos de momento nulo = 1/4 (L1 + L2) = 4000 mm; cada lado: min(L/8 ; e/2) -> 500 + 500 = 1000 mm
 chk Armadura longitudinal dentro da largura efetiva | NBR 8800:2024, O.2.1 / O.2.2 | 700 1000 mm 0 010
@@ -1812,17 +1997,17 @@ chk Talas de alma: cisalhamento de bloco | 6.5.6 | 80 349.533333333 kN 0.2288765
    Rd = 349.53 kN
 chk Talas de alma: flexao pela excentricidade | 5.4.2 | 3.6 31.5715909091 kN*m 0.114026563006 000
    Z = 2 t h^2/4 = 138915 mm3; Md = Z fy/ga1 = 31.57 kN.m
-chk Solda viga-apoio - mesas (penetracao total) | 6.2.4 | 429.6003996 501.975 kN 0.85582030898 000
-   Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (6.2.4): bf tf fy / ga1 = 165 x 9.7 x 345 / 1.10 = 501.97 kN
+chk Solda viga-apoio - mesas (penetracao total) | Tabela 9 (penetracao total) | 429.6003996 501.975 kN 0.85582030898 000
+   Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (Tabela 9): bf tf fy / ga1 = 165 x 9.7 x 345 / 1.10 = 501.97 kN
    F = M/(d - tf) + N/2 = 120.00 kN.m / 0.300 m + 60.00 kN / 2 = 429.60 kN (a mesa tracionada governa; a comprimida e atendida pela mesma solda)
 chk Solda viga-apoio - alma (filetes) | 6.2.5 | 137.64624914 838.187777778 N/mm 0.164218869314 000
    2 filetes de 5.5 mm (te = 3.89 mm) x 291 mm; fv = V/(2 hw) = 80.0 kN/(2 x 291 mm) = 137.65 N/mm
    fv <= 0,60 te fw / gw2 = 0,60 x 3.89 x 485 / 1.35 = 838.19 N/mm
-chk Solda viga-apoio - alma (metal-base) | 6.2.5 e 5.4.3 | 275.292498279 1091.45454545 N/mm 0.252225344084 000
+chk Solda viga-apoio - alma (metal-base) | Tabela 9 e 6.5.5 | 275.292498279 1091.45454545 N/mm 0.252225344084 000
    2 fv = 275.29 N/mm <= min(0,6 tw fy/ga1 ; 0,6 tw fu/ga2) = 1091.45 N/mm (cisalhamento do metal-base da alma)
 chk Solda viga-apoio - perna minima da alma | Tabela 11 | 5.5 3 mm 0.545454545455 100
    perna adotada 5.5 mm >= minima 3.0 mm
-chk Solda viga-apoio - perna maxima da alma | 6.2.5.2 | 5.5 5.8 mm 0 010
+chk Solda viga-apoio - perna maxima da alma | 6.2.6.2.2 | 5.5 5.8 mm 0 010
    perna adotada 5.5 mm <= maxima 5.8 mm na borda da alma (tw = 5.8 mm)
 peca Tala de mesa externa 12.5 x 165 x 370 mm 2 5.99053125 0
 peca Tala de alma 6.3 x 90 x 210 mm 2 0.9346995 0
@@ -1879,6 +2064,8 @@ chk Alma da viga - rasgamento | 6.5.6 | 80 177.866666667 kN 0.449775112444 000
    Agv = 1015; Anv = 667; Ant = 133 mm2; Rr,Rd = 177.87 kN
 chk Comprimento da cantoneira x altura da viga | detalhamento | 310 210 mm 0.677419354839 100
    L = 210 mm <= altura da viga = 310 mm
+chk Apoio: forças localizadas (5.7.2 a 5.7.5) | NBR 8800:2024, 5.7 | 0 0 - 0 000
+   NÃO APLICÁVEL — COM JUSTIFICATIVA: nenhum perfil I/H de apoio foi definido para esta ligação (campo "Chapa soldada na" = não verificar, ou o apoio não é um perfil I/H): as forças localizadas em mesa e alma não se aplicam
 peca Cantoneira 9.5 mm, abas 85 x 85, comprimento 210 mm 2 2.513550375 0
 peca Parafuso d = 20 mm na alma (corte duplo) 3 0.15585973795 0
 peca Parafuso d = 20 mm no apoio 6 0.144873038661 0
@@ -2105,7 +2292,7 @@ solidos 67 29996.05
 descricao Ligação rígida: mesas soldadas (penetração total); alma soldada ao pilar governa Apoio: flexão local da mesa caso ELU1 max 1.87512357442
 chk Binario das mesas: Ft = M/(d - tf) + N/2 ; Fc = M/(d - tf) - N/2 | 5.7 / 6.2 | 0 1 kN 0 000
    M = 120.00 kN.m, braco d - tf = 300.3 mm: Ft = 429.60 kN ; Fc = 369.60 kN
-chk Solda de penetracao total das mesas: resistencia da mesa da viga | 6.2.4 | 429.6003996 501.975 kN 0.85582030898 000
+chk Solda de penetracao total das mesas: resistencia da mesa da viga | Tabela 9 (penetracao total) | 429.6003996 501.975 kN 0.85582030898 000
    a solda de penetracao total tem a resistencia do metal-base: Ag fy/ga1 = 501.97 kN
 chk Metal da solda (filete) - alma ao pilar | 6.2.5 | 80 531.441530667 kN 0.150533963538 000
    Aw = 0,707 a L = 0,707 x 6.0 x 581.2 = 2465 mm2
@@ -2568,17 +2755,17 @@ chk Distancia do parafuso a borda lateral | NBR 8800:2024, 6.3.11 | 43 26 mm 0.6
    (b - g)/2 = 43.0 mm >= 26.0 mm (Tabela 16)
 chk Distancia do parafuso a mesa da viga | detalhamento | 40 26.4 mm 0.66 100
    firstRow = 40 mm >= solda + 0,5 db + folga = 26 mm
-chk Solda viga-apoio - mesas (penetracao total) | 6.2.4 | 429.6003996 501.975 kN 0.85582030898 000
-   Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (6.2.4): bf tf fy / ga1 = 165 x 9.7 x 345 / 1.10 = 501.97 kN
+chk Solda viga-apoio - mesas (penetracao total) | Tabela 9 (penetracao total) | 429.6003996 501.975 kN 0.85582030898 000
+   Solda de penetracao total: a resistencia e a do metal-base da mesa da viga (Tabela 9): bf tf fy / ga1 = 165 x 9.7 x 345 / 1.10 = 501.97 kN
    F = M/(d - tf) + N/2 = 120.00 kN.m / 0.300 m + 60.00 kN / 2 = 429.60 kN (a mesa tracionada governa; a comprimida e atendida pela mesma solda)
 chk Solda viga-apoio - alma (filetes) | 6.2.5 | 137.64624914 838.187777778 N/mm 0.164218869314 000
    2 filetes de 5.5 mm (te = 3.89 mm) x 291 mm; fv = V/(2 hw) = 80.0 kN/(2 x 291 mm) = 137.65 N/mm
    fv <= 0,60 te fw / gw2 = 0,60 x 3.89 x 485 / 1.35 = 838.19 N/mm
-chk Solda viga-apoio - alma (metal-base) | 6.2.5 e 5.4.3 | 275.292498279 1091.45454545 N/mm 0.252225344084 000
+chk Solda viga-apoio - alma (metal-base) | Tabela 9 e 6.5.5 | 275.292498279 1091.45454545 N/mm 0.252225344084 000
    2 fv = 275.29 N/mm <= min(0,6 tw fy/ga1 ; 0,6 tw fu/ga2) = 1091.45 N/mm (cisalhamento do metal-base da alma)
 chk Solda viga-apoio - perna minima da alma | Tabela 11 | 5.5 3 mm 0.545454545455 100
    perna adotada 5.5 mm >= minima 3.0 mm
-chk Solda viga-apoio - perna maxima da alma | 6.2.5.2 | 5.5 5.8 mm 0 010
+chk Solda viga-apoio - perna maxima da alma | 6.2.6.2.2 | 5.5 5.8 mm 0 010
    perna adotada 5.5 mm <= maxima 5.8 mm na borda da alma (tw = 5.8 mm)
 peca Chapa de extremidade 22.4 mm, 185 x 530 mm 1 17.241112 0
 peca Parafuso d = 20 mm 6 0.289031850535 0
@@ -2623,10 +2810,10 @@ chk Comprimento minimo do filete (>= 4 a e >= 40 mm) - barra 0 | 6.2.6.2 | 70 40
 chk Barra: compressao no trecho ligado (escoamento da secao bruta) - barra 0 | 5.3 | 60 258.181818182 kN 0.232394366197 000
 chk Chapa: compressao na secao de Whitmore - barra 0 | 5.3.3 | 60 355.716529861 kN 0.168673634659 000
    K L / r = 19.0 (K = 0,65, L = 80 mm); chi = 0.981
-chk Solda de topo gousset - banzo: tensao normal (N/Ag + M/W) | 6.2.4 | 6.76657206877 227.272727273 MPa 0.0297729171026 000
+chk Solda de topo gousset - banzo: tensao normal (N/Ag + M/W) | Tabela 9 (penetracao total) | 6.76657206877 227.272727273 MPa 0.0297729171026 000
    Fy = 14.14 kN, M = 0.00 kN.m, Ag = 2090 mm2, W = 76633 mm3
-chk Solda de topo gousset - banzo: cisalhamento | 6.2.4 | 47.3660044814 136.363636364 MPa 0.34735069953 000
-chk Solda de topo gousset - banzo: interacao tensao normal x cisalhamento | 6.2.4 | 0.121538935057 1 - 0.121538935057 000
+chk Solda de topo gousset - banzo: cisalhamento | Tabela 9 (penetracao total) | 47.3660044814 136.363636364 MPa 0.34735069953 000
+chk Solda de topo gousset - banzo: interacao tensao normal x cisalhamento | Tabela 9 (penetracao total); interacao: criterio do programa | 0.121538935057 1 - 0.121538935057 000
 chk Apoio: flexão local da mesa | NBR 8800:2024, 5.7.2 | 0 184.437784091 kN 0 000
    R_d = 6,25 tf² fy/γa1 = 184.4 kN (tf = 9.7 mm, fy = 345 MPa)
    Dispensada (5.7.2.1): a força atua em 21.5 mm < 0,15 bf = 24.8 mm transversalmente.
@@ -2760,10 +2947,10 @@ chk Metal-base (cisalhamento) (solda chapa-apoio) - barra 0 | 6.5 | 60 570 kN 0.
 chk Comprimento minimo efetivo (solda chapa-apoio) - barra 0 | 6.2.6.2.3 | 440 40 mm 0.0909090909091 100
    L = 440.0 mm >= max(4a ; 40) = 40.0 mm
    A solda e verificada para a forca total da diagonal (metodo da forca uniforme conservador, sem decomposicao entre o banzo e os montantes).
-chk Solda de topo gousset - banzo: tensao normal (N/Ag + M/W) | 6.2.4 | 6.76657206877 227.272727273 MPa 0.0297729171026 000
+chk Solda de topo gousset - banzo: tensao normal (N/Ag + M/W) | Tabela 9 (penetracao total) | 6.76657206877 227.272727273 MPa 0.0297729171026 000
    Fy = 14.14 kN, M = 0.00 kN.m, Ag = 2090 mm2, W = 76633 mm3
-chk Solda de topo gousset - banzo: cisalhamento | 6.2.4 | 47.3660044814 136.363636364 MPa 0.34735069953 000
-chk Solda de topo gousset - banzo: interacao tensao normal x cisalhamento | 6.2.4 | 0.121538935057 1 - 0.121538935057 000
+chk Solda de topo gousset - banzo: cisalhamento | Tabela 9 (penetracao total) | 47.3660044814 136.363636364 MPa 0.34735069953 000
+chk Solda de topo gousset - banzo: interacao tensao normal x cisalhamento | Tabela 9 (penetracao total); interacao: criterio do programa | 0.121538935057 1 - 0.121538935057 000
 chk Apoio: flexão local da mesa | NBR 8800:2024, 5.7.2 | 0 184.437784091 kN 0 000
    R_d = 6,25 tf² fy/γa1 = 184.4 kN (tf = 9.7 mm, fy = 345 MPa)
    Dispensada (5.7.2.1): a força atua em 21.5 mm < 0,15 bf = 24.8 mm transversalmente.

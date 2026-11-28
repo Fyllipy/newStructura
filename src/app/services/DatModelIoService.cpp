@@ -1081,6 +1081,10 @@ bool DatModelIoService::load(const QString &filePath,
                 designTmp.rs = toDouble(parts[1], &ok);
             } else if (key == QLatin1String("SINGLE_STOREY")) {
                 designTmp.singleStorey = toInt(parts[1], &ok) != 0;
+            } else if (key == QLatin1String("STRUCTURAL_SYSTEM")) {
+                designTmp.structuralSystem = std::clamp(toInt(parts[1], &ok), 0, 4);
+            } else if (key == QLatin1String("BRACING_CONDITION")) {
+                designTmp.bracingCondition = std::clamp(toInt(parts[1], &ok), 0, 2);
             } else if (key == QLatin1String("NOTIONAL_LOADS")) {
                 designTmp.notionalLoads = toInt(parts[1], &ok) != 0;
             } else if (key == QLatin1String("NOTIONAL_FACTOR")) {
@@ -2305,6 +2309,12 @@ bool DatModelIoService::save(const QString &filePath,
             stream << "AUTO_B2 " << (ds.autoB2 ? 1 : 0) << "\n";
             stream << "RS " << ds.rs << "\n";
             stream << "SINGLE_STOREY " << (ds.singleStorey ? 1 : 0) << "\n";
+            if (ds.structuralSystem != 0) {
+                stream << "STRUCTURAL_SYSTEM " << ds.structuralSystem << "\n";
+            }
+            if (ds.bracingCondition != 0) {
+                stream << "BRACING_CONDITION " << ds.bracingCondition << "\n";
+            }
         }
         stream << "NOTIONAL_LOADS " << (ds.notionalLoads ? 1 : 0) << "\n";
         stream << "NOTIONAL_FACTOR " << ds.notionalFactor << "\n";

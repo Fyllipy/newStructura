@@ -73,6 +73,13 @@ private:
     static void dumpConnection(QTextStream &out, int type, const QString &label)
     {
         auto c = ConnectionService::makeDefault(type, beam(), 250.0, 400.0);
+        // secao do pilar explicita (mesmos numeros que antes eram o padrao embutido): o despejo continua comparavel
+        const QMap<QString, double> column {{"supD", 260.0}, {"supBf", 146.0}, {"supTf", 12.7}, {"supTw", 7.6}, {"supR", 10.0}, {"supFy", 250.0}, {"supFu", 400.0}, {"supConfirmed", 1.0}};
+        for (auto it = column.begin(); it != column.end(); ++it) {
+            if ((type == Structura::App::ProjectData::NodeConnection::kEndPlate || type == 147) && !c.values.contains(it.key())) {
+                c.values[it.key()] = it.value();
+            }
+        }
         out << "### " << label << " tipo " << type << " campos " << ConnectionService::fields(type).size() << "\n";
         const auto e = ConnectionService::evaluate(c, forces());
         out << "descricao " << e.description << " governa " << e.governing << " caso " << e.governingCase << " max " << num(e.maxRatio) << "\n";

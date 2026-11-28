@@ -228,6 +228,8 @@ set(UI_SOURCES
     src/ui/MainWindowSession.cpp
     src/ui/MainWindowErrors.cpp
     src/ui/MainWindowShell.cpp
+    src/ui/LegalNoticesDialog.h
+    src/ui/LegalNoticesDialog.cpp
     src/ui/ShellDialog.h
     src/ui/ShellDialog.cpp
     src/ui/BusyProgress.h
@@ -430,6 +432,32 @@ set(STRUCTURA_DESIGN_SOURCES
     src/ui/KFactorDialog.cpp
     src/ui/MainWindowKFactors.cpp
     src/ui/MainWindowCommercialActions.cpp
+    src/ui/JointCharts.h
+    src/ui/JointCharts.cpp
+    src/ui/JointAnalysisDialog.h
+    src/ui/JointAnalysisDialog.cpp
+    src/design/JointClassification.h
+    src/design/JointClassification.cpp
+    src/design/JointMemory.cpp
+    src/app/services/JointAnalysisService.h
+    src/app/services/JointAnalysisService.cpp
+    src/app/services/NodeBehaviorService.h
+    src/app/services/NodeBehaviorService.cpp
+    src/app/services/TypologyCapabilityService.h
+    src/app/services/TypologyCapabilityService.cpp
+    src/app/services/ConnectionMechanicalResponseService.h
+    src/app/services/ConnectionMechanicalResponseService.cpp
+    src/app/services/ConnectionRequirementService.h
+    src/app/services/ConnectionRequirementService.cpp
+    src/app/services/JointComponentService.h
+    src/app/services/JointComponentService.cpp
+    src/app/services/JointTopologyAdapter.h
+    src/app/services/JointTopologyAdapter.cpp
+    src/design/JointComponents.h
+    src/design/JointComponents.cpp
+    src/ui/MainWindowJoints.cpp
+    src/ui/NodeBehaviorDialog.h
+    src/ui/NodeBehaviorDialog.cpp
     src/ui/MainWindowConnectionsView.cpp
     src/ui/MainWindowFabrication.cpp
     src/ui/MainWindowAutomation.cpp
@@ -448,6 +476,37 @@ set(STRUCTURA_DESIGN_SOURCES
     src/design/TaperedMember.cpp
     src/design/Connections.h
     src/design/Connections.cpp
+    src/design/InputValidation.h
+    src/design/TStub.h
+    src/design/TStub.cpp
+    src/design/TStubStiffness.h
+    src/design/TStubStiffness.cpp
+    src/design/jointengine/Types.h
+    src/design/jointengine/Types.cpp
+    src/design/jointengine/Materials.h
+    src/design/jointengine/Materials.cpp
+    src/design/jointengine/Descriptor.h
+    src/design/jointengine/Descriptor.cpp
+    src/design/jointengine/Component.h
+    src/design/jointengine/Response.h
+    src/design/jointengine/Response.cpp
+    src/design/jointengine/Topology.h
+    src/design/jointengine/Topology.cpp
+    src/design/jointengine/Fingerprint.h
+    src/design/jointengine/Fingerprint.cpp
+    src/design/jointengine/Capability.h
+    src/design/jointengine/EnComponentMethodModel.h
+    src/design/jointengine/EnComponentMethodModel.cpp
+    src/design/jointengine/NbrClassifier.h
+    src/design/jointengine/NbrClassifier.cpp
+    src/design/jointengine/ResistanceWrappers.h
+    src/design/jointengine/ResistanceWrappers.cpp
+    src/design/jointengine/RequiredBehavior.h
+    src/design/jointengine/RequiredBehavior.cpp
+    src/design/jointengine/RealVsRequired.cpp
+    src/design/ColumnFlangeLever.h
+    src/design/ColumnFlangeLever.cpp
+    src/design/InputValidation.cpp
     src/design/ShearConnections.h
     src/design/ShearConnections.cpp
     src/design/ConnectionHelpers.h

@@ -38,9 +38,32 @@ struct SupportWeldInput {
 
 std::vector<Check> checkSupportWeld(const SupportWeldInput &input);
 
-/// Perna minima de filete (Tabela 11) em funcao da espessura da parte mais fina ligada (mm).
+/// Perna minima de filete (NBR 8800:2024, Tabela 11) em funcao da espessura da parte mais fina ligada (mm): ate 6,3 -> 3; ate 12,5 -> 5; ate 19 -> 6; acima de 19 -> 8.
 double minimumFilletLeg(double thinnerPart);
-/// Perna maxima do filete na borda de uma chapa de espessura t (6.2.5.2).
+/// Perna maxima do filete ao longo da borda de uma chapa de espessura t (NBR 8800:2024, 6.2.6.2.2): t se t < 6,3 mm; t - 1,5 mm se t >= 6,3 mm.
 double maximumFilletLeg(double thickness);
+
+/// Comprimento efetivo minimo de um filete (NBR 8800:2024, 6.2.6.2.3): 40 mm.
+constexpr double kMinimumFilletRunLength = 40.0;
+
+/// Trecho continuo de filete (6.2.6.2.3). `geometricLeg` e a perna informada; `effectiveLeg` e a perna considerada no calculo:
+/// `min(geometricLeg, length/4)` (alternativa normativa: para efeito de calculo a perna nao pode ser considerada maior que 25 % do comprimento).
+struct WeldRun {
+    std::string name;
+    int count {1};                 ///< numero de trechos iguais
+    double length {0.0};           ///< comprimento do trecho (mm)
+    double geometricLeg {0.0};
+    double effectiveLeg {0.0};
+    bool belowFourLegs {false};    ///< length < 4 x perna geometrica (aciona a perna efetiva)
+    bool belowMinimumLength {false};   ///< length < 40 mm (nao ha alternativa de calculo: reprova)
+};
+
+struct SupportWeldRuns {
+    std::vector<WeldRun> flange;   ///< vazio se as mesas sao de penetracao total
+    std::vector<WeldRun> web;
+};
+
+/// Trechos de filete do arranjo (mesas: face externa `bf` e duas faces internas `(bf - tw)/2`; alma: dois filetes `d - 2 tf`), com perna geometrica e efetiva.
+SupportWeldRuns supportWeldRuns(const SupportWeldInput &input);
 
 } // namespace Structura::Design::Connections

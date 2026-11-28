@@ -130,4 +130,10 @@
     <qresource prefix="/data">
         <file alias="catalog_steel.json">data/catalog_steel.json</file>
     </qresource>
+    <qresource prefix="/legal">
+        <file alias="Avisos.txt">resources/legal/Avisos.txt</file>
+        <file alias="LGPL-3.0.txt">resources/legal/LGPL-3.0.txt</file>
+        <file alias="GPL-3.0.txt">resources/legal/GPL-3.0.txt</file>
+        <file alias="VTK-License.txt">resources/legal/VTK-License.txt</file>
+    </qresource>
 </RCC>

@@ -130,6 +130,16 @@ void applyUiAutomationHooks(MainWindow &window)
     if (const int bar = qEnvironmentVariableIntValue("STRUCTURA_SELECT_BAR"); bar > 0) {
         window.selectBarForAutomation(bar);
     }
+    if (const int node = qEnvironmentVariableIntValue("STRUCTURA_NODE_FLOW"); node > 0) {
+        window.runNodeFlowForAutomation(node, qEnvironmentVariable("STRUCTURA_FLOW_PREFIX"));   // fluxo completo do no (verificacao automatizada)
+        QTimer::singleShot(300, &window, []() { QCoreApplication::quit(); });
+    }
+    if (const int node = qEnvironmentVariableIntValue("STRUCTURA_NODE_BEHAVIOR"); node > 0) {
+        window.openNodeBehaviorForAutomation(node, qEnvironmentVariable("STRUCTURA_NODE_BEHAVIOR_SHOT"));   // dialogo do comportamento requerido do no (verificacao visual)
+        if (!qEnvironmentVariableIsEmpty("STRUCTURA_NODE_BEHAVIOR_SHOT")) {
+            QTimer::singleShot(300, &window, []() { QCoreApplication::quit(); });   // a verificacao automatizada encerra o programa depois de gravar as imagens
+        }
+    }
     if (const int tab = qEnvironmentVariableIntValue("STRUCTURA_RIBBON_TAB"); tab > 0) {
         if (auto *ribbon = window.findChild<QTabWidget *>(QStringLiteral("mainRibbon"))) {
             ribbon->setCurrentIndex(tab);

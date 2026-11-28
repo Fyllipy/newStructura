@@ -27,7 +27,11 @@ std::string esc(const std::string &s)
         case '<': out += "&lt;"; break;
         case '>': out += "&gt;"; break;
         case '"': out += "&quot;"; break;
-        default: out.push_back(c);
+        default:
+            // caracteres de controle (exceto TAB, LF, CR) sao ilegais em XML 1.0
+            if (static_cast<unsigned char>(c) >= 0x20 || c == '\t' || c == '\n' || c == '\r') {
+                out.push_back(c);
+            }
         }
     }
     return out;
@@ -601,6 +605,7 @@ private:
                     case CellStatus::Ok: fill = "E3F4E8"; color = "1E6B3A"; bold = true; break;
                     case CellStatus::Warn: fill = "FFF1D6"; color = "8A5A00"; bold = true; break;
                     case CellStatus::Fail: fill = "FBE1DE"; color = "A32A1E"; bold = true; break;
+                    case CellStatus::Complementary: fill = "ECE9FA"; color = "4B3FA0"; bold = true; break;
                     case CellStatus::None: break;
                     }
                 }
