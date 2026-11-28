@@ -10,6 +10,7 @@ import { AbuseQueue } from './components/AbuseQueue';
 import { VMAllowlist } from './components/VMAllowlist';
 import { Users } from './components/Users';
 import { Telemetry } from './components/Telemetry';
+import { Plans } from './components/Plans';
 
 export const App: React.FC = () => {
   const [session, setSession] = useState<AdminSession | null>(() => getSession());
@@ -94,6 +95,7 @@ export const App: React.FC = () => {
         {activeTab === 'abuse' && <AbuseQueue />}
         {activeTab === 'vm_allowlist' && <VMAllowlist />}
         {activeTab === 'users' && <Users />}
+        {activeTab === 'plans' && <Plans />}
         {activeTab === 'telemetry' && <Telemetry />}
       </main>
 

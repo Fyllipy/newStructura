@@ -8,3 +8,4 @@ argon2-cffi>=23.1,<26
 cryptography>=43,<51
 python-multipart>=0.0.9
 redis>=5.0.0
+stripe>=16,<17

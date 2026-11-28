@@ -21,6 +21,15 @@ class User(Base):
     status: Mapped[str] = mapped_column(String(32), default="ativa")
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)   # senha temporaria do admin
+    # Cobranca (Stripe). So ids e dados de exibicao do cartao (marca, ultimos 4, validade): o numero NUNCA toca o servidor.
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    card_pm_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    card_brand: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    card_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    card_exp_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    card_exp_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    auto_renew: Mapped[bool] = mapped_column(Boolean, default=False)     # renovacao automatica no vencimento
+    totp_pending_enc: Mapped[str | None] = mapped_column(String(255), nullable=True)   # novo 2FA aguardando confirmacao
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     licenses: Mapped[list["License"]] = relationship(back_populates="user")
 
@@ -33,6 +42,8 @@ class License(Base):
     current_period_end: Mapped[datetime] = mapped_column(DateTime)
     plan: Mapped[str] = mapped_column(String(64), default="mensal")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    renew_attempts: Mapped[int] = mapped_column(Integer, default=0)       # cobrancas de renovacao que falharam
+    last_renew_attempt_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     user: Mapped[User] = relationship(back_populates="licenses")
     devices: Mapped[list["Device"]] = relationship(back_populates="license")
 
@@ -64,6 +75,35 @@ class Payment(Base):
     amount: Mapped[float] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String(32))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Plan(Base):
+    """Tabela de precos das licencas (editada no painel admin). Preco em centavos de real."""
+    __tablename__ = "plans"
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)          # mensal | trimestral | ...
+    name: Mapped[str] = mapped_column(String(64))
+    period_days: Mapped[int] = mapped_column(Integer)
+    price_cents: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=False)            # so planos ativos aparecem na loja
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Order(Base):
+    """Compra iniciada na loja. Para cliente novo guarda os dados da conta ATE o pagamento confirmar
+    (a conta so e criada depois de pago). Senha so como hash; CPF so cifrado."""
+    __tablename__ = "orders"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    public_id: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    email: Mapped[str] = mapped_column(String(255), default="")
+    cpf_enc: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cpf_hmac: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    plan_code: Mapped[str] = mapped_column(String(32))
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    provider_intent: Mapped[str] = mapped_column(String(128), unique=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")       # pending | paid
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class AuditLog(Base):

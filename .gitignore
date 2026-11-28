@@ -22,3 +22,7 @@ server/deploy/secrets/
 server/deploy/bundle/
 build-dev/
 dist-dev/
+
+# --- artefatos locais ---
+*.log
+docs/references/*.pdf

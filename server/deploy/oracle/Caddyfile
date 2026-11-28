@@ -4,8 +4,22 @@ __DOMAIN__ {
 	request_body {
 		max_size 10MB
 	}
-	reverse_proxy 127.0.0.1:8000 {
-		header_up X-Forwarded-Proto {scheme}
+	# API (licenciamento, loja, area do cliente, webhook, admin) -> FastAPI. O resto e o SITE estatico.
+	@api path /auth/* /license/* /compute/* /admin /admin/* /portal/* /shop/* /webhook/* /health /pubkey
+	handle @api {
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+	handle {
+		root * /opt/structura/site
+		file_server
+		header {
+			Content-Security-Policy "default-src 'self'; script-src 'self' https://js.stripe.com; frame-src https://js.stripe.com https://hooks.stripe.com; connect-src 'self' https://api.stripe.com https://m.stripe.network; img-src 'self' data: https://*.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+			X-Content-Type-Options nosniff
+			Referrer-Policy strict-origin-when-cross-origin
+			X-Frame-Options DENY
+		}
 	}
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"

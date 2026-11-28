@@ -1,4 +1,4 @@
-import { AdminSession, License, Device, AbuseFlag, VMAllowlistEntry, User, Metrics, TelemetryEvent, FraudSignal, CreatedUser } from './types';
+import { AdminSession, License, Device, AbuseFlag, VMAllowlistEntry, User, Metrics, TelemetryEvent, FraudSignal, CreatedUser, Plan } from './types';
 
 const SESSION_KEY = 'structura_admin_session';
 
@@ -83,6 +83,18 @@ export const api = {
     });
     setSession(res);
     return res;
+  },
+
+  async getPlans(): Promise<Plan[]> {
+    return request<Plan[]>('/admin/plans');
+  },
+
+  async updatePlan(code: string, data: Partial<Pick<Plan, 'name' | 'period_days' | 'price_cents' | 'active'>>): Promise<Plan> {
+    return request<Plan>(`/admin/plans/${encodeURIComponent(code)}`, { method: 'PATCH', body: JSON.stringify(data) });
+  },
+
+  async createPlan(data: { code: string; name: string; period_days: number; price_cents: number; active: boolean }): Promise<Plan> {
+    return request<Plan>('/admin/plans', { method: 'POST', body: JSON.stringify(data) });
   },
 
   async getMetrics(): Promise<Metrics> {

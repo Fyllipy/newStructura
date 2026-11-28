@@ -84,6 +84,13 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         <button
+          className={`nav-tab ${activeTab === 'plans' ? 'active' : ''}`}
+          onClick={() => onTabChange('plans')}
+        >
+          Planos e preços
+        </button>
+
+        <button
           className={`nav-tab ${activeTab === 'telemetry' ? 'active' : ''}`}
           onClick={() => onTabChange('telemetry')}
         >

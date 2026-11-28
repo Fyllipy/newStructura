@@ -25,6 +25,7 @@ DOM_KEYSTONE = b"structura-keystone-v1\x00"
 DOM_MANIFEST = b"structura-manifest-v1\x00"
 DOM_GATE = b"structura-gate-v1\x00"
 DOM_ADMIN_TOKEN = b"structura-admin-token-v1\x00"
+DOM_PORTAL_TOKEN = b"structura-portal-token-v1\x00"
 
 
 def _b64e(b: bytes) -> str:
@@ -116,6 +117,31 @@ def verify_admin_token(token: str) -> dict[str, Any] | None:
         if payload.get("typ") != "admin":
             return None
         if int(payload.get("exp", 0)) < int(time.time()):
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+# ---------------- token da area do cliente (site): dominio proprio, nao vale no app nem no admin ----------------
+def issue_portal_token(user_id: int, ttl_seconds: int, pwv: str = "") -> tuple[str, int]:
+    now = int(time.time())
+    exp = now + ttl_seconds
+    body = {"typ": "portal", "user_id": user_id, "iat": now, "exp": exp, "pwv": pwv}
+    raw = json.dumps(body, separators=(",", ":"), sort_keys=True).encode()
+    return _b64e(raw) + "." + sign_blob(raw, DOM_PORTAL_TOKEN), exp
+
+
+def verify_portal_token(token: str) -> dict[str, Any] | None:
+    try:
+        if not isinstance(token, str) or len(token) > 2048:
+            return None
+        b, sig = token.split(".", 1)
+        raw = _b64d(b)
+        if not verify_blob(raw, sig, DOM_PORTAL_TOKEN):
+            return None
+        payload = json.loads(raw)
+        if payload.get("typ") != "portal" or int(payload.get("exp", 0)) < int(time.time()):
             return None
         return payload
     except Exception:

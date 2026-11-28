@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     ADMIN_TOKEN_TTL_SECONDS: int = 1800 # sessao do painel: 30 min
     AUTO_SUSPEND_FLAG_THRESHOLD: int = 5   # sinalizacoes de abuso em 7 dias que suspendem a licenca
     DEVICE_STALE_DAYS: int = 7          # libera vinculo preso apos N dias sem heartbeat
+    # --- Loja / area do cliente / cobranca (Stripe). Chaves SO no .env do servidor; a secreta nunca vai ao site.
+    STRIPE_SECRET_KEY: str = ""         # sk_live_... / sk_test_...
+    STRIPE_PUBLISHABLE_KEY: str = ""    # pk_live_... / pk_test_... (publica; o site a recebe via /shop/config)
+    STRIPE_WEBHOOK_SECRET: str = ""     # whsec_... (assinatura do webhook /webhook/payment)
+    PORTAL_TOKEN_TTL_SECONDS: int = 3600   # sessao da area do cliente: 1 h
+    RENEW_MAX_ATTEMPTS: int = 3         # tentativas de cobranca de renovacao (apos o vencimento) antes de desistir
+    RENEW_RETRY_HOURS: int = 24         # intervalo entre tentativas
+    SITE_DIR: str = ""                  # so desenvolvimento: pasta do site para o proprio uvicorn servir em "/"
     EQUILIBRIUM_REL_TOL: float = 1e-6
     EQUILIBRIUM_ABS_FLOOR: float = 1e-3
 

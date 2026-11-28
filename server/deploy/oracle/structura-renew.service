@@ -1,0 +1,10 @@
+[Unit]
+Description=Structura - renovacao automatica de licencas vencidas
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=structura
+WorkingDirectory=/opt/structura/server
+EnvironmentFile=/opt/structura/server/.env
+ExecStart=/opt/structura/venv/bin/python -m app.renew_cli

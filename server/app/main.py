@@ -54,13 +54,28 @@ settings.validate_secrets()  # fail-closed: sem chaves validas o servidor nao so
 Base.metadata.create_all(bind=engine)
 
 
+_NEW_COLUMNS = {
+    "users": [
+        ("must_change_password", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("stripe_customer_id", "VARCHAR(64)"), ("card_pm_id", "VARCHAR(64)"), ("card_brand", "VARCHAR(24)"),
+        ("card_last4", "VARCHAR(4)"), ("card_exp_month", "INTEGER"), ("card_exp_year", "INTEGER"),
+        ("auto_renew", "BOOLEAN NOT NULL DEFAULT FALSE"), ("totp_pending_enc", "VARCHAR(255)"),
+    ],
+    "licenses": [
+        ("renew_attempts", "INTEGER NOT NULL DEFAULT 0"), ("last_renew_attempt_at", "TIMESTAMP"),
+    ],
+}
+
+
 def _ensure_columns() -> None:
-    """Migracao leve: create_all nao altera tabelas existentes (bancos criados antes desta coluna)."""
+    """Migracao leve: create_all nao altera tabelas existentes (bancos criados antes destas colunas)."""
     from sqlalchemy import inspect, text as _text
-    cols = {c["name"] for c in inspect(engine).get_columns("users")}
-    if "must_change_password" not in cols:
-        with engine.begin() as conn:
-            conn.execute(_text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE"))
+    for table, cols_def in _NEW_COLUMNS.items():
+        have = {c["name"] for c in inspect(engine).get_columns(table)}
+        for name, ddl in cols_def:
+            if name not in have:
+                with engine.begin() as conn:
+                    conn.execute(_text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
 
 
 _ensure_columns()
@@ -1113,8 +1128,11 @@ def serve_admin_asset(asset_path: str):
     raise HTTPException(status_code=404, detail="ASSET_NOT_FOUND")
 
 
-# ---------------- stubs (implementar nos marcos M8) ----------------
-@app.post("/webhook/payment")
-def webhook_payment():
-    # TODO(M8): verificar assinatura do provedor; se paid -> +1 mes e 'ativa'. Idempotente por provider_ref.
-    raise HTTPException(status_code=501, detail="NOT_IMPLEMENTED")
+# ---------------- loja, area do cliente, cobranca (app/portal.py) ----------------
+from .portal import router as _portal_router, seed_plans as _seed_plans  # noqa: E402  (apos as dependencias acima)
+app.include_router(_portal_router)
+_seed_plans()
+
+# Site estatico em desenvolvimento (em producao quem serve e o Caddy). Fica por ultimo: rotas da API tem prioridade.
+if settings.SITE_DIR and Path(settings.SITE_DIR).is_dir():
+    app.mount("/", StaticFiles(directory=settings.SITE_DIR, html=True), name="site")

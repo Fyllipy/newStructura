@@ -121,3 +121,12 @@ export interface Metrics {
   };
   recent_logins: RecentLogin[];
 }
+
+export interface Plan {
+  code: string;
+  name: string;
+  period_days: number;
+  price_cents: number;
+  active: boolean;
+  updated_at?: string;
+}
